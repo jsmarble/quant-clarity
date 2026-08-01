@@ -8,9 +8,11 @@ The usefulness and correctness of the public data are the project's sole justifi
 
 ## Status
 
-**System design — pre-implementation.**
+**Implementation — approved vertical slice in progress.**
 
-The product requirements are approved. Runtime architecture, canonical schema, concrete API contract, pipeline design, and implementation layout have not yet been selected. This repository intentionally contains no application scaffold or production dependencies.
+The product requirements and system design are approved. The repository now contains a pinned TypeScript/npm foundation, generated schema/OpenAPI artifacts, strict domain rules, privacy-enforcing checks, Cloudflare Worker dry-run surfaces, tests, and CI. No Cloudflare resources have been provisioned and no production dataset is published yet.
+
+QuantClarity stores no visitor information and runs no visitor analytics or request telemetry. It sets no cookies or visitor-specific browser state, retains no searches/clicks/IPs/user agents/referrers, and permits only static no-referrer referral links with no per-user tracking. Cloudflare necessarily processes limited network/security data to deliver and protect requests under its processor terms; QuantClarity does not copy that data into application storage.
 
 ## Product boundaries
 
@@ -29,14 +31,19 @@ The product requirements are approved. Runtime architecture, canonical schema, c
 .
 ├── AGENTS.md                         Durable instructions for Codex and other coding agents
 ├── README.md                         Project orientation
+├── apps/                             Public API, private query, and pipeline Workers
+├── config/                           Logical environment inventory (unprovisioned)
 ├── contracts/                        API, schema, adapter, and publication contracts
 ├── docs/
 │   ├── decisions/                    Architecture decision records
 │   ├── design/                       System-design baseline and design work
+│   ├── compliance/                   Privacy notice and GDPR accountability drafts
 │   └── product/
 │       ├── decision-log.md           Durable record of accepted product decisions
 │       └── requirements.md           Approved product requirements
-└── fixtures/                         Redacted provider and pipeline test fixtures
+├── fixtures/                         Redacted provider and pipeline test fixtures
+├── packages/                         Shared contracts, domain rules, and test support
+└── tools/                            Contract, documentation, privacy, and policy checks
 ```
 
 ## Source of truth
@@ -45,21 +52,9 @@ The approved PRD is [`docs/product/requirements.md`](docs/product/requirements.m
 
 Accepted product decisions and later approved amendments belong in [`docs/product/decision-log.md`](docs/product/decision-log.md). Implementation choices belong in the system design or an architecture decision record, not in the PRD.
 
-## Next phase
+## Current delivery focus
 
-The next project task is to complete [`docs/design/system-design.md`](docs/design/system-design.md). That work must produce:
-
-1. System context, component boundaries, and data flows
-2. Cloudflare service decisions and deployment environments
-3. Canonical model, offering, observation, evidence, and publication schemas
-4. Pipeline orchestration, validation, quarantine, and rollback behavior
-5. OpenAPI and provider-adapter contracts
-6. Exact, structured, and semantic search design
-7. Security, privacy, rate-limit, cache, observability, backup, and cost controls
-8. Requirement-to-design and requirement-to-test traceability
-9. A one-provider vertical-slice implementation plan
-
-Application implementation should begin only after that design is reviewed and approved.
+Implementation follows [`docs/design/implementation-plan.md`](docs/design/implementation-plan.md): machine contracts and canonical rules first, then one lawful structured-provider slice through atomic publication, API, and web delivery. ADR 0012 resolves the former Pages conflict: the web runtime uses current Astro SSR on Cloudflare Workers with Static Assets while preserving the separate API/query boundaries.
 
 ## Open as a Codex project
 
@@ -73,17 +68,16 @@ In the Codex desktop app:
    ```
 
 3. Make it the project's primary folder.
-4. Start a new task for the system-design outcome.
+4. Start a new task for the next implementation-plan outcome.
 
-Codex will discover [`AGENTS.md`](AGENTS.md) from the repository root. No project-specific `.codex/config.toml` or local-environment actions are included yet because the runtime and toolchain have not been selected.
+Codex will discover [`AGENTS.md`](AGENTS.md) from the repository root. The pinned runtime, exact verification commands, privacy invariants, and current implementation gate are documented there.
 
 Suggested first task:
 
-> Convert the approved QuantClarity PRD into an implementation-ready system design. Produce the architecture, canonical data model, pipeline state machine, publication model, Cloudflare service decisions, OpenAPI contract, provider-adapter contract, search design, security model, observability plan, and requirement-to-test traceability. Do not implement application code. Record consequential choices as ADRs and preserve every product invariant in AGENTS.md.
+> Continue the approved QuantClarity implementation plan with the next incomplete vertical-slice phase. Preserve zero visitor data, evidence, neutrality, exact-offering applicability, atomic publication, and every release gate. Run the full verification command and request independent review before advancing a phase.
 
 ## Repository policy
 
-This project is expected to publish its implementation as open source, but the code license and dataset terms have not yet been finalized. Do not assume that source-code licensing also covers the dataset or retained evidence.
+Source code is MPL-2.0. Dataset/API terms remain a separate pre-release decision; the code license does not cover retained evidence or automatically determine dataset rights.
 
 The public repository will not solicit contributions or operate public GitHub Issues or Discussions. Private operator task tracking may be configured separately.
-

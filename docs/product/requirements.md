@@ -4,9 +4,9 @@
 
 | Document attribute | Value |
 |---|---|
-| Status | Approved requirements baseline; independent review grade A |
+| Status | Approved requirements baseline; zero-visitor-data amendment approved 2026-08-01 |
 | Product type | Public model-inference provider catalog and read-only API |
-| Initial hosting target | Cloudflare Pages with a Cloudflare Worker API and Cloudflare Vectorize-backed search |
+| Initial hosting target | Cloudflare Workers with Static Assets for the frontend, a separate Cloudflare Worker API, and Cloudflare Vectorize-backed search |
 | Initial scale | 4 providers, approximately 20 models per provider, 10,000 monthly web visitors, and 10,000 monthly public API requests |
 | Data refresh cadence | Mondays and Thursdays |
 | Primary audience | Anyone selecting an inference provider for a particular model |
@@ -64,10 +64,10 @@ This document defines product, frontend, backend, data-pipeline, API, Cloudflare
 | SM-02 | Published precision provenance | 100% of non-unknown serving-precision fields have accessible evidence metadata |
 | SM-03 | Published price provenance | 100% of non-null current prices have source and observation timestamps |
 | SM-04 | Freshness | Every active offering shows its last successful observation; stale data is visibly marked |
-| SM-05 | Public API reliability | 99.9% successful read requests monthly, excluding invalid and rate-limited requests |
+| SM-05 | Public API reliability | 99.9% successful reads over a version-controlled schedule of synthetic production probes; live visitor requests are not logged or measured |
 | SM-06 | Exact search effectiveness | At least 95% of a version-controlled acceptance set containing at least 50 exact model, alias, provider-model-ID, and provider-name queries returns the intended canonical record as the first result; all structured-filter cases have zero filter violations |
 | SM-07 | Accessibility | WCAG 2.2 Level AA conformance for all production pages and responsive variants |
-| SM-08 | Web performance | 75th-percentile field Core Web Vitals meet “good” thresholds: LCP ≤2.5 s, INP ≤200 ms, CLS ≤0.1 |
+| SM-08 | Web performance | The approved version-controlled mobile and desktop Lighthouse/synthetic profiles meet “good” Core Web Vitals thresholds: LCP ≤2.5 s, INP-equivalent interaction latency ≤200 ms, and CLS ≤0.1; no field visitor telemetry is collected |
 | SM-09 | Cost safety | Monthly platform and AI-processing spend remains within an operator-configured budget and alert thresholds |
 | SM-10 | Provider-order neutrality | Affiliate availability, commission value, and operator preference never affect provider visibility, search relevance, comparison-table default order, or factual values |
 | SM-11 | Provider refresh success | After an enabled provider has had four scheduled refresh opportunities, it achieves at least 95% successful retrieval/validation/publication over the shorter of its enabled lifetime or the trailing 90 days. Before four opportunities, the rate is reported as provisional. Any provider without a successful observation for eight days raises an operator alert regardless of age. |
@@ -330,7 +330,7 @@ Example acceptance case: a provider offering `glm-5p2` with API-reported BF16 an
 | FE-060 | Production model and provider pages shall be server-rendered or statically rendered enough for search engines and link unfurlers to receive primary facts without executing client JavaScript. |
 | FE-061 | Pages shall have unique titles, descriptions, canonical URLs, and share metadata based on canonical names and current facts. |
 | FE-062 | The site shall publish XML sitemaps and a robots policy appropriate for production. |
-| FE-063 | Preview deployments shall be non-indexable; Cloudflare Pages currently supplies an `X-Robots-Tag: noindex` header for preview deployments, and release verification shall confirm this behavior. |
+| FE-063 | Preview deployments shall be non-indexable. Every Cloudflare Worker preview URL and preview custom hostname shall return `X-Robots-Tag: noindex` and a disallowing robots policy from both static and server-rendered response paths; release verification shall confirm this behavior. |
 | FE-064 | If structured data is emitted, it shall use a suitable standard vocabulary; custom precision facts shall not be mislabeled as standardized product properties. |
 
 ## 10. Search requirements
@@ -370,7 +370,7 @@ Cloudflare context: Vectorize provides vector similarity and pre-query metadata 
 | API-010 | The API shall expose search with the same exact-first behavior and structured filters as the web interface. |
 | API-011 | CORS shall permit safe public read access; public resource semantics shall support GET and HEAD plus protocol-required OPTIONS preflight responses. No public method may mutate data. |
 | API-012 | Responses shall support cache validation through ETag and/or Last-Modified semantics and documented cache headers. |
-| API-013 | Errors shall use a stable JSON envelope with machine-readable code, human-readable message, request identifier, and relevant parameter details. |
+| API-013 | Errors shall use a stable JSON envelope with machine-readable code, human-readable message, and safely bounded relevant parameter details. Live public responses shall not include an identifier intended for retained request correlation. |
 | API-014 | The API shall publish an OpenAPI description and human-readable examples. |
 | API-015 | A metadata endpoint shall expose dataset version, schema version, methodology version, publication time, and next planned refresh window. |
 | API-016 | Additive response fields and new enum values shall be backward-compatible within a major API version; API documentation shall require clients to ignore unknown fields and tolerate unknown enum values. |
@@ -389,7 +389,7 @@ Cloudflare context: Vectorize provides vector similarity and pre-query metadata 
 | API-024 | Every public API request, including a cache hit, shall execute the applicable Worker rate-limit and request-validation policy before application response-cache lookup. No CDN/cache path may bypass required API abuse controls. |
 | API-024A | After rate-limit and validation checks, cacheable anonymous responses shall be served from Cloudflare caching where safe to reduce canonical-store and vector-query usage. |
 | API-025 | The system shall support operator-configurable per-request ceilings for CPU time, subrequests, result count, query length, and search fan-out. |
-| API-026 | Cost anomalies, rate-limit events, and high-cardinality abuse patterns shall be observable without introducing external analytics vendors. |
+| API-026 | Abuse and cost protections shall use bounded request validation, permissive Cloudflare rate limiting, synthetic probes, and Cloudflare account-level security/billing controls without application-stored visitor events, identifiers, queries, or traffic telemetry. |
 | API-027 | The initial capacity target shall support at least 10,000 API requests per month in addition to web-originated API traffic, with tenfold growth not requiring an API contract change. |
 
 ## 12. Data-sourcing and publication pipeline requirements
@@ -503,7 +503,7 @@ When sources conflict, the system shall apply a field-specific, versioned preced
 
 | ID | Requirement |
 |---|---|
-| CF-001 | The public frontend shall deploy on Cloudflare Pages and support a custom subdomain initially, with migration to a dedicated custom domain without changing public path structure. |
+| CF-001 | The public frontend shall deploy as an Astro server-rendered Cloudflare Worker with Workers Static Assets and support a custom subdomain initially, with migration to a dedicated custom domain without changing public path structure. |
 | CF-002 | The public API shall run behind a Cloudflare Worker. |
 | CF-003 | Semantic search shall use Cloudflare Vectorize directly or a Cloudflare managed search product whose vector index is powered by Vectorize. |
 | CF-004 | Ancillary managed application capabilities shall be selected from Cloudflare-native products. Permitted outbound retrieval is limited to allowlisted, adapter-declared provider sources, model-publisher/checkpoint repositories, independent discovery sources governed by PIPE-012–016 and LEG-001, affiliate destinations, and approved AI inference processors governed by CF-009. Independent discovery sources shall not become canonical evidence unless the source-precedence and verification requirements expressly allow it. |
@@ -511,7 +511,7 @@ When sources conflict, the system shall apply a field-specific, versioned preced
 | CF-006 | Infrastructure, bindings, schedules, compatibility dates, secrets references, and environments shall be reproducibly defined as code. |
 | CF-007 | Secrets shall use Cloudflare secret facilities and least-privilege credentials; plaintext configuration and repository secrets are prohibited. |
 | CF-008 | Public static assets and API responses shall use Cloudflare caching with explicit invalidation/version behavior after publication. |
-| CF-009 | External AI inference may be used only when a documented Workers AI evaluation fails the required extraction accuracy/capability. Calls shall pass through Cloudflare AI Gateway, use a processor contract prohibiting training on submitted data and requiring appropriate retention controls, minimize source content, redact credentials/personal data, and record vendor/model/cost per run. |
+| CF-009 | External AI inference may be used only when a documented Workers AI evaluation fails the required extraction accuracy/capability. Calls shall pass through Cloudflare AI Gateway, use a processor contract prohibiting training on submitted data and requiring appropriate retention controls, minimize source content, redact credentials/personal data, and record vendor/model/cost per non-visitor pipeline run. Public query embeddings through Workers AI shall remain disabled until an authorized privacy/legal review of current processor, retention, logging, and training terms confirms that query content is not retained or used for training; AI Gateway shall not receive public query text. |
 
 ### 14.2 Required Cloudflare capabilities, without prescriptive product selection
 
@@ -523,11 +523,11 @@ When sources conflict, the system shall apply a field-specific, versioned preced
 | Evidence/object storage | Must retain private raw/structured evidence economically without placing it in public request memory. |
 | Asynchronous work | Must buffer and retry provider/catalog processing with idempotency and dead-letter/quarantine behavior when needed. |
 | Semantic/hybrid search | Must satisfy Section 10 using Vectorize-backed retrieval; managed keyword search/reranking may be evaluated. |
-| AI processing | Must support schema-constrained extraction and embeddings with usage/cost observability. Workers AI is the default. An external processor is allowed only under the documented exception and controls in CF-009. |
+| AI processing | Must support schema-constrained extraction and embeddings with non-visitor pipeline usage/cost observability. Workers AI is the default. An external processor is allowed only under the documented exception and controls in CF-009; public-query use is separately privacy-gated. |
 | Source acquisition | Must support direct fetch, structured API calls, and browser-rendered acquisition. Cloudflare Browser Rendering currently provides content, Markdown, scrape, JSON, link, and crawl operations; its crawl behavior respects robots directives. |
 | Abuse control | Must provide path/resource-aware Worker rate limiting, caching, request validation, and WAF/bot controls where justified. |
-| Observability | Must collect Worker/pipeline logs, traces, metrics, cost signals, and rate-limit events without an outside observability SaaS. |
-| Web analytics | Must use Cloudflare Web Analytics only. Cloudflare states that Web Analytics collects minimal performance data and does not track individual end users across customer properties. |
+| Observability | Pipeline, publication, deployment, synthetic-probe, and cost-control signals must remain Cloudflare-native and must not contain or be derived from live visitor requests. Public web/API request logs, traces, analytics, and custom telemetry must be disabled. |
+| Web analytics | Must not be enabled. No visitor analytics, tracking pixels, performance beacons, session replay, advertising measurement, or equivalent visitor telemetry is permitted. |
 
 ### 14.3 Platform-limit resilience
 
@@ -544,13 +544,13 @@ When sources conflict, the system shall apply a field-specific, versioned preced
 
 | ID | Requirement |
 |---|---|
-| NFR-001 | Public detail API responses served from cache shall have p95 edge response time ≤200 ms, excluding client network latency. |
-| NFR-002 | Uncached structured browse/detail API responses shall have p95 server response time ≤500 ms under initial expected load. |
-| NFR-003 | Search API responses shall have p95 server response time ≤1,000 ms under initial expected load. |
-| NFR-004 | The public site shall meet the Core Web Vitals target in SM-08 on representative mobile and desktop traffic. |
+| NFR-001 | Public detail API responses served from cache shall have p95 edge response time ≤200 ms in the approved controlled load profile, excluding client network latency. |
+| NFR-002 | Uncached structured browse/detail API responses shall have p95 server response time ≤500 ms in the approved controlled load profile. |
+| NFR-003 | Search API responses shall have p95 server response time ≤1,000 ms in the approved controlled load profile. |
+| NFR-004 | The public site shall meet the synthetic/lab Core Web Vitals target in SM-08 in the approved version-controlled mobile and desktop profiles without field visitor telemetry. |
 | NFR-005 | The public read service shall target 99.9% monthly availability; data-pipeline availability is measured separately by refresh completion. |
 | NFR-006 | Failure of semantic search shall degrade to exact/structured discovery where feasible rather than make model detail pages unavailable. |
-| NFR-007 | Failure of analytics, affiliate redirects, or nonessential evidence previews shall not block core model/provider pages. |
+| NFR-007 | Failure of synthetic availability monitoring, outbound referral destinations, or nonessential evidence previews shall not block core model/provider pages. |
 | NFR-008 | The product shall scale from the initial 4 providers/approximately 80 offerings to at least 100 providers and 100,000 offerings without changing public identifiers or API resource concepts. |
 | NFR-009 | Provider adapters may be added independently and enabled gradually. |
 | NFR-010 | All production timestamps shall be stored and returned in UTC with explicit offsets; display localization may use the visitor’s locale without changing canonical values. |
@@ -581,7 +581,7 @@ When sources conflict, the system shall apply a field-specific, versioned preced
 | SEC-008 | Security headers shall include an appropriately strict Content Security Policy, HSTS, MIME sniffing protection, referrer policy, frame restrictions, and permissions policy. |
 | SEC-009 | External links shall prevent opener access; affiliate links shall also be marked for sponsored/nofollow treatment as appropriate. |
 | SEC-010 | Dependency, secret, and known-vulnerability scanning shall run in CI. Critical production vulnerabilities shall block release. |
-| SEC-011 | Routine logs shall not retain full IP addresses longer than seven days and shall never log authorization headers. Longer security retention requires truncation, hashing with rotation, or documented incident handling. |
+| SEC-011 | QuantClarity application logs, traces, metrics, analytics, durable objects, databases, object storage, caches under application control, and build artifacts shall never retain visitor IP addresses, source-address keys, authorization or cookie headers, user agents, referrers, full request URLs, or search/query content. Incident mode shall not weaken this prohibition. Cloudflare's necessary transient network and abuse-protection processing shall be governed and disclosed under the applicable processor terms and shall not be copied into QuantClarity storage. |
 | SEC-012 | Backup and evidence access shall be restricted to operator identities and audited. |
 | SEC-013 | A documented incident procedure shall cover credential exposure, source poisoning, erroneous mass publication, cost spikes, and public API abuse. |
 
@@ -592,11 +592,17 @@ When sources conflict, the system shall apply a field-specific, versioned preced
 | ID | Requirement |
 |---|---|
 | PRIV-001 | QuantClarity shall not create user accounts, profiles, cross-site identifiers, behavioral segments, or targeted advertising audiences. |
-| PRIV-002 | Only Cloudflare Web Analytics may be used for visitor analytics; no outside analytics, session-replay, advertising, or fingerprinting service is permitted. |
-| PRIV-003 | The site shall not set first-party analytics cookies or use local storage for tracking. Functional ephemeral state may be used only when necessary and documented. |
-| PRIV-004 | IP addresses used for rate limiting or security shall not be repurposed for user profiling. |
-| PRIV-005 | A concise privacy notice shall state what Cloudflare and the application process, purposes, retention, and any affiliate-link consequences. |
-| PRIV-006 | Search query strings shall not be sent to analytics or retained verbatim in routine operational logs. Error/security logs shall redact query content unless a documented incident mode temporarily requires bounded capture. |
+| PRIV-002 | QuantClarity shall not enable visitor analytics, request-event telemetry, tracking or performance beacons, session replay, advertising measurement, fingerprinting, or any equivalent first- or third-party visitor monitoring. |
+| PRIV-003 | QuantClarity shall not set cookies or use local storage, session storage, IndexedDB, service-worker state, cache keys, or other browser persistence for identity, consent, personalization, tracking, or functional state. Ordinary standards-based HTTP caching of public, identical-for-everyone assets and responses is allowed only when it contains no visitor-derived value. |
+| PRIV-004 | A source address may be processed only transiently within a request or Cloudflare's rate-limiting/security facilities for abuse protection. QuantClarity shall not persist, log, hash for later use, profile, enrich, export, or repurpose it, and shall not create a durable per-visitor or per-household key. |
+| PRIV-005 | A concise privacy notice shall identify the controller and legal contact; explain that QuantClarity stores no visitor information and performs no visitor analytics; disclose Cloudflare's necessary transient delivery/security processing and applicable international-transfer safeguards; state purposes, lawful bases, recipients/processors, retention, and rights; and explain that outbound provider destinations operate under their own privacy practices. |
+| PRIV-006 | Raw visitor-supplied search strings, query/filter values, headers, and navigation context shall not be sent to analytics or retained in logs, traces, metrics, alerts, error reports, caches under application control, fixtures, or support artifacts. Free-text search and any query-string/filter request shall be `private, no-store`. A path-only public representation may be cached only by publication ID plus a validated canonical stable resource ID, never by a raw request URL or visitor-derived value. There is no incident-mode exception. |
+| PRIV-007 | Privacy by design and default shall be enforced through code and configuration: public surfaces collect no visitor information beyond network data transiently necessary to deliver and protect the request, all optional visitor-data collection is disabled, and a failing zero-visitor-data gate blocks release. |
+| PRIV-008 | Before public release, the operator shall execute and retain the current Cloudflare data-processing agreement and applicable transfer terms, review the relevant subprocessors and data locations, and repeat the review at least annually and on material processing changes. |
+| PRIV-009 | Before public release, the operator shall maintain a record of processing activities covering transient Cloudflare request processing, operator/legal-contact records, provider-source acquisition, pipeline operations, and affiliate destinations; it shall document the lawful basis, recipients, transfers, retention, security measures, and whether a DPIA or representative/DPO is legally required. |
+| PRIV-010 | Privacy-rights requests shall be routed only through the formal legal-contact mechanism. QuantClarity shall not collect identity documents or create a visitor record merely to answer a request when it holds no visitor information; the operator shall document the jurisdiction-appropriate response procedure and deadlines. |
+| PRIV-011 | Public application observability shall be limited to version-controlled synthetic probes generated by the operator. Pipeline, publication, deployment, and cost records may be retained only when they cannot contain or be derived from live visitor requests; Cloudflare account-level aggregate billing/security surfaces are not imported into visitor-level QuantClarity records. |
+| PRIV-012 | Referral links may contain only a static provider/program identifier shared by every visitor. QuantClarity shall not use click IDs, redirect logging, pixels, cookies, fingerprinting, personalized codes, or conversion callbacks; any program requiring them shall not be enabled. The adjacent disclosure shall state that the destination may process the visitor under its own policy. |
 
 ### 18.2 Affiliate monetization
 
@@ -607,8 +613,8 @@ When sources conflict, the system shall apply a field-specific, versioned preced
 | AFF-003 | The disclosure shall be understandable without relying on the phrase “affiliate link” alone. FTC guidance says material connections should be disclosed clearly and conspicuously near the relevant endorsement or link. |
 | AFF-004 | Affiliate availability, expected commission, or rate shall not affect inclusion, search relevance, model-card content, comparison-table order, user-selected sort/filter results, precision facts, price facts, prose, or evidence. |
 | AFF-005 | The canonical provider URL and the affiliate destination shall be stored separately. |
-| AFF-006 | Redirects shall validate destinations against an allowlist and shall not leak page/query data unnecessarily. |
-| AFF-007 | If an affiliate program requires tracking incompatible with the privacy requirements, it shall not be enabled until the conflict is explicitly resolved and disclosed. |
+| AFF-006 | Affiliate destinations shall be exact allowlisted URLs, opened directly with a strict no-referrer policy, and shall receive no page/query data or visitor-specific identifier from QuantClarity. QuantClarity shall not operate a click-tracking redirect. |
+| AFF-007 | An affiliate program requiring site-side cookies, pixels, click IDs, personalized codes, conversion callbacks, redirect logging, or any other visitor tracking is prohibited and shall not be enabled. |
 | AFF-008 | Affiliate revenue is incidental expense recovery only. The absence, reduction, or loss of affiliate revenue shall not reduce factual coverage, change provider treatment, introduce paid access, or constitute product failure. |
 
 ### 18.3 Source and publication compliance
@@ -639,9 +645,9 @@ When sources conflict, the system shall apply a field-specific, versioned preced
 
 | ID | Requirement |
 |---|---|
-| OPS-001 | Every public request and pipeline operation shall carry a correlation/request identifier. |
-| OPS-002 | Metrics shall cover request rate, latency, status, cache effectiveness, vector-search latency, rate limiting, provider retrieval success, extraction/validation failures, publication duration, stale records, and cost drivers. |
-| OPS-003 | Logs and traces shall distinguish production, preview, scheduled pipeline, provider adapter, and publication version. |
+| OPS-001 | Pipeline, publication, deployment, and operator-generated synthetic-probe operations shall carry correlation identifiers. Live public requests shall not receive an application correlation identifier that is logged, returned for later correlation, or retained. |
+| OPS-002 | Metrics shall cover synthetic availability/latency, provider retrieval success, extraction/validation failures, publication duration, stale records, and non-visitor pipeline cost drivers. Live request rate, latency, status, cache, search, and rate-limit telemetry shall not be collected by QuantClarity. |
+| OPS-003 | Pipeline and control-plane logs and traces shall distinguish production, preview, scheduled pipeline, provider adapter, and publication version without including live visitor-derived data. Public frontend, API, and query-worker invocation logs, traces, and custom telemetry shall be disabled. |
 | OPS-004 | Alerts shall cover public availability, scheduled-run failure, provider-wide schema drift, publication rollback, search-index inconsistency, secret/authentication failure, and budget thresholds. |
 | OPS-005 | Provider-specific failure dashboards or queries shall make it possible to add providers one at a time and identify unstable integrations. |
 | OPS-006 | Runbooks shall cover adding a provider, rotating credentials, handling provider schema changes, quarantining a provider, rebuilding search, rolling back publication, restoring data, and responding to cost abuse. |
@@ -689,7 +695,7 @@ The first public release is acceptable only when all of the following are true:
 - WCAG 2.2 AA acceptance checks pass for primary journeys.
 - Core Web Vitals and API latency targets pass the approved version-controlled mobile, desktop, API, search, cache-state, dataset-size, and concurrency test profiles.
 - Affiliate disclosures are adjacent to every monetized link, and tests confirm that affiliate availability or commission cannot affect inclusion, visibility, search relevance, card content, comparison-table order, user-selected sort results, or factual values.
-- Cloudflare-only analytics and required privacy/legal pages are live.
+- No visitor analytics, cookies, browser identifiers, public-request logs/traces, or live-request telemetry are active; the zero-visitor-data verification gate and required privacy/GDPR/legal surfaces pass.
 - Public GitHub Issues and Discussions are disabled; private work tracking exists separately.
 - Backup, rollback, and search rebuild procedures have been executed successfully.
 - API terms and dataset-use terms are published separately from the source-code license.
@@ -706,11 +712,11 @@ The first public release is acceptable only when all of the following are true:
 - There is no login, administration UI, contribution path, public feedback mechanism, or moderation surface.
 - Data refresh occurs Mondays and Thursdays.
 - Pricing is shown only as input, output, and cached input in the provider’s stated currency; when the provider omits currency, USD is visibly identified as a system default.
-- The public API is anonymous, read-only, and rate-limited by IP with cost controls.
+- The public API is anonymous, read-only, and protected by transient source-address rate limiting and static cost controls without QuantClarity retaining a visitor key or request event.
 - Precision may be sourced from provider APIs even when provider public pages omit it.
 - Affiliate monetization is permitted but cannot influence facts, inclusion, search relevance, card content, provider order, or user-selected results.
 - The dataset, website, and public API remain free and public even if the service operates at a net financial loss; usefulness of the data is the sole product justification, and revenue is secondary.
-- Cloudflare is the sole application platform and analytics provider, subject only to the narrowly controlled source, affiliate-destination, and AI-processing exceptions in G-09 and CF-009.
+- Cloudflare is the sole managed application platform and necessary infrastructure processor, subject only to the narrowly controlled source, affiliate-destination, and AI-processing exceptions in G-09 and CF-009; QuantClarity enables no visitor analytics provider.
 
 ### 23.2 Decisions deferred to solution design or implementation planning
 
@@ -739,8 +745,9 @@ These sources inform requirements but do not replace release-time verification o
 - [Cloudflare Worker limits](https://developers.cloudflare.com/workers/platform/limits/) — current paid-plan runtime and resource constraints that must be rechecked during solution design.
 - [Cloudflare Cron Triggers](https://developers.cloudflare.com/workers/configuration/cron-triggers/) and [scheduled Workflows](https://developers.cloudflare.com/workflows/build/trigger-workflows/) — current native scheduling options.
 - [Cloudflare Browser Rendering crawl](https://developers.cloudflare.com/browser-run/quick-actions/crawl-endpoint/) — current source-acquisition capability, including robots-aware crawling.
-- [Cloudflare Pages preview deployments](https://developers.cloudflare.com/pages/configuration/preview-deployments/) and [custom domains](https://developers.cloudflare.com/pages/configuration/custom-domains/) — current deployment, preview noindex, and domain support.
-- [Cloudflare Web Analytics data collection](https://developers.cloudflare.com/web-analytics/data-metrics/data-origin-and-collection/) — current privacy-oriented traffic/performance analytics behavior.
+- [Cloudflare Workers Astro guide](https://developers.cloudflare.com/workers/framework-guides/web-apps/astro/), [Static Assets](https://developers.cloudflare.com/workers/static-assets/), [Preview URLs](https://developers.cloudflare.com/workers/versions-and-deployments/preview-urls/), and [Custom Domains](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/) — current frontend deployment, preview, assets, and domain support.
+- [Cloudflare Data Processing Addendum](https://www.cloudflare.com/cloudflare-customer-dpa/) — processor obligations and international-transfer terms to review before release.
+- [EU General Data Protection Regulation](https://eur-lex.europa.eu/eli/reg/2016/679/oj) — privacy-by-design, transparency, processor, records, and security obligations used by the GDPR release gate.
 - [WCAG 2.2](https://www.w3.org/TR/WCAG22/) — accessibility conformance standard.
 - [FTC Endorsement Guides FAQ](https://www.ftc.gov/business-guidance/resources/ftcs-endorsement-guides-what-people-are-asking) — affiliate/material-connection disclosure guidance.
 - [GitHub disabling Issues](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/disabling-issues) — supports the repository policy requirement.

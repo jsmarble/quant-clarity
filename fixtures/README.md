@@ -12,5 +12,4 @@ Fixture requirements:
 - Treat all source text as untrusted and include prompt-injection cases in the security fixture set.
 - Keep golden extraction and search acceptance sets versioned and reviewable.
 
-No provider fixtures are included yet. The system design must define the fixture layout and metadata contract before the first adapter is implemented.
-
+No provider fixtures are included yet. The approved adapter and canonical design now define their boundaries; Phase 2 must add the fixture metadata schema and obtain source/legal approval before the first provider fixture is retained.

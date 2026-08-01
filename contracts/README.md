@@ -1,8 +1,8 @@
 # Contracts
 
-This directory is reserved for machine-readable and human-readable contracts produced by the approved system design.
+This directory contains machine-readable contracts generated from the approved design. The current OpenAPI and shared-schema skeleton is executable but intentionally incomplete while Phase 1 remains in progress.
 
-Expected artifacts include:
+The completed phase will include:
 
 - Public OpenAPI specification
 - Canonical data schemas
@@ -13,4 +13,3 @@ Expected artifacts include:
 - Stable error and enum definitions
 
 Contracts must trace to PRD requirement IDs and remain compatible with the versioning rules in the PRD. Do not create redundant Model Facts or Offering Facts canonical entities; those are presentation views over model and offering resources.
-

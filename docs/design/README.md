@@ -4,7 +4,7 @@ This directory contains implementation decisions derived from the approved produ
 
 ## Primary artifact
 
-[`system-design.md`](system-design.md) is the design baseline. It remains unapproved until its acceptance checklist is complete and the product owner explicitly approves it.
+[`system-design.md`](system-design.md) is the approved design baseline. Product-owner approval and the zero-visitor-data amendment were recorded on 2026-08-01; implementation evidence remains separate.
 
 ## Design rules
 
@@ -12,6 +12,5 @@ This directory contains implementation decisions derived from the approved produ
 - Clearly separate facts, decisions, assumptions, constraints, open questions, and rejected alternatives.
 - Record hard-to-reverse or cross-cutting decisions as ADRs under `docs/decisions/`.
 - Verify current Cloudflare APIs, limits, pricing, compatibility requirements, and Wrangler configuration before relying on them.
-- Do not write application code merely to make an undecided architecture appear settled. Small disposable proofs may be proposed, but require explicit approval before creation.
+- Implement only accepted decisions and preserve explicit unresolved compatibility or legal gates rather than silently changing product semantics.
 - Preserve the PRD's neutrality, evidence, privacy, security, accessibility, publication, and public-access invariants.
-
