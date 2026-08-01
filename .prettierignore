@@ -2,6 +2,7 @@ node_modules
 dist
 coverage
 .wrangler
+results.sarif
 contracts/generated
 **/worker-configuration.d.ts
 AGENTS.md
