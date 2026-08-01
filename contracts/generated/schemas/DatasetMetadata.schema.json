@@ -19,7 +19,6 @@
   ],
   "properties": {
     "publication_id": {
-      "$id": "PublicationId",
       "pattern": "^pub_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
       "type": "string"
     },
@@ -38,6 +37,7 @@
     },
     "methodology_effective_at": {
       "format": "date-time",
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
       "type": "string"
     },
     "methodology_url": {
@@ -57,10 +57,12 @@
     },
     "published_at": {
       "format": "date-time",
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
       "type": "string"
     },
     "generated_at": {
       "format": "date-time",
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
       "type": "string"
     },
     "next_refresh_window": {
@@ -73,10 +75,12 @@
       "properties": {
         "starts_at": {
           "format": "date-time",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
           "type": "string"
         },
         "ends_at": {
           "format": "date-time",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
           "type": "string"
         }
       }
@@ -105,6 +109,7 @@
       }
     },
     "degradation_notices": {
+      "maxItems": 50,
       "type": "array",
       "items": {
         "maxLength": 200,

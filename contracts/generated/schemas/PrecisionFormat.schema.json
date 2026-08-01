@@ -1,0 +1,23 @@
+{
+  "type": "string",
+  "minLength": 1,
+  "maxLength": 128,
+  "x-extensible-enum": [
+    "BF16",
+    "FP16",
+    "FP8",
+    "FP6",
+    "FP4",
+    "NVFP4",
+    "MXFP4",
+    "INT8",
+    "INT4",
+    "mixed",
+    "other"
+  ],
+  "not": {
+    "enum": [
+      "unknown"
+    ]
+  }
+}

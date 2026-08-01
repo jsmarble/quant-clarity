@@ -168,6 +168,17 @@ Suggested cache directives:
 | Search | `private, no-store` to prevent verbatim query persistence |
 | Errors/429 | `no-store` |
 
+Implementation gap recorded 2026-08-01: the approved public route table does
+not yet define a client-supplied publication-pin path or header. A
+`publication_id` query parameter is not adopted because every query-string
+response must remain `private, no-store`. The frontend's signed internal
+envelope can carry its server-resolved publication without exposing a new
+public parameter, but public-client pinning, immutable version-pinned public
+detail URLs, and the corresponding `409 publication_expired` request trigger
+require a follow-up API ADR before implementation. Until then, contracts must
+not invent a pin parameter or claim immutable public-detail caching; active
+detail and every query response use the conservative documented policies.
+
 ## Frontend-to-API internal request
 
 The frontend Worker rate-limits and validates the original public request at its own ingress, then uses a service binding and an unrouted audience host. Its internal fetch signs a canonical envelope containing version, audience, environment, method, path, canonical query hash, issued-at, and expiry (30 seconds), but no source address or actor key. The API rejects internal fields on public-route requests, wrong audience/environment, clock skew/expiry, or signature mismatch. Secrets are environment-scoped, rotatable with overlapping current/next keys, and never logged. An identical captured envelope may replay only the same non-mutating read inside the short validity window; this bounded residual risk is accepted instead of adding state to the public edge. Tests cover cross-route, cross-environment, exact replay-window behavior, query alteration, expiry, and key rotation.

@@ -1,0 +1,938 @@
+{
+  "$id": "PrecisionObservationCollection",
+  "additionalProperties": false,
+  "type": "object",
+  "required": [
+    "data",
+    "page",
+    "meta"
+  ],
+  "properties": {
+    "data": {
+      "maxItems": 100,
+      "type": "array",
+      "items": {
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "precision_id",
+          "offering_id",
+          "normalized_format",
+          "summary_format",
+          "raw_field_name",
+          "raw_precision",
+          "provider_definition",
+          "format_variant",
+          "components",
+          "applicability",
+          "observed_at",
+          "evidence_ids"
+        ],
+        "properties": {
+          "precision_id": {
+            "pattern": "^prc_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "offering_id": {
+            "pattern": "^off_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "normalized_format": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "state",
+                  "value",
+                  "observed_at",
+                  "evidence_ids"
+                ],
+                "properties": {
+                  "state": {
+                    "const": "known",
+                    "type": "string"
+                  },
+                  "value": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "x-extensible-enum": [
+                      "BF16",
+                      "FP16",
+                      "FP8",
+                      "FP6",
+                      "FP4",
+                      "NVFP4",
+                      "MXFP4",
+                      "INT8",
+                      "INT4",
+                      "mixed",
+                      "other"
+                    ],
+                    "not": {
+                      "enum": [
+                        "unknown"
+                      ]
+                    }
+                  },
+                  "observed_at": {
+                    "format": "date-time",
+                    "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
+                    "type": "string"
+                  },
+                  "evidence_ids": {
+                    "minItems": 1,
+                    "uniqueItems": true,
+                    "type": "array",
+                    "items": {
+                      "pattern": "^evd_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "state",
+                  "value",
+                  "observed_at",
+                  "evidence_ids"
+                ],
+                "properties": {
+                  "state": {
+                    "anyOf": [
+                      {
+                        "const": "unknown",
+                        "type": "string"
+                      },
+                      {
+                        "const": "not_applicable",
+                        "type": "string"
+                      },
+                      {
+                        "const": "unavailable",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "value": {
+                    "type": "null"
+                  },
+                  "observed_at": {
+                    "anyOf": [
+                      {
+                        "format": "date-time",
+                        "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "evidence_ids": {
+                    "uniqueItems": true,
+                    "type": "array",
+                    "items": {
+                      "pattern": "^evd_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "summary_format": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "state",
+                  "value",
+                  "observed_at",
+                  "evidence_ids"
+                ],
+                "properties": {
+                  "state": {
+                    "const": "known",
+                    "type": "string"
+                  },
+                  "value": {
+                    "maxLength": 128,
+                    "type": "string"
+                  },
+                  "observed_at": {
+                    "format": "date-time",
+                    "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
+                    "type": "string"
+                  },
+                  "evidence_ids": {
+                    "minItems": 1,
+                    "uniqueItems": true,
+                    "type": "array",
+                    "items": {
+                      "pattern": "^evd_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "state",
+                  "value",
+                  "observed_at",
+                  "evidence_ids"
+                ],
+                "properties": {
+                  "state": {
+                    "anyOf": [
+                      {
+                        "const": "unknown",
+                        "type": "string"
+                      },
+                      {
+                        "const": "not_applicable",
+                        "type": "string"
+                      },
+                      {
+                        "const": "unavailable",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "value": {
+                    "type": "null"
+                  },
+                  "observed_at": {
+                    "anyOf": [
+                      {
+                        "format": "date-time",
+                        "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "evidence_ids": {
+                    "uniqueItems": true,
+                    "type": "array",
+                    "items": {
+                      "pattern": "^evd_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "raw_field_name": {
+            "minLength": 1,
+            "maxLength": 256,
+            "type": "string"
+          },
+          "raw_precision": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "state",
+                  "value",
+                  "observed_at",
+                  "evidence_ids"
+                ],
+                "properties": {
+                  "state": {
+                    "const": "known",
+                    "type": "string"
+                  },
+                  "value": {
+                    "maxLength": 256,
+                    "type": "string"
+                  },
+                  "observed_at": {
+                    "format": "date-time",
+                    "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
+                    "type": "string"
+                  },
+                  "evidence_ids": {
+                    "minItems": 1,
+                    "uniqueItems": true,
+                    "type": "array",
+                    "items": {
+                      "pattern": "^evd_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "state",
+                  "value",
+                  "observed_at",
+                  "evidence_ids"
+                ],
+                "properties": {
+                  "state": {
+                    "anyOf": [
+                      {
+                        "const": "unknown",
+                        "type": "string"
+                      },
+                      {
+                        "const": "not_applicable",
+                        "type": "string"
+                      },
+                      {
+                        "const": "unavailable",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "value": {
+                    "type": "null"
+                  },
+                  "observed_at": {
+                    "anyOf": [
+                      {
+                        "format": "date-time",
+                        "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "evidence_ids": {
+                    "uniqueItems": true,
+                    "type": "array",
+                    "items": {
+                      "pattern": "^evd_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "provider_definition": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "state",
+                  "value",
+                  "observed_at",
+                  "evidence_ids"
+                ],
+                "properties": {
+                  "state": {
+                    "const": "known",
+                    "type": "string"
+                  },
+                  "value": {
+                    "maxLength": 1000,
+                    "type": "string"
+                  },
+                  "observed_at": {
+                    "format": "date-time",
+                    "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
+                    "type": "string"
+                  },
+                  "evidence_ids": {
+                    "minItems": 1,
+                    "uniqueItems": true,
+                    "type": "array",
+                    "items": {
+                      "pattern": "^evd_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "state",
+                  "value",
+                  "observed_at",
+                  "evidence_ids"
+                ],
+                "properties": {
+                  "state": {
+                    "anyOf": [
+                      {
+                        "const": "unknown",
+                        "type": "string"
+                      },
+                      {
+                        "const": "not_applicable",
+                        "type": "string"
+                      },
+                      {
+                        "const": "unavailable",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "value": {
+                    "type": "null"
+                  },
+                  "observed_at": {
+                    "anyOf": [
+                      {
+                        "format": "date-time",
+                        "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "evidence_ids": {
+                    "uniqueItems": true,
+                    "type": "array",
+                    "items": {
+                      "pattern": "^evd_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "format_variant": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "state",
+                  "value",
+                  "observed_at",
+                  "evidence_ids"
+                ],
+                "properties": {
+                  "state": {
+                    "const": "known",
+                    "type": "string"
+                  },
+                  "value": {
+                    "maxLength": 128,
+                    "type": "string"
+                  },
+                  "observed_at": {
+                    "format": "date-time",
+                    "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
+                    "type": "string"
+                  },
+                  "evidence_ids": {
+                    "minItems": 1,
+                    "uniqueItems": true,
+                    "type": "array",
+                    "items": {
+                      "pattern": "^evd_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "state",
+                  "value",
+                  "observed_at",
+                  "evidence_ids"
+                ],
+                "properties": {
+                  "state": {
+                    "anyOf": [
+                      {
+                        "const": "unknown",
+                        "type": "string"
+                      },
+                      {
+                        "const": "not_applicable",
+                        "type": "string"
+                      },
+                      {
+                        "const": "unavailable",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "value": {
+                    "type": "null"
+                  },
+                  "observed_at": {
+                    "anyOf": [
+                      {
+                        "format": "date-time",
+                        "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "evidence_ids": {
+                    "uniqueItems": true,
+                    "type": "array",
+                    "items": {
+                      "pattern": "^evd_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "components": {
+            "maxItems": 64,
+            "type": "array",
+            "items": {
+              "additionalProperties": false,
+              "type": "object",
+              "required": [
+                "component",
+                "normalized_format",
+                "raw_precision"
+              ],
+              "properties": {
+                "component": {
+                  "minLength": 1,
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                "normalized_format": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "state",
+                        "value",
+                        "observed_at",
+                        "evidence_ids"
+                      ],
+                      "properties": {
+                        "state": {
+                          "const": "known",
+                          "type": "string"
+                        },
+                        "value": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128,
+                          "x-extensible-enum": [
+                            "BF16",
+                            "FP16",
+                            "FP8",
+                            "FP6",
+                            "FP4",
+                            "NVFP4",
+                            "MXFP4",
+                            "INT8",
+                            "INT4",
+                            "mixed",
+                            "other"
+                          ],
+                          "not": {
+                            "enum": [
+                              "unknown"
+                            ]
+                          }
+                        },
+                        "observed_at": {
+                          "format": "date-time",
+                          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
+                          "type": "string"
+                        },
+                        "evidence_ids": {
+                          "minItems": 1,
+                          "uniqueItems": true,
+                          "type": "array",
+                          "items": {
+                            "pattern": "^evd_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "state",
+                        "value",
+                        "observed_at",
+                        "evidence_ids"
+                      ],
+                      "properties": {
+                        "state": {
+                          "anyOf": [
+                            {
+                              "const": "unknown",
+                              "type": "string"
+                            },
+                            {
+                              "const": "not_applicable",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unavailable",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "value": {
+                          "type": "null"
+                        },
+                        "observed_at": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "evidence_ids": {
+                          "uniqueItems": true,
+                          "type": "array",
+                          "items": {
+                            "pattern": "^evd_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                },
+                "raw_precision": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "state",
+                        "value",
+                        "observed_at",
+                        "evidence_ids"
+                      ],
+                      "properties": {
+                        "state": {
+                          "const": "known",
+                          "type": "string"
+                        },
+                        "value": {
+                          "maxLength": 256,
+                          "type": "string"
+                        },
+                        "observed_at": {
+                          "format": "date-time",
+                          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
+                          "type": "string"
+                        },
+                        "evidence_ids": {
+                          "minItems": 1,
+                          "uniqueItems": true,
+                          "type": "array",
+                          "items": {
+                            "pattern": "^evd_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "state",
+                        "value",
+                        "observed_at",
+                        "evidence_ids"
+                      ],
+                      "properties": {
+                        "state": {
+                          "anyOf": [
+                            {
+                              "const": "unknown",
+                              "type": "string"
+                            },
+                            {
+                              "const": "not_applicable",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unavailable",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "value": {
+                          "type": "null"
+                        },
+                        "observed_at": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "evidence_ids": {
+                          "uniqueItems": true,
+                          "type": "array",
+                          "items": {
+                            "pattern": "^evd_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "applicability": {
+            "additionalProperties": false,
+            "type": "object",
+            "required": [
+              "provider_id",
+              "provider_model_id",
+              "tier_key",
+              "endpoint_class",
+              "material_region_key",
+              "component_scope"
+            ],
+            "properties": {
+              "provider_id": {
+                "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "provider_model_id": {
+                "minLength": 1,
+                "maxLength": 256,
+                "type": "string"
+              },
+              "tier_key": {
+                "minLength": 1,
+                "maxLength": 128,
+                "type": "string"
+              },
+              "endpoint_class": {
+                "minLength": 1,
+                "maxLength": 128,
+                "type": "string"
+              },
+              "material_region_key": {
+                "maxLength": 128,
+                "type": "string"
+              },
+              "component_scope": {
+                "anyOf": [
+                  {
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          },
+          "observed_at": {
+            "format": "date-time",
+            "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
+            "type": "string"
+          },
+          "evidence_ids": {
+            "minItems": 1,
+            "uniqueItems": true,
+            "type": "array",
+            "items": {
+              "pattern": "^evd_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "page": {
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "next_cursor",
+        "limit"
+      ],
+      "properties": {
+        "next_cursor": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "maxLength": 4096,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "limit": {
+          "minimum": 1,
+          "maximum": 100,
+          "type": "integer"
+        }
+      }
+    },
+    "meta": {
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "resource",
+        "publication_id",
+        "schema_version",
+        "sort",
+        "filters"
+      ],
+      "properties": {
+        "resource": {
+          "const": "precision_observations",
+          "type": "string"
+        },
+        "publication_id": {
+          "pattern": "^pub_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "type": "string"
+        },
+        "schema_version": {
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+          "type": "string"
+        },
+        "sort": {
+          "minItems": 1,
+          "maxItems": 8,
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "const": "display_label",
+                "type": "string"
+              },
+              {
+                "const": "observed_at",
+                "type": "string"
+              },
+              {
+                "const": "stable_id",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "filters": {
+          "additionalProperties": false,
+          "type": "object",
+          "properties": {
+            "offering": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "provider": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "normalized_format": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "component": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "observed_since": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}

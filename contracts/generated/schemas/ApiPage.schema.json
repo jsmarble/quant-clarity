@@ -1,0 +1,28 @@
+{
+  "$id": "ApiPage",
+  "additionalProperties": false,
+  "type": "object",
+  "required": [
+    "next_cursor",
+    "limit"
+  ],
+  "properties": {
+    "next_cursor": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "maxLength": 4096,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "limit": {
+      "minimum": 1,
+      "maximum": 100,
+      "type": "integer"
+    }
+  }
+}

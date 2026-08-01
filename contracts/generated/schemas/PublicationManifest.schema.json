@@ -1,0 +1,1267 @@
+{
+  "$id": "PublicationManifest",
+  "anyOf": [
+    {
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "publication_id",
+        "schema_version",
+        "generated_at",
+        "source_run_id",
+        "parent_publication_id",
+        "provider_slices",
+        "resources",
+        "closure_hash",
+        "failure_codes",
+        "state",
+        "ready_at",
+        "activated_at",
+        "search_index"
+      ],
+      "properties": {
+        "publication_id": {
+          "pattern": "^pub_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "type": "string"
+        },
+        "schema_version": {
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+          "type": "string"
+        },
+        "generated_at": {
+          "format": "date-time",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
+          "type": "string"
+        },
+        "source_run_id": {
+          "pattern": "^run_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "type": "string"
+        },
+        "parent_publication_id": {
+          "anyOf": [
+            {
+              "pattern": "^pub_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "provider_slices": {
+          "maxItems": 1000,
+          "type": "array",
+          "items": {
+            "additionalProperties": false,
+            "type": "object",
+            "required": [
+              "provider_id",
+              "provider_run_id",
+              "carried_forward",
+              "freshness_state"
+            ],
+            "properties": {
+              "provider_id": {
+                "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "provider_run_id": {
+                "pattern": "^pvr_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "carried_forward": {
+                "type": "boolean"
+              },
+              "freshness_state": {
+                "anyOf": [
+                  {
+                    "const": "fresh",
+                    "type": "string"
+                  },
+                  {
+                    "const": "stale",
+                    "type": "string"
+                  },
+                  {
+                    "const": "unavailable",
+                    "type": "string"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "resources": {
+          "maxItems": 1000000,
+          "type": "array",
+          "items": {
+            "additionalProperties": false,
+            "type": "object",
+            "required": [
+              "resource_type",
+              "resource_id",
+              "content_hash"
+            ],
+            "properties": {
+              "resource_type": {
+                "anyOf": [
+                  {
+                    "const": "model_family",
+                    "type": "string"
+                  },
+                  {
+                    "const": "model",
+                    "type": "string"
+                  },
+                  {
+                    "const": "variant",
+                    "type": "string"
+                  },
+                  {
+                    "const": "provider",
+                    "type": "string"
+                  },
+                  {
+                    "const": "offering",
+                    "type": "string"
+                  },
+                  {
+                    "const": "price",
+                    "type": "string"
+                  },
+                  {
+                    "const": "precision_observation",
+                    "type": "string"
+                  },
+                  {
+                    "const": "evidence_summary",
+                    "type": "string"
+                  }
+                ]
+              },
+              "resource_id": {
+                "pattern": "^(org|fam|mdl|var|als|slg|chk|mck|edg|par|prv|off|scp|aff|src|obs|evd|clm|cfl|prc|cmp|pcs|occ|run|pvr|out|anm|qrn|pol|prn|pub)_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "content_hash": {
+                "pattern": "^sha256:[0-9a-f]{64}$",
+                "type": "string"
+              }
+            }
+          }
+        },
+        "closure_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "failure_codes": {
+          "maxItems": 1000,
+          "uniqueItems": true,
+          "type": "array",
+          "items": {
+            "pattern": "^[a-z][a-z0-9_]{0,63}$",
+            "type": "string"
+          }
+        },
+        "state": {
+          "const": "building",
+          "type": "string"
+        },
+        "ready_at": {
+          "type": "null"
+        },
+        "activated_at": {
+          "type": "null"
+        },
+        "search_index": {
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "exact_document_count",
+            "vector_document_count",
+            "exact_index_hash",
+            "vector_index_version",
+            "queryable"
+          ],
+          "properties": {
+            "exact_document_count": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "vector_document_count": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "exact_index_hash": {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "vector_index_version": {
+              "minLength": 1,
+              "maxLength": 128,
+              "type": "string"
+            },
+            "queryable": {
+              "const": false,
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
+    {
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "publication_id",
+        "schema_version",
+        "generated_at",
+        "source_run_id",
+        "parent_publication_id",
+        "provider_slices",
+        "resources",
+        "closure_hash",
+        "failure_codes",
+        "state",
+        "ready_at",
+        "activated_at",
+        "search_index"
+      ],
+      "properties": {
+        "publication_id": {
+          "pattern": "^pub_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "type": "string"
+        },
+        "schema_version": {
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+          "type": "string"
+        },
+        "generated_at": {
+          "format": "date-time",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
+          "type": "string"
+        },
+        "source_run_id": {
+          "pattern": "^run_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "type": "string"
+        },
+        "parent_publication_id": {
+          "anyOf": [
+            {
+              "pattern": "^pub_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "provider_slices": {
+          "maxItems": 1000,
+          "type": "array",
+          "items": {
+            "additionalProperties": false,
+            "type": "object",
+            "required": [
+              "provider_id",
+              "provider_run_id",
+              "carried_forward",
+              "freshness_state"
+            ],
+            "properties": {
+              "provider_id": {
+                "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "provider_run_id": {
+                "pattern": "^pvr_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "carried_forward": {
+                "type": "boolean"
+              },
+              "freshness_state": {
+                "anyOf": [
+                  {
+                    "const": "fresh",
+                    "type": "string"
+                  },
+                  {
+                    "const": "stale",
+                    "type": "string"
+                  },
+                  {
+                    "const": "unavailable",
+                    "type": "string"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "resources": {
+          "maxItems": 1000000,
+          "type": "array",
+          "items": {
+            "additionalProperties": false,
+            "type": "object",
+            "required": [
+              "resource_type",
+              "resource_id",
+              "content_hash"
+            ],
+            "properties": {
+              "resource_type": {
+                "anyOf": [
+                  {
+                    "const": "model_family",
+                    "type": "string"
+                  },
+                  {
+                    "const": "model",
+                    "type": "string"
+                  },
+                  {
+                    "const": "variant",
+                    "type": "string"
+                  },
+                  {
+                    "const": "provider",
+                    "type": "string"
+                  },
+                  {
+                    "const": "offering",
+                    "type": "string"
+                  },
+                  {
+                    "const": "price",
+                    "type": "string"
+                  },
+                  {
+                    "const": "precision_observation",
+                    "type": "string"
+                  },
+                  {
+                    "const": "evidence_summary",
+                    "type": "string"
+                  }
+                ]
+              },
+              "resource_id": {
+                "pattern": "^(org|fam|mdl|var|als|slg|chk|mck|edg|par|prv|off|scp|aff|src|obs|evd|clm|cfl|prc|cmp|pcs|occ|run|pvr|out|anm|qrn|pol|prn|pub)_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "content_hash": {
+                "pattern": "^sha256:[0-9a-f]{64}$",
+                "type": "string"
+              }
+            }
+          }
+        },
+        "closure_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "failure_codes": {
+          "maxItems": 1000,
+          "uniqueItems": true,
+          "type": "array",
+          "items": {
+            "pattern": "^[a-z][a-z0-9_]{0,63}$",
+            "type": "string"
+          }
+        },
+        "state": {
+          "const": "failed",
+          "type": "string"
+        },
+        "ready_at": {
+          "type": "null"
+        },
+        "activated_at": {
+          "type": "null"
+        },
+        "search_index": {
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "exact_document_count",
+            "vector_document_count",
+            "exact_index_hash",
+            "vector_index_version",
+            "queryable"
+          ],
+          "properties": {
+            "exact_document_count": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "vector_document_count": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "exact_index_hash": {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "vector_index_version": {
+              "minLength": 1,
+              "maxLength": 128,
+              "type": "string"
+            },
+            "queryable": {
+              "const": false,
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
+    {
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "publication_id",
+        "schema_version",
+        "generated_at",
+        "source_run_id",
+        "parent_publication_id",
+        "provider_slices",
+        "resources",
+        "closure_hash",
+        "failure_codes",
+        "state",
+        "ready_at",
+        "activated_at",
+        "search_index"
+      ],
+      "properties": {
+        "publication_id": {
+          "pattern": "^pub_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "type": "string"
+        },
+        "schema_version": {
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+          "type": "string"
+        },
+        "generated_at": {
+          "format": "date-time",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
+          "type": "string"
+        },
+        "source_run_id": {
+          "pattern": "^run_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "type": "string"
+        },
+        "parent_publication_id": {
+          "anyOf": [
+            {
+              "pattern": "^pub_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "provider_slices": {
+          "maxItems": 1000,
+          "type": "array",
+          "items": {
+            "additionalProperties": false,
+            "type": "object",
+            "required": [
+              "provider_id",
+              "provider_run_id",
+              "carried_forward",
+              "freshness_state"
+            ],
+            "properties": {
+              "provider_id": {
+                "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "provider_run_id": {
+                "pattern": "^pvr_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "carried_forward": {
+                "type": "boolean"
+              },
+              "freshness_state": {
+                "anyOf": [
+                  {
+                    "const": "fresh",
+                    "type": "string"
+                  },
+                  {
+                    "const": "stale",
+                    "type": "string"
+                  },
+                  {
+                    "const": "unavailable",
+                    "type": "string"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "resources": {
+          "maxItems": 1000000,
+          "type": "array",
+          "items": {
+            "additionalProperties": false,
+            "type": "object",
+            "required": [
+              "resource_type",
+              "resource_id",
+              "content_hash"
+            ],
+            "properties": {
+              "resource_type": {
+                "anyOf": [
+                  {
+                    "const": "model_family",
+                    "type": "string"
+                  },
+                  {
+                    "const": "model",
+                    "type": "string"
+                  },
+                  {
+                    "const": "variant",
+                    "type": "string"
+                  },
+                  {
+                    "const": "provider",
+                    "type": "string"
+                  },
+                  {
+                    "const": "offering",
+                    "type": "string"
+                  },
+                  {
+                    "const": "price",
+                    "type": "string"
+                  },
+                  {
+                    "const": "precision_observation",
+                    "type": "string"
+                  },
+                  {
+                    "const": "evidence_summary",
+                    "type": "string"
+                  }
+                ]
+              },
+              "resource_id": {
+                "pattern": "^(org|fam|mdl|var|als|slg|chk|mck|edg|par|prv|off|scp|aff|src|obs|evd|clm|cfl|prc|cmp|pcs|occ|run|pvr|out|anm|qrn|pol|prn|pub)_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "content_hash": {
+                "pattern": "^sha256:[0-9a-f]{64}$",
+                "type": "string"
+              }
+            }
+          }
+        },
+        "closure_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "failure_codes": {
+          "maxItems": 1000,
+          "uniqueItems": true,
+          "type": "array",
+          "items": {
+            "pattern": "^[a-z][a-z0-9_]{0,63}$",
+            "type": "string"
+          }
+        },
+        "state": {
+          "const": "ready",
+          "type": "string"
+        },
+        "ready_at": {
+          "format": "date-time",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
+          "type": "string"
+        },
+        "activated_at": {
+          "type": "null"
+        },
+        "search_index": {
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "exact_document_count",
+            "vector_document_count",
+            "exact_index_hash",
+            "vector_index_version",
+            "queryable"
+          ],
+          "properties": {
+            "exact_document_count": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "vector_document_count": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "exact_index_hash": {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "vector_index_version": {
+              "minLength": 1,
+              "maxLength": 128,
+              "type": "string"
+            },
+            "queryable": {
+              "const": true,
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
+    {
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "publication_id",
+        "schema_version",
+        "generated_at",
+        "source_run_id",
+        "parent_publication_id",
+        "provider_slices",
+        "resources",
+        "closure_hash",
+        "failure_codes",
+        "state",
+        "ready_at",
+        "activated_at",
+        "search_index"
+      ],
+      "properties": {
+        "publication_id": {
+          "pattern": "^pub_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "type": "string"
+        },
+        "schema_version": {
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+          "type": "string"
+        },
+        "generated_at": {
+          "format": "date-time",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
+          "type": "string"
+        },
+        "source_run_id": {
+          "pattern": "^run_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "type": "string"
+        },
+        "parent_publication_id": {
+          "anyOf": [
+            {
+              "pattern": "^pub_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "provider_slices": {
+          "maxItems": 1000,
+          "type": "array",
+          "items": {
+            "additionalProperties": false,
+            "type": "object",
+            "required": [
+              "provider_id",
+              "provider_run_id",
+              "carried_forward",
+              "freshness_state"
+            ],
+            "properties": {
+              "provider_id": {
+                "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "provider_run_id": {
+                "pattern": "^pvr_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "carried_forward": {
+                "type": "boolean"
+              },
+              "freshness_state": {
+                "anyOf": [
+                  {
+                    "const": "fresh",
+                    "type": "string"
+                  },
+                  {
+                    "const": "stale",
+                    "type": "string"
+                  },
+                  {
+                    "const": "unavailable",
+                    "type": "string"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "resources": {
+          "maxItems": 1000000,
+          "type": "array",
+          "items": {
+            "additionalProperties": false,
+            "type": "object",
+            "required": [
+              "resource_type",
+              "resource_id",
+              "content_hash"
+            ],
+            "properties": {
+              "resource_type": {
+                "anyOf": [
+                  {
+                    "const": "model_family",
+                    "type": "string"
+                  },
+                  {
+                    "const": "model",
+                    "type": "string"
+                  },
+                  {
+                    "const": "variant",
+                    "type": "string"
+                  },
+                  {
+                    "const": "provider",
+                    "type": "string"
+                  },
+                  {
+                    "const": "offering",
+                    "type": "string"
+                  },
+                  {
+                    "const": "price",
+                    "type": "string"
+                  },
+                  {
+                    "const": "precision_observation",
+                    "type": "string"
+                  },
+                  {
+                    "const": "evidence_summary",
+                    "type": "string"
+                  }
+                ]
+              },
+              "resource_id": {
+                "pattern": "^(org|fam|mdl|var|als|slg|chk|mck|edg|par|prv|off|scp|aff|src|obs|evd|clm|cfl|prc|cmp|pcs|occ|run|pvr|out|anm|qrn|pol|prn|pub)_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "content_hash": {
+                "pattern": "^sha256:[0-9a-f]{64}$",
+                "type": "string"
+              }
+            }
+          }
+        },
+        "closure_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "failure_codes": {
+          "maxItems": 1000,
+          "uniqueItems": true,
+          "type": "array",
+          "items": {
+            "pattern": "^[a-z][a-z0-9_]{0,63}$",
+            "type": "string"
+          }
+        },
+        "state": {
+          "const": "active",
+          "type": "string"
+        },
+        "ready_at": {
+          "format": "date-time",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
+          "type": "string"
+        },
+        "activated_at": {
+          "format": "date-time",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
+          "type": "string"
+        },
+        "search_index": {
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "exact_document_count",
+            "vector_document_count",
+            "exact_index_hash",
+            "vector_index_version",
+            "queryable"
+          ],
+          "properties": {
+            "exact_document_count": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "vector_document_count": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "exact_index_hash": {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "vector_index_version": {
+              "minLength": 1,
+              "maxLength": 128,
+              "type": "string"
+            },
+            "queryable": {
+              "const": true,
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
+    {
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "publication_id",
+        "schema_version",
+        "generated_at",
+        "source_run_id",
+        "parent_publication_id",
+        "provider_slices",
+        "resources",
+        "closure_hash",
+        "failure_codes",
+        "state",
+        "ready_at",
+        "activated_at",
+        "search_index"
+      ],
+      "properties": {
+        "publication_id": {
+          "pattern": "^pub_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "type": "string"
+        },
+        "schema_version": {
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+          "type": "string"
+        },
+        "generated_at": {
+          "format": "date-time",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
+          "type": "string"
+        },
+        "source_run_id": {
+          "pattern": "^run_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "type": "string"
+        },
+        "parent_publication_id": {
+          "anyOf": [
+            {
+              "pattern": "^pub_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "provider_slices": {
+          "maxItems": 1000,
+          "type": "array",
+          "items": {
+            "additionalProperties": false,
+            "type": "object",
+            "required": [
+              "provider_id",
+              "provider_run_id",
+              "carried_forward",
+              "freshness_state"
+            ],
+            "properties": {
+              "provider_id": {
+                "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "provider_run_id": {
+                "pattern": "^pvr_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "carried_forward": {
+                "type": "boolean"
+              },
+              "freshness_state": {
+                "anyOf": [
+                  {
+                    "const": "fresh",
+                    "type": "string"
+                  },
+                  {
+                    "const": "stale",
+                    "type": "string"
+                  },
+                  {
+                    "const": "unavailable",
+                    "type": "string"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "resources": {
+          "maxItems": 1000000,
+          "type": "array",
+          "items": {
+            "additionalProperties": false,
+            "type": "object",
+            "required": [
+              "resource_type",
+              "resource_id",
+              "content_hash"
+            ],
+            "properties": {
+              "resource_type": {
+                "anyOf": [
+                  {
+                    "const": "model_family",
+                    "type": "string"
+                  },
+                  {
+                    "const": "model",
+                    "type": "string"
+                  },
+                  {
+                    "const": "variant",
+                    "type": "string"
+                  },
+                  {
+                    "const": "provider",
+                    "type": "string"
+                  },
+                  {
+                    "const": "offering",
+                    "type": "string"
+                  },
+                  {
+                    "const": "price",
+                    "type": "string"
+                  },
+                  {
+                    "const": "precision_observation",
+                    "type": "string"
+                  },
+                  {
+                    "const": "evidence_summary",
+                    "type": "string"
+                  }
+                ]
+              },
+              "resource_id": {
+                "pattern": "^(org|fam|mdl|var|als|slg|chk|mck|edg|par|prv|off|scp|aff|src|obs|evd|clm|cfl|prc|cmp|pcs|occ|run|pvr|out|anm|qrn|pol|prn|pub)_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "content_hash": {
+                "pattern": "^sha256:[0-9a-f]{64}$",
+                "type": "string"
+              }
+            }
+          }
+        },
+        "closure_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "failure_codes": {
+          "maxItems": 1000,
+          "uniqueItems": true,
+          "type": "array",
+          "items": {
+            "pattern": "^[a-z][a-z0-9_]{0,63}$",
+            "type": "string"
+          }
+        },
+        "state": {
+          "const": "superseded",
+          "type": "string"
+        },
+        "ready_at": {
+          "format": "date-time",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
+          "type": "string"
+        },
+        "activated_at": {
+          "format": "date-time",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
+          "type": "string"
+        },
+        "search_index": {
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "exact_document_count",
+            "vector_document_count",
+            "exact_index_hash",
+            "vector_index_version",
+            "queryable"
+          ],
+          "properties": {
+            "exact_document_count": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "vector_document_count": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "exact_index_hash": {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "vector_index_version": {
+              "minLength": 1,
+              "maxLength": 128,
+              "type": "string"
+            },
+            "queryable": {
+              "const": true,
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
+    {
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "publication_id",
+        "schema_version",
+        "generated_at",
+        "source_run_id",
+        "parent_publication_id",
+        "provider_slices",
+        "resources",
+        "closure_hash",
+        "failure_codes",
+        "state",
+        "ready_at",
+        "activated_at",
+        "search_index"
+      ],
+      "properties": {
+        "publication_id": {
+          "pattern": "^pub_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "type": "string"
+        },
+        "schema_version": {
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+          "type": "string"
+        },
+        "generated_at": {
+          "format": "date-time",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
+          "type": "string"
+        },
+        "source_run_id": {
+          "pattern": "^run_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "type": "string"
+        },
+        "parent_publication_id": {
+          "anyOf": [
+            {
+              "pattern": "^pub_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "provider_slices": {
+          "maxItems": 1000,
+          "type": "array",
+          "items": {
+            "additionalProperties": false,
+            "type": "object",
+            "required": [
+              "provider_id",
+              "provider_run_id",
+              "carried_forward",
+              "freshness_state"
+            ],
+            "properties": {
+              "provider_id": {
+                "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "provider_run_id": {
+                "pattern": "^pvr_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "carried_forward": {
+                "type": "boolean"
+              },
+              "freshness_state": {
+                "anyOf": [
+                  {
+                    "const": "fresh",
+                    "type": "string"
+                  },
+                  {
+                    "const": "stale",
+                    "type": "string"
+                  },
+                  {
+                    "const": "unavailable",
+                    "type": "string"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "resources": {
+          "maxItems": 1000000,
+          "type": "array",
+          "items": {
+            "additionalProperties": false,
+            "type": "object",
+            "required": [
+              "resource_type",
+              "resource_id",
+              "content_hash"
+            ],
+            "properties": {
+              "resource_type": {
+                "anyOf": [
+                  {
+                    "const": "model_family",
+                    "type": "string"
+                  },
+                  {
+                    "const": "model",
+                    "type": "string"
+                  },
+                  {
+                    "const": "variant",
+                    "type": "string"
+                  },
+                  {
+                    "const": "provider",
+                    "type": "string"
+                  },
+                  {
+                    "const": "offering",
+                    "type": "string"
+                  },
+                  {
+                    "const": "price",
+                    "type": "string"
+                  },
+                  {
+                    "const": "precision_observation",
+                    "type": "string"
+                  },
+                  {
+                    "const": "evidence_summary",
+                    "type": "string"
+                  }
+                ]
+              },
+              "resource_id": {
+                "pattern": "^(org|fam|mdl|var|als|slg|chk|mck|edg|par|prv|off|scp|aff|src|obs|evd|clm|cfl|prc|cmp|pcs|occ|run|pvr|out|anm|qrn|pol|prn|pub)_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "content_hash": {
+                "pattern": "^sha256:[0-9a-f]{64}$",
+                "type": "string"
+              }
+            }
+          }
+        },
+        "closure_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "failure_codes": {
+          "maxItems": 1000,
+          "uniqueItems": true,
+          "type": "array",
+          "items": {
+            "pattern": "^[a-z][a-z0-9_]{0,63}$",
+            "type": "string"
+          }
+        },
+        "state": {
+          "const": "rolled_back",
+          "type": "string"
+        },
+        "ready_at": {
+          "format": "date-time",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
+          "type": "string"
+        },
+        "activated_at": {
+          "format": "date-time",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
+          "type": "string"
+        },
+        "search_index": {
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "exact_document_count",
+            "vector_document_count",
+            "exact_index_hash",
+            "vector_index_version",
+            "queryable"
+          ],
+          "properties": {
+            "exact_document_count": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "vector_document_count": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "exact_index_hash": {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "vector_index_version": {
+              "minLength": 1,
+              "maxLength": 128,
+              "type": "string"
+            },
+            "queryable": {
+              "const": true,
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,808 @@
+{
+  "$id": "OfferingDetail",
+  "additionalProperties": false,
+  "type": "object",
+  "required": [
+    "data",
+    "meta"
+  ],
+  "properties": {
+    "data": {
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "offering_id",
+        "provider_id",
+        "model_resource_id",
+        "provider_model_id",
+        "display_name",
+        "tier_key",
+        "endpoint_class",
+        "material_region_key",
+        "supported_regions",
+        "status",
+        "stale",
+        "stale_reason",
+        "first_observed_at",
+        "last_observed_at",
+        "last_successful_refresh",
+        "source_locator",
+        "precision_observation_ids",
+        "price_ids",
+        "evidence_ids"
+      ],
+      "properties": {
+        "offering_id": {
+          "pattern": "^off_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "type": "string"
+        },
+        "provider_id": {
+          "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "type": "string"
+        },
+        "model_resource_id": {
+          "anyOf": [
+            {
+              "pattern": "^mdl_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "pattern": "^var_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "type": "string"
+            }
+          ]
+        },
+        "provider_model_id": {
+          "minLength": 1,
+          "maxLength": 256,
+          "type": "string"
+        },
+        "display_name": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "type": "object",
+              "required": [
+                "state",
+                "value",
+                "observed_at",
+                "evidence_ids"
+              ],
+              "properties": {
+                "state": {
+                  "const": "known",
+                  "type": "string"
+                },
+                "value": {
+                  "maxLength": 256,
+                  "type": "string"
+                },
+                "observed_at": {
+                  "format": "date-time",
+                  "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
+                  "type": "string"
+                },
+                "evidence_ids": {
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "type": "array",
+                  "items": {
+                    "pattern": "^evd_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            {
+              "additionalProperties": false,
+              "type": "object",
+              "required": [
+                "state",
+                "value",
+                "observed_at",
+                "evidence_ids"
+              ],
+              "properties": {
+                "state": {
+                  "anyOf": [
+                    {
+                      "const": "unknown",
+                      "type": "string"
+                    },
+                    {
+                      "const": "not_applicable",
+                      "type": "string"
+                    },
+                    {
+                      "const": "unavailable",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "value": {
+                  "type": "null"
+                },
+                "observed_at": {
+                  "anyOf": [
+                    {
+                      "format": "date-time",
+                      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "evidence_ids": {
+                  "uniqueItems": true,
+                  "type": "array",
+                  "items": {
+                    "pattern": "^evd_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "tier_key": {
+          "minLength": 1,
+          "maxLength": 128,
+          "type": "string"
+        },
+        "endpoint_class": {
+          "minLength": 1,
+          "maxLength": 128,
+          "type": "string"
+        },
+        "material_region_key": {
+          "maxLength": 128,
+          "type": "string"
+        },
+        "supported_regions": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "type": "object",
+              "required": [
+                "state",
+                "value",
+                "observed_at",
+                "evidence_ids"
+              ],
+              "properties": {
+                "state": {
+                  "const": "known",
+                  "type": "string"
+                },
+                "value": {
+                  "maxItems": 64,
+                  "uniqueItems": true,
+                  "type": "array",
+                  "items": {
+                    "maxLength": 128,
+                    "type": "string"
+                  }
+                },
+                "observed_at": {
+                  "format": "date-time",
+                  "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
+                  "type": "string"
+                },
+                "evidence_ids": {
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "type": "array",
+                  "items": {
+                    "pattern": "^evd_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            {
+              "additionalProperties": false,
+              "type": "object",
+              "required": [
+                "state",
+                "value",
+                "observed_at",
+                "evidence_ids"
+              ],
+              "properties": {
+                "state": {
+                  "anyOf": [
+                    {
+                      "const": "unknown",
+                      "type": "string"
+                    },
+                    {
+                      "const": "not_applicable",
+                      "type": "string"
+                    },
+                    {
+                      "const": "unavailable",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "value": {
+                  "type": "null"
+                },
+                "observed_at": {
+                  "anyOf": [
+                    {
+                      "format": "date-time",
+                      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "evidence_ids": {
+                  "uniqueItems": true,
+                  "type": "array",
+                  "items": {
+                    "pattern": "^evd_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "status": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "type": "object",
+              "required": [
+                "state",
+                "value",
+                "observed_at",
+                "evidence_ids"
+              ],
+              "properties": {
+                "state": {
+                  "const": "known",
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128,
+                  "x-extensible-enum": [
+                    "active",
+                    "inactive",
+                    "unavailable"
+                  ],
+                  "not": {
+                    "enum": [
+                      "unknown"
+                    ]
+                  }
+                },
+                "observed_at": {
+                  "format": "date-time",
+                  "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
+                  "type": "string"
+                },
+                "evidence_ids": {
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "type": "array",
+                  "items": {
+                    "pattern": "^evd_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            {
+              "additionalProperties": false,
+              "type": "object",
+              "required": [
+                "state",
+                "value",
+                "observed_at",
+                "evidence_ids"
+              ],
+              "properties": {
+                "state": {
+                  "anyOf": [
+                    {
+                      "const": "unknown",
+                      "type": "string"
+                    },
+                    {
+                      "const": "not_applicable",
+                      "type": "string"
+                    },
+                    {
+                      "const": "unavailable",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "value": {
+                  "type": "null"
+                },
+                "observed_at": {
+                  "anyOf": [
+                    {
+                      "format": "date-time",
+                      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "evidence_ids": {
+                  "uniqueItems": true,
+                  "type": "array",
+                  "items": {
+                    "pattern": "^evd_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "stale": {
+          "type": "boolean"
+        },
+        "stale_reason": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "first_observed_at": {
+          "format": "date-time",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
+          "type": "string"
+        },
+        "last_observed_at": {
+          "format": "date-time",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
+          "type": "string"
+        },
+        "last_successful_refresh": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "type": "object",
+              "required": [
+                "state",
+                "value",
+                "observed_at",
+                "evidence_ids"
+              ],
+              "properties": {
+                "state": {
+                  "const": "known",
+                  "type": "string"
+                },
+                "value": {
+                  "format": "date-time",
+                  "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
+                  "type": "string"
+                },
+                "observed_at": {
+                  "format": "date-time",
+                  "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
+                  "type": "string"
+                },
+                "evidence_ids": {
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "type": "array",
+                  "items": {
+                    "pattern": "^evd_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            {
+              "additionalProperties": false,
+              "type": "object",
+              "required": [
+                "state",
+                "value",
+                "observed_at",
+                "evidence_ids"
+              ],
+              "properties": {
+                "state": {
+                  "anyOf": [
+                    {
+                      "const": "unknown",
+                      "type": "string"
+                    },
+                    {
+                      "const": "not_applicable",
+                      "type": "string"
+                    },
+                    {
+                      "const": "unavailable",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "value": {
+                  "type": "null"
+                },
+                "observed_at": {
+                  "anyOf": [
+                    {
+                      "format": "date-time",
+                      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "evidence_ids": {
+                  "uniqueItems": true,
+                  "type": "array",
+                  "items": {
+                    "pattern": "^evd_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "source_locator": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "type": "object",
+              "required": [
+                "state",
+                "value",
+                "observed_at",
+                "evidence_ids"
+              ],
+              "properties": {
+                "state": {
+                  "const": "known",
+                  "type": "string"
+                },
+                "value": {
+                  "maxLength": 2048,
+                  "type": "string"
+                },
+                "observed_at": {
+                  "format": "date-time",
+                  "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
+                  "type": "string"
+                },
+                "evidence_ids": {
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "type": "array",
+                  "items": {
+                    "pattern": "^evd_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            {
+              "additionalProperties": false,
+              "type": "object",
+              "required": [
+                "state",
+                "value",
+                "observed_at",
+                "evidence_ids"
+              ],
+              "properties": {
+                "state": {
+                  "anyOf": [
+                    {
+                      "const": "unknown",
+                      "type": "string"
+                    },
+                    {
+                      "const": "not_applicable",
+                      "type": "string"
+                    },
+                    {
+                      "const": "unavailable",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "value": {
+                  "type": "null"
+                },
+                "observed_at": {
+                  "anyOf": [
+                    {
+                      "format": "date-time",
+                      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "evidence_ids": {
+                  "uniqueItems": true,
+                  "type": "array",
+                  "items": {
+                    "pattern": "^evd_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "precision_observation_ids": {
+          "uniqueItems": true,
+          "type": "array",
+          "items": {
+            "pattern": "^prc_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          }
+        },
+        "price_ids": {
+          "uniqueItems": true,
+          "type": "array",
+          "items": {
+            "pattern": "^pcs_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          }
+        },
+        "evidence_ids": {
+          "minItems": 1,
+          "uniqueItems": true,
+          "type": "array",
+          "items": {
+            "pattern": "^evd_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          }
+        }
+      }
+    },
+    "meta": {
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "resource",
+        "publication_id",
+        "schema_version",
+        "sort",
+        "filters",
+        "currency_scope"
+      ],
+      "properties": {
+        "resource": {
+          "const": "offerings",
+          "type": "string"
+        },
+        "publication_id": {
+          "pattern": "^pub_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "type": "string"
+        },
+        "schema_version": {
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+          "type": "string"
+        },
+        "sort": {
+          "minItems": 1,
+          "maxItems": 8,
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "const": "provider",
+                "type": "string"
+              },
+              {
+                "const": "precision_display",
+                "type": "string"
+              },
+              {
+                "const": "input_price",
+                "type": "string"
+              },
+              {
+                "const": "output_price",
+                "type": "string"
+              },
+              {
+                "const": "cached_input_price",
+                "type": "string"
+              },
+              {
+                "const": "freshness",
+                "type": "string"
+              },
+              {
+                "const": "status",
+                "type": "string"
+              },
+              {
+                "const": "stable_id",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "filters": {
+          "additionalProperties": false,
+          "type": "object",
+          "properties": {
+            "model": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "variant": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "family": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "provider": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "normalized_precision": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "currency": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "status": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "stale": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "observed_since": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "tier": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "endpoint_class": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "material_region": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "price_class": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            }
+          }
+        },
+        "currency_scope": {
+          "pattern": "^[A-Z]{3}$",
+          "type": "string"
+        }
+      }
+    }
+  }
+}
