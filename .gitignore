@@ -1,0 +1,35 @@
+# macOS
+.DS_Store
+
+# Secrets and local configuration
+.dev.vars
+.dev.vars.*
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Dependencies and package-manager state
+node_modules/
+.pnpm-store/
+
+# Build, test, and local runtime output
+dist/
+build/
+.output/
+.cache/
+coverage/
+.wrangler/
+.turbo/
+*.log
+
+# Editors
+.idea/
+.vscode/
+*.swp
+
+# Temporary files
+tmp/
+temp/
+
