@@ -23,6 +23,7 @@ coverage/
 .wrangler/
 .turbo/
 *.log
+*.tsbuildinfo
 
 # Editors
 .idea/
@@ -32,4 +33,3 @@ coverage/
 # Temporary files
 tmp/
 temp/
-

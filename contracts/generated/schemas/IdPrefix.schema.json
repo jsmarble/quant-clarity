@@ -1,0 +1,129 @@
+{
+  "$id": "IdPrefix",
+  "anyOf": [
+    {
+      "const": "org",
+      "type": "string"
+    },
+    {
+      "const": "fam",
+      "type": "string"
+    },
+    {
+      "const": "mdl",
+      "type": "string"
+    },
+    {
+      "const": "var",
+      "type": "string"
+    },
+    {
+      "const": "als",
+      "type": "string"
+    },
+    {
+      "const": "slg",
+      "type": "string"
+    },
+    {
+      "const": "chk",
+      "type": "string"
+    },
+    {
+      "const": "mck",
+      "type": "string"
+    },
+    {
+      "const": "edg",
+      "type": "string"
+    },
+    {
+      "const": "par",
+      "type": "string"
+    },
+    {
+      "const": "prv",
+      "type": "string"
+    },
+    {
+      "const": "off",
+      "type": "string"
+    },
+    {
+      "const": "scp",
+      "type": "string"
+    },
+    {
+      "const": "aff",
+      "type": "string"
+    },
+    {
+      "const": "src",
+      "type": "string"
+    },
+    {
+      "const": "obs",
+      "type": "string"
+    },
+    {
+      "const": "evd",
+      "type": "string"
+    },
+    {
+      "const": "clm",
+      "type": "string"
+    },
+    {
+      "const": "cfl",
+      "type": "string"
+    },
+    {
+      "const": "prc",
+      "type": "string"
+    },
+    {
+      "const": "cmp",
+      "type": "string"
+    },
+    {
+      "const": "pcs",
+      "type": "string"
+    },
+    {
+      "const": "occ",
+      "type": "string"
+    },
+    {
+      "const": "run",
+      "type": "string"
+    },
+    {
+      "const": "pvr",
+      "type": "string"
+    },
+    {
+      "const": "out",
+      "type": "string"
+    },
+    {
+      "const": "anm",
+      "type": "string"
+    },
+    {
+      "const": "qrn",
+      "type": "string"
+    },
+    {
+      "const": "pol",
+      "type": "string"
+    },
+    {
+      "const": "prn",
+      "type": "string"
+    },
+    {
+      "const": "pub",
+      "type": "string"
+    }
+  ]
+}

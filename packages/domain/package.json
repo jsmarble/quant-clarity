@@ -1,0 +1,24 @@
+{
+  "name": "@quant-clarity/domain",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MPL-2.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./source-address": {
+      "types": "./dist/source-address.d.ts",
+      "default": "./dist/source-address.js"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "decimal.js": "10.6.0"
+  }
+}

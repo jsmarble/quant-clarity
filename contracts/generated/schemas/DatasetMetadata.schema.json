@@ -1,0 +1,115 @@
+{
+  "$id": "DatasetMetadata",
+  "additionalProperties": false,
+  "type": "object",
+  "required": [
+    "publication_id",
+    "schema_version",
+    "api_version",
+    "methodology_version",
+    "methodology_effective_at",
+    "methodology_url",
+    "precision_vocabulary_version",
+    "price_policy_version",
+    "published_at",
+    "generated_at",
+    "next_refresh_window",
+    "counts",
+    "degradation_notices"
+  ],
+  "properties": {
+    "publication_id": {
+      "$id": "PublicationId",
+      "pattern": "^pub_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "schema_version": {
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "type": "string"
+    },
+    "api_version": {
+      "const": "1",
+      "type": "string"
+    },
+    "methodology_version": {
+      "minLength": 1,
+      "maxLength": 64,
+      "type": "string"
+    },
+    "methodology_effective_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "methodology_url": {
+      "format": "uri",
+      "maxLength": 2048,
+      "type": "string"
+    },
+    "precision_vocabulary_version": {
+      "minLength": 1,
+      "maxLength": 64,
+      "type": "string"
+    },
+    "price_policy_version": {
+      "minLength": 1,
+      "maxLength": 64,
+      "type": "string"
+    },
+    "published_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "generated_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "next_refresh_window": {
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "starts_at",
+        "ends_at"
+      ],
+      "properties": {
+        "starts_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "ends_at": {
+          "format": "date-time",
+          "type": "string"
+        }
+      }
+    },
+    "counts": {
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "active_models",
+        "active_offerings",
+        "active_providers"
+      ],
+      "properties": {
+        "active_models": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "active_offerings": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "active_providers": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      }
+    },
+    "degradation_notices": {
+      "type": "array",
+      "items": {
+        "maxLength": 200,
+        "type": "string"
+      }
+    }
+  }
+}

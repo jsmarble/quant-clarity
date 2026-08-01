@@ -1,0 +1,16 @@
+{
+  "name": "@quant-clarity/query",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MPL-2.0",
+  "type": "module",
+  "scripts": {
+    "build": "WRANGLER_SEND_METRICS=false wrangler deploy --dry-run --outdir dist",
+    "cf:types": "WRANGLER_SEND_METRICS=false wrangler types --env-interface CloudflareEnv worker-configuration.d.ts",
+    "cf:types:check": "WRANGLER_SEND_METRICS=false wrangler types --check --env-interface CloudflareEnv worker-configuration.d.ts"
+  },
+  "dependencies": {
+    "@quant-clarity/contracts": "0.0.0",
+    "@quant-clarity/domain": "0.0.0"
+  }
+}

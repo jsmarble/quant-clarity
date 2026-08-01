@@ -1,0 +1,52 @@
+{
+  "schema_version": "1.0.0",
+  "status": "logical_inventory_only",
+  "environments": [
+    {
+      "name": "local",
+      "provisioned": false,
+      "resource_prefix": "quant-clarity-local",
+      "write_identity": "local-only",
+      "may_access_production": false
+    },
+    {
+      "name": "test",
+      "provisioned": false,
+      "resource_prefix": "quant-clarity-test",
+      "write_identity": "ci-ephemeral-only",
+      "may_access_production": false
+    },
+    {
+      "name": "preview",
+      "provisioned": false,
+      "resource_prefix": "quant-clarity-preview",
+      "write_identity": "github-preview-environment-pending",
+      "may_access_production": false
+    },
+    {
+      "name": "production",
+      "provisioned": false,
+      "resource_prefix": "quant-clarity-production",
+      "write_identity": "github-production-environment-pending",
+      "may_access_production": true
+    }
+  ],
+  "resource_classes": [
+    "frontend_worker",
+    "api_worker",
+    "query_worker",
+    "pipeline_worker",
+    "d1_canonical",
+    "d1_serving",
+    "r2_evidence",
+    "r2_backup",
+    "vectorize",
+    "workflow",
+    "rate_limiter"
+  ],
+  "notes": [
+    "No Cloudflare resource or credential is represented as provisioned.",
+    "Concrete resource IDs, routes, bindings, and protected identities remain deployment-gated.",
+    "Preview and test identities must never receive production write access."
+  ]
+}
