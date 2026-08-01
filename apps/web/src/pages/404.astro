@@ -1,0 +1,19 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+
+Astro.response.status = 404;
+---
+
+<BaseLayout
+  title="Page not found — QuantClarity"
+  description="The requested QuantClarity page could not be found."
+>
+  <section class="page-header shell">
+    <p class="eyebrow">404</p>
+    <h1>Page not found</h1>
+    <p class="lede narrow">
+      The requested path does not exist in this publication.
+    </p>
+    <a class="button-link" href="/">Return to model search</a>
+  </section>
+</BaseLayout>

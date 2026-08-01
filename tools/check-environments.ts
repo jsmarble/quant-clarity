@@ -1,11 +1,14 @@
 import { readFile } from "node:fs/promises";
 
 interface Environment {
+  build_environment?: unknown;
+  canonical_origin_required?: unknown;
   name?: unknown;
   provisioned?: unknown;
   resource_prefix?: unknown;
   write_identity?: unknown;
   may_access_production?: unknown;
+  secret_bindings?: unknown;
 }
 
 interface Inventory {
@@ -39,6 +42,17 @@ for (const [label, values] of [
     errors.push(`Environment ${label} must be distinct`);
 }
 for (const environment of environments) {
+  if (environment.build_environment !== environment.name)
+    errors.push(
+      `${String(environment.name)} build environment must match its inventory name`,
+    );
+  if (
+    environment.canonical_origin_required !==
+    (environment.name === "production")
+  )
+    errors.push(
+      `${String(environment.name)} canonical-origin requirement is invalid`,
+    );
   if (environment.provisioned !== false)
     errors.push(
       `${String(environment.name)} must remain unprovisioned in this inventory revision`,
@@ -48,6 +62,18 @@ for (const environment of environments) {
     environment.may_access_production !== false
   )
     errors.push(`${String(environment.name)} must not have production access`);
+
+  const expectedSecrets = {
+    frontend_worker: ["RATE_LIMIT_HMAC_KEY"],
+    api_worker: ["RATE_LIMIT_HMAC_KEY"],
+  };
+  if (
+    JSON.stringify(environment.secret_bindings) !==
+    JSON.stringify(expectedSecrets)
+  )
+    errors.push(
+      `${String(environment.name)} must declare only the approved public Worker secret names`,
+    );
 }
 if (
   environments.find((environment) => environment.name === "production")

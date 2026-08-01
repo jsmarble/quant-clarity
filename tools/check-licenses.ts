@@ -30,6 +30,8 @@ const permissiveOrProjectLicenses = new Set([
   "MIT",
   "MIT OR Apache-2.0",
   "MPL-2.0",
+  // OSI-approved permissive license used by Astro's js-yaml/argparse chain.
+  "Python-2.0",
 ]);
 const reviewedBuildOnlyLicenses = new Set([
   "Apache-2.0 AND LGPL-3.0-or-later",

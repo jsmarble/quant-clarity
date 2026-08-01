@@ -1,0 +1,43 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+
+export const prerender = true;
+---
+
+<BaseLayout
+  title="Public API — QuantClarity"
+  description="The anonymous, read-only QuantClarity API and its publication status."
+  currentPath="/api"
+>
+  <article class="prose shell">
+    <header class="page-header flush">
+      <p class="eyebrow">Anonymous · Read-only · Versioned</p>
+      <h1>Public API</h1>
+      <p class="lede narrow">
+        The API serves the same canonical publication as this website. No public
+        dataset has been released yet, so data resources are not available.
+      </p>
+    </header>
+    <h2>Contract</h2>
+    <p>
+      Resources use JSON and UTF-8 under the stable <code>/v1</code> base path. Unknown
+      facts use documented null or explicit unknown values. Decimal prices are serialized
+      without binary floating-point artifacts.
+    </p>
+    <p>
+      The generated <a
+        href="https://github.com/jsmarble/quant-clarity/blob/main/contracts/generated/openapi.json"
+        rel="noreferrer">OpenAPI contract and examples</a
+      > are available in the public source repository. Serving the contract at <code
+        >/v1/openapi.json</code
+      > remains gated with the first public data publication. Public methods are limited
+      to GET, HEAD, and protocol-required OPTIONS.
+    </p>
+    <h2>Privacy and caching</h2>
+    <p>
+      Requests require no account or credential. Query-string and search
+      responses are private and non-cacheable. QuantClarity retains no request
+      logs, traces, query strings, or visitor identifiers.
+    </p>
+  </article>
+</BaseLayout>

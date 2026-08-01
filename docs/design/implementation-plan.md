@@ -29,7 +29,7 @@ Exit evidence: approved design state is internally consistent, `git diff --check
 
 ## Phase 1 — reproducible foundation and machine contracts
 
-Status: in progress. The pinned workspace, strict checks, generated contract skeleton, privacy/docs checks, CI, and Worker dry-run surfaces exist; full canonical/OpenAPI/adapter/publication machine contracts remain incomplete.
+Status: in progress. The pinned workspace, strict checks, generated contract skeleton, privacy/docs checks, CI, Worker dry-run surfaces, and guarded Astro frontend shell exist; full canonical persistence, provider adapters, and publication pipeline remain incomplete.
 
 1. Pin Node/npm, create the npm-workspace layout from ADR 0001, install only approved production/development dependencies, and commit one lockfile.
 2. Establish strict TypeScript, formatting/linting, deterministic test configuration, dependency/license/secret scanning, and Wrangler 4 JSONC/type generation.

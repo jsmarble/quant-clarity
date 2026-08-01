@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "skipLibCheck": true,
+    "types": ["./worker-configuration.d.ts", "vitest/globals"]
+  },
+  "include": [
+    "src/**/*.test.ts",
+    "src/lib/**/*.ts",
+    "worker-configuration.d.ts"
+  ],
+  "references": [{ "path": "../../packages/domain" }]
+}

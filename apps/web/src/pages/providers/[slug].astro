@@ -1,0 +1,22 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+
+const slug = Astro.params.slug ?? "requested-provider";
+Astro.response.status = 404;
+---
+
+<BaseLayout
+  title="Provider not published — QuantClarity"
+  description="The requested provider is not present in the current QuantClarity publication."
+  currentPath={`/providers/${slug}`}
+>
+  <section class="page-header shell">
+    <p class="eyebrow">Provider facts unavailable</p>
+    <h1>This provider is not published</h1>
+    <p class="lede narrow">
+      No evidence-backed provider record exists at this path in the current
+      publication.
+    </p>
+    <a class="button-link" href="/providers">Browse published providers</a>
+  </section>
+</BaseLayout>

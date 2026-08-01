@@ -1,0 +1,48 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+
+export const prerender = true;
+---
+
+<BaseLayout
+  title="Privacy — QuantClarity"
+  description="QuantClarity stores no visitor information and uses no cookies, analytics, browser persistence, or click tracking."
+  currentPath="/privacy"
+>
+  <article class="prose shell">
+    <header class="page-header flush">
+      <p class="eyebrow">Zero visitor data</p>
+      <h1>Privacy by not collecting</h1>
+      <p class="lede narrow">
+        QuantClarity stores no visitor information and performs no visitor
+        analytics.
+      </p>
+    </header>
+    <h2>What this service does not collect</h2>
+    <p>
+      There are no accounts, cookies, browser-storage identifiers, analytics,
+      advertising pixels, session replay, request logs, traces, click tracking,
+      or visitor profiles. Search and filter values are not retained by
+      QuantClarity.
+    </p>
+    <h2>Necessary request delivery</h2>
+    <p>
+      Cloudflare transiently processes network data needed to deliver and
+      protect each request as QuantClarity’s infrastructure processor.
+      QuantClarity does not copy source addresses or derived actor keys into its
+      storage, logs, metrics, alerts, or artifacts.
+    </p>
+    <h2>Provider destinations</h2>
+    <p>
+      Outbound provider links open directly without a referrer or
+      visitor-specific identifier. A provider destination operates under its own
+      privacy practices. Any commission link is disclosed beside the link and
+      uses one static program identifier for every visitor.
+    </p>
+    <div class="notice" role="note">
+      <strong>Release gate:</strong> Controller identity, legal contact, transfer
+      terms, rights-request procedure, and retention/accountability records must be
+      finalized before this working notice is published to production.
+    </div>
+  </article>
+</BaseLayout>

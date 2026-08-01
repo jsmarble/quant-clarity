@@ -64,7 +64,7 @@ In the Codex desktop app:
 2. Add this repository folder:
 
    ```text
-   /Users/joshua/personal/git/quant-clarity
+   <path-to>/quant-clarity
    ```
 
 3. Make it the project's primary folder.

@@ -29,6 +29,27 @@ const browserOnlyContent = [
   ["browser Cache API", /\bcaches\s*\.\s*open\b/u],
 ] as const;
 
+const generatedArtifactContent = forbiddenContent.filter(
+  ([label]) =>
+    ![
+      "analytics engine binding",
+      "console call",
+      "cookie-setting response",
+      "Cloudflare visitor metadata capture",
+      "visitor header capture",
+    ].includes(label),
+);
+const generatedConsoleContent = [
+  [
+    "console call",
+    /\bconsole\s*\.\s*(?:assert|clear|count|countReset|debug|dir|dirxml|error|group|groupCollapsed|groupEnd|info|log|table|time|timeEnd|timeLog|trace|warn)\b/u,
+  ],
+] as const;
+
+const generatedPersonalPathContent = [
+  ["local macOS user path", /(?:file:\/\/)?\/Users\/[^/\s"']+\//u],
+] as const;
+
 function isObject(value: unknown): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -48,6 +69,14 @@ export function findContentViolations(contents: string): string[] {
 
 export function findBrowserContentViolations(contents: string): string[] {
   return labelsFor(contents, browserOnlyContent);
+}
+
+export function findGeneratedArtifactViolations(contents: string): string[] {
+  return [
+    ...labelsFor(contents, generatedArtifactContent),
+    ...labelsFor(contents, generatedConsoleContent),
+    ...labelsFor(contents, generatedPersonalPathContent),
+  ];
 }
 
 export function validatePublicWorkerConfig(
@@ -95,5 +124,173 @@ export function validatePublicWorkerConfig(
     errors.push(
       "AI binding is prohibited until the public-query privacy gate is approved",
     );
+  return errors;
+}
+
+function isEmptyGeneratedBinding(value: unknown): boolean {
+  if (Array.isArray(value)) return value.length === 0;
+  if (!isObject(value)) return false;
+  return Object.values(value).every(isEmptyGeneratedBinding);
+}
+
+export function validateGeneratedFrontendConfig(value: unknown): string[] {
+  if (!isObject(value)) return ["generated configuration must be an object"];
+  const errors: string[] = [];
+  const generatedTelemetryKeys = new Set([
+    "analytics_engine_datasets",
+    "logfwdr",
+    "logpush",
+    "tail_consumers",
+  ]);
+  const normalized = Object.fromEntries(
+    Object.entries(value).filter(([key]) => !generatedTelemetryKeys.has(key)),
+  );
+
+  for (const key of generatedTelemetryKeys) {
+    if (!(key in value)) continue;
+    if (!isEmptyGeneratedBinding(value[key]))
+      errors.push(`${key} must remain empty in generated configuration`);
+  }
+
+  const emptyCapabilityKeys = [
+    "agent_memory",
+    "ai",
+    "ai_search",
+    "ai_search_namespaces",
+    "artifacts",
+    "browser",
+    "cloudchamber",
+    "containers",
+    "d1_databases",
+    "dispatch_namespaces",
+    "durable_objects",
+    "flagship",
+    "hyperdrive",
+    "kv_namespaces",
+    "mtls_certificates",
+    "pipelines",
+    "queues",
+    "r2_buckets",
+    "secrets_store_secrets",
+    "send_email",
+    "unsafe_hello_world",
+    "vectorize",
+    "vpc_networks",
+    "vpc_services",
+    "worker_loaders",
+    "workflows",
+  ] as const;
+  for (const key of emptyCapabilityKeys) {
+    if (key in normalized && !isEmptyGeneratedBinding(normalized[key]))
+      errors.push(
+        `${key} persistence/AI binding is prohibited on the frontend`,
+      );
+  }
+
+  const pythonModules = normalized.python_modules;
+  if (
+    pythonModules !== undefined &&
+    (!isObject(pythonModules) ||
+      !Array.isArray(pythonModules.exclude) ||
+      pythonModules.exclude.length !== 1 ||
+      pythonModules.exclude[0] !== "**/*.pyc")
+  )
+    errors.push("python_modules may contain only Wrangler's pyc exclusion");
+
+  const assets = normalized.assets;
+  if (
+    !isObject(assets) ||
+    assets.binding !== "ASSETS" ||
+    assets.run_worker_first !== true
+  )
+    errors.push("assets must be the ASSETS run-worker-first binding");
+
+  const services = normalized.services;
+  if (
+    !Array.isArray(services) ||
+    services.length !== 1 ||
+    !isObject(services[0]) ||
+    services[0].binding !== "API" ||
+    typeof services[0].service !== "string" ||
+    !/^quant-clarity-api-(?:local|preview|production)$/u.test(
+      services[0].service,
+    )
+  )
+    errors.push(
+      "services must contain only the environment-matched API binding",
+    );
+
+  const rateLimits = normalized.ratelimits;
+  const rateLimitNames = Array.isArray(rateLimits)
+    ? rateLimits
+        .filter(isObject)
+        .map((binding) => binding.name)
+        .sort()
+    : [];
+  if (
+    rateLimitNames.length !== 2 ||
+    rateLimitNames[0] !== "READ_LIMITER" ||
+    rateLimitNames[1] !== "ROTATION_LIMITER"
+  )
+    errors.push(
+      "ratelimits must contain only READ_LIMITER and ROTATION_LIMITER",
+    );
+
+  const variables = normalized.vars;
+  if (
+    !isObject(variables) ||
+    Object.keys(variables).length !== 1 ||
+    !["local", "preview", "production"].includes(
+      String(variables.DEPLOYMENT_ENV),
+    )
+  )
+    errors.push("vars must contain only a valid DEPLOYMENT_ENV");
+
+  const environment = isObject(variables)
+    ? String(variables.DEPLOYMENT_ENV)
+    : "";
+  if (
+    Array.isArray(services) &&
+    isObject(services[0]) &&
+    typeof services[0].service === "string" &&
+    services[0].service !== `quant-clarity-api-${environment}`
+  )
+    errors.push("API service and DEPLOYMENT_ENV must match");
+
+  const knownTopLevelKeys = new Set([
+    ...emptyCapabilityKeys,
+    ...generatedTelemetryKeys,
+    "assets",
+    "compatibility_date",
+    "compatibility_flags",
+    "configPath",
+    "definedEnvironments",
+    "dev",
+    "exports",
+    "jsx_factory",
+    "jsx_fragment",
+    "main",
+    "migrations",
+    "name",
+    "no_bundle",
+    "observability",
+    "previews",
+    "preview_urls",
+    "python_modules",
+    "ratelimits",
+    "rules",
+    "services",
+    "topLevelName",
+    "triggers",
+    "userConfigPath",
+    "vars",
+    "workers_dev",
+  ]);
+  for (const key of Object.keys(value)) {
+    if (!knownTopLevelKeys.has(key))
+      errors.push(`${key} is not an allowlisted frontend configuration field`);
+  }
+
+  errors.push(...validatePublicWorkerConfig(normalized, true));
   return errors;
 }

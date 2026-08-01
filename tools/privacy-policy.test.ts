@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   findBrowserContentViolations,
   findContentViolations,
+  findGeneratedArtifactViolations,
+  validateGeneratedFrontendConfig,
   validatePublicWorkerConfig,
 } from "./privacy-policy.js";
 
@@ -20,6 +22,16 @@ function safeConfig(): Record<string, unknown> {
       },
       traces: { enabled: false, persist: false, destinations: [] },
     },
+  };
+}
+
+function safeGeneratedConfig(): Record<string, unknown> {
+  return {
+    ...safeConfig(),
+    assets: { binding: "ASSETS", run_worker_first: true },
+    services: [{ binding: "API", service: "quant-clarity-api-local" }],
+    ratelimits: [{ name: "READ_LIMITER" }, { name: "ROTATION_LIMITER" }],
+    vars: { DEPLOYMENT_ENV: "local" },
   };
 }
 
@@ -76,5 +88,57 @@ describe("zero-visitor-data static policy (GATE-zero-visitor-data)", () => {
 
   it("accepts the complete explicit zero-data configuration", () => {
     expect(validatePublicWorkerConfig(safeConfig(), true)).toEqual([]);
+  });
+
+  it("audits normalized framework config without treating empty bindings as active", () => {
+    const generated = safeGeneratedConfig();
+    generated.analytics_engine_datasets = [];
+    generated.kv_namespaces = [];
+    generated.logfwdr = { bindings: [] };
+    expect(validateGeneratedFrontendConfig(generated)).toEqual([]);
+
+    generated.analytics_engine_datasets = [{ binding: "EVENTS" }];
+    expect(validateGeneratedFrontendConfig(generated)).toContain(
+      "analytics_engine_datasets must remain empty in generated configuration",
+    );
+  });
+
+  it("keeps high-signal telemetry checks on generated framework artifacts", () => {
+    expect(
+      findGeneratedArtifactViolations("navigator.sendBeacon('/collect')"),
+    ).toContain("browser beacon");
+    expect(
+      findGeneratedArtifactViolations("console.warn('framework diagnostic')"),
+    ).toContain("console call");
+    expect(
+      findGeneratedArtifactViolations(
+        'response.headers.append("Set-Cookie", "visitor=1")',
+      ),
+    ).not.toContain("cookie-setting response");
+  });
+
+  it("rejects every frontend capability outside the exact active allowlist", () => {
+    for (const [key, value] of [
+      ["queues", { producers: [{ binding: "JOBS" }] }],
+      ["workflows", [{ binding: "FLOW" }]],
+      ["hyperdrive", [{ binding: "DATABASE" }]],
+      ["pipelines", [{ binding: "EVENTS" }]],
+      ["send_email", [{ name: "MAIL" }]],
+      ["vpc_services", [{ binding: "PRIVATE" }]],
+    ] as const) {
+      const generated = safeGeneratedConfig();
+      generated[key] = value;
+      expect(validateGeneratedFrontendConfig(generated)).toContain(
+        `${key} persistence/AI binding is prohibited on the frontend`,
+      );
+    }
+  });
+
+  it("rejects personal build paths in generated artifacts", () => {
+    expect(
+      findGeneratedArtifactViolations(
+        'const root = "file:///Users/operator/project";',
+      ),
+    ).toContain("local macOS user path");
   });
 });

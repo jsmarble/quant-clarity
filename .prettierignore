@@ -1,7 +1,11 @@
 node_modules
 dist
+dist-worker
 coverage
+playwright-report
+test-results
 .wrangler
+.astro
 results.sarif
 contracts/generated
 **/worker-configuration.d.ts

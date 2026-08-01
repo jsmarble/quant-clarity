@@ -1,0 +1,36 @@
+---
+import EmptyPublication from "../../components/EmptyPublication.astro";
+import SearchForm from "../../components/SearchForm.astro";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+
+const query = Astro.url.searchParams.get("q")?.slice(0, 160) ?? "";
+---
+
+<BaseLayout
+  title="Browse models — QuantClarity"
+  description="Search and browse canonical models and explicit variants using evidence-backed model facts."
+  currentPath="/models"
+>
+  <header class="page-header shell">
+    <p class="eyebrow">Model-first discovery</p>
+    <h1>Models and explicit variants</h1>
+    <p class="lede narrow">
+      Model cards contain model facts only. Provider filters may determine
+      eligibility but never alter card facts or ordering.
+    </p>
+    <SearchForm value={query} compact />
+  </header>
+  <div class="shell results-region" aria-live="polite" aria-atomic="true">
+    {
+      query ? (
+        <p class="result-summary">
+          No published results for <strong>“{query}”</strong> because no dataset
+          has been released.
+        </p>
+      ) : (
+        <p class="result-summary">0 published models</p>
+      )
+    }
+    <EmptyPublication subject="models" />
+  </div>
+</BaseLayout>

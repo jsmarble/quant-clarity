@@ -40,8 +40,12 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
+      - name: Install browser test runtime
+        run: npx playwright install --with-deps chromium
+
       - name: Verify
         env:
+          ASTRO_TELEMETRY_DISABLED: "1"
           WRANGLER_SEND_METRICS: "false"
         run: npm run verify
 

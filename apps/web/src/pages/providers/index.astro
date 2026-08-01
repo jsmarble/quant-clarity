@@ -1,0 +1,24 @@
+---
+import EmptyPublication from "../../components/EmptyPublication.astro";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+---
+
+<BaseLayout
+  title="Browse providers — QuantClarity"
+  description="Browse providers and their evidence-backed inference offerings without scores or recommendations."
+  currentPath="/providers"
+>
+  <header class="page-header shell">
+    <p class="eyebrow">Neutral provider facts</p>
+    <h1>Providers</h1>
+    <p class="lede narrow">
+      Provider pages report offering coverage and known or unknown precision as
+      facts. They never convert those facts into a score, rating, or
+      recommendation.
+    </p>
+  </header>
+  <div class="shell results-region">
+    <p class="result-summary">0 published providers</p>
+    <EmptyPublication subject="providers" />
+  </div>
+</BaseLayout>

@@ -30,11 +30,14 @@
     "supply-chain:check": "tsx tools/check-licenses.ts && npm audit --audit-level=high && npm sbom --sbom-format cyclonedx >/dev/null",
     "test": "vitest run",
     "test:workers": "vitest run --config vitest.worker.config.ts",
+    "test:web": "playwright test --config playwright.config.ts",
+    "test:web:production": "QUANTCLARITY_BUILD_ENV=production QUANTCLARITY_SITE_ORIGIN=https://quantclarity.invalid npm run build -w @quant-clarity/web && QUANTCLARITY_EXPECTED_SITE_ORIGIN=https://quantclarity.invalid playwright test --config playwright.config.ts",
     "test:watch": "vitest",
-    "typecheck": "tsc -b",
-    "verify": "npm run format:check && npm run lint && npm run typecheck && npm run cf:types:check && npm run contracts:check && npm run docs:check && npm run environments:check && npm run supply-chain:check && npm test && npm run test:workers && npm run build && npm run privacy:check"
+    "typecheck": "tsc -b && tsc -p tsconfig.playwright.json --noEmit && npm run typecheck --workspaces --if-present",
+    "verify": "npm run format:check && npm run lint && npm run typecheck && npm run cf:types:check && npm run contracts:check && npm run docs:check && npm run environments:check && npm run supply-chain:check && npm test && npm run test:workers && npm run build && npm run test:web && npm run test:web:production && npm run privacy:check"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.12.1",
     "@cloudflare/vitest-pool-workers": "0.20.1",
     "@eslint/js": "10.0.1",
     "@playwright/test": "1.62.1",
@@ -44,9 +47,11 @@
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
     "eslint": "10.8.0",
+    "eslint-plugin-astro": "3.0.1",
     "fast-check": "4.9.0",
     "jsonc-parser": "3.3.1",
     "prettier": "3.9.6",
+    "prettier-plugin-astro": "0.14.1",
     "tsx": "4.23.1",
     "typescript": "6.0.3",
     "typescript-eslint": "8.65.0",

@@ -23,6 +23,9 @@ Use current pinned Astro and the official Cloudflare adapter in server-rendered 
 - Serve immutable build assets through Workers Static Assets. Author static security headers in `public/_headers`; attach the same applicable controls to SSR responses in Worker middleware.
 - Enable preview URLs only in the isolated preview environment. Every preview static and SSR response receives `X-Robots-Tag: noindex`; preview robots policy disallows indexing.
 - Keep production `workers_dev` and preview URLs disabled. Custom-domain promotion must preserve all public paths.
+- Disable Astro sessions with a fail-closed driver and prove the generated Worker has no session/persistence binding. The outer Worker strips visitor and credential headers before Astro, removes cookie headers after Astro, and applies query/error `private, no-store` plus preview `noindex` controls.
+- Sanitize framework-generated server artifacts before Wrangler packaging: remove executable framework console sinks, neutralize framework cookie-writing literals while retaining the outer cookie guard, and replace operator-local absolute paths. Audit the actual Wrangler upload, intermediate server output, and browser assets; the frontend binding validator fails closed outside `ASSETS`, one environment-matched API service, two named rate limiters, and `DEPLOYMENT_ENV`.
+- Omit canonical URL tags until a cleared production origin is supplied as the build-time `QUANTCLARITY_SITE_ORIGIN`; never publish a localhost or preview origin as canonical.
 
 Official references verified on 2026-08-01:
 
@@ -37,6 +40,7 @@ Official references verified on 2026-08-01:
 - The frontend can use the supported current Astro/adapter line without a legacy compatibility pin.
 - Static assets and SSR deploy as one versioned Worker unit while canonical data publication remains independently versioned.
 - The frontend Worker remains a separate public ingress and must execute the same transient rate-limit, zero-data, security-header, publication-pinning, and internal-envelope controls previously assigned to Pages SSR.
+- Local development may use one fixed, explicitly non-production HMAC key only when `DEPLOYMENT_ENV=local`. Preview and production remain fail-closed without their environment-scoped secret.
 - Preview `noindex` is now an application/configuration requirement rather than an assumed Pages default.
 - Workers Builds or protected GitHub deployment may create versions/previews later, but no automatic production promotion is authorized until release gates pass.
 
@@ -52,5 +56,7 @@ Official references verified on 2026-08-01:
 - Prove primary facts are present in raw HTML without client JavaScript.
 - Prove the frontend has only its asset and API service bindings.
 - Crawl static and SSR preview paths and require `X-Robots-Tag: noindex`, no cookies/storage/beacons, and no unexpected network requests.
+- Fail the build when generated client/server/upload artifacts contain executable console sinks, browser persistence/telemetry, operator-local paths, or a non-allowlisted frontend capability binding.
+- Exercise the packaged Worker in Chromium with axe automation, keyboard focus, JavaScript disabled, reduced motion, a 320-pixel viewport, 200% zoom, no cookies, no external requests, and no browser console errors.
 - Verify current custom-domain routing preserves the canonical path structure.
 - Run keyboard, screen-reader, zoom, contrast, reduced-motion, controlled Lighthouse, and repeatable build checks.
