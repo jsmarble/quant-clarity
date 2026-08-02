@@ -25,6 +25,8 @@ import {
   type PublicationHead,
   PublicationHeadSchema,
   PublicationManifestSchema,
+  checkSearchCollectionContract,
+  SearchCollectionSchema,
   SearchResultSchema,
   validateAdapterBatchSemantics,
   validateAdapterManifestSemantics,
@@ -332,6 +334,134 @@ describe("canonical public contracts (DATA-040–DATA-061, API-002–API-006)", 
     expect(validate({ ...providerResult, resource_id: `mdl_${UUID}` })).toBe(
       false,
     );
+  });
+
+  it("requires a bounded collection semantic state mirrored by every search result", () => {
+    const validate = standaloneValidator(SearchCollectionSchema);
+    const collection = (semanticDegraded: unknown, withResult = true) => ({
+      data: withResult
+        ? [
+            {
+              resource_type: "provider",
+              resource_id: `prv_${UUID}`,
+              display_name: knownFact("Example Provider"),
+              match_kind: "provider_name",
+              semantic_degraded: semanticDegraded,
+            },
+          ]
+        : [],
+      page: { next_cursor: null, limit: 20 },
+      meta: {
+        semantic_degraded: semanticDegraded,
+        resource: "search",
+        publication_id: `pub_${UUID}`,
+        schema_version: "1.0.0",
+        sort: ["relevance", "stable_id"],
+        filters: {},
+      },
+    });
+
+    expect(checkSearchCollectionContract(collection("disabled", false))).toBe(
+      true,
+    );
+    for (const knownValue of [
+      "none",
+      "disabled",
+      "eligibility_limit",
+      "temporarily_unavailable",
+    ]) {
+      expect(checkSearchCollectionContract(collection(knownValue))).toBe(true);
+      expect(checkSearchCollectionContract(collection(knownValue, false))).toBe(
+        true,
+      );
+    }
+
+    const boundedFutureValue = "f".repeat(128);
+    expect(checkSearchCollectionContract(collection(boundedFutureValue))).toBe(
+      true,
+    );
+
+    const scalarBoundary = "😀".repeat(128);
+    expect(validate(collection(scalarBoundary))).toBe(true);
+    expect(checkSearchCollectionContract(collection(scalarBoundary))).toBe(
+      true,
+    );
+    expect(validate(collection("😀".repeat(129)))).toBe(false);
+    expect(checkSearchCollectionContract(collection("😀".repeat(129)))).toBe(
+      false,
+    );
+
+    const displayNameScalarBoundary = collection("none");
+    displayNameScalarBoundary.data[0]!.display_name = knownFact(
+      "😀".repeat(200),
+    );
+    expect(validate(displayNameScalarBoundary)).toBe(true);
+    expect(checkSearchCollectionContract(displayNameScalarBoundary)).toBe(true);
+    displayNameScalarBoundary.data[0]!.display_name = knownFact(
+      "😀".repeat(201),
+    );
+    expect(validate(displayNameScalarBoundary)).toBe(false);
+    expect(checkSearchCollectionContract(displayNameScalarBoundary)).toBe(
+      false,
+    );
+
+    const scalarBoundaryBase = collection("none");
+    const otherScalarBoundaries = {
+      ...scalarBoundaryBase,
+      page: {
+        ...scalarBoundaryBase.page,
+        next_cursor: "😀".repeat(4096),
+      },
+      meta: {
+        ...scalarBoundaryBase.meta,
+        filters: { provider: "😀".repeat(512) },
+      },
+    };
+    otherScalarBoundaries.data[0]!.match_kind = "😀".repeat(128);
+    expect(validate(otherScalarBoundaries)).toBe(true);
+    expect(checkSearchCollectionContract(otherScalarBoundaries)).toBe(true);
+    otherScalarBoundaries.meta.filters.provider = "😀".repeat(513);
+    expect(validate(otherScalarBoundaries)).toBe(false);
+    expect(checkSearchCollectionContract(otherScalarBoundaries)).toBe(false);
+
+    for (const fallbackState of [
+      "disabled",
+      "eligibility_limit",
+      "temporarily_unavailable",
+    ]) {
+      const leakedSemanticResult = collection(fallbackState);
+      leakedSemanticResult.data[0]!.match_kind = "semantic";
+      expect(validate(leakedSemanticResult)).toBe(true);
+      expect(checkSearchCollectionContract(leakedSemanticResult)).toBe(false);
+    }
+
+    const missing = collection("disabled");
+    const metaWithoutState = Object.fromEntries(
+      Object.entries(missing.meta).filter(
+        ([name]) => name !== "semantic_degraded",
+      ),
+    );
+    expect(validate({ ...missing, meta: metaWithoutState })).toBe(false);
+    expect(
+      checkSearchCollectionContract({ ...missing, meta: metaWithoutState }),
+    ).toBe(false);
+    expect(
+      checkSearchCollectionContract({
+        ...missing,
+        meta: { ...missing.meta, semantic_degraded: null },
+      }),
+    ).toBe(false);
+    expect(checkSearchCollectionContract(collection(""))).toBe(false);
+    expect(checkSearchCollectionContract(collection(false))).toBe(false);
+    expect(checkSearchCollectionContract(collection("f".repeat(129)))).toBe(
+      false,
+    );
+    expect(
+      checkSearchCollectionContract({
+        ...missing,
+        data: [{ ...missing.data[0], semantic_degraded: "none" }],
+      }),
+    ).toBe(false);
   });
 
   it("requires exact decimal price provenance and evidence", () => {

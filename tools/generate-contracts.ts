@@ -59,11 +59,11 @@ const apiSchemas = Object.fromEntries(
 type CachePolicy =
   "active-detail" | "collection" | "contract" | "error" | "metadata";
 
-const cacheControlExample: Record<CachePolicy, string> = {
+const cacheControlValue: Record<CachePolicy, string> = {
   "active-detail": "max-age=0, must-revalidate",
   collection: "private, no-store",
   contract: "private, no-store",
-  error: "no-store",
+  error: "private, no-store",
   metadata: "no-store",
 };
 
@@ -105,7 +105,12 @@ function responseHeaders(cachePolicy: CachePolicy) {
     },
     "Cache-Control": {
       description: "Visitor-safe cache policy for this representation class.",
-      schema: { type: "string", example: cacheControlExample[cachePolicy] },
+      schema: {
+        type: "string",
+        ...(cachePolicy === "collection" || cachePolicy === "error"
+          ? { const: cacheControlValue[cachePolicy] }
+          : { example: cacheControlValue[cachePolicy] }),
+      },
     },
     "X-QuantClarity-Publication": {
       description: "Publication ID used for this response.",
@@ -387,6 +392,7 @@ function collectionOperation(
   extraParameters: JsonObject[] = [],
   maximumLimit = 100,
   requireQuery = false,
+  responseExample?: unknown,
 ) {
   const parameters = [
     ...collectionParameters(policyName, maximumLimit, requireQuery),
@@ -398,7 +404,12 @@ function collectionOperation(
       summary,
       parameters: withReadHeaders(parameters),
       responses: {
-        "200": jsonResponse(summary, responseSchema, "collection"),
+        "200": jsonResponse(
+          summary,
+          responseSchema,
+          "collection",
+          responseExample,
+        ),
         "304": notModifiedResponse("collection"),
         ...commonErrors,
       },
@@ -473,7 +484,7 @@ const openapi = {
     title: "QuantClarity public API",
     version: "1.0.0",
     description:
-      "Anonymous, read-only, neutral inference-provider facts. Unknowns are explicit, prices are never currency-converted or blended, and no visitor telemetry is retained.",
+      "Anonymous, read-only, neutral inference-provider facts. Unknowns are explicit, prices are never currency-converted or blended, and no visitor telemetry is retained. Within /v1, clients recursively ignore additive unknown object fields and tolerate bounded unknown values in extensible string vocabularies.",
   },
   security: [],
   servers: [
@@ -694,6 +705,18 @@ const openapi = {
       [],
       20,
       true,
+      {
+        data: [],
+        page: { next_cursor: null, limit: 20 },
+        meta: {
+          semantic_degraded: "disabled",
+          resource: "search",
+          publication_id: "pub_00000000-0000-4000-8000-000000000001",
+          schema_version: "1.0.0",
+          sort: ["relevance", "stable_id"],
+          filters: {},
+        },
+      },
     ),
     "/openapi.json": {
       get: {

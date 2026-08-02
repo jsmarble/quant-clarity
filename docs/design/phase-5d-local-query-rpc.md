@@ -39,12 +39,14 @@ Local unit and workerd/D1 evidence for this slice must prove:
 
 Passing those tests is narrow local/runtime evidence only. A real API-to-query auxiliary or remote service-binding test, multi-activation arbitrary-superseded workerd rejection, remote service-binding configuration, real preview/production D1 bindings and replica behavior, multi-PoP behavior, production load, resource isolation, deployed no-route and observability settings, and every composite release gate remain pending.
 
-## P1 blockers before public integration
+## Phase 5E follow-up resolution
+
+[ADR 0024](../decisions/0024-search-collection-semantic-degradation.md) and [Phase 5E](phase-5e-search-collection-degradation.md) resolve the empty-result representation blocker recorded by this slice. `SearchCollection.meta.semantic_degraded` is now the required authoritative collection state, including for empty fallback, and every `/v1` result retains an identical compatibility mirror. That contract-only resolution does not make the public route reachable, decide provider-only semantic applicability, or complete runtime degradation evidence.
+
+## Remaining P1 blockers before public integration
 
 - **Complete search tiers and filters:** model, variant, provider-model-ID, alias, prefix/keyword, structured-filter, and deterministic global tier-merge paths are not implemented. A provider exact-name tier is not the public exact-first search contract.
 - **Cursor tuple:** the public `relevance, stable_id` cursor tuple and the exact-tier `tier, normalized-name, stable-ID` continuation are not interchangeable. A follow-up ADR must define merged pagination before a public cursor can be issued or consumed; Phase 5D therefore remains first-page-only.
-- **Empty degradation state:** `SearchCollection` cannot state `semantic_degraded=disabled` when it has no result item. The collection contract must gain an unambiguous bounded degradation representation before empty public fallback responses are exposed.
-
 Dedicated search limiter classes and thresholds, approved production ceilings, public-query AI privacy/legal approval, remote resource IDs, checked environment inventory, protected deployment configuration, and deployed abuse/privacy/load evidence are also blockers. These are correctness gates, not deferred polish.
 
 ## Non-claims and traceability

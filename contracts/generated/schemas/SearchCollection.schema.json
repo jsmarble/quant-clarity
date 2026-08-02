@@ -143,7 +143,8 @@
                   "disabled",
                   "eligibility_limit",
                   "temporarily_unavailable"
-                ]
+                ],
+                "description": "Known values: none means the applicable semantic plan completed; disabled means applicable semantic work was intentionally not attempted; eligibility_limit means complete eligibility exceeded the bounded plan and no incomplete subset was queried; temporarily_unavailable means a semantic dependency failed and partial semantic candidates were discarded. This required non-null open string has no default. On a result this is a compatibility mirror that must exactly equal the authoritative collection metadata value."
               }
             }
           },
@@ -277,7 +278,8 @@
                   "disabled",
                   "eligibility_limit",
                   "temporarily_unavailable"
-                ]
+                ],
+                "description": "Known values: none means the applicable semantic plan completed; disabled means applicable semantic work was intentionally not attempted; eligibility_limit means complete eligibility exceeded the bounded plan and no incomplete subset was queried; temporarily_unavailable means a semantic dependency failed and partial semantic candidates were discarded. This required non-null open string has no default. On a result this is a compatibility mirror that must exactly equal the authoritative collection metadata value."
               }
             }
           },
@@ -411,7 +413,8 @@
                   "disabled",
                   "eligibility_limit",
                   "temporarily_unavailable"
-                ]
+                ],
+                "description": "Known values: none means the applicable semantic plan completed; disabled means applicable semantic work was intentionally not attempted; eligibility_limit means complete eligibility exceeded the bounded plan and no incomplete subset was queried; temporarily_unavailable means a semantic dependency failed and partial semantic candidates were discarded. This required non-null open string has no default. On a result this is a compatibility mirror that must exactly equal the authoritative collection metadata value."
               }
             }
           }
@@ -449,6 +452,7 @@
       "additionalProperties": false,
       "type": "object",
       "required": [
+        "semantic_degraded",
         "resource",
         "publication_id",
         "schema_version",
@@ -456,6 +460,18 @@
         "filters"
       ],
       "properties": {
+        "semantic_degraded": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "x-extensible-enum": [
+            "none",
+            "disabled",
+            "eligibility_limit",
+            "temporarily_unavailable"
+          ],
+          "description": "Known values: none means the applicable semantic plan completed; disabled means applicable semantic work was intentionally not attempted; eligibility_limit means complete eligibility exceeded the bounded plan and no incomplete subset was queried; temporarily_unavailable means a semantic dependency failed and partial semantic candidates were discarded. This required non-null open string has no default. This collection metadata field is authoritative for every result, including an empty collection. Known fallback states contain no semantic match_kind results."
+        },
         "resource": {
           "const": "search",
           "type": "string"
