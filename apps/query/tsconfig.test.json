@@ -1,0 +1,25 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "skipLibCheck": true,
+    "types": [
+      "./worker-configuration.d.ts",
+      "@cloudflare/vitest-pool-workers/types",
+      "vitest/globals"
+    ]
+  },
+  "include": [
+    "src/**/*.ts",
+    "test-env.d.ts",
+    "worker-configuration.d.ts",
+    "../pipeline/src/provider-search-staging.ts",
+    "../pipeline/src/readiness-commit-v2.ts",
+    "../pipeline/src/serving-switch.ts",
+    "../pipeline/test/provider-search-d1-fixture.ts",
+    "../pipeline/test/serving-switch-fixture.ts"
+  ],
+  "references": [
+    { "path": "../../packages/publication-core/tsconfig.build.json" }
+  ]
+}

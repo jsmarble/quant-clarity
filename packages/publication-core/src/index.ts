@@ -1,9 +1,6 @@
-import { FormatRegistry, type Static } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
-
 import {
+  checkProviderContract,
   PROVIDER_DISPLAY_NAME_MAX_UNICODE_SCALARS,
-  ProviderSchema,
 } from "@quant-clarity/contracts";
 
 import {
@@ -29,6 +26,7 @@ export {
 
 export type Sha256 = `sha256:${string}`;
 export type PublicationId = `pub_${string}`;
+export const PUBLICATION_RESOURCE_JSON_MAX_BYTES = 1_000_000;
 
 export const PROVIDER_SEARCH_PROJECTION_VERSION = "provider-name@1" as const;
 export const PROVIDER_SEARCH_NORMALIZED_NAME_MAX_UNICODE_SCALARS =
@@ -591,60 +589,6 @@ const assertTimestamp = (value: string, label: string): number => {
   return parsed;
 };
 
-const isContractTimestamp = (value: string): boolean => {
-  try {
-    assertTimestamp(value, "contract timestamp");
-    return true;
-  } catch {
-    return false;
-  }
-};
-
-type ProviderResource = Static<typeof ProviderSchema>;
-
-const checkProviderContract = (value: unknown): value is ProviderResource => {
-  let validationCandidate = value;
-  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
-    const provider = value as Record<string, unknown>;
-    const displayName = provider.display_name;
-    if (
-      typeof displayName === "object" &&
-      displayName !== null &&
-      !Array.isArray(displayName)
-    ) {
-      const displayFact = displayName as Record<string, unknown>;
-      if (displayFact.state === "known") {
-        if (typeof displayFact.value !== "string") return false;
-        const scalarLength = Array.from(displayFact.value).length;
-        if (scalarLength > PROVIDER_DISPLAY_NAME_MAX_UNICODE_SCALARS)
-          return false;
-        // TypeBox Value.Check currently applies JSON Schema maxLength with
-        // JavaScript UTF-16 code units. Substitute only this already-bounded
-        // unconstrained string value so TypeBox still validates the complete
-        // ProviderSchema shape, all provenance, and every other field.
-        if (
-          displayFact.value.length > PROVIDER_DISPLAY_NAME_MAX_UNICODE_SCALARS
-        )
-          validationCandidate = {
-            ...provider,
-            display_name: {
-              ...displayFact,
-              value: "x".repeat(scalarLength),
-            },
-          };
-      }
-    }
-  }
-  const previousDateTime = FormatRegistry.Get("date-time");
-  FormatRegistry.Set("date-time", isContractTimestamp);
-  try {
-    return Value.Check(ProviderSchema, validationCandidate);
-  } finally {
-    if (previousDateTime === undefined) FormatRegistry.Delete("date-time");
-    else FormatRegistry.Set("date-time", previousDateTime);
-  }
-};
-
 const assertSafeInteger = (
   value: number,
   minimum: number,
@@ -821,7 +765,7 @@ export const canonicalizePublicationJson = (
   text: string,
   expectedContainer?: "array" | "object",
 ): string => {
-  if (utf8.encode(text).length > 1_000_000)
+  if (utf8.encode(text).length > PUBLICATION_RESOURCE_JSON_MAX_BYTES)
     throw new RangeError("publication JSON exceeds the byte limit");
   let value: unknown;
   try {

@@ -8,6 +8,7 @@ import {
   AdapterBatchSchema,
   AdapterManifestSchema,
   CandidateFactSchema,
+  checkProviderContract,
   derivePublicationVectorId,
   EvidenceIdSchema,
   FactSchema,
@@ -167,13 +168,34 @@ describe("canonical public contracts (DATA-040–DATA-061, API-002–API-006)", 
     };
     expect(PROVIDER_DISPLAY_NAME_MAX_UNICODE_SCALARS).toBe(200);
     expect(validate(provider)).toBe(true);
+    expect(checkProviderContract(provider)).toBe(true);
     expect(
       validate({
         ...provider,
         display_name: knownFact("\u{1f642}".repeat(201)),
       }),
     ).toBe(false);
+    expect(
+      checkProviderContract({
+        ...provider,
+        display_name: knownFact("\u{1f642}".repeat(201)),
+      }),
+    ).toBe(false);
     expect(validate({ ...provider, display_name: knownFact("") })).toBe(false);
+    expect(
+      checkProviderContract({
+        ...provider,
+        display_name: knownFact(""),
+      }),
+    ).toBe(false);
+    expect(
+      checkProviderContract({
+        ...provider,
+        display_name: knownFact("Provider"),
+        status: knownFact("active"),
+        last_successful_refresh: knownFact("2026-08-01T00:00:00.000+00:00"),
+      }),
+    ).toBe(false);
   });
 
   it("requires evidence for public identity names and slugs", () => {

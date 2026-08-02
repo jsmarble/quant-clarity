@@ -1,4 +1,10 @@
-import { Type, type Static, type TSchema } from "@sinclair/typebox";
+import {
+  FormatRegistry,
+  Type,
+  type Static,
+  type TSchema,
+} from "@sinclair/typebox";
+import { Value } from "@sinclair/typebox/value";
 import { publicationVectorId } from "@quant-clarity/domain/publication-consistency";
 
 const UUID_V4 =
@@ -392,6 +398,63 @@ export const ProviderSchema = Type.Object(
   },
   { $id: "Provider", additionalProperties: false },
 );
+
+export type Provider = Static<typeof ProviderSchema>;
+
+const isCanonicalContractTimestamp = (value: string): boolean => {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u.test(value))
+    return false;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) && new Date(parsed).toISOString() === value;
+};
+
+/**
+ * Worker-safe Provider contract validation with JSON Schema Unicode-scalar
+ * maxLength semantics. TypeBox 0.34 counts JavaScript UTF-16 code units, so
+ * only the already-bounded display-name candidate is substituted before the
+ * complete schema check. The original object is never mutated.
+ */
+export const checkProviderContract = (value: unknown): value is Provider => {
+  let validationCandidate = value;
+  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+    const provider = value as Record<string, unknown>;
+    const displayName = provider.display_name;
+    if (
+      typeof displayName === "object" &&
+      displayName !== null &&
+      !Array.isArray(displayName)
+    ) {
+      const displayFact = displayName as Record<string, unknown>;
+      if (displayFact.state === "known") {
+        if (typeof displayFact.value !== "string") return false;
+        const scalarLength = Array.from(displayFact.value).length;
+        if (scalarLength > PROVIDER_DISPLAY_NAME_MAX_UNICODE_SCALARS)
+          return false;
+        if (
+          displayFact.value.length > PROVIDER_DISPLAY_NAME_MAX_UNICODE_SCALARS
+        )
+          validationCandidate = {
+            ...provider,
+            display_name: {
+              ...displayFact,
+              value: "x".repeat(scalarLength),
+            },
+          };
+      }
+    }
+  }
+
+  // Validation is synchronous, so another Worker event cannot observe the
+  // temporary registry value between installation and restoration.
+  const previousDateTime = FormatRegistry.Get("date-time");
+  FormatRegistry.Set("date-time", isCanonicalContractTimestamp);
+  try {
+    return Value.Check(ProviderSchema, validationCandidate);
+  } finally {
+    if (previousDateTime === undefined) FormatRegistry.Delete("date-time");
+    else FormatRegistry.Set("date-time", previousDateTime);
+  }
+};
 
 const OfferingStatusSchema = extensibleString(
   ["active", "inactive", "unavailable"],
