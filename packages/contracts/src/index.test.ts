@@ -8,6 +8,7 @@ import {
   AdapterBatchSchema,
   AdapterManifestSchema,
   CandidateFactSchema,
+  derivePublicationVectorId,
   EvidenceIdSchema,
   FactSchema,
   type AdapterManifest,
@@ -17,10 +18,13 @@ import {
   PriceSchema,
   PrecisionFormatSchema,
   type PublicationManifest,
+  type PublicationHead,
+  PublicationHeadSchema,
   PublicationManifestSchema,
   SearchResultSchema,
   validateAdapterBatchSemantics,
   validateAdapterManifestSemantics,
+  validatePublicationActivation,
   validatePublicationManifestSemantics,
 } from "./index.js";
 
@@ -651,31 +655,47 @@ describe("provider adapter contract (PIPE-010–PIPE-019, SEC-003–SEC-006)", (
 });
 
 describe("atomic publication contract (PIPE-050–PIPE-056)", () => {
-  it("requires versioned provider slices, search readiness, and closure hash", () => {
+  it("requires versioned provider slices, search readiness, and closure hash", async () => {
     const validate = standaloneValidator(PublicationManifestSchema);
     const manifest = {
       publication_id: `pub_${UUID}`,
       state: "ready",
       schema_version: "1.0.0",
+      methodology_version: "methodology@1",
+      precision_normalization_version: "precision@1",
+      precision_display_order_version: "display@1",
+      price_policy_version: "price@1",
+      source_policy_version: "source@1",
+      embedding_version: "embedding@1",
+      build_commit: "commit",
       generated_at: "2026-08-01T00:00:00.000Z",
       ready_at: "2026-08-01T00:01:00.000Z",
       activated_at: null,
       source_run_id: `run_${UUID}`,
       parent_publication_id: null,
+      enabled_provider_scope_version: "providers@1",
+      enabled_provider_ids: [`prv_${UUID}`],
       provider_slices: [
         {
           provider_id: `prv_${UUID}`,
+          provider_slice_id: `prn_${UUID}`,
           provider_run_id: `pvr_${UUID}`,
+          adapter_version: "adapter@1",
+          roster_version: "roster@1",
+          source_register_version: "register@1",
           carried_forward: false,
           freshness_state: "fresh",
         },
       ],
+      provider_attributions: [],
       resources: [],
       search_index: {
+        vector_namespace: `pub_${UUID}`,
         exact_document_count: 0,
         vector_document_count: 0,
         exact_index_hash: `sha256:${"d".repeat(64)}`,
         vector_index_version: "vector@1",
+        vectors: [],
         queryable: true,
       },
       closure_hash: `sha256:${"e".repeat(64)}`,
@@ -683,15 +703,88 @@ describe("atomic publication contract (PIPE-050–PIPE-056)", () => {
     };
     expect(validate(manifest)).toBe(true);
     expect(validate({ ...manifest, closure_hash: "not-a-hash" })).toBe(false);
+    expect(validate({ ...manifest, build_commit: "" })).toBe(false);
+    expect(
+      validate({ ...manifest, enabled_provider_scope_version: "scope\n2" }),
+    ).toBe(false);
     expect(validate({ ...manifest, source_run_id: `pub_${UUID}` })).toBe(false);
+    expect(
+      validate({
+        ...manifest,
+        provider_slices: manifest.provider_slices.map((slice) =>
+          Object.fromEntries(
+            Object.entries(slice).filter(
+              ([fieldName]) => fieldName !== "provider_slice_id",
+            ),
+          ),
+        ),
+      }),
+    ).toBe(false);
     expect(validate({ ...manifest, state: "active", activated_at: null })).toBe(
       false,
     );
     expect(
-      validatePublicationManifestSemantics(manifest as PublicationManifest),
+      await validatePublicationManifestSemantics(
+        manifest as PublicationManifest,
+      ),
     ).toEqual([]);
     expect(
-      validatePublicationManifestSemantics({
+      await validatePublicationManifestSemantics({
+        ...manifest,
+        provider_slices: [
+          {
+            ...manifest.provider_slices[0],
+            carried_forward: false,
+            freshness_state: "stale",
+          },
+        ],
+      } as PublicationManifest),
+    ).toContain(
+      `provider slice carry-forward and freshness disagree: prv_${UUID}`,
+    );
+    expect(
+      await validatePublicationManifestSemantics({
+        ...manifest,
+        provider_slices: [
+          {
+            ...manifest.provider_slices[0],
+            provider_slice_id: null,
+          },
+        ],
+      } as PublicationManifest),
+    ).toContain(`provider slice identity and freshness disagree: prv_${UUID}`);
+    expect(
+      await validatePublicationManifestSemantics({
+        ...manifest,
+        enabled_provider_ids: [`prv_00000000-0000-4000-8000-000000000002`],
+      } as PublicationManifest),
+    ).toContain("provider slices do not exactly cover enabled provider scope");
+    const unavailable = {
+      ...manifest,
+      provider_slices: [
+        {
+          ...manifest.provider_slices[0],
+          provider_slice_id: null,
+          carried_forward: false,
+          freshness_state: "unavailable",
+        },
+      ],
+    } as PublicationManifest;
+    expect(validate(unavailable)).toBe(true);
+    expect(await validatePublicationManifestSemantics(unavailable)).toEqual([]);
+    expect(
+      await validatePublicationManifestSemantics({
+        ...unavailable,
+        provider_slices: [
+          {
+            ...unavailable.provider_slices[0],
+            provider_slice_id: `prn_${UUID}`,
+          },
+        ],
+      } as PublicationManifest),
+    ).toContain(`provider slice identity and freshness disagree: prv_${UUID}`);
+    expect(
+      await validatePublicationManifestSemantics({
         ...manifest,
         provider_slices: [
           ...manifest.provider_slices,
@@ -717,7 +810,7 @@ describe("atomic publication contract (PIPE-050–PIPE-056)", () => {
       ]),
     );
     expect(
-      validatePublicationManifestSemantics({
+      await validatePublicationManifestSemantics({
         ...manifest,
         resources: [
           {
@@ -738,5 +831,147 @@ describe("atomic publication contract (PIPE-050–PIPE-056)", () => {
         },
       } as PublicationManifest),
     ).toContain(`duplicate publication resource: model:mdl_${UUID}`);
+
+    const providerResource = {
+      resource_type: "provider" as const,
+      resource_id: `prv_${UUID}`,
+      content_hash: `sha256:${"4".repeat(64)}`,
+    };
+    const providerAttribution = {
+      resource_type: "provider" as const,
+      resource_id: providerResource.resource_id,
+      provider_id: `prv_${UUID}`,
+    };
+    const providerManifest = {
+      ...manifest,
+      resources: [providerResource],
+      provider_attributions: [providerAttribution],
+    } as PublicationManifest;
+    expect(validate(providerManifest)).toBe(true);
+    expect(
+      await validatePublicationManifestSemantics(providerManifest),
+    ).toEqual([]);
+    expect(
+      await validatePublicationManifestSemantics({
+        ...providerManifest,
+        provider_attributions: [],
+      }),
+    ).toContain("provider attribution inventory does not close over resources");
+    expect(
+      await validatePublicationManifestSemantics({
+        ...providerManifest,
+        provider_slices: [
+          {
+            ...providerManifest.provider_slices[0]!,
+            provider_slice_id: null,
+            freshness_state: "unavailable",
+          },
+        ],
+      }),
+    ).toContain(
+      `unavailable provider owns attributed public resource: provider:prv_${UUID}`,
+    );
+
+    const modelResource = {
+      resource_type: "model" as const,
+      resource_id: `mdl_${UUID}`,
+      content_hash: `sha256:${"f".repeat(64)}`,
+    };
+    const vectorId = await derivePublicationVectorId(
+      manifest.publication_id,
+      "model",
+      modelResource.resource_id,
+    );
+    const vector = {
+      vector_id: vectorId,
+      resource_type: "model" as const,
+      resource_id: `mdl_${UUID}`,
+      search_document_content_hash: `sha256:${"2".repeat(64)}`,
+      embedding_input_hash: `sha256:${"3".repeat(64)}`,
+    };
+    const indexedManifest = {
+      ...manifest,
+      resources: [modelResource],
+      search_index: {
+        ...manifest.search_index,
+        exact_document_count: 1,
+        vector_document_count: 1,
+        vectors: [vector],
+      },
+    } as PublicationManifest;
+    expect(validate(indexedManifest)).toBe(true);
+    expect(
+      validate({
+        ...indexedManifest,
+        search_index: {
+          ...indexedManifest.search_index,
+          vectors: [{ ...vector, vector_id: "G".repeat(64) }],
+        },
+      }),
+    ).toBe(false);
+    expect(await validatePublicationManifestSemantics(indexedManifest)).toEqual(
+      [],
+    );
+    expect(
+      await validatePublicationManifestSemantics({
+        ...indexedManifest,
+        search_index: {
+          ...indexedManifest.search_index,
+          vectors: [{ ...vector, vector_id: "1".repeat(64) }],
+        },
+      }),
+    ).toContain(
+      `publication vector ID does not match ADR 0013 identity: model:mdl_${UUID}`,
+    );
+    expect(
+      await validatePublicationManifestSemantics({
+        ...indexedManifest,
+        search_index: {
+          ...indexedManifest.search_index,
+          vector_namespace: `pub_00000000-0000-4000-8000-000000000002`,
+          vectors: [vector, vector],
+          vector_document_count: 2,
+        },
+      }),
+    ).toEqual(
+      expect.arrayContaining([
+        "vector namespace does not match publication",
+        `duplicate publication vector: ${vectorId}`,
+        `duplicate publication vector resource: model:mdl_${UUID}`,
+      ]),
+    );
+
+    const activeManifest = {
+      ...indexedManifest,
+      state: "active",
+      activated_at: "2026-08-01T00:02:00.000Z",
+    } as PublicationManifest;
+    const head = {
+      active_publication_id: activeManifest.publication_id,
+      vector_namespace: activeManifest.publication_id,
+      manifest_hash: activeManifest.closure_hash,
+      published_at: activeManifest.activated_at,
+      rollback_candidate_publication_id: null,
+      switched_at: "2026-08-01T00:02:00.000Z",
+      generation: 1,
+    } as PublicationHead;
+    expect(standaloneValidator(PublicationHeadSchema)(head)).toBe(true);
+    expect(await validatePublicationActivation(activeManifest, head)).toEqual(
+      [],
+    );
+    expect(
+      await validatePublicationActivation(activeManifest, {
+        ...head,
+        vector_namespace: `pub_00000000-0000-4000-8000-000000000002`,
+        manifest_hash: `sha256:${"0".repeat(64)}`,
+        published_at: "2026-08-01T00:03:00.000Z",
+      }),
+    ).toEqual(
+      expect.arrayContaining([
+        "publication head namespace does not select manifest",
+        "publication head hash does not match manifest closure",
+        "publication head time does not match manifest activation",
+      ]),
+    );
   });
 });

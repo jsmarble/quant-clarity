@@ -235,8 +235,8 @@ Verification IDs are planned stable anchors. The prefix states the primary verif
 | `SRCH-003` | §10 | Semantic search shall support natural-language queries such as “GLM models offered in FP8” or “Kimi coding… | `D10`, `D16`, `D19` | Search acceptance — `SAT-SRCH-003` | Planned |
 | `SRCH-004` | §10 | Search filters shall include record type, model/family, provider, normalized precision, status, freshness,… | `D10`, `D16`, `D19` | Search acceptance — `SAT-SRCH-004` | Planned |
 | `SRCH-005` | §10 | Price ranges shall be applied as structured filters, not inferred from embeddings. | `D10`, `D16`, `D19` | Search acceptance — `SAT-SRCH-005` | Planned |
-| `SRCH-006` | §10 | Search index records shall reference stable canonical IDs; canonical facts shall be fetched from the… | `D10`, `D16`, `D19` | Search acceptance — `SAT-SRCH-006` | Planned |
-| `SRCH-007` | §10 | A data publication shall not be considered complete until corresponding search-index changes are queryable… | `D10`, `D16`, `D19` | Search acceptance — `SAT-SRCH-007` | Planned |
+| `SRCH-006` | §10 | Search index records shall reference stable canonical IDs; canonical facts shall be fetched from the… | `D10`, `D16`, `D19` | Search acceptance — `SAT-SRCH-006`; [Phase 4 local evidence](phase-4-local-kernel.md) | Planned |
+| `SRCH-007` | §10 | A data publication shall not be considered complete until corresponding search-index changes are queryable… | `D10`, `D16`, `D19` | Search acceptance — `SAT-SRCH-007`; [Phase 4 local readiness decision](phase-4-local-kernel.md), Vectorize evidence pending | Planned |
 | `SRCH-008` | §10 | Deleted or inactive records shall be removed from default search results without destroying their historical… | `D10`, `D16`, `D19` | Search acceptance — `SAT-SRCH-008` | Planned |
 | `SRCH-009` | §10 | Search shall tolerate common punctuation, case, separator, and organization-prefix differences. | `D10`, `D16`, `D19` | Search acceptance — `SAT-SRCH-009` | Planned |
 | `SRCH-010` | §10 | Search quality shall be evaluated against version-controlled exact, alias, filter, semantic, and no-result… | `D10`, `D16`, `D19` | Search acceptance — `SAT-SRCH-010` | Planned |
@@ -249,7 +249,7 @@ Verification IDs are planned stable anchors. The prefix states the primary verif
 | `API-001` | §11.1 | The API shall be anonymous, public, read-only, and versioned under a stable major-version path. | `D09`, `D16`, `D19` | API conformance — `ACT-API-001` | Planned |
 | `API-002` | §11.1 | The initial API shall provide collections and detail resources for models, variants, providers, offerings,… | `D09`, `D16`, `D19` | API conformance — `ACT-API-002` | Planned |
 | `API-002A` | §11.1 | Model Facts and Offering Facts are presentation views backed by the model, variant, offering, price,… | `D09`, `D16`, `D19` | API conformance — `ACT-API-002A` | Planned |
-| `API-003` | §11.1 | API data shall be the same canonical published data used by the website. | `D09`, `D16`, `D19` | API conformance — `ACT-API-003`; ADR 0013 local contract | Planned |
+| `API-003` | §11.1 | API data shall be the same canonical published data used by the website. | `D09`, `D16`, `D19` | API conformance — `ACT-API-003`; ADR 0013 contract; [Phase 4 local selection decision](phase-4-local-kernel.md), public transport pending | Planned |
 | `API-004` | §11.1 | Responses shall use JSON and UTF-8, with documented field types, units, enums, null behavior, and timestamps. | `D09`, `D16`, `D19` | API conformance — `ACT-API-004` | Planned |
 | `API-005` | §11.1 | Unknown facts shall be null or an explicit unknown enum as documented; they shall not be omitted… | `D09`, `D16`, `D19` | API conformance — `ACT-API-005` | Planned |
 | `API-006` | §11.1 | Decimal prices shall be serialized without binary floating-point artifacts. | `D09`, `D16`, `D19` | API conformance — `ACT-API-006` | Planned |
@@ -320,13 +320,13 @@ Verification IDs are planned stable anchors. The prefix states the primary verif
 | `PIPE-043` | §12 | If automated re-verification cannot resolve an anomaly, only the affected records shall be quarantined; the… | `D07`, `D08`, `D14`, `D16`, `D19` | Pipeline integration — `PIT-PIPE-043`; [local kernel evidence](phase-3-local-kernels.md) | Planned |
 | `PIPE-044` | §12 | Validation failures shall never publish partial malformed records or erase the last known good dataset. | `D07`, `D08`, `D14`, `D16`, `D19` | Pipeline integration — `PIT-PIPE-044`; [local kernel evidence](phase-3-local-kernels.md) | Planned |
 | `PIPE-045` | §12 | The pipeline shall provide machine-readable run reports suitable for private operator issue creation or task… | `D07`, `D08`, `D14`, `D16`, `D19` | Pipeline integration — `PIT-PIPE-045`; [local kernel evidence](phase-3-local-kernels.md) | Planned |
-| `PIPE-050` | §12 | Canonical publication shall be versioned and atomic from a public reader’s perspective. | `D08`, `D14`, `D16`, `D19` | Pipeline integration — `PIT-PIPE-050` | Planned |
-| `PIPE-051` | §12 | Model/provider data and search indexes shall not expose incompatible dataset versions during a rollout. | `D08`, `D14`, `D16`, `D19` | Pipeline integration — `PIT-PIPE-051` | Planned |
-| `PIPE-052` | §12 | The most recent known-good publication shall remain available while a new run is processing or quarantined. | `D08`, `D14`, `D16`, `D19` | Pipeline integration — `PIT-PIPE-052` | Planned |
-| `PIPE-053` | §12 | Operators shall be able to roll back to a prior known-good publication without hand-editing individual records. | `D08`, `D14`, `D16`, `D19` | Pipeline integration — `PIT-PIPE-053` | Planned |
-| `PIPE-054` | §12 | Every public response shall be traceable to a dataset publication version. | `D08`, `D14`, `D16`, `D19` | Pipeline integration — `PIT-PIPE-054` | Planned |
-| `PIPE-055` | §12 | Historical observations and evidence shall be retained independently of the current publication view. | `D08`, `D14`, `D16`, `D19` | Pipeline integration — `PIT-PIPE-055` | Planned |
-| `PIPE-056` | §12 | A defective publication shall be removable from public service by rollback to the prior known-good… | `D08`, `D14`, `D16`, `D19` | Pipeline integration — `PIT-PIPE-056` | Planned |
+| `PIPE-050` | §12 | Canonical publication shall be versioned and atomic from a public reader’s perspective. | `D08`, `D14`, `D16`, `D19` | Pipeline integration — `PIT-PIPE-050`; [Phase 4 local evidence](phase-4-local-kernel.md) | Planned |
+| `PIPE-051` | §12 | Model/provider data and search indexes shall not expose incompatible dataset versions during a rollout. | `D08`, `D14`, `D16`, `D19` | Pipeline integration — `PIT-PIPE-051`; [Phase 4 local evidence](phase-4-local-kernel.md) | Planned |
+| `PIPE-052` | §12 | The most recent known-good publication shall remain available while a new run is processing or quarantined. | `D08`, `D14`, `D16`, `D19` | Pipeline integration — `PIT-PIPE-052`; [Phase 4 local evidence](phase-4-local-kernel.md) | Planned |
+| `PIPE-053` | §12 | Operators shall be able to roll back to a prior known-good publication without hand-editing individual records. | `D08`, `D14`, `D16`, `D19` | Pipeline integration — `PIT-PIPE-053`; [Phase 4 local switch plan](phase-4-local-kernel.md), runtime rollback pending | Planned |
+| `PIPE-054` | §12 | Every public response shall be traceable to a dataset publication version. | `D08`, `D14`, `D16`, `D19` | Pipeline integration — `PIT-PIPE-054`; [Phase 4 local normalized-head decision](phase-4-local-kernel.md), public response pending | Planned |
+| `PIPE-055` | §12 | Historical observations and evidence shall be retained independently of the current publication view. | `D08`, `D14`, `D16`, `D19` | Pipeline integration — `PIT-PIPE-055`; [Phase 4 local no-pruning decision](phase-4-local-kernel.md), durable retention pending | Planned |
+| `PIPE-056` | §12 | A defective publication shall be removable from public service by rollback to the prior known-good… | `D08`, `D14`, `D16`, `D19` | Pipeline integration — `PIT-PIPE-056`; [Phase 4 local switch plan](phase-4-local-kernel.md), runtime rollback pending | Planned |
 
 ### Backend and canonical data
 
@@ -341,9 +341,9 @@ Verification IDs are planned stable anchors. The prefix states the primary verif
 | `BE-007` | §13 | Read paths shall support model-first pages without N+1 provider/source retrieval at request time. | `D04`, `D05`, `D08`, `D09`, `D14`, `D16`, `D19` | Data integration — `DIT-BE-007` | Planned |
 | `BE-008` | §13 | Provider source APIs shall never be called synchronously on behalf of a public page or API request. Public… | `D04`, `D05`, `D08`, `D09`, `D14`, `D16`, `D19` | Data integration — `DIT-BE-008` | Planned |
 | `BE-009` | §13 | Large raw evidence objects shall not be loaded into memory on public request paths. | `D04`, `D05`, `D08`, `D09`, `D14`, `D16`, `D19` | Data integration — `DIT-BE-009` | Planned |
-| `BE-010` | §13 | Backups or point-in-time recovery shall cover canonical and operational data with a recovery point objective… | `D04`, `D05`, `D08`, `D09`, `D14`, `D16`, `D19` | Data integration — `DIT-BE-010` | Planned |
-| `BE-011` | §13 | Search indexes shall be reproducible from canonical publication data and shall not be the sole store of any… | `D04`, `D05`, `D08`, `D09`, `D14`, `D16`, `D19` | Data integration — `DIT-BE-011` | Planned |
-| `BE-012` | §13 | Data export shall support complete operator-controlled backup and migration away from Cloudflare without… | `D04`, `D05`, `D08`, `D09`, `D14`, `D16`, `D19` | Data integration — `DIT-BE-012` | Planned |
+| `BE-010` | §13 | Backups or point-in-time recovery shall cover canonical and operational data with a recovery point objective… | `D04`, `D05`, `D08`, `D09`, `D14`, `D16`, `D19` | Data integration — `DIT-BE-010`; [Phase 4 local backup-manifest decision](phase-4-local-kernel.md), RPO/RTO exercise pending | Planned |
+| `BE-011` | §13 | Search indexes shall be reproducible from canonical publication data and shall not be the sole store of any… | `D04`, `D05`, `D08`, `D09`, `D14`, `D16`, `D19` | Data integration — `DIT-BE-011`; [Phase 4 local evidence](phase-4-local-kernel.md) | Planned |
+| `BE-012` | §13 | Data export shall support complete operator-controlled backup and migration away from Cloudflare without… | `D04`, `D05`, `D08`, `D09`, `D14`, `D16`, `D19` | Data integration — `DIT-BE-012`; [Phase 4 local manifest decision](phase-4-local-kernel.md), portable export/restore pending | Planned |
 
 ### Cloudflare platform
 
@@ -360,7 +360,7 @@ Verification IDs are planned stable anchors. The prefix states the primary verif
 | `CF-009` | §14 | External AI inference may be used only when a documented Workers AI evaluation fails the required extraction… | `D04`, `D12`, `D13`, `D16`, `D18`, `D19` | Platform/operational — `POT-CF-009` | Planned |
 | `CF-020` | §14 | The solution design shall verify all current Cloudflare product limits and prices at implementation and… | `D12`, `D15`, `D16`, `D19` | Platform/operational — `POT-CF-020` | Planned |
 | `CF-021` | §14 | Pipeline batches, vector mutations, metadata indexes, query result counts, and Worker resource ceilings… | `D12`, `D15`, `D16`, `D19` | Platform/operational — `POT-CF-021` | Planned |
-| `CF-022` | §14 | The system shall tolerate eventual visibility of vector-index mutations and shall not mark a dataset… | `D12`, `D15`, `D16`, `D19` | Platform/operational — `POT-CF-022` | Planned |
+| `CF-022` | §14 | The system shall tolerate eventual visibility of vector-index mutations and shall not mark a dataset… | `D12`, `D15`, `D16`, `D19` | Platform/operational — `POT-CF-022`; [Phase 4 local receipt decision](phase-4-local-kernel.md), Vectorize visibility pending | Planned |
 | `CF-023` | §14 | Before release, every Worker shall have documented CPU-time ceilings configured through Cloudflare where… | `D12`, `D15`, `D16`, `D19` | Platform/operational — `POT-CF-023` | Planned |
 | `CF-024` | §14 | Platform usage alerts shall cover Worker requests/CPU, AI inference, Vectorize queries/storage, browser… | `D12`, `D15`, `D16`, `D19` | Platform/operational — `POT-CF-024` | Planned |
 | `CF-025` | §14 | Before implementation approval, projected base and worst-case monthly cost at stated and tenfold load shall… | `D12`, `D15`, `D16`, `D19` | Platform/operational — `POT-CF-025` | Planned |
@@ -486,7 +486,7 @@ Verification IDs are planned stable anchors. The prefix states the primary verif
 | `QA-003` | §21 | End-to-end tests shall cover all primary user journeys without authentication. | `D16`, `D19` | Quality-gate audit — `QGA-QA-003` | Planned |
 | `QA-004` | §21 | API conformance tests shall validate OpenAPI examples, pagination, filters, sorting, caching, CORS, nulls,… | `D16`, `D19` | Quality-gate audit — `QGA-QA-004` | Planned |
 | `QA-005` | §21 | Search tests shall cover exact IDs, aliases, provider names, precision phrases, natural-language intent,… | `D16`, `D19` | Quality-gate audit — `QGA-QA-005` | Planned |
-| `QA-006` | §21 | Publication tests shall prove that failed or partial runs cannot replace the last known-good dataset. | `D16`, `D19` | Quality-gate audit — `QGA-QA-006` | Planned |
+| `QA-006` | §21 | Publication tests shall prove that failed or partial runs cannot replace the last known-good dataset. | `D16`, `D19` | Quality-gate audit — `QGA-QA-006`; [Phase 4 local evidence](phase-4-local-kernel.md) | Planned |
 | `QA-007` | §21 | Security tests shall cover SSRF, redirect handling, stored/script injection from source data, prompt… | `D16`, `D19` | Quality-gate audit — `QGA-QA-007` | Planned |
 | `QA-008` | §21 | Performance tests shall validate initial load plus a tenfold traffic scenario and worst-case model pages… | `D16`, `D19` | Quality-gate audit — `QGA-QA-008` | Planned |
 | `QA-009` | §21 | Accessibility tests shall include automation plus manual keyboard, focus, zoom, color-independent state,… | `D16`, `D19` | Quality-gate audit — `QGA-QA-009` | Planned |

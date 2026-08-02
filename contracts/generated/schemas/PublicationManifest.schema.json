@@ -7,10 +7,20 @@
       "required": [
         "publication_id",
         "schema_version",
+        "methodology_version",
+        "precision_normalization_version",
+        "precision_display_order_version",
+        "price_policy_version",
+        "source_policy_version",
+        "embedding_version",
+        "build_commit",
         "generated_at",
         "source_run_id",
         "parent_publication_id",
+        "enabled_provider_scope_version",
+        "enabled_provider_ids",
         "provider_slices",
+        "provider_attributions",
         "resources",
         "closure_hash",
         "failure_codes",
@@ -26,6 +36,41 @@
         },
         "schema_version": {
           "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+          "type": "string"
+        },
+        "methodology_version": {
+          "minLength": 1,
+          "maxLength": 64,
+          "type": "string"
+        },
+        "precision_normalization_version": {
+          "minLength": 1,
+          "maxLength": 64,
+          "type": "string"
+        },
+        "precision_display_order_version": {
+          "minLength": 1,
+          "maxLength": 64,
+          "type": "string"
+        },
+        "price_policy_version": {
+          "minLength": 1,
+          "maxLength": 64,
+          "type": "string"
+        },
+        "source_policy_version": {
+          "minLength": 1,
+          "maxLength": 64,
+          "type": "string"
+        },
+        "embedding_version": {
+          "minLength": 1,
+          "maxLength": 128,
+          "type": "string"
+        },
+        "build_commit": {
+          "minLength": 1,
+          "maxLength": 128,
           "type": "string"
         },
         "generated_at": {
@@ -48,6 +93,22 @@
             }
           ]
         },
+        "enabled_provider_scope_version": {
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[\\x20-\\x7e]+$",
+          "type": "string"
+        },
+        "enabled_provider_ids": {
+          "minItems": 1,
+          "maxItems": 1000,
+          "uniqueItems": true,
+          "type": "array",
+          "items": {
+            "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          }
+        },
         "provider_slices": {
           "maxItems": 1000,
           "type": "array",
@@ -56,7 +117,11 @@
             "type": "object",
             "required": [
               "provider_id",
+              "provider_slice_id",
               "provider_run_id",
+              "adapter_version",
+              "roster_version",
+              "source_register_version",
               "carried_forward",
               "freshness_state"
             ],
@@ -65,8 +130,34 @@
                 "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
                 "type": "string"
               },
+              "provider_slice_id": {
+                "anyOf": [
+                  {
+                    "pattern": "^prn_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "provider_run_id": {
                 "pattern": "^pvr_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "adapter_version": {
+                "minLength": 1,
+                "maxLength": 128,
+                "type": "string"
+              },
+              "roster_version": {
+                "minLength": 1,
+                "maxLength": 128,
+                "type": "string"
+              },
+              "source_register_version": {
+                "minLength": 1,
+                "maxLength": 128,
                 "type": "string"
               },
               "carried_forward": {
@@ -89,6 +180,106 @@
                 ]
               }
             }
+          }
+        },
+        "provider_attributions": {
+          "maxItems": 1000000,
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "resource_type",
+                  "resource_id",
+                  "provider_id"
+                ],
+                "properties": {
+                  "resource_type": {
+                    "const": "provider",
+                    "type": "string"
+                  },
+                  "resource_id": {
+                    "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "provider_id": {
+                    "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "resource_type",
+                  "resource_id",
+                  "provider_id"
+                ],
+                "properties": {
+                  "resource_type": {
+                    "const": "offering",
+                    "type": "string"
+                  },
+                  "resource_id": {
+                    "pattern": "^off_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "provider_id": {
+                    "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "resource_type",
+                  "resource_id",
+                  "provider_id"
+                ],
+                "properties": {
+                  "resource_type": {
+                    "const": "price",
+                    "type": "string"
+                  },
+                  "resource_id": {
+                    "pattern": "^pcs_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "provider_id": {
+                    "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "resource_type",
+                  "resource_id",
+                  "provider_id"
+                ],
+                "properties": {
+                  "resource_type": {
+                    "const": "precision_observation",
+                    "type": "string"
+                  },
+                  "resource_id": {
+                    "pattern": "^prc_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "provider_id": {
+                    "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  }
+                }
+              }
+            ]
           }
         },
         "resources": {
@@ -177,13 +368,19 @@
           "additionalProperties": false,
           "type": "object",
           "required": [
+            "vector_namespace",
             "exact_document_count",
             "vector_document_count",
             "exact_index_hash",
             "vector_index_version",
+            "vectors",
             "queryable"
           ],
           "properties": {
+            "vector_namespace": {
+              "pattern": "^pub_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "type": "string"
+            },
             "exact_document_count": {
               "minimum": 0,
               "type": "integer"
@@ -201,6 +398,59 @@
               "maxLength": 128,
               "type": "string"
             },
+            "vectors": {
+              "maxItems": 1000000,
+              "type": "array",
+              "items": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "vector_id",
+                  "resource_type",
+                  "resource_id",
+                  "search_document_content_hash",
+                  "embedding_input_hash"
+                ],
+                "properties": {
+                  "vector_id": {
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "resource_type": {
+                    "anyOf": [
+                      {
+                        "const": "model",
+                        "type": "string"
+                      },
+                      {
+                        "const": "variant",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "resource_id": {
+                    "anyOf": [
+                      {
+                        "pattern": "^mdl_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                        "type": "string"
+                      },
+                      {
+                        "pattern": "^var_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "search_document_content_hash": {
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "embedding_input_hash": {
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": "string"
+                  }
+                }
+              }
+            },
             "queryable": {
               "const": false,
               "type": "boolean"
@@ -215,10 +465,20 @@
       "required": [
         "publication_id",
         "schema_version",
+        "methodology_version",
+        "precision_normalization_version",
+        "precision_display_order_version",
+        "price_policy_version",
+        "source_policy_version",
+        "embedding_version",
+        "build_commit",
         "generated_at",
         "source_run_id",
         "parent_publication_id",
+        "enabled_provider_scope_version",
+        "enabled_provider_ids",
         "provider_slices",
+        "provider_attributions",
         "resources",
         "closure_hash",
         "failure_codes",
@@ -234,6 +494,41 @@
         },
         "schema_version": {
           "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+          "type": "string"
+        },
+        "methodology_version": {
+          "minLength": 1,
+          "maxLength": 64,
+          "type": "string"
+        },
+        "precision_normalization_version": {
+          "minLength": 1,
+          "maxLength": 64,
+          "type": "string"
+        },
+        "precision_display_order_version": {
+          "minLength": 1,
+          "maxLength": 64,
+          "type": "string"
+        },
+        "price_policy_version": {
+          "minLength": 1,
+          "maxLength": 64,
+          "type": "string"
+        },
+        "source_policy_version": {
+          "minLength": 1,
+          "maxLength": 64,
+          "type": "string"
+        },
+        "embedding_version": {
+          "minLength": 1,
+          "maxLength": 128,
+          "type": "string"
+        },
+        "build_commit": {
+          "minLength": 1,
+          "maxLength": 128,
           "type": "string"
         },
         "generated_at": {
@@ -256,6 +551,22 @@
             }
           ]
         },
+        "enabled_provider_scope_version": {
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[\\x20-\\x7e]+$",
+          "type": "string"
+        },
+        "enabled_provider_ids": {
+          "minItems": 1,
+          "maxItems": 1000,
+          "uniqueItems": true,
+          "type": "array",
+          "items": {
+            "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          }
+        },
         "provider_slices": {
           "maxItems": 1000,
           "type": "array",
@@ -264,7 +575,11 @@
             "type": "object",
             "required": [
               "provider_id",
+              "provider_slice_id",
               "provider_run_id",
+              "adapter_version",
+              "roster_version",
+              "source_register_version",
               "carried_forward",
               "freshness_state"
             ],
@@ -273,8 +588,34 @@
                 "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
                 "type": "string"
               },
+              "provider_slice_id": {
+                "anyOf": [
+                  {
+                    "pattern": "^prn_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "provider_run_id": {
                 "pattern": "^pvr_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "adapter_version": {
+                "minLength": 1,
+                "maxLength": 128,
+                "type": "string"
+              },
+              "roster_version": {
+                "minLength": 1,
+                "maxLength": 128,
+                "type": "string"
+              },
+              "source_register_version": {
+                "minLength": 1,
+                "maxLength": 128,
                 "type": "string"
               },
               "carried_forward": {
@@ -297,6 +638,106 @@
                 ]
               }
             }
+          }
+        },
+        "provider_attributions": {
+          "maxItems": 1000000,
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "resource_type",
+                  "resource_id",
+                  "provider_id"
+                ],
+                "properties": {
+                  "resource_type": {
+                    "const": "provider",
+                    "type": "string"
+                  },
+                  "resource_id": {
+                    "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "provider_id": {
+                    "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "resource_type",
+                  "resource_id",
+                  "provider_id"
+                ],
+                "properties": {
+                  "resource_type": {
+                    "const": "offering",
+                    "type": "string"
+                  },
+                  "resource_id": {
+                    "pattern": "^off_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "provider_id": {
+                    "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "resource_type",
+                  "resource_id",
+                  "provider_id"
+                ],
+                "properties": {
+                  "resource_type": {
+                    "const": "price",
+                    "type": "string"
+                  },
+                  "resource_id": {
+                    "pattern": "^pcs_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "provider_id": {
+                    "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "resource_type",
+                  "resource_id",
+                  "provider_id"
+                ],
+                "properties": {
+                  "resource_type": {
+                    "const": "precision_observation",
+                    "type": "string"
+                  },
+                  "resource_id": {
+                    "pattern": "^prc_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "provider_id": {
+                    "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  }
+                }
+              }
+            ]
           }
         },
         "resources": {
@@ -385,13 +826,19 @@
           "additionalProperties": false,
           "type": "object",
           "required": [
+            "vector_namespace",
             "exact_document_count",
             "vector_document_count",
             "exact_index_hash",
             "vector_index_version",
+            "vectors",
             "queryable"
           ],
           "properties": {
+            "vector_namespace": {
+              "pattern": "^pub_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "type": "string"
+            },
             "exact_document_count": {
               "minimum": 0,
               "type": "integer"
@@ -409,6 +856,59 @@
               "maxLength": 128,
               "type": "string"
             },
+            "vectors": {
+              "maxItems": 1000000,
+              "type": "array",
+              "items": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "vector_id",
+                  "resource_type",
+                  "resource_id",
+                  "search_document_content_hash",
+                  "embedding_input_hash"
+                ],
+                "properties": {
+                  "vector_id": {
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "resource_type": {
+                    "anyOf": [
+                      {
+                        "const": "model",
+                        "type": "string"
+                      },
+                      {
+                        "const": "variant",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "resource_id": {
+                    "anyOf": [
+                      {
+                        "pattern": "^mdl_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                        "type": "string"
+                      },
+                      {
+                        "pattern": "^var_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "search_document_content_hash": {
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "embedding_input_hash": {
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": "string"
+                  }
+                }
+              }
+            },
             "queryable": {
               "const": false,
               "type": "boolean"
@@ -423,10 +923,20 @@
       "required": [
         "publication_id",
         "schema_version",
+        "methodology_version",
+        "precision_normalization_version",
+        "precision_display_order_version",
+        "price_policy_version",
+        "source_policy_version",
+        "embedding_version",
+        "build_commit",
         "generated_at",
         "source_run_id",
         "parent_publication_id",
+        "enabled_provider_scope_version",
+        "enabled_provider_ids",
         "provider_slices",
+        "provider_attributions",
         "resources",
         "closure_hash",
         "failure_codes",
@@ -442,6 +952,41 @@
         },
         "schema_version": {
           "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+          "type": "string"
+        },
+        "methodology_version": {
+          "minLength": 1,
+          "maxLength": 64,
+          "type": "string"
+        },
+        "precision_normalization_version": {
+          "minLength": 1,
+          "maxLength": 64,
+          "type": "string"
+        },
+        "precision_display_order_version": {
+          "minLength": 1,
+          "maxLength": 64,
+          "type": "string"
+        },
+        "price_policy_version": {
+          "minLength": 1,
+          "maxLength": 64,
+          "type": "string"
+        },
+        "source_policy_version": {
+          "minLength": 1,
+          "maxLength": 64,
+          "type": "string"
+        },
+        "embedding_version": {
+          "minLength": 1,
+          "maxLength": 128,
+          "type": "string"
+        },
+        "build_commit": {
+          "minLength": 1,
+          "maxLength": 128,
           "type": "string"
         },
         "generated_at": {
@@ -464,6 +1009,22 @@
             }
           ]
         },
+        "enabled_provider_scope_version": {
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[\\x20-\\x7e]+$",
+          "type": "string"
+        },
+        "enabled_provider_ids": {
+          "minItems": 1,
+          "maxItems": 1000,
+          "uniqueItems": true,
+          "type": "array",
+          "items": {
+            "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          }
+        },
         "provider_slices": {
           "maxItems": 1000,
           "type": "array",
@@ -472,7 +1033,11 @@
             "type": "object",
             "required": [
               "provider_id",
+              "provider_slice_id",
               "provider_run_id",
+              "adapter_version",
+              "roster_version",
+              "source_register_version",
               "carried_forward",
               "freshness_state"
             ],
@@ -481,8 +1046,34 @@
                 "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
                 "type": "string"
               },
+              "provider_slice_id": {
+                "anyOf": [
+                  {
+                    "pattern": "^prn_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "provider_run_id": {
                 "pattern": "^pvr_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "adapter_version": {
+                "minLength": 1,
+                "maxLength": 128,
+                "type": "string"
+              },
+              "roster_version": {
+                "minLength": 1,
+                "maxLength": 128,
+                "type": "string"
+              },
+              "source_register_version": {
+                "minLength": 1,
+                "maxLength": 128,
                 "type": "string"
               },
               "carried_forward": {
@@ -505,6 +1096,106 @@
                 ]
               }
             }
+          }
+        },
+        "provider_attributions": {
+          "maxItems": 1000000,
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "resource_type",
+                  "resource_id",
+                  "provider_id"
+                ],
+                "properties": {
+                  "resource_type": {
+                    "const": "provider",
+                    "type": "string"
+                  },
+                  "resource_id": {
+                    "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "provider_id": {
+                    "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "resource_type",
+                  "resource_id",
+                  "provider_id"
+                ],
+                "properties": {
+                  "resource_type": {
+                    "const": "offering",
+                    "type": "string"
+                  },
+                  "resource_id": {
+                    "pattern": "^off_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "provider_id": {
+                    "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "resource_type",
+                  "resource_id",
+                  "provider_id"
+                ],
+                "properties": {
+                  "resource_type": {
+                    "const": "price",
+                    "type": "string"
+                  },
+                  "resource_id": {
+                    "pattern": "^pcs_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "provider_id": {
+                    "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "resource_type",
+                  "resource_id",
+                  "provider_id"
+                ],
+                "properties": {
+                  "resource_type": {
+                    "const": "precision_observation",
+                    "type": "string"
+                  },
+                  "resource_id": {
+                    "pattern": "^prc_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "provider_id": {
+                    "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  }
+                }
+              }
+            ]
           }
         },
         "resources": {
@@ -595,13 +1286,19 @@
           "additionalProperties": false,
           "type": "object",
           "required": [
+            "vector_namespace",
             "exact_document_count",
             "vector_document_count",
             "exact_index_hash",
             "vector_index_version",
+            "vectors",
             "queryable"
           ],
           "properties": {
+            "vector_namespace": {
+              "pattern": "^pub_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "type": "string"
+            },
             "exact_document_count": {
               "minimum": 0,
               "type": "integer"
@@ -619,6 +1316,59 @@
               "maxLength": 128,
               "type": "string"
             },
+            "vectors": {
+              "maxItems": 1000000,
+              "type": "array",
+              "items": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "vector_id",
+                  "resource_type",
+                  "resource_id",
+                  "search_document_content_hash",
+                  "embedding_input_hash"
+                ],
+                "properties": {
+                  "vector_id": {
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "resource_type": {
+                    "anyOf": [
+                      {
+                        "const": "model",
+                        "type": "string"
+                      },
+                      {
+                        "const": "variant",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "resource_id": {
+                    "anyOf": [
+                      {
+                        "pattern": "^mdl_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                        "type": "string"
+                      },
+                      {
+                        "pattern": "^var_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "search_document_content_hash": {
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "embedding_input_hash": {
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": "string"
+                  }
+                }
+              }
+            },
             "queryable": {
               "const": true,
               "type": "boolean"
@@ -633,10 +1383,20 @@
       "required": [
         "publication_id",
         "schema_version",
+        "methodology_version",
+        "precision_normalization_version",
+        "precision_display_order_version",
+        "price_policy_version",
+        "source_policy_version",
+        "embedding_version",
+        "build_commit",
         "generated_at",
         "source_run_id",
         "parent_publication_id",
+        "enabled_provider_scope_version",
+        "enabled_provider_ids",
         "provider_slices",
+        "provider_attributions",
         "resources",
         "closure_hash",
         "failure_codes",
@@ -652,6 +1412,41 @@
         },
         "schema_version": {
           "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+          "type": "string"
+        },
+        "methodology_version": {
+          "minLength": 1,
+          "maxLength": 64,
+          "type": "string"
+        },
+        "precision_normalization_version": {
+          "minLength": 1,
+          "maxLength": 64,
+          "type": "string"
+        },
+        "precision_display_order_version": {
+          "minLength": 1,
+          "maxLength": 64,
+          "type": "string"
+        },
+        "price_policy_version": {
+          "minLength": 1,
+          "maxLength": 64,
+          "type": "string"
+        },
+        "source_policy_version": {
+          "minLength": 1,
+          "maxLength": 64,
+          "type": "string"
+        },
+        "embedding_version": {
+          "minLength": 1,
+          "maxLength": 128,
+          "type": "string"
+        },
+        "build_commit": {
+          "minLength": 1,
+          "maxLength": 128,
           "type": "string"
         },
         "generated_at": {
@@ -674,6 +1469,22 @@
             }
           ]
         },
+        "enabled_provider_scope_version": {
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[\\x20-\\x7e]+$",
+          "type": "string"
+        },
+        "enabled_provider_ids": {
+          "minItems": 1,
+          "maxItems": 1000,
+          "uniqueItems": true,
+          "type": "array",
+          "items": {
+            "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          }
+        },
         "provider_slices": {
           "maxItems": 1000,
           "type": "array",
@@ -682,7 +1493,11 @@
             "type": "object",
             "required": [
               "provider_id",
+              "provider_slice_id",
               "provider_run_id",
+              "adapter_version",
+              "roster_version",
+              "source_register_version",
               "carried_forward",
               "freshness_state"
             ],
@@ -691,8 +1506,34 @@
                 "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
                 "type": "string"
               },
+              "provider_slice_id": {
+                "anyOf": [
+                  {
+                    "pattern": "^prn_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "provider_run_id": {
                 "pattern": "^pvr_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "adapter_version": {
+                "minLength": 1,
+                "maxLength": 128,
+                "type": "string"
+              },
+              "roster_version": {
+                "minLength": 1,
+                "maxLength": 128,
+                "type": "string"
+              },
+              "source_register_version": {
+                "minLength": 1,
+                "maxLength": 128,
                 "type": "string"
               },
               "carried_forward": {
@@ -715,6 +1556,106 @@
                 ]
               }
             }
+          }
+        },
+        "provider_attributions": {
+          "maxItems": 1000000,
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "resource_type",
+                  "resource_id",
+                  "provider_id"
+                ],
+                "properties": {
+                  "resource_type": {
+                    "const": "provider",
+                    "type": "string"
+                  },
+                  "resource_id": {
+                    "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "provider_id": {
+                    "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "resource_type",
+                  "resource_id",
+                  "provider_id"
+                ],
+                "properties": {
+                  "resource_type": {
+                    "const": "offering",
+                    "type": "string"
+                  },
+                  "resource_id": {
+                    "pattern": "^off_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "provider_id": {
+                    "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "resource_type",
+                  "resource_id",
+                  "provider_id"
+                ],
+                "properties": {
+                  "resource_type": {
+                    "const": "price",
+                    "type": "string"
+                  },
+                  "resource_id": {
+                    "pattern": "^pcs_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "provider_id": {
+                    "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "resource_type",
+                  "resource_id",
+                  "provider_id"
+                ],
+                "properties": {
+                  "resource_type": {
+                    "const": "precision_observation",
+                    "type": "string"
+                  },
+                  "resource_id": {
+                    "pattern": "^prc_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "provider_id": {
+                    "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  }
+                }
+              }
+            ]
           }
         },
         "resources": {
@@ -807,13 +1748,19 @@
           "additionalProperties": false,
           "type": "object",
           "required": [
+            "vector_namespace",
             "exact_document_count",
             "vector_document_count",
             "exact_index_hash",
             "vector_index_version",
+            "vectors",
             "queryable"
           ],
           "properties": {
+            "vector_namespace": {
+              "pattern": "^pub_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "type": "string"
+            },
             "exact_document_count": {
               "minimum": 0,
               "type": "integer"
@@ -831,6 +1778,59 @@
               "maxLength": 128,
               "type": "string"
             },
+            "vectors": {
+              "maxItems": 1000000,
+              "type": "array",
+              "items": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "vector_id",
+                  "resource_type",
+                  "resource_id",
+                  "search_document_content_hash",
+                  "embedding_input_hash"
+                ],
+                "properties": {
+                  "vector_id": {
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "resource_type": {
+                    "anyOf": [
+                      {
+                        "const": "model",
+                        "type": "string"
+                      },
+                      {
+                        "const": "variant",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "resource_id": {
+                    "anyOf": [
+                      {
+                        "pattern": "^mdl_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                        "type": "string"
+                      },
+                      {
+                        "pattern": "^var_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "search_document_content_hash": {
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "embedding_input_hash": {
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": "string"
+                  }
+                }
+              }
+            },
             "queryable": {
               "const": true,
               "type": "boolean"
@@ -845,10 +1845,20 @@
       "required": [
         "publication_id",
         "schema_version",
+        "methodology_version",
+        "precision_normalization_version",
+        "precision_display_order_version",
+        "price_policy_version",
+        "source_policy_version",
+        "embedding_version",
+        "build_commit",
         "generated_at",
         "source_run_id",
         "parent_publication_id",
+        "enabled_provider_scope_version",
+        "enabled_provider_ids",
         "provider_slices",
+        "provider_attributions",
         "resources",
         "closure_hash",
         "failure_codes",
@@ -864,6 +1874,41 @@
         },
         "schema_version": {
           "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+          "type": "string"
+        },
+        "methodology_version": {
+          "minLength": 1,
+          "maxLength": 64,
+          "type": "string"
+        },
+        "precision_normalization_version": {
+          "minLength": 1,
+          "maxLength": 64,
+          "type": "string"
+        },
+        "precision_display_order_version": {
+          "minLength": 1,
+          "maxLength": 64,
+          "type": "string"
+        },
+        "price_policy_version": {
+          "minLength": 1,
+          "maxLength": 64,
+          "type": "string"
+        },
+        "source_policy_version": {
+          "minLength": 1,
+          "maxLength": 64,
+          "type": "string"
+        },
+        "embedding_version": {
+          "minLength": 1,
+          "maxLength": 128,
+          "type": "string"
+        },
+        "build_commit": {
+          "minLength": 1,
+          "maxLength": 128,
           "type": "string"
         },
         "generated_at": {
@@ -886,6 +1931,22 @@
             }
           ]
         },
+        "enabled_provider_scope_version": {
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[\\x20-\\x7e]+$",
+          "type": "string"
+        },
+        "enabled_provider_ids": {
+          "minItems": 1,
+          "maxItems": 1000,
+          "uniqueItems": true,
+          "type": "array",
+          "items": {
+            "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          }
+        },
         "provider_slices": {
           "maxItems": 1000,
           "type": "array",
@@ -894,7 +1955,11 @@
             "type": "object",
             "required": [
               "provider_id",
+              "provider_slice_id",
               "provider_run_id",
+              "adapter_version",
+              "roster_version",
+              "source_register_version",
               "carried_forward",
               "freshness_state"
             ],
@@ -903,8 +1968,34 @@
                 "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
                 "type": "string"
               },
+              "provider_slice_id": {
+                "anyOf": [
+                  {
+                    "pattern": "^prn_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "provider_run_id": {
                 "pattern": "^pvr_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "adapter_version": {
+                "minLength": 1,
+                "maxLength": 128,
+                "type": "string"
+              },
+              "roster_version": {
+                "minLength": 1,
+                "maxLength": 128,
+                "type": "string"
+              },
+              "source_register_version": {
+                "minLength": 1,
+                "maxLength": 128,
                 "type": "string"
               },
               "carried_forward": {
@@ -927,6 +2018,106 @@
                 ]
               }
             }
+          }
+        },
+        "provider_attributions": {
+          "maxItems": 1000000,
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "resource_type",
+                  "resource_id",
+                  "provider_id"
+                ],
+                "properties": {
+                  "resource_type": {
+                    "const": "provider",
+                    "type": "string"
+                  },
+                  "resource_id": {
+                    "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "provider_id": {
+                    "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "resource_type",
+                  "resource_id",
+                  "provider_id"
+                ],
+                "properties": {
+                  "resource_type": {
+                    "const": "offering",
+                    "type": "string"
+                  },
+                  "resource_id": {
+                    "pattern": "^off_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "provider_id": {
+                    "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "resource_type",
+                  "resource_id",
+                  "provider_id"
+                ],
+                "properties": {
+                  "resource_type": {
+                    "const": "price",
+                    "type": "string"
+                  },
+                  "resource_id": {
+                    "pattern": "^pcs_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "provider_id": {
+                    "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "resource_type",
+                  "resource_id",
+                  "provider_id"
+                ],
+                "properties": {
+                  "resource_type": {
+                    "const": "precision_observation",
+                    "type": "string"
+                  },
+                  "resource_id": {
+                    "pattern": "^prc_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "provider_id": {
+                    "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  }
+                }
+              }
+            ]
           }
         },
         "resources": {
@@ -1019,13 +2210,19 @@
           "additionalProperties": false,
           "type": "object",
           "required": [
+            "vector_namespace",
             "exact_document_count",
             "vector_document_count",
             "exact_index_hash",
             "vector_index_version",
+            "vectors",
             "queryable"
           ],
           "properties": {
+            "vector_namespace": {
+              "pattern": "^pub_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "type": "string"
+            },
             "exact_document_count": {
               "minimum": 0,
               "type": "integer"
@@ -1043,6 +2240,59 @@
               "maxLength": 128,
               "type": "string"
             },
+            "vectors": {
+              "maxItems": 1000000,
+              "type": "array",
+              "items": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "vector_id",
+                  "resource_type",
+                  "resource_id",
+                  "search_document_content_hash",
+                  "embedding_input_hash"
+                ],
+                "properties": {
+                  "vector_id": {
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "resource_type": {
+                    "anyOf": [
+                      {
+                        "const": "model",
+                        "type": "string"
+                      },
+                      {
+                        "const": "variant",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "resource_id": {
+                    "anyOf": [
+                      {
+                        "pattern": "^mdl_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                        "type": "string"
+                      },
+                      {
+                        "pattern": "^var_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "search_document_content_hash": {
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "embedding_input_hash": {
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": "string"
+                  }
+                }
+              }
+            },
             "queryable": {
               "const": true,
               "type": "boolean"
@@ -1057,10 +2307,20 @@
       "required": [
         "publication_id",
         "schema_version",
+        "methodology_version",
+        "precision_normalization_version",
+        "precision_display_order_version",
+        "price_policy_version",
+        "source_policy_version",
+        "embedding_version",
+        "build_commit",
         "generated_at",
         "source_run_id",
         "parent_publication_id",
+        "enabled_provider_scope_version",
+        "enabled_provider_ids",
         "provider_slices",
+        "provider_attributions",
         "resources",
         "closure_hash",
         "failure_codes",
@@ -1076,6 +2336,41 @@
         },
         "schema_version": {
           "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+          "type": "string"
+        },
+        "methodology_version": {
+          "minLength": 1,
+          "maxLength": 64,
+          "type": "string"
+        },
+        "precision_normalization_version": {
+          "minLength": 1,
+          "maxLength": 64,
+          "type": "string"
+        },
+        "precision_display_order_version": {
+          "minLength": 1,
+          "maxLength": 64,
+          "type": "string"
+        },
+        "price_policy_version": {
+          "minLength": 1,
+          "maxLength": 64,
+          "type": "string"
+        },
+        "source_policy_version": {
+          "minLength": 1,
+          "maxLength": 64,
+          "type": "string"
+        },
+        "embedding_version": {
+          "minLength": 1,
+          "maxLength": 128,
+          "type": "string"
+        },
+        "build_commit": {
+          "minLength": 1,
+          "maxLength": 128,
           "type": "string"
         },
         "generated_at": {
@@ -1098,6 +2393,22 @@
             }
           ]
         },
+        "enabled_provider_scope_version": {
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[\\x20-\\x7e]+$",
+          "type": "string"
+        },
+        "enabled_provider_ids": {
+          "minItems": 1,
+          "maxItems": 1000,
+          "uniqueItems": true,
+          "type": "array",
+          "items": {
+            "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          }
+        },
         "provider_slices": {
           "maxItems": 1000,
           "type": "array",
@@ -1106,7 +2417,11 @@
             "type": "object",
             "required": [
               "provider_id",
+              "provider_slice_id",
               "provider_run_id",
+              "adapter_version",
+              "roster_version",
+              "source_register_version",
               "carried_forward",
               "freshness_state"
             ],
@@ -1115,8 +2430,34 @@
                 "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
                 "type": "string"
               },
+              "provider_slice_id": {
+                "anyOf": [
+                  {
+                    "pattern": "^prn_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "provider_run_id": {
                 "pattern": "^pvr_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "adapter_version": {
+                "minLength": 1,
+                "maxLength": 128,
+                "type": "string"
+              },
+              "roster_version": {
+                "minLength": 1,
+                "maxLength": 128,
+                "type": "string"
+              },
+              "source_register_version": {
+                "minLength": 1,
+                "maxLength": 128,
                 "type": "string"
               },
               "carried_forward": {
@@ -1139,6 +2480,106 @@
                 ]
               }
             }
+          }
+        },
+        "provider_attributions": {
+          "maxItems": 1000000,
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "resource_type",
+                  "resource_id",
+                  "provider_id"
+                ],
+                "properties": {
+                  "resource_type": {
+                    "const": "provider",
+                    "type": "string"
+                  },
+                  "resource_id": {
+                    "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "provider_id": {
+                    "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "resource_type",
+                  "resource_id",
+                  "provider_id"
+                ],
+                "properties": {
+                  "resource_type": {
+                    "const": "offering",
+                    "type": "string"
+                  },
+                  "resource_id": {
+                    "pattern": "^off_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "provider_id": {
+                    "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "resource_type",
+                  "resource_id",
+                  "provider_id"
+                ],
+                "properties": {
+                  "resource_type": {
+                    "const": "price",
+                    "type": "string"
+                  },
+                  "resource_id": {
+                    "pattern": "^pcs_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "provider_id": {
+                    "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "resource_type",
+                  "resource_id",
+                  "provider_id"
+                ],
+                "properties": {
+                  "resource_type": {
+                    "const": "precision_observation",
+                    "type": "string"
+                  },
+                  "resource_id": {
+                    "pattern": "^prc_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "provider_id": {
+                    "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  }
+                }
+              }
+            ]
           }
         },
         "resources": {
@@ -1231,13 +2672,19 @@
           "additionalProperties": false,
           "type": "object",
           "required": [
+            "vector_namespace",
             "exact_document_count",
             "vector_document_count",
             "exact_index_hash",
             "vector_index_version",
+            "vectors",
             "queryable"
           ],
           "properties": {
+            "vector_namespace": {
+              "pattern": "^pub_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "type": "string"
+            },
             "exact_document_count": {
               "minimum": 0,
               "type": "integer"
@@ -1254,6 +2701,59 @@
               "minLength": 1,
               "maxLength": 128,
               "type": "string"
+            },
+            "vectors": {
+              "maxItems": 1000000,
+              "type": "array",
+              "items": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "vector_id",
+                  "resource_type",
+                  "resource_id",
+                  "search_document_content_hash",
+                  "embedding_input_hash"
+                ],
+                "properties": {
+                  "vector_id": {
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "resource_type": {
+                    "anyOf": [
+                      {
+                        "const": "model",
+                        "type": "string"
+                      },
+                      {
+                        "const": "variant",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "resource_id": {
+                    "anyOf": [
+                      {
+                        "pattern": "^mdl_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                        "type": "string"
+                      },
+                      {
+                        "pattern": "^var_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "search_document_content_hash": {
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "embedding_input_hash": {
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": "string"
+                  }
+                }
+              }
             },
             "queryable": {
               "const": true,
