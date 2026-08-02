@@ -45,7 +45,7 @@ function extensibleString(
   knownValues: readonly string[],
   options: { forbiddenValues?: readonly string[]; maxLength?: number } = {},
 ) {
-  return Type.Unsafe<string>({
+  return Type.String({
     type: "string",
     minLength: 1,
     maxLength: options.maxLength ?? 128,
@@ -296,12 +296,17 @@ export const ModelFamilySchema = Type.Object(
   { $id: "ModelFamily", additionalProperties: false },
 );
 
+export const MODEL_DISPLAY_NAME_MAX_UNICODE_SCALARS = 200;
+
 export const ModelSchema = Type.Object(
   {
     model_id: prefixedId("mdl"),
     family_id: prefixedId("fam"),
     slug: FactSchema(slug(), "ModelSlugFact"),
-    display_name: StringFact("ModelDisplayNameFact", 200),
+    display_name: StringFact(
+      "ModelDisplayNameFact",
+      MODEL_DISPLAY_NAME_MAX_UNICODE_SCALARS,
+    ),
     publisher: StringFact("ModelPublisherFact", 200),
     release_date: FactSchema(
       Type.String({ format: "date" }),
@@ -339,7 +344,10 @@ export const VariantSchema = Type.Object(
     model_id: prefixedId("mdl"),
     family_id: prefixedId("fam"),
     slug: FactSchema(slug(), "VariantSlugFact"),
-    display_name: StringFact("VariantDisplayNameFact", 200),
+    display_name: StringFact(
+      "VariantDisplayNameFact",
+      MODEL_DISPLAY_NAME_MAX_UNICODE_SCALARS,
+    ),
     variant_kind: StringFact("VariantKindFact", 128),
     selection_evidence: StringFact("VariantSelectionFact", 512),
     publisher: StringFact("VariantPublisherFact", 200),
@@ -370,6 +378,9 @@ export const VariantSchema = Type.Object(
   },
   { $id: "Variant", additionalProperties: false },
 );
+
+export type Model = Static<typeof ModelSchema>;
+export type Variant = Static<typeof VariantSchema>;
 
 export const ProviderSchema = Type.Object(
   {
@@ -410,6 +421,205 @@ const isCanonicalContractTimestamp = (value: string): boolean => {
   return Number.isFinite(parsed) && new Date(parsed).toISOString() === value;
 };
 
+const isCanonicalContractDate = (value: string): boolean => {
+  if (!/^\d{4}-\d{2}-\d{2}$/u.test(value)) return false;
+  const parsed = Date.parse(`${value}T00:00:00.000Z`);
+  return (
+    Number.isFinite(parsed) &&
+    new Date(parsed).toISOString().slice(0, 10) === value
+  );
+};
+
+const workerSafeBoundedUnicodeString = (
+  value: unknown,
+  maximumUnicodeScalars: number,
+): unknown => {
+  if (typeof value !== "string") return value;
+  const scalarLength = Array.from(value).length;
+  if (scalarLength > maximumUnicodeScalars || scalarLength === value.length)
+    return value;
+  return "x".repeat(scalarLength);
+};
+
+const recordValue = (value: unknown): Record<string, unknown> | null =>
+  typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+
+const workerSafeStringFact = (value: unknown, maximum: number): unknown => {
+  const fact = recordValue(value);
+  if (fact?.state !== "known") return value;
+  return {
+    ...fact,
+    value: workerSafeBoundedUnicodeString(fact.value, maximum),
+  };
+};
+
+const workerSafeStringArrayFact = (
+  value: unknown,
+  maximum: number,
+): unknown => {
+  const fact = recordValue(value);
+  if (fact?.state !== "known" || !Array.isArray(fact.value)) return value;
+  const items = fact.value as unknown[];
+  if (!items.every((item): item is string => typeof item === "string"))
+    return value;
+  const scalarLengths = items.map((item) => Array.from(item).length);
+  if (
+    scalarLengths.some((length) => length > maximum) ||
+    items.every((item, index) => item.length === scalarLengths[index])
+  )
+    return value;
+
+  // Map every distinct string when any item needs UTF-16 suppression. This
+  // preserves uniqueItems equality without allowing two distinct astral
+  // strings of the same scalar length to collapse to the same sentinel.
+  const sentinelByValue = new Map<string, string>();
+  return {
+    ...fact,
+    value: items.map((item) => {
+      const existing = sentinelByValue.get(item);
+      if (existing !== undefined) return existing;
+      const sentinel = "x".repeat(sentinelByValue.size + 1);
+      sentinelByValue.set(item, sentinel);
+      return sentinel;
+    }),
+  };
+};
+
+const workerSafeParameterFact = (value: unknown): unknown => {
+  const fact = recordValue(value);
+  if (fact?.state !== "known") return value;
+  const parameter = recordValue(fact.value);
+  if (parameter === null) return value;
+  return {
+    ...fact,
+    value: {
+      ...parameter,
+      raw_value: workerSafeBoundedUnicodeString(parameter.raw_value, 128),
+      approximation: workerSafeBoundedUnicodeString(
+        parameter.approximation,
+        128,
+      ),
+    },
+  };
+};
+
+const workerSafeCheckpoint = (value: unknown): unknown => {
+  const checkpoint = recordValue(value);
+  if (checkpoint === null) return value;
+  const lineageEdges = Array.isArray(checkpoint.lineage_edges)
+    ? (checkpoint.lineage_edges as unknown[]).map((edgeValue) => {
+        const edge = recordValue(edgeValue);
+        return edge === null
+          ? edgeValue
+          : {
+              ...edge,
+              relationship: workerSafeBoundedUnicodeString(
+                edge.relationship,
+                128,
+              ),
+            };
+      })
+    : checkpoint.lineage_edges;
+  return {
+    ...checkpoint,
+    checkpoint_kind: workerSafeStringFact(checkpoint.checkpoint_kind, 128),
+    repository_locator: workerSafeStringFact(
+      checkpoint.repository_locator,
+      2048,
+    ),
+    repository_id: workerSafeStringFact(checkpoint.repository_id, 256),
+    revision: workerSafeStringFact(checkpoint.revision, 256),
+    declared_weight_format: workerSafeStringFact(
+      checkpoint.declared_weight_format,
+      128,
+    ),
+    quantization: workerSafeStringFact(checkpoint.quantization, 128),
+    file_format: workerSafeStringFact(checkpoint.file_format, 128),
+    role: workerSafeStringFact(checkpoint.role, 128),
+    lineage_edges: lineageEdges,
+  };
+};
+
+const workerSafeDerivedCount = (value: unknown): unknown => {
+  const count = recordValue(value);
+  return count === null
+    ? value
+    : {
+        ...count,
+        derivation_version: workerSafeBoundedUnicodeString(
+          count.derivation_version,
+          64,
+        ),
+      };
+};
+
+const workerSafeModelOrVariantCandidate = (value: unknown): unknown => {
+  const resource = recordValue(value);
+  if (resource === null) return value;
+  const checkpoints = Array.isArray(resource.checkpoints)
+    ? (resource.checkpoints as unknown[]).map(workerSafeCheckpoint)
+    : resource.checkpoints;
+  const shared = {
+    ...resource,
+    display_name: workerSafeStringFact(
+      resource.display_name,
+      MODEL_DISPLAY_NAME_MAX_UNICODE_SCALARS,
+    ),
+    publisher: workerSafeStringFact(resource.publisher, 200),
+    modalities: workerSafeStringArrayFact(resource.modalities, 128),
+    license: workerSafeStringFact(resource.license, 256),
+    architecture: workerSafeStringFact(resource.architecture, 256),
+    total_parameters: workerSafeParameterFact(resource.total_parameters),
+    active_parameters: workerSafeParameterFact(resource.active_parameters),
+    source_weight_format: workerSafeStringFact(
+      resource.source_weight_format,
+      128,
+    ),
+    source_quantization: workerSafeStringFact(
+      resource.source_quantization,
+      128,
+    ),
+    checkpoints,
+    status: workerSafeStringFact(resource.status, 64),
+    cataloged_provider_count: workerSafeDerivedCount(
+      resource.cataloged_provider_count,
+    ),
+  };
+  return "variant_id" in resource
+    ? {
+        ...shared,
+        variant_kind: workerSafeStringFact(resource.variant_kind, 128),
+        selection_evidence: workerSafeStringFact(
+          resource.selection_evidence,
+          512,
+        ),
+      }
+    : shared;
+};
+
+const checkContractSchema = (schema: TSchema, value: unknown): boolean => {
+  const previousDate = FormatRegistry.Get("date");
+  const previousDateTime = FormatRegistry.Get("date-time");
+  FormatRegistry.Set("date", isCanonicalContractDate);
+  FormatRegistry.Set("date-time", isCanonicalContractTimestamp);
+  try {
+    return Value.Check(schema, value);
+  } finally {
+    if (previousDate === undefined) FormatRegistry.Delete("date");
+    else FormatRegistry.Set("date", previousDate);
+    if (previousDateTime === undefined) FormatRegistry.Delete("date-time");
+    else FormatRegistry.Set("date-time", previousDateTime);
+  }
+};
+
+export const checkModelContract = (value: unknown): value is Model =>
+  checkContractSchema(ModelSchema, workerSafeModelOrVariantCandidate(value));
+
+export const checkVariantContract = (value: unknown): value is Variant =>
+  checkContractSchema(VariantSchema, workerSafeModelOrVariantCandidate(value));
+
 /**
  * Worker-safe Provider contract validation with JSON Schema Unicode-scalar
  * maxLength semantics. TypeBox 0.34 counts JavaScript UTF-16 code units, so
@@ -449,14 +659,7 @@ export const checkProviderContract = (value: unknown): value is Provider => {
 
   // Validation is synchronous, so another Worker event cannot observe the
   // temporary registry value between installation and restoration.
-  const previousDateTime = FormatRegistry.Get("date-time");
-  FormatRegistry.Set("date-time", isCanonicalContractTimestamp);
-  try {
-    return Value.Check(ProviderSchema, validationCandidate);
-  } finally {
-    if (previousDateTime === undefined) FormatRegistry.Delete("date-time");
-    else FormatRegistry.Set("date-time", previousDateTime);
-  }
+  return checkContractSchema(ProviderSchema, validationCandidate);
 };
 
 const OfferingStatusSchema = extensibleString(
@@ -1047,17 +1250,6 @@ const SEARCH_FALLBACK_ONLY_STATES = new Set<string>([
   "temporarily_unavailable",
 ]);
 
-const workerSafeBoundedUnicodeString = (
-  value: unknown,
-  maximumUnicodeScalars: number,
-): unknown => {
-  if (typeof value !== "string") return value;
-  const scalarLength = Array.from(value).length;
-  if (scalarLength > maximumUnicodeScalars || scalarLength === value.length)
-    return value;
-  return "x".repeat(scalarLength);
-};
-
 const searchCollectionWorkerValidationCandidate = (value: unknown): unknown => {
   if (typeof value !== "object" || value === null || Array.isArray(value))
     return value;
@@ -1147,20 +1339,13 @@ const searchCollectionWorkerValidationCandidate = (value: unknown): unknown => {
 export const checkSearchCollectionContract = (
   value: unknown,
 ): value is SearchCollection => {
-  const previousDateTime = FormatRegistry.Get("date-time");
-  FormatRegistry.Set("date-time", isCanonicalContractTimestamp);
-  try {
-    if (
-      !Value.Check(
-        SearchCollectionSchema,
-        searchCollectionWorkerValidationCandidate(value),
-      )
+  if (
+    !checkContractSchema(
+      SearchCollectionSchema,
+      searchCollectionWorkerValidationCandidate(value),
     )
-      return false;
-  } finally {
-    if (previousDateTime === undefined) FormatRegistry.Delete("date-time");
-    else FormatRegistry.Set("date-time", previousDateTime);
-  }
+  )
+    return false;
   const collection = value as SearchCollection;
   return collection.data.every(
     (result) =>

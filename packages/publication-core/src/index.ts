@@ -1,5 +1,8 @@
 import {
+  checkModelContract,
   checkProviderContract,
+  checkVariantContract,
+  MODEL_DISPLAY_NAME_MAX_UNICODE_SCALARS,
   PROVIDER_DISPLAY_NAME_MAX_UNICODE_SCALARS,
 } from "@quant-clarity/contracts";
 
@@ -32,6 +35,49 @@ export const PROVIDER_SEARCH_PROJECTION_VERSION = "provider-name@1" as const;
 export const PROVIDER_SEARCH_NORMALIZED_NAME_MAX_UNICODE_SCALARS =
   PROVIDER_DISPLAY_NAME_MAX_UNICODE_SCALARS *
   EXACT_SEARCH_NORMALIZATION_MAX_UNICODE_SCALAR_EXPANSION;
+export const MODEL_VARIANT_NAME_SEARCH_PROJECTION_VERSION =
+  "model-variant-name@1" as const;
+export const MODEL_VARIANT_NAME_SEARCH_MAX_RESOURCES = 100_000;
+export const MODEL_VARIANT_NAME_SEARCH_MAX_RESOURCE_BYTES =
+  PUBLICATION_RESOURCE_JSON_MAX_BYTES;
+export const MODEL_VARIANT_NAME_SEARCH_MAX_TOTAL_RESOURCE_BYTES =
+  256 * 1_024 * 1_024;
+export const MODEL_VARIANT_NAME_SEARCH_MAX_NORMALIZED_NAME_UNICODE_SCALARS =
+  MODEL_DISPLAY_NAME_MAX_UNICODE_SCALARS *
+  EXACT_SEARCH_NORMALIZATION_MAX_UNICODE_SCALAR_EXPANSION;
+
+export const assertModelVariantNameSearchResourceByteBudget = (
+  resourceByteLengths: readonly number[],
+): void => {
+  const unknownLengths: unknown = resourceByteLengths;
+  if (
+    !Array.isArray(unknownLengths) ||
+    unknownLengths.length > MODEL_VARIANT_NAME_SEARCH_MAX_RESOURCES
+  )
+    throw new RangeError(
+      "model/variant name search resource input is too large",
+    );
+  let totalResourceBytes = 0;
+  for (const resourceBytes of unknownLengths) {
+    if (
+      typeof resourceBytes !== "number" ||
+      !Number.isSafeInteger(resourceBytes) ||
+      resourceBytes < 0
+    )
+      throw new TypeError(
+        "model/variant name search resource byte length is invalid",
+      );
+    if (resourceBytes > MODEL_VARIANT_NAME_SEARCH_MAX_RESOURCE_BYTES)
+      throw new RangeError(
+        "model/variant name search resource input is too large",
+      );
+    totalResourceBytes += resourceBytes;
+    if (totalResourceBytes > MODEL_VARIANT_NAME_SEARCH_MAX_TOTAL_RESOURCE_BYTES)
+      throw new RangeError(
+        "model/variant name search resource input is too large",
+      );
+  }
+};
 
 const UUID_V4 =
   "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
@@ -1649,6 +1695,281 @@ export interface ServingClosureRows {
   readonly stagingRevision: number;
   readonly sealedAtMs: number;
 }
+
+export type ModelVariantNameSearchDocumentProjection = Readonly<{
+  projectionVersion: typeof MODEL_VARIANT_NAME_SEARCH_PROJECTION_VERSION;
+  resourceType: SearchResourceType;
+  resourceId: string;
+  displayName: string;
+  normalizedName: string;
+  resourceContentHash: Sha256;
+}>;
+
+export type ModelVariantNameSearchProjectionInput = Readonly<{
+  manifest: TrustedImmutablePublicationManifest;
+  resources: readonly ServingResourceClosureRow[];
+}>;
+
+const modelVariantNameSearchProjectionBrand: unique symbol = Symbol(
+  "ModelVariantNameSearchProjection",
+);
+const trustedModelVariantNameSearchProjections = new WeakSet<object>();
+
+export type TrustedModelVariantNameSearchProjection = Readonly<{
+  publicationId: PublicationId;
+  closureHash: Sha256;
+  projectionVersion: typeof MODEL_VARIANT_NAME_SEARCH_PROJECTION_VERSION;
+  normalizationVersion: typeof EXACT_SEARCH_NORMALIZATION_VERSION;
+  documents: readonly ModelVariantNameSearchDocumentProjection[];
+  documentCount: number;
+  inventoryHash: Sha256;
+  readonly [modelVariantNameSearchProjectionBrand]: true;
+}>;
+
+export const assertModelVariantNameSearchProjection: (
+  value: unknown,
+) => asserts value is TrustedModelVariantNameSearchProjection = (value) => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !(modelVariantNameSearchProjectionBrand in value) ||
+    value[modelVariantNameSearchProjectionBrand] !== true ||
+    !trustedModelVariantNameSearchProjections.has(value)
+  )
+    throw new TypeError("model/variant name search projection is not trusted");
+};
+
+const modelVariantNameSearchInventoryHash = async (
+  documents: readonly ModelVariantNameSearchDocumentProjection[],
+): Promise<Sha256> => {
+  const root = canonicalTuple(
+    "publication-model-variant-name-search-inventory",
+    [
+      field(
+        "model_variant_name_search_documents",
+        "list",
+        String(documents.length),
+      ),
+    ],
+  );
+  const rows = documents.map((document) =>
+    canonicalTuple("publication-model-variant-name-search-document", [
+      field("projection_version", "text", document.projectionVersion),
+      field("resource_type", "text", document.resourceType),
+      field("resource_id", "identifier", document.resourceId),
+      field("display_name", "text", document.displayName),
+      field("normalized_name", "text", document.normalizedName),
+      field("resource_content_hash", "digest", document.resourceContentHash),
+    ]),
+  );
+  return digestBytes(
+    concatenate([root, ...rows.map((row) => lengthPrefixed([row]))]),
+  );
+};
+
+const snapshotModelVariantNameResource = (
+  value: unknown,
+): ServingResourceClosureRow & {
+  readonly resource_type: SearchResourceType;
+} => {
+  const resource = inputRecord(value, "model/variant name search resource");
+  const keys = Object.keys(resource).sort(compareAscii);
+  if (
+    JSON.stringify(keys) !==
+    JSON.stringify([
+      "content_hash",
+      "resource_id",
+      "resource_json",
+      "resource_type",
+    ])
+  )
+    throw new TypeError("model/variant name search resource input is invalid");
+  const resourceType = resource.resource_type;
+  const resourceId = resource.resource_id;
+  const resourceJson = resource.resource_json;
+  const contentHash = resource.content_hash;
+  if (
+    (resourceType !== "model" && resourceType !== "variant") ||
+    typeof resourceId !== "string" ||
+    typeof resourceJson !== "string" ||
+    typeof contentHash !== "string" ||
+    !HASH.test(contentHash)
+  )
+    throw new TypeError("model/variant name search resource input is invalid");
+  const typedResourceType: SearchResourceType = resourceType;
+  const expectedPrefix = typedResourceType === "model" ? "mdl_" : "var_";
+  if (!new RegExp(`^${expectedPrefix}${UUID_V4}$`, "u").test(resourceId))
+    throw new TypeError("model/variant name search resource input is invalid");
+  return {
+    resource_type: typedResourceType,
+    resource_id: resourceId,
+    resource_json: resourceJson,
+    content_hash: contentHash,
+  };
+};
+
+/**
+ * Derives the complete canonical model/variant name projection exclusively
+ * from closure-bound resource bytes. Legacy broad search documents are not an
+ * input and cannot authorize an exact canonical-name classification.
+ */
+export const projectModelVariantNameSearchProjection = async (
+  callerInput: ModelVariantNameSearchProjectionInput,
+): Promise<TrustedModelVariantNameSearchProjection> => {
+  const unknownInput: unknown = callerInput;
+  if (
+    typeof unknownInput !== "object" ||
+    unknownInput === null ||
+    Array.isArray(unknownInput)
+  )
+    throw new TypeError("model/variant name search input is invalid");
+  assertImmutablePublicationManifest(callerInput.manifest);
+  if (!Array.isArray(callerInput.resources))
+    throw new TypeError("model/variant name search resources must be an array");
+  if (callerInput.resources.length > MODEL_VARIANT_NAME_SEARCH_MAX_RESOURCES)
+    throw new RangeError(
+      "model/variant name search resource input is too large",
+    );
+
+  // Snapshot all caller-owned values before the first asynchronous hash.
+  const resources = callerInput.resources.map((value) => {
+    return snapshotModelVariantNameResource(value);
+  });
+  assertModelVariantNameSearchResourceByteBudget(
+    resources.map((resource) => utf8.encode(resource.resource_json).length),
+  );
+
+  const resourceKeys = resources.map(
+    (resource) => `${resource.resource_type}:${resource.resource_id}`,
+  );
+  if (new Set(resourceKeys).size !== resourceKeys.length)
+    throw new TypeError(
+      "model/variant name search resources contain a duplicate",
+    );
+
+  const expectedResources = callerInput.manifest.resources.filter(
+    (resource) =>
+      resource.resourceType === "model" || resource.resourceType === "variant",
+  );
+  const expectedByKey = new Map(
+    expectedResources.map((resource) => [
+      `${resource.resourceType}:${resource.resourceId}`,
+      resource,
+    ]),
+  );
+  if (resources.length !== expectedByKey.size)
+    throw new TypeError(
+      "model/variant name search resources do not exactly match the trusted manifest",
+    );
+  for (const resource of resources) {
+    const expected = expectedByKey.get(
+      `${resource.resource_type}:${resource.resource_id}`,
+    );
+    if (expected?.contentHash !== resource.content_hash)
+      throw new TypeError(
+        "model/variant name search resource does not match the trusted manifest",
+      );
+  }
+
+  const documents: ModelVariantNameSearchDocumentProjection[] = [];
+  for (const resource of resources) {
+    const computedHash = await hashPublicationResourceContent({
+      resourceType: resource.resource_type,
+      resourceId: resource.resource_id,
+      resourceJson: resource.resource_json,
+    });
+    if (computedHash !== resource.content_hash)
+      throw new TypeError(
+        "model/variant name search resource content hash does not match",
+      );
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(resource.resource_json) as unknown;
+    } catch {
+      throw new TypeError(
+        "model/variant name search resource is not contract-valid",
+      );
+    }
+    const contractValid =
+      resource.resource_type === "model"
+        ? checkModelContract(parsed)
+        : checkVariantContract(parsed);
+    if (!contractValid)
+      throw new TypeError(
+        "model/variant name search resource is not contract-valid",
+      );
+    const parsedIdentity =
+      resource.resource_type === "model"
+        ? (parsed as { model_id: string }).model_id
+        : (parsed as { variant_id: string }).variant_id;
+    if (parsedIdentity !== resource.resource_id)
+      throw new TypeError(
+        "model/variant name search resource identity does not match",
+      );
+    const displayNameFact = (
+      parsed as {
+        display_name:
+          { state: "known"; value: string } | { state: string; value: null };
+      }
+    ).display_name;
+    if (displayNameFact.state !== "known") continue;
+    if (typeof displayNameFact.value !== "string")
+      throw new TypeError(
+        "model/variant name search resource is not contract-valid",
+      );
+
+    let normalizedName: string;
+    try {
+      normalizedName = normalizeExactSearchName(displayNameFact.value);
+    } catch {
+      throw new TypeError(
+        "model/variant canonical display name cannot be normalized",
+      );
+    }
+    if (
+      Array.from(normalizedName).length >
+      MODEL_VARIANT_NAME_SEARCH_MAX_NORMALIZED_NAME_UNICODE_SCALARS
+    )
+      throw new Error(
+        "model/variant name search normalization exceeds its pinned Unicode bound",
+      );
+    documents.push(
+      Object.freeze({
+        projectionVersion: MODEL_VARIANT_NAME_SEARCH_PROJECTION_VERSION,
+        resourceType: resource.resource_type,
+        resourceId: resource.resource_id,
+        displayName: displayNameFact.value,
+        normalizedName,
+        resourceContentHash: computedHash,
+      }),
+    );
+  }
+
+  documents.sort((left, right) => {
+    const typeOrder = compareAscii(left.resourceType, right.resourceType);
+    return typeOrder === 0
+      ? compareAscii(left.resourceId, right.resourceId)
+      : typeOrder;
+  });
+  const inventoryHash = await modelVariantNameSearchInventoryHash(documents);
+  const projection = {
+    publicationId: callerInput.manifest.publicationId,
+    closureHash: callerInput.manifest.closureHash,
+    projectionVersion: MODEL_VARIANT_NAME_SEARCH_PROJECTION_VERSION,
+    normalizationVersion: EXACT_SEARCH_NORMALIZATION_VERSION,
+    documents: Object.freeze(documents),
+    documentCount: documents.length,
+    inventoryHash,
+  };
+  Object.defineProperty(projection, modelVariantNameSearchProjectionBrand, {
+    value: true,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  trustedModelVariantNameSearchProjections.add(projection);
+  return Object.freeze(projection) as TrustedModelVariantNameSearchProjection;
+};
 
 export type ProviderSearchDocumentProjection = Readonly<{
   projectionVersion: typeof PROVIDER_SEARCH_PROJECTION_VERSION;

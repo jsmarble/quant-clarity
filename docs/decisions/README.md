@@ -60,3 +60,4 @@ Accepted ADRs describe implementation choices; they do not amend product require
 - [ADR 0022](0022-forbid-nul-provider-display-names.md) — forbid NUL in canonical provider display names and exact-name queries
 - [ADR 0023](0023-local-query-rpc-and-bookmark-continuity.md) — closed local query RPC and D1 bookmark continuity for the first provider exact tier
 - [ADR 0024](0024-search-collection-semantic-degradation.md) — authoritative search-collection semantic degradation with a compatible result mirror
+- [ADR 0025](0025-trusted-model-variant-name-projection.md) — trusted canonical model/variant exact-name projection derived from complete publication resources
