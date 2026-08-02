@@ -6,6 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 
 import {
+  assertServingSwitchProjection,
   buildBackupRootHash,
   buildImmutableManifest,
   buildImmutableManifestFromPersistedContent,
@@ -1223,7 +1224,35 @@ describe("immutable publication closure (PIPE-050, PIPE-051, BE-011)", () => {
         .run(HASH_A, publicationId),
     ).toThrow(/readiness receipt is immutable/u);
 
-    const switchProjection = await projectServingSwitch({
+    const mutableArtifactProof = {
+      environment: "local" as const,
+      observedAtMs: Date.parse("2026-08-01T12:05:30.000Z"),
+      maximumAgeMs: 5 * 60 * 1000,
+      ftsBuildVersion: "fts5-unicode61@1",
+      ftsSourceDocumentCount: expected.searchDocuments.length,
+      ftsIndexDocumentCount: expected.searchDocuments.length,
+      ftsSourceInventoryHash: expected.exactSearchInventoryHash,
+      ftsExactParity: true,
+      archiveBundleHash: expected.bundleHash,
+      archiveImmutable: true,
+      vectorNamespace: publicationId,
+      vectorDocumentCount: expected.vectors.length,
+      vectorVerifiedDocumentCount: expected.vectors.length,
+      vectorInventoryHash: expected.vectorInventoryHash,
+      vectorVisibilityProbeVersion: "vector-visibility@1",
+      vectorMutationId: "mutation-switch-1",
+      vectorAllIdsPresent: true,
+      vectorAllNamespacesMatch: true,
+      vectorQueryable: true,
+      probeSetVersion: "search-gold@1",
+      integrityPassed: true,
+      exactSearchPassed: true,
+      semanticSearchPassed: true,
+      structuredFilterPassed: true,
+      neutralityPassed: true,
+      versionIsolationPassed: true,
+    };
+    const switchProjectionPromise = projectServingSwitch({
       action: "activate",
       target: {
         publicationId,
@@ -1242,35 +1271,44 @@ describe("immutable publication closure (PIPE-050, PIPE-051, BE-011)", () => {
       persistedSeal: seal,
       receiptRows: selectReadinessReceiptRows(database, publicationId),
       persistedAttestation,
-      artifactProof: {
-        environment: "local",
-        observedAtMs: Date.parse("2026-08-01T12:05:30.000Z"),
-        maximumAgeMs: 5 * 60 * 1000,
-        ftsBuildVersion: "fts5-unicode61@1",
-        ftsSourceDocumentCount: expected.searchDocuments.length,
-        ftsIndexDocumentCount: expected.searchDocuments.length,
-        ftsSourceInventoryHash: expected.exactSearchInventoryHash,
-        ftsExactParity: true,
-        archiveBundleHash: expected.bundleHash,
-        archiveImmutable: true,
-        vectorNamespace: publicationId,
-        vectorDocumentCount: expected.vectors.length,
-        vectorVerifiedDocumentCount: expected.vectors.length,
-        vectorInventoryHash: expected.vectorInventoryHash,
-        vectorVisibilityProbeVersion: "vector-visibility@1",
-        vectorMutationId: "mutation-switch-1",
-        vectorAllIdsPresent: true,
-        vectorAllNamespacesMatch: true,
-        vectorQueryable: true,
-        probeSetVersion: "search-gold@1",
-        integrityPassed: true,
-        exactSearchPassed: true,
-        semanticSearchPassed: true,
-        structuredFilterPassed: true,
-        neutralityPassed: true,
-        versionIsolationPassed: true,
-      },
+      artifactProof: mutableArtifactProof,
     });
+    mutableArtifactProof.maximumAgeMs = 0;
+    mutableArtifactProof.vectorMutationId = "mutated-during-digest";
+    const switchProjection = await switchProjectionPromise;
+    expect(switchProjection.preflight).toMatchObject({
+      maximum_age_ms: 5 * 60 * 1000,
+      vector_mutation_id: "mutation-switch-1",
+    });
+    expect(() => {
+      assertServingSwitchProjection(switchProjection);
+    }).not.toThrow();
+    const serializedProjection: unknown = JSON.parse(
+      JSON.stringify(switchProjection),
+    );
+    expect(serializedProjection).toEqual({
+      plan: switchProjection.plan,
+      preflight: switchProjection.preflight,
+      history: switchProjection.history,
+    });
+    expect(() => {
+      assertServingSwitchProjection(serializedProjection);
+    }).toThrow(/not trusted/u);
+    if (
+      typeof serializedProjection !== "object" ||
+      serializedProjection === null
+    )
+      throw new TypeError("serialized projection is not an object");
+    const reflectedForgery = { ...serializedProjection };
+    for (const symbol of Object.getOwnPropertySymbols(switchProjection))
+      Object.defineProperty(
+        reflectedForgery,
+        symbol,
+        Object.getOwnPropertyDescriptor(switchProjection, symbol)!,
+      );
+    expect(() => {
+      assertServingSwitchProjection(reflectedForgery);
+    }).toThrow(/not trusted/u);
     expect(switchProjection.plan.operation).toBe("activate");
     expect(switchProjection.preflight).toMatchObject({
       action: "activate",
@@ -1304,6 +1342,7 @@ describe("immutable publication closure (PIPE-050, PIPE-051, BE-011)", () => {
       classifyServingSwitchRetry({
         expected: switchProjection,
         currentHead: null,
+        preflightAtGeneration: null,
         historyAtGeneration: null,
         targetState: "ready",
         formerState: null,
@@ -1314,6 +1353,7 @@ describe("immutable publication closure (PIPE-050, PIPE-051, BE-011)", () => {
         classifyServingSwitchRetry({
           expected: switchProjection,
           currentHead: null,
+          preflightAtGeneration: null,
           historyAtGeneration: null,
           targetState,
           formerState: null,
@@ -1323,6 +1363,7 @@ describe("immutable publication closure (PIPE-050, PIPE-051, BE-011)", () => {
       classifyServingSwitchRetry({
         expected: switchProjection,
         currentHead: null,
+        preflightAtGeneration: null,
         historyAtGeneration: null,
         targetState: "ready",
         formerState: "active",
@@ -1332,6 +1373,7 @@ describe("immutable publication closure (PIPE-050, PIPE-051, BE-011)", () => {
       classifyServingSwitchRetry({
         expected: switchProjection,
         currentHead: switchedHead,
+        preflightAtGeneration: null,
         historyAtGeneration: null,
         targetState: "active",
         formerState: null,
@@ -1340,7 +1382,38 @@ describe("immutable publication closure (PIPE-050, PIPE-051, BE-011)", () => {
     expect(
       classifyServingSwitchRetry({
         expected: switchProjection,
+        currentHead: null,
+        preflightAtGeneration: switchProjection.preflight,
+        historyAtGeneration: null,
+        targetState: "ready",
+        formerState: null,
+      }),
+    ).toEqual({ outcome: "integrity_failure" });
+    for (const preflightAtGeneration of [
+      {
+        ...switchProjection.preflight,
+        preflight_hash: HASH_A,
+      },
+      {
+        ...switchProjection.preflight,
+        switch_id: "publication-switch|activate|1|competing",
+      },
+    ])
+      expect(
+        classifyServingSwitchRetry({
+          expected: switchProjection,
+          currentHead: null,
+          preflightAtGeneration,
+          historyAtGeneration: null,
+          targetState: "ready",
+          formerState: null,
+        }),
+      ).toEqual({ outcome: "conflict" });
+    expect(
+      classifyServingSwitchRetry({
+        expected: switchProjection,
         currentHead: switchedHead,
+        preflightAtGeneration: switchProjection.preflight,
         historyAtGeneration: switchProjection.history,
         targetState: "active",
         formerState: null,
@@ -1350,6 +1423,7 @@ describe("immutable publication closure (PIPE-050, PIPE-051, BE-011)", () => {
       classifyServingSwitchRetry({
         expected: switchProjection,
         currentHead: switchedHead,
+        preflightAtGeneration: switchProjection.preflight,
         historyAtGeneration: {
           ...switchProjection.history,
           event_hash: HASH_A,
@@ -1362,12 +1436,42 @@ describe("immutable publication closure (PIPE-050, PIPE-051, BE-011)", () => {
       classifyServingSwitchRetry({
         expected: switchProjection,
         currentHead: null,
+        preflightAtGeneration: switchProjection.preflight,
         historyAtGeneration: switchProjection.history,
         targetState: "active",
         formerState: null,
       }),
     ).toEqual({ outcome: "integrity_failure" });
-    const rollbackProjection = await projectServingSwitch({
+    expect(
+      classifyServingSwitchRetry({
+        expected: switchProjection,
+        currentHead: switchedHead,
+        preflightAtGeneration: null,
+        historyAtGeneration: switchProjection.history,
+        targetState: "active",
+        formerState: null,
+      }),
+    ).toEqual({ outcome: "integrity_failure" });
+    expect(
+      classifyServingSwitchRetry({
+        expected: switchProjection,
+        currentHead: switchedHead,
+        preflightAtGeneration: {
+          ...switchProjection.preflight,
+          preflight_hash: HASH_A,
+        },
+        historyAtGeneration: switchProjection.history,
+        targetState: "active",
+        formerState: null,
+      }),
+    ).toEqual({ outcome: "conflict" });
+    const mutableRollbackHead = {
+      activePublicationId: `pub_${UUID_C}` as const,
+      rollbackCandidatePublicationId: publicationId,
+      switchedAt: "2026-08-01T12:06:30.000Z",
+      generation: 1,
+    };
+    const rollbackProjectionPromise = projectServingSwitch({
       action: "rollback",
       target: {
         publicationId,
@@ -1378,12 +1482,7 @@ describe("immutable publication closure (PIPE-050, PIPE-051, BE-011)", () => {
         firstActivatedAt: "2026-08-01T12:06:00.000Z",
         lastHeadReferencedAt: "2026-08-01T12:06:30.000Z",
       },
-      currentHead: {
-        activePublicationId: `pub_${UUID_C}`,
-        rollbackCandidatePublicationId: publicationId,
-        switchedAt: "2026-08-01T12:06:30.000Z",
-        generation: 1,
-      },
+      currentHead: mutableRollbackHead,
       currentActive: {
         publicationId: `pub_${UUID_C}`,
         closureHash: HASH_A,
@@ -1428,6 +1527,23 @@ describe("immutable publication closure (PIPE-050, PIPE-051, BE-011)", () => {
         versionIsolationPassed: true,
       },
     });
+    mutableRollbackHead.generation = 99;
+    mutableRollbackHead.switchedAt = "2026-08-01T12:06:59.000Z";
+    const rollbackProjection = await rollbackProjectionPromise;
+    mutableRollbackHead.generation = 100;
+    const rollbackCas = rollbackProjection.plan.steps.find(
+      (step) => step.kind === "compare_and_swap_head",
+    );
+    expect(rollbackCas?.expected).toEqual({
+      activePublicationId: `pub_${UUID_C}`,
+      rollbackCandidatePublicationId: publicationId,
+      switchedAt: "2026-08-01T12:06:30.000Z",
+      generation: 1,
+    });
+    expect(Object.isFrozen(rollbackCas?.expected)).toBe(true);
+    expect(() => {
+      Object.assign(rollbackCas?.expected ?? {}, { generation: 2 });
+    }).toThrow(TypeError);
     expect(rollbackProjection.preflight).toMatchObject({
       action: "rollback",
       expected_prior_generation: 1,
@@ -1451,6 +1567,7 @@ describe("immutable publication closure (PIPE-050, PIPE-051, BE-011)", () => {
       classifyServingSwitchRetry({
         expected: rollbackProjection,
         currentHead: rollbackHead,
+        preflightAtGeneration: null,
         historyAtGeneration: null,
         targetState: "superseded",
         formerState: "active",
@@ -1460,6 +1577,7 @@ describe("immutable publication closure (PIPE-050, PIPE-051, BE-011)", () => {
       classifyServingSwitchRetry({
         expected: rollbackProjection,
         currentHead: rollbackHead,
+        preflightAtGeneration: null,
         historyAtGeneration: null,
         targetState: "rolled_back",
         formerState: "active",
@@ -1469,6 +1587,7 @@ describe("immutable publication closure (PIPE-050, PIPE-051, BE-011)", () => {
       classifyServingSwitchRetry({
         expected: rollbackProjection,
         currentHead: rollbackHead,
+        preflightAtGeneration: null,
         historyAtGeneration: null,
         targetState: "superseded",
         formerState: "superseded",

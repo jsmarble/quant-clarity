@@ -2836,7 +2836,10 @@ export const planActivation = (input: {
     }),
     Object.freeze({
       kind: "compare_and_swap_head",
-      expected: input.currentHead,
+      expected:
+        input.currentHead === null
+          ? null
+          : Object.freeze({ ...input.currentHead }),
       next,
     }),
   ];
@@ -2941,7 +2944,7 @@ export const planRollback = (input: {
     }),
     Object.freeze({
       kind: "compare_and_swap_head",
-      expected: input.currentHead,
+      expected: Object.freeze({ ...input.currentHead }),
       next,
     }),
     Object.freeze({
@@ -3075,11 +3078,30 @@ export type ServingSwitchHistoryRow = Readonly<{
   authorized_identity_id: string;
 }>;
 
+const servingSwitchProjectionBrand: unique symbol = Symbol(
+  "ServingSwitchProjection",
+);
+const trustedServingSwitchProjections = new WeakSet<object>();
+
 export type ServingSwitchProjection = Readonly<{
   plan: HeadSwitchPlan;
   preflight: ServingSwitchPreflightRow;
   history: ServingSwitchHistoryRow;
+  readonly [servingSwitchProjectionBrand]: true;
 }>;
+
+export const assertServingSwitchProjection = (
+  value: unknown,
+): asserts value is ServingSwitchProjection => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !(servingSwitchProjectionBrand in value) ||
+    value[servingSwitchProjectionBrand] !== true ||
+    !trustedServingSwitchProjections.has(value)
+  )
+    throw new TypeError("serving switch projection is not trusted");
+};
 
 const nullableCanonical = (
   name: string,
@@ -3104,7 +3126,7 @@ const switchHistoryStep = (
   return step;
 };
 
-export const projectServingSwitch = async (input: {
+export type ServingSwitchProjectionInput = Readonly<{
   readonly action: "activate" | "rollback";
   readonly target: PublicationRecord;
   readonly currentHead: StoredPublicationHead | null;
@@ -3116,7 +3138,14 @@ export const projectServingSwitch = async (input: {
   readonly receiptRows: ServingReadinessReceiptRows | null;
   readonly persistedAttestation: ServingReadinessAttestationProjection | null;
   readonly artifactProof: ServingSwitchArtifactProof;
-}): Promise<ServingSwitchProjection> => {
+}>;
+
+export const projectServingSwitch = async (
+  callerInput: ServingSwitchProjectionInput,
+): Promise<ServingSwitchProjection> => {
+  // Capture one synchronous, detached view before the first digest yields. This
+  // prevents mutable caller objects from changing the values covered by hashes.
+  const input = structuredClone(callerInput);
   if (!SERVING_PUBLICATION_ENVIRONMENTS.has(input.artifactProof.environment))
     throw new TypeError("serving switch environment is invalid");
   validateAuthorization(input.authorizedBy);
@@ -3475,7 +3504,15 @@ export const projectServingSwitch = async (input: {
     authorized_by_kind: event.authorizedBy.kind,
     authorized_identity_id: event.authorizedBy.identityId,
   });
-  return Object.freeze({ plan, preflight, history });
+  const projection = { plan, preflight, history };
+  Object.defineProperty(projection, servingSwitchProjectionBrand, {
+    value: true,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  trustedServingSwitchProjections.add(projection);
+  return Object.freeze(projection) as ServingSwitchProjection;
 };
 
 export type ServingSwitchRetryDecision = Readonly<{
@@ -3499,9 +3536,21 @@ const headsEqual = (
       left.switchedAt === right.switchedAt &&
       left.generation === right.generation;
 
+const rowsExactlyEqual = <Row extends object>(
+  left: Row,
+  right: Row,
+): boolean => {
+  const rightKeys = Object.keys(right) as (keyof Row)[];
+  return (
+    Object.keys(left).length === rightKeys.length &&
+    rightKeys.every((key) => left[key] === right[key])
+  );
+};
+
 export const classifyServingSwitchRetry = (input: {
   readonly expected: ServingSwitchProjection;
   readonly currentHead: StoredPublicationHead | null;
+  readonly preflightAtGeneration: ServingSwitchPreflightRow | null;
   readonly historyAtGeneration: ServingSwitchHistoryRow | null;
   readonly targetState: PublicationState;
   readonly formerState: PublicationState | null;
@@ -3515,6 +3564,15 @@ export const classifyServingSwitchRetry = (input: {
   );
   if (cas === undefined) throw new TypeError("switch plan lacks its head CAS");
   if (input.historyAtGeneration === null) {
+    if (input.preflightAtGeneration !== null)
+      return Object.freeze({
+        outcome: rowsExactlyEqual(
+          input.preflightAtGeneration,
+          input.expected.preflight,
+        )
+          ? "integrity_failure"
+          : "conflict",
+      });
     if (!headsEqual(input.currentHead, cas.expected))
       return Object.freeze({ outcome: "stale" });
     const expectedTargetState =
@@ -3529,13 +3587,12 @@ export const classifyServingSwitchRetry = (input: {
     return Object.freeze({ outcome: "execute" });
   }
 
-  if (input.historyAtGeneration.switch_id !== input.expected.history.switch_id)
+  if (!rowsExactlyEqual(input.historyAtGeneration, input.expected.history))
     return Object.freeze({ outcome: "conflict" });
-  for (const key of Object.keys(
-    input.expected.history,
-  ) as (keyof ServingSwitchHistoryRow)[])
-    if (input.historyAtGeneration[key] !== input.expected.history[key])
-      return Object.freeze({ outcome: "conflict" });
+  if (input.preflightAtGeneration === null)
+    return Object.freeze({ outcome: "integrity_failure" });
+  if (!rowsExactlyEqual(input.preflightAtGeneration, input.expected.preflight))
+    return Object.freeze({ outcome: "conflict" });
   const expectedFormerState =
     input.expected.history.from_publication_id === null
       ? null
