@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -79,6 +81,17 @@ describe("zero-visitor-data static policy (GATE-zero-visitor-data)", () => {
         'throw new Error("controlled projection is invalid");',
       ),
     ).toEqual([]);
+  });
+
+  it("keeps the model/variant exact reader, RPC, and API seam free of visitor-data sinks", async () => {
+    for (const path of [
+      "apps/query/src/model-variant-exact-name.ts",
+      "apps/query/src/catalog-query-rpc.ts",
+      "apps/api/src/model-variant-exact-name-query.ts",
+    ]) {
+      const source = await readFile(path, "utf8");
+      expect(findControlledPipelineContentViolations(source), path).toEqual([]);
+    }
   });
 
   it("rejects telemetry export and enabled observability mutations", () => {

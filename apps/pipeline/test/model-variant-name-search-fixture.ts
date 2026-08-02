@@ -56,6 +56,9 @@ export type ModelVariantNameSearchFixture = Readonly<{
   persistence: ModelVariantNameSearchStagingPersistenceV1;
 }>;
 
+type FixtureModelStatus =
+  "active" | "inactive" | "unavailable" | "deleted" | null;
+
 const statement = (
   database: D1Database,
   sql: string,
@@ -198,6 +201,13 @@ export const createModelVariantNameSearchFixture = async (
   displayName: string | null | readonly string[] = "Älpha Model",
   includeVariant = false,
   availableProvider = false,
+  modelStatus: FixtureModelStatus | readonly FixtureModelStatus[] = "active",
+  neutrality: Readonly<{
+    modelPublisher?: string;
+    providerAffiliateRelationshipPresent?: boolean;
+    providerOfficialSite?: string;
+    providerPrecisionKnownCount?: number;
+  }> = {},
 ): Promise<ModelVariantNameSearchFixture> => {
   const observedAt = new Date(generatedAtMs).toISOString();
   const modelDisplayNames = Array.isArray(displayName)
@@ -205,6 +215,20 @@ export const createModelVariantNameSearchFixture = async (
     : [displayName];
   if (modelDisplayNames.length === 0)
     throw new Error("fixture requires at least one model");
+  const modelStatuses: readonly FixtureModelStatus[] = Array.isArray(
+    modelStatus,
+  )
+    ? (modelStatus as readonly FixtureModelStatus[])
+    : modelDisplayNames.map(() => modelStatus as FixtureModelStatus);
+  if (modelStatuses.length !== modelDisplayNames.length)
+    throw new Error("fixture model status count must match its model count");
+  const modelStatusAt = (index: number): FixtureModelStatus => {
+    const value = modelStatuses[index];
+    if (value === undefined) throw new Error("fixture model status is missing");
+    return value;
+  };
+  const statusFact = (value: FixtureModelStatus) =>
+    value === null ? unknownFact() : knownFact(value, observedAt, 6);
   const modelId = id("mdl", 1);
   const variantId = id("var", 1);
   const providerId = id("prv", 1);
@@ -223,12 +247,16 @@ export const createModelVariantNameSearchFixture = async (
     license: unknownFact(),
     maximum_output_tokens: unknownFact(),
     modalities: unknownFact(),
-    publisher: knownFact("Fixture Publisher", observedAt, 3),
+    publisher: knownFact(
+      neutrality.modelPublisher ?? "Fixture Publisher",
+      observedAt,
+      3,
+    ),
     release_date: knownFact("2026-08-02", observedAt, 4),
     slug: knownFact("alpha-model", observedAt, 5),
     source_quantization: unknownFact(),
     source_weight_format: unknownFact(),
-    status: knownFact("active", observedAt, 6),
+    status: statusFact(modelStatusAt(0)),
     total_parameters: unknownFact(),
   };
   const sources: {
@@ -248,6 +276,7 @@ export const createModelVariantNameSearchFixture = async (
             ? unknownFact()
             : knownFact(modelDisplayName, observedAt),
         model_id: resourceId,
+        status: statusFact(modelStatusAt(index)),
       },
     };
   });
@@ -294,14 +323,20 @@ export const createModelVariantNameSearchFixture = async (
         observed_at: observedAt,
         value: 0,
       },
-      affiliate_relationship_present: false,
+      affiliate_relationship_present:
+        neutrality.providerAffiliateRelationshipPresent ?? false,
       display_name: knownFact("Fixture Provider", observedAt, 20),
       last_successful_refresh: knownFact(observedAt, observedAt, 21),
-      official_site: knownFact("https://provider.example", observedAt, 22),
+      official_site: knownFact(
+        neutrality.providerOfficialSite ?? "https://provider.example",
+        observedAt,
+        22,
+      ),
       precision_coverage: {
         derivation_version: "precision-coverage@1",
-        known_count: 0,
-        known_proportion_decimal: "0",
+        known_count: neutrality.providerPrecisionKnownCount ?? 0,
+        known_proportion_decimal:
+          (neutrality.providerPrecisionKnownCount ?? 0) === 0 ? "0" : "1",
         unknown_count: 0,
       },
       provider_id: providerId,

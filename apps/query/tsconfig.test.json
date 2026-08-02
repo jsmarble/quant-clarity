@@ -13,10 +13,14 @@
     "src/**/*.ts",
     "test-env.d.ts",
     "worker-configuration.d.ts",
+    "../pipeline/src/model-variant-name-search-staging.ts",
     "../pipeline/src/provider-search-staging.ts",
     "../pipeline/src/readiness-commit-v2.ts",
+    "../pipeline/src/readiness-commit-v3.ts",
     "../pipeline/src/serving-switch.ts",
+    "../pipeline/test/model-variant-name-search-fixture.ts",
     "../pipeline/test/provider-search-d1-fixture.ts",
+    "../pipeline/test/serving-switch-v3-fixture.ts",
     "../pipeline/test/serving-switch-fixture.ts"
   ],
   "references": [
