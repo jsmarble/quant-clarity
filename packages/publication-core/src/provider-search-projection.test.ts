@@ -4,10 +4,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   PROVIDER_SEARCH_FTS_BUILD_VERSION,
+  PROVIDER_SEARCH_NORMALIZED_NAME_MAX_UNICODE_SCALARS,
   PROVIDER_SEARCH_PROJECTION_VERSION,
   READINESS_PROBE_SET_VERSION_V2,
   assertProviderSearchArtifactProofV2,
   assertProviderSearchProjection,
+  assertProviderSearchStagingProjectionV2,
   assertReadinessReceiptProofV2,
   assertServingReadinessCommitProjection,
   assertServingReadinessProofV2,
@@ -24,15 +26,19 @@ import {
   hashPublicationVectorChunk,
   projectProviderSearchArtifactProofV2,
   projectProviderSearchProjection,
+  projectProviderSearchStagingV2,
   projectReadinessReceiptProofV2,
   projectServingReadinessProofV2,
   projectServingSwitchPreflightProofV2,
+  readProviderSearchStagingPersistenceV2,
+  classifyProviderSearchStagingRetryV2,
   type ArtifactBinding,
   type ProviderSearchArtifactProofV2,
   type ProviderSearchDocumentProjection,
   type ProviderSearchProjectionInput,
   type ReadinessReceipt,
   type ServingReadinessAttestationProjectionV2,
+  type ServingClosureRows,
   type ServingProviderSliceClosureRow,
   type ServingReceipt,
   type ServingResourceClosureRow,
@@ -345,6 +351,59 @@ async function input(
     providerResources,
   };
 }
+
+const closureRows = (
+  source: ProviderSearchProjectionInput,
+): ServingClosureRows => ({
+  publication: {
+    publication_id: source.manifest.publicationId,
+    source_run_id: source.manifest.sourceRunId,
+    parent_publication_id: source.manifest.parentPublicationId,
+    generated_at_ms: Date.parse(source.manifest.generatedAt),
+    schema_version: source.manifest.versions.schema,
+    methodology_version: source.manifest.versions.methodology,
+    precision_normalization_version:
+      source.manifest.versions.precisionNormalization,
+    precision_display_order_version:
+      source.manifest.versions.precisionDisplayOrder,
+    price_policy_version: source.manifest.versions.pricePolicy,
+    source_policy_version: source.manifest.versions.sourcePolicy,
+    embedding_version: source.manifest.versions.embedding,
+    build_commit: source.manifest.versions.buildCommit,
+    closure_hash: source.manifest.closureHash,
+  },
+  providerSlices: source.manifest.providerSlices.map((row) => ({
+    provider_id: row.providerId,
+    provider_slice_id: row.providerSliceId,
+    provider_run_id: row.providerRunId,
+    adapter_version: row.adapterVersion,
+    roster_version: row.rosterVersion,
+    source_register_version: row.sourceRegisterVersion,
+    carried_forward: row.carriedForward ? 1 : 0,
+    freshness_state: row.freshnessState,
+  })),
+  providerAttributions: source.manifest.providerAttributions.map((row) => ({
+    resource_type: row.resourceType,
+    resource_id: row.resourceId,
+    provider_id: row.providerId,
+  })),
+  resources: source.providerResources,
+  searchDocuments: [],
+  vectors: [],
+  chunks: source.manifest.chunks.map((row) => ({
+    kind: row.kind,
+    ordinal: row.ordinal,
+    first_key: row.firstKey,
+    last_key: row.lastKey,
+    item_count: row.itemCount,
+    content_hash: row.contentHash,
+  })),
+  manifestContractVersion: "1.0.0",
+  enabledProviderScopeVersion: source.manifest.enabledProviderScopeVersion,
+  bundleHash: source.manifest.bundleHash,
+  stagingRevision: 1,
+  sealedAtMs: Date.parse(observedAt) + 60_000,
+});
 
 function uint64(value: number): Buffer {
   const buffer = Buffer.alloc(8);
@@ -890,6 +949,50 @@ function switchArtifactProofV2(
 }
 
 describe("trusted provider search projection (SRCH-002, SRCH-006, BE-011)", () => {
+  it("accepts the ProviderSchema maximum through worst-case Unicode expansion", async () => {
+    const displayName = "\ufdfa".repeat(200);
+    const projection = await projectProviderSearchProjection(
+      await input([{ id: id("prv", 999), displayName }]),
+    );
+    const normalizedName = projection.documents[0]?.normalizedName;
+    expect(normalizedName).toBe(
+      "\u0635\u0644\u0649 \u0627\u0644\u0644\u0647 \u0639\u0644\u064a\u0647 \u0648\u0633\u0644\u0645".repeat(
+        200,
+      ),
+    );
+    expect(Array.from(normalizedName ?? "")).toHaveLength(
+      PROVIDER_SEARCH_NORMALIZED_NAME_MAX_UNICODE_SCALARS,
+    );
+    expect(PROVIDER_SEARCH_NORMALIZED_NAME_MAX_UNICODE_SCALARS).toBe(3_600);
+  });
+
+  it("uses Unicode-scalar ProviderSchema bounds for astral display names", async () => {
+    const maximum = "\u{1f642}".repeat(200);
+    const projection = await projectProviderSearchProjection(
+      await input([{ id: id("prv", 998), displayName: maximum }]),
+    );
+    expect(projection.documents[0]).toMatchObject({
+      displayName: maximum,
+      normalizedName: maximum,
+    });
+    expect(Array.from(projection.documents[0]?.displayName ?? "")).toHaveLength(
+      200,
+    );
+
+    await expect(
+      projectProviderSearchProjection(
+        await input([
+          { id: id("prv", 997), displayName: "\u{1f642}".repeat(201) },
+        ]),
+      ),
+    ).rejects.toThrow("provider search resource is not contract-valid");
+    await expect(
+      projectProviderSearchProjection(
+        await input([{ id: id("prv", 996), displayName: "" }]),
+      ),
+    ).rejects.toThrow("provider search resource is not contract-valid");
+  });
+
   it("projects known fresh and carried-stale names and skips honest unknowns (FE-023, FE-025)", async () => {
     const freshId = id("prv", 1);
     const staleId = id("prv", 2);
@@ -1332,6 +1435,69 @@ describe("dormant provider-search v2 proofs (SRCH-002, SRCH-007, PIPE-050)", () 
     expect(() => {
       assertServingReadinessCommitProjection(fixture.readinessProof);
     }).toThrow("not trusted");
+  });
+
+  it("grants pre-seal write authority only to an opaque detached staging projection", async () => {
+    const fixture = await proofFixture();
+    const staging = await projectProviderSearchStagingV2({
+      projection: fixture.projection,
+      closureRows: closureRows(fixture.source),
+    });
+    expect(() => {
+      assertProviderSearchStagingProjectionV2(staging);
+    }).not.toThrow();
+    expect(() => {
+      assertProviderSearchStagingProjectionV2({ ...staging });
+    }).toThrow("not trusted");
+    const persisted = readProviderSearchStagingPersistenceV2(staging);
+    expect(persisted.documents).toEqual([
+      {
+        publication_id: fixture.source.manifest.publicationId,
+        provider_id: id("prv", 80),
+        projection_version: "provider-name@1",
+        display_name: "Proof Provider",
+        normalized_name: "proof provider",
+        provider_resource_content_hash:
+          fixture.projection.documents[0]?.providerResourceContentHash,
+      },
+    ]);
+    expect(persisted.ftsRows).toEqual([
+      {
+        publication_id: fixture.source.manifest.publicationId,
+        provider_id: id("prv", 80),
+        display_name: "Proof Provider",
+      },
+    ]);
+    expect(
+      classifyProviderSearchStagingRetryV2({
+        expected: staging,
+        publicationState: "building",
+        sealed: false,
+        stagingRevision: persisted.stagingRevision,
+        documents: [],
+        ftsRows: [],
+      }),
+    ).toEqual({ outcome: "execute" });
+    expect(
+      classifyProviderSearchStagingRetryV2({
+        expected: staging,
+        publicationState: "building",
+        sealed: false,
+        stagingRevision: persisted.stagingRevision,
+        documents: persisted.documents,
+        ftsRows: persisted.ftsRows,
+      }),
+    ).toEqual({ outcome: "idempotent_success" });
+    expect(
+      classifyProviderSearchStagingRetryV2({
+        expected: staging,
+        publicationState: "building",
+        sealed: false,
+        stagingRevision: persisted.stagingRevision + 1,
+        documents: [],
+        ftsRows: [],
+      }),
+    ).toEqual({ outcome: "stale" });
   });
 
   it("projects activation and rollback preflight v2 without lifecycle authority", async () => {
@@ -1869,6 +2035,32 @@ describe("dormant provider-search v2 proofs (SRCH-002, SRCH-007, PIPE-050)", () 
       provider_search_inventory_hash:
         "sha256:15b3de8d9c92735a8d5379c3f5dfee54ed5e47026c57f0ad4f41acd497cb89e3",
     });
+    const emptyStaging = await projectProviderSearchStagingV2({
+      projection,
+      closureRows: closureRows(source),
+    });
+    expect(
+      classifyProviderSearchStagingRetryV2({
+        expected: emptyStaging,
+        publicationState: "building",
+        sealed: false,
+        stagingRevision:
+          readProviderSearchStagingPersistenceV2(emptyStaging).stagingRevision,
+        documents: [],
+        ftsRows: [],
+      }),
+    ).toEqual({ outcome: "execute" });
+    expect(
+      classifyProviderSearchStagingRetryV2({
+        expected: emptyStaging,
+        publicationState: "ready",
+        sealed: true,
+        stagingRevision:
+          readProviderSearchStagingPersistenceV2(emptyStaging).stagingRevision,
+        documents: [],
+        ftsRows: [],
+      }),
+    ).toEqual({ outcome: "integrity_failure" });
     const receiptProofs = await Promise.all(
       readinessReceiptsV2(source.manifest).map((receipt) =>
         projectReadinessReceiptProofV2({

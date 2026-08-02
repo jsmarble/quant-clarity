@@ -33,3 +33,5 @@ The test-only Worker configuration applies the checked-in serving migrations to 
 ## Nonclaims
 
 This slice provides no configured preview or production D1 resource, remote race or failure evidence, protected writer identity, real R2 immutability or Vectorize visibility proof, reader Session/bookmark handoff, public API or SSR response, cache behavior, backup/restore, pruning, multi-PoP chaos, rollback-time measurement, alerting, provisioning, deployment, provider publication, or release evidence. Test-only Miniflare behavior does not establish remote D1 behavior. Every related traceability status remains `Planned`.
+
+[Phase 4G](phase-4g-provider-search-schema-writers.md) keeps this schema-1.4 adapter unchanged for historical tests and adds a distinct schema-1.5 provider-aware switch adapter. It does not broaden either nominal type across schema versions.

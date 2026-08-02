@@ -197,6 +197,18 @@ const seedReadyPublication = async (
         ],
       ),
     ),
+    ...rows.providerAttributions.map((row) =>
+      statement(
+        database,
+        "INSERT INTO publication_provider_attribution VALUES (?, ?, ?, ?)",
+        [
+          manifest.publicationId,
+          row.resource_type,
+          row.resource_id,
+          row.provider_id,
+        ],
+      ),
+    ),
     ...rows.searchDocuments.map((row) =>
       statement(
         database,
@@ -360,7 +372,12 @@ const one = async <T>(
 };
 
 beforeAll(async () => {
-  await applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS);
+  await applyD1Migrations(
+    env.SERVING_DB,
+    env.TEST_MIGRATIONS.filter(
+      (migration) => migration.name <= "0006_exact_generation_activation.sql",
+    ),
+  );
 });
 
 describe("fixed serving switch transaction in workerd (PIPE-044, PIPE-050–PIPE-056, QA-006)", () => {

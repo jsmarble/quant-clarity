@@ -1,10 +1,15 @@
 import {
   assertServingSwitchProjection,
+  assertServingSwitchProjectionV2,
   classifyServingSwitchRetry,
+  classifyServingSwitchRetryV2,
+  readServingSwitchPersistenceV2,
   type PublicationState,
   type ServingSwitchHistoryRow,
   type ServingSwitchPreflightRow,
   type ServingSwitchProjection,
+  type ServingSwitchPreflightProofV2,
+  type ServingSwitchProjectionV2,
   type StoredPublicationHead,
 } from "@quant-clarity/publication-core";
 
@@ -549,6 +554,267 @@ export const applyServingSwitch = async (
     }
     if (reconciled.outcome === "idempotent_success")
       return success(expected, "idempotent_success");
+    if (reconciled.outcome === "execute")
+      throw new ServingSwitchError("not_applied");
+    return throwDecision(reconciled.outcome);
+  }
+};
+
+const SELECT_PREFLIGHT_V2_SQL = `SELECT
+  switch_id, preflight_version, preflight_hash, action, environment,
+  expected_prior_generation, expected_prior_rollback_candidate_publication_id,
+  expected_prior_switched_at_ms, new_generation, from_publication_id,
+  from_closure_hash, to_publication_id, to_closure_hash, to_attestation_hash,
+  switched_at_ms, observed_at_ms, maximum_age_ms, valid_until_ms,
+  fts_build_version, fts_source_document_count, fts_index_document_count,
+  fts_source_inventory_hash, fts_exact_parity, archive_bundle_hash,
+  archive_immutable, vector_namespace, vector_document_count,
+  vector_verified_document_count, vector_inventory_hash,
+  vector_visibility_probe_version, vector_mutation_id, vector_all_ids_present,
+  vector_all_namespaces_match, vector_queryable, probe_set_version,
+  integrity_passed, exact_search_passed, semantic_search_passed,
+  structured_filter_passed, neutrality_passed, version_isolation_passed,
+  provider_search_projection_version, provider_search_document_count,
+  provider_search_inventory_hash, provider_search_fts_build_version,
+  provider_search_fts_document_count, provider_search_fts_queryable,
+  provider_search_exact_parity
+FROM publication_switch_preflight WHERE new_generation = ?1`;
+
+const INSERT_PREFLIGHT_V2_SQL = `INSERT INTO publication_switch_preflight (
+  switch_id, preflight_version, preflight_hash, action, environment,
+  expected_prior_generation, expected_prior_rollback_candidate_publication_id,
+  expected_prior_switched_at_ms, new_generation, from_publication_id,
+  from_closure_hash, to_publication_id, to_closure_hash, to_attestation_hash,
+  switched_at_ms, observed_at_ms, maximum_age_ms, valid_until_ms,
+  fts_build_version, fts_source_document_count, fts_index_document_count,
+  fts_source_inventory_hash, fts_exact_parity, archive_bundle_hash,
+  archive_immutable, vector_namespace, vector_document_count,
+  vector_verified_document_count, vector_inventory_hash,
+  vector_visibility_probe_version, vector_mutation_id, vector_all_ids_present,
+  vector_all_namespaces_match, vector_queryable, probe_set_version,
+  integrity_passed, exact_search_passed, semantic_search_passed,
+  structured_filter_passed, neutrality_passed, version_isolation_passed,
+  provider_search_projection_version, provider_search_document_count,
+  provider_search_inventory_hash, provider_search_fts_build_version,
+  provider_search_fts_document_count, provider_search_fts_queryable,
+  provider_search_exact_parity
+) VALUES (
+  ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,
+  ?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29,?30,
+  ?31,?32,?33,?34,?35,?36,?37,?38,?39,?40,?41,?42,?43,?44,
+  ?45,?46,?47,?48
+)`;
+
+const ASSERT_POSTCONDITION_V2_SQL = `SELECT CASE WHEN
+  NOT EXISTS (
+    SELECT 1
+    FROM publication_switch_preflight AS preflight
+    JOIN publication_switch_history AS history USING (switch_id)
+    JOIN publication_head AS head ON head.singleton = 1
+    JOIN publication AS target ON target.publication_id = history.to_publication_id
+    JOIN publication_closure_seal AS seal ON seal.publication_id = target.publication_id
+    WHERE preflight.switch_id = ?1
+      AND preflight.preflight_hash = ?2
+      AND preflight.preflight_version = '2.0.0'
+      AND history.event_hash = ?3
+      AND history.preflight_hash = preflight.preflight_hash
+      AND history.new_generation = ?4
+      AND history.to_publication_id = ?5
+      AND head.generation = history.new_generation
+      AND head.active_publication_id = history.to_publication_id
+      AND head.rollback_candidate_publication_id IS history.resulting_rollback_candidate_publication_id
+      AND head.switched_at_ms = history.switched_at_ms
+      AND target.state = 'active'
+      AND target.closure_hash = history.to_closure_hash
+      AND seal.closure_hash = history.to_closure_hash
+      AND preflight.provider_search_projection_version = ?6
+      AND preflight.provider_search_document_count = ?7
+      AND preflight.provider_search_inventory_hash = ?8
+      AND preflight.provider_search_fts_build_version = ?9
+      AND preflight.provider_search_fts_document_count = ?7
+      AND preflight.provider_search_fts_queryable = 1
+      AND preflight.provider_search_exact_parity = 1
+      AND (history.from_publication_id IS NULL OR EXISTS (
+        SELECT 1 FROM publication AS former
+        WHERE former.publication_id = history.from_publication_id
+          AND former.closure_hash = history.from_closure_hash
+          AND former.state = CASE history.action
+            WHEN 'activate' THEN 'superseded' ELSE 'rolled_back' END
+      ))
+  )
+  OR (SELECT count(*) FROM publication_search_document WHERE publication_id = ?5)
+     <> (SELECT fts_source_document_count FROM publication_switch_preflight WHERE switch_id = ?1)
+  OR (SELECT count(*) FROM publication_search_fts WHERE publication_id = ?5)
+     <> (SELECT fts_index_document_count FROM publication_switch_preflight WHERE switch_id = ?1)
+  OR (SELECT count(*) FROM publication_provider_search_document WHERE publication_id = ?5) <> ?7
+  OR (SELECT count(*) FROM publication_provider_search_fts WHERE publication_id = ?5) <> ?7
+  OR EXISTS (
+    SELECT 1 FROM publication_provider_search_document AS source
+    WHERE source.publication_id = ?5 AND NOT EXISTS (
+      SELECT 1 FROM publication_provider_search_fts AS indexed
+      WHERE indexed.publication_id = source.publication_id
+        AND indexed.provider_id = source.provider_id
+        AND indexed.display_name = source.display_name
+    )
+  )
+  OR EXISTS (
+    SELECT 1 FROM publication_provider_search_fts AS indexed
+    WHERE indexed.publication_id = ?5 AND NOT EXISTS (
+      SELECT 1 FROM publication_provider_search_document AS source
+      WHERE source.publication_id = indexed.publication_id
+        AND source.provider_id = indexed.provider_id
+        AND source.display_name = indexed.display_name
+    )
+  )
+THEN json('') ELSE 1 END AS verified`;
+
+const PREFLIGHT_V2_KEYS = [
+  ...PREFLIGHT_KEYS,
+  "provider_search_projection_version",
+  "provider_search_document_count",
+  "provider_search_inventory_hash",
+  "provider_search_fts_build_version",
+  "provider_search_fts_document_count",
+  "provider_search_fts_queryable",
+  "provider_search_exact_parity",
+] as const satisfies readonly (keyof ServingSwitchPreflightProofV2)[];
+
+const preflightValuesV2 = (
+  row: ServingSwitchPreflightProofV2,
+): readonly unknown[] => PREFLIGHT_V2_KEYS.map((key) => row[key]);
+
+const readSnapshotV2 = async (
+  session: D1DatabaseSession,
+  expected: ServingSwitchProjectionV2,
+) => {
+  const state = readServingSwitchPersistenceV2(expected);
+  const results = await session.batch([
+    session.prepare(SELECT_HEAD_SQL),
+    session.prepare(SELECT_PREFLIGHT_V2_SQL).bind(state.history.new_generation),
+    session.prepare(SELECT_HISTORY_SQL).bind(state.history.new_generation),
+    session
+      .prepare(SELECT_STATES_SQL)
+      .bind(state.history.to_publication_id, state.history.from_publication_id),
+  ]);
+  if (
+    results.length !== 4 ||
+    results.some((result) => result.results.length > 1)
+  )
+    throw new ServingSwitchError("integrity_failure");
+  const statesRow = results[3]?.results[0];
+  if (
+    !isRecord(statesRow) ||
+    !exactKeys(statesRow, ["target_state", "former_state"])
+  )
+    throw new ServingSwitchError("integrity_failure");
+  const targetState = decodeState(statesRow.target_state);
+  const formerState =
+    state.history.from_publication_id === null
+      ? statesRow.former_state === null
+        ? null
+        : (() => {
+            throw new ServingSwitchError("integrity_failure");
+          })()
+      : decodeState(statesRow.former_state);
+  return Object.freeze({
+    currentHead: decodeHead(results[0]?.results[0]),
+    preflightAtGeneration: decodeExactRow<ServingSwitchPreflightProofV2>(
+      results[1]?.results[0],
+      PREFLIGHT_V2_KEYS,
+    ),
+    historyAtGeneration: decodeExactRow<ServingSwitchHistoryRow>(
+      results[2]?.results[0],
+      HISTORY_KEYS,
+    ),
+    targetState,
+    formerState,
+  });
+};
+
+const classifyV2 = async (
+  database: D1Database,
+  expected: ServingSwitchProjectionV2,
+) =>
+  classifyServingSwitchRetryV2({
+    expected,
+    ...(await readSnapshotV2(database.withSession("first-primary"), expected)),
+  });
+
+const successV2 = (
+  expected: ServingSwitchProjectionV2,
+  outcome: ServingSwitchResult["outcome"],
+): ServingSwitchResult => {
+  const state = readServingSwitchPersistenceV2(expected);
+  return Object.freeze({
+    outcome,
+    switchId: state.history.switch_id,
+    generation: state.history.new_generation,
+  });
+};
+
+/** Fixed schema-1.5 provider-aware head switch transaction. */
+export const applyServingSwitchV2 = async (
+  database: D1Database,
+  expectedValue: unknown,
+): Promise<ServingSwitchResult> => {
+  try {
+    assertServingSwitchProjectionV2(expectedValue);
+  } catch {
+    throw new ServingSwitchError("integrity_failure");
+  }
+  const expected = expectedValue;
+  const state = readServingSwitchPersistenceV2(expected);
+  let initial;
+  try {
+    initial = await classifyV2(database, expected);
+  } catch (error) {
+    if (error instanceof ServingSwitchError) throw error;
+    throw new ServingSwitchError("outcome_unknown");
+  }
+  if (initial.outcome === "idempotent_success")
+    return successV2(expected, "idempotent_success");
+  if (initial.outcome !== "execute") return throwDecision(initial.outcome);
+  try {
+    const session = database.withSession("first-primary");
+    const results = await session.batch([
+      session
+        .prepare(INSERT_PREFLIGHT_V2_SQL)
+        .bind(...preflightValuesV2(state.preflight)),
+      session.prepare(INSERT_HISTORY_SQL).bind(...historyValues(state.history)),
+      session
+        .prepare(ASSERT_POSTCONDITION_V2_SQL)
+        .bind(
+          state.history.switch_id,
+          state.preflight.preflight_hash,
+          state.history.event_hash,
+          state.history.new_generation,
+          state.history.to_publication_id,
+          state.preflight.provider_search_projection_version,
+          state.preflight.provider_search_document_count,
+          state.preflight.provider_search_inventory_hash,
+          state.preflight.provider_search_fts_build_version,
+        ),
+    ]);
+    const verification = results[2]?.results;
+    if (
+      results.length !== 3 ||
+      verification?.length !== 1 ||
+      !isRecord(verification[0]) ||
+      !exactKeys(verification[0], ["verified"]) ||
+      verification[0].verified !== 1
+    )
+      throw new Error("ambiguous batch result");
+    return successV2(expected, "applied");
+  } catch {
+    let reconciled;
+    try {
+      reconciled = await classifyV2(database, expected);
+    } catch (error) {
+      if (error instanceof ServingSwitchError) throw error;
+      throw new ServingSwitchError("outcome_unknown");
+    }
+    if (reconciled.outcome === "idempotent_success")
+      return successV2(expected, "idempotent_success");
     if (reconciled.outcome === "execute")
       throw new ServingSwitchError("not_applied");
     return throwDecision(reconciled.outcome);

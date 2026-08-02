@@ -79,10 +79,11 @@ const AUTHORIZATION = {
   identityId: "pipeline-publication-test",
 };
 
-const applyServingMigrations = (): DatabaseSync => {
+const applyServingV1Migrations = (): DatabaseSync => {
   const database = new DatabaseSync(":memory:");
   database.exec("PRAGMA foreign_keys = ON");
   for (const filename of readdirSync(resolve("migrations", "serving")).sort()) {
+    if (filename > "0006_exact_generation_activation.sql") continue;
     database.exec("BEGIN IMMEDIATE");
     try {
       database.exec(
@@ -775,7 +776,7 @@ describe("immutable publication closure (PIPE-050, PIPE-051, BE-011)", () => {
       chunks: chunkDescriptors,
       bundleHash: HASH_C,
     });
-    const database = applyServingMigrations();
+    const database = applyServingV1Migrations();
     database
       .prepare(
         "INSERT INTO publication (publication_id, state, schema_version, methodology_version, precision_normalization_version, precision_display_order_version, price_policy_version, source_policy_version, embedding_version, build_commit, source_run_id, parent_publication_id, generated_at_ms, ready_at_ms, activated_at_ms, resource_count, exact_document_count, vector_document_count, exact_index_hash, vector_index_version, closure_hash, failure_codes_json, created_at_ms) VALUES (?, 'building', ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL, NULL, ?, ?, ?, ?, 'vector@1', ?, '[]', ?)",

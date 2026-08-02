@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  EXACT_SEARCH_NORMALIZATION_MAX_UNICODE_SCALAR_EXPANSION,
   EXACT_SEARCH_NORMALIZATION_VERSION,
   EXACT_SEARCH_UNICODE_VERSION,
   normalizeExactSearchName,
@@ -14,6 +15,7 @@ import {
   UNICODE_LICENSE_SHA256,
   UNICODE_NORMALIZATION_TEST_SHA256,
   UNICODE_NORMALIZATION_VECTOR_COUNT,
+  UNICODE_NFKC_CASEFOLD_MAX_UNICODE_SCALAR_EXPANSION,
 } from "./unicode-17.generated.js";
 
 const unicodeDirectory = resolve(
@@ -160,7 +162,19 @@ describe("exact-search-normalization@1 (SRCH-002, QA-005)", () => {
       "e7a93b009565cfce55919a381437ac4db883e9da2126fa28b91d12732bc53d96",
     );
     expect(UNICODE_NORMALIZATION_VECTOR_COUNT).toBe(20_034);
+    expect(UNICODE_NFKC_CASEFOLD_MAX_UNICODE_SCALAR_EXPANSION).toBe(18);
+    expect(EXACT_SEARCH_NORMALIZATION_MAX_UNICODE_SCALAR_EXPANSION).toBe(18);
     expect(process.versions.unicode).toBe("17.0");
+  });
+
+  it("pins U+FDFA as the maximum 18-scalar compatibility expansion", () => {
+    const normalized = normalizeExactSearchName("\ufdfa");
+    expect(normalized).toBe(
+      "\u0635\u0644\u0649 \u0627\u0644\u0644\u0647 \u0639\u0644\u064a\u0647 \u0648\u0633\u0644\u0645",
+    );
+    expect(Array.from(normalized)).toHaveLength(
+      EXACT_SEARCH_NORMALIZATION_MAX_UNICODE_SCALAR_EXPANSION,
+    );
   });
 
   it("applies compatibility folding and full default case folding", () => {

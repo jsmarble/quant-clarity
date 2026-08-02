@@ -1,15 +1,20 @@
 import { FormatRegistry, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 
-import { ProviderSchema } from "@quant-clarity/contracts";
+import {
+  PROVIDER_DISPLAY_NAME_MAX_UNICODE_SCALARS,
+  ProviderSchema,
+} from "@quant-clarity/contracts";
 
 import {
   EXACT_SEARCH_NORMALIZATION_VERSION,
+  EXACT_SEARCH_NORMALIZATION_MAX_UNICODE_SCALAR_EXPANSION,
   normalizeExactSearchName,
 } from "./unicode/exact-search-normalization.js";
 
 export {
   EXACT_SEARCH_NORMALIZATION_VERSION,
+  EXACT_SEARCH_NORMALIZATION_MAX_UNICODE_SCALAR_EXPANSION,
   normalizeExactSearchName,
 } from "./unicode/exact-search-normalization.js";
 
@@ -26,6 +31,9 @@ export type Sha256 = `sha256:${string}`;
 export type PublicationId = `pub_${string}`;
 
 export const PROVIDER_SEARCH_PROJECTION_VERSION = "provider-name@1" as const;
+export const PROVIDER_SEARCH_NORMALIZED_NAME_MAX_UNICODE_SCALARS =
+  PROVIDER_DISPLAY_NAME_MAX_UNICODE_SCALARS *
+  EXACT_SEARCH_NORMALIZATION_MAX_UNICODE_SCALAR_EXPANSION;
 
 const UUID_V4 =
   "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
@@ -595,10 +603,42 @@ const isContractTimestamp = (value: string): boolean => {
 type ProviderResource = Static<typeof ProviderSchema>;
 
 const checkProviderContract = (value: unknown): value is ProviderResource => {
+  let validationCandidate = value;
+  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+    const provider = value as Record<string, unknown>;
+    const displayName = provider.display_name;
+    if (
+      typeof displayName === "object" &&
+      displayName !== null &&
+      !Array.isArray(displayName)
+    ) {
+      const displayFact = displayName as Record<string, unknown>;
+      if (displayFact.state === "known") {
+        if (typeof displayFact.value !== "string") return false;
+        const scalarLength = Array.from(displayFact.value).length;
+        if (scalarLength > PROVIDER_DISPLAY_NAME_MAX_UNICODE_SCALARS)
+          return false;
+        // TypeBox Value.Check currently applies JSON Schema maxLength with
+        // JavaScript UTF-16 code units. Substitute only this already-bounded
+        // unconstrained string value so TypeBox still validates the complete
+        // ProviderSchema shape, all provenance, and every other field.
+        if (
+          displayFact.value.length > PROVIDER_DISPLAY_NAME_MAX_UNICODE_SCALARS
+        )
+          validationCandidate = {
+            ...provider,
+            display_name: {
+              ...displayFact,
+              value: "x".repeat(scalarLength),
+            },
+          };
+      }
+    }
+  }
   const previousDateTime = FormatRegistry.Get("date-time");
   FormatRegistry.Set("date-time", isContractTimestamp);
   try {
-    return Value.Check(ProviderSchema, value);
+    return Value.Check(ProviderSchema, validationCandidate);
   } finally {
     if (previousDateTime === undefined) FormatRegistry.Delete("date-time");
     else FormatRegistry.Set("date-time", previousDateTime);
@@ -1228,9 +1268,14 @@ export type ProviderSearchArtifactProofV2 = Readonly<{
   readonly [providerSearchArtifactProofV2Brand]: true;
 }>;
 
+interface ProviderSearchArtifactProofBindingV2 {
+  readonly manifest: TrustedImmutablePublicationManifest;
+  readonly projection: TrustedProviderSearchProjection;
+}
+
 const trustedProviderSearchArtifactProofsV2 = new WeakMap<
   object,
-  TrustedImmutablePublicationManifest
+  ProviderSearchArtifactProofBindingV2
 >();
 
 export const assertProviderSearchArtifactProofV2: (
@@ -1298,7 +1343,13 @@ export const projectProviderSearchArtifactProofV2 = (input: {
     configurable: false,
     writable: false,
   });
-  trustedProviderSearchArtifactProofsV2.set(proof, input.manifest);
+  trustedProviderSearchArtifactProofsV2.set(
+    proof,
+    Object.freeze({
+      manifest: input.manifest,
+      projection: input.projection,
+    }),
+  );
   return Object.freeze(proof) as ProviderSearchArtifactProofV2;
 };
 
@@ -1878,6 +1929,14 @@ export const projectProviderSearchProjection = async (
     if (parsed.display_name.state !== "known") continue;
     const displayName = parsed.display_name.value;
     const normalizedName = normalizeExactSearchName(displayName);
+    const normalizedNameCodePoints = Array.from(normalizedName).length;
+    if (
+      normalizedNameCodePoints >
+      PROVIDER_SEARCH_NORMALIZED_NAME_MAX_UNICODE_SCALARS
+    )
+      throw new Error(
+        "provider search normalization exceeds its pinned Unicode bound",
+      );
     documents.push(
       Object.freeze({
         projectionVersion: PROVIDER_SEARCH_PROJECTION_VERSION,
@@ -5268,9 +5327,11 @@ export const projectReadinessReceiptProofV2 = async (input: {
   let providerFields: readonly CanonicalField[] = [];
   if (receipt.kind === "serving") {
     assertProviderSearchArtifactProofV2(providerProof);
-    const manifest = trustedProviderSearchArtifactProofsV2.get(providerProof);
-    if (manifest === undefined)
+    const providerBinding =
+      trustedProviderSearchArtifactProofsV2.get(providerProof);
+    if (providerBinding === undefined)
       throw new TypeError("provider search artifact proof v2 is not trusted");
+    const manifest = providerBinding.manifest;
     if (
       receipt.binding.publicationId !== manifest.publicationId ||
       receipt.binding.closureHash !== manifest.closureHash ||
@@ -5434,7 +5495,7 @@ export const projectServingReadinessProofV2 = async (input: {
     throw new TypeError("serving readiness proof v2 lacks provider evidence");
   const providerManifest = trustedProviderSearchArtifactProofsV2.get(
     servingBinding.providerProof,
-  );
+  )?.manifest;
   if (
     providerManifest?.publicationId !== manifest.publicationId ||
     providerManifest.closureHash !== manifest.closureHash
@@ -5549,7 +5610,15 @@ export interface ServingSwitchPreflightContextV2 {
 const servingSwitchPreflightProofV2Brand: unique symbol = Symbol(
   "ServingSwitchPreflightProofV2",
 );
-const trustedServingSwitchPreflightProofsV2 = new WeakSet<object>();
+interface ServingSwitchPreflightProofBindingV2 {
+  readonly manifest: TrustedImmutablePublicationManifest;
+  readonly readinessProof: ServingReadinessProofV2 | null;
+  readonly providerProof: ProviderSearchArtifactProofV2;
+}
+const trustedServingSwitchPreflightProofsV2 = new WeakMap<
+  object,
+  ServingSwitchPreflightProofBindingV2
+>();
 
 export type ServingSwitchPreflightProofV2 = Readonly<
   Omit<
@@ -5627,7 +5696,7 @@ export const projectServingSwitchPreflightProofV2 = async (input: {
   assertImmutablePublicationManifest(manifest);
   assertProviderSearchArtifactProofV2(providerProof);
   const providerManifest =
-    trustedProviderSearchArtifactProofsV2.get(providerProof);
+    trustedProviderSearchArtifactProofsV2.get(providerProof)?.manifest;
   if (
     providerManifest?.publicationId !== manifest.publicationId ||
     providerManifest.closureHash !== manifest.closureHash
@@ -5936,6 +6005,1067 @@ export const projectServingSwitchPreflightProofV2 = async (input: {
     configurable: false,
     writable: false,
   });
-  trustedServingSwitchPreflightProofsV2.add(result);
+  trustedServingSwitchPreflightProofsV2.set(
+    result,
+    Object.freeze({ manifest, readinessProof, providerProof }),
+  );
   return Object.freeze(result) as ServingSwitchPreflightProofV2;
+};
+
+// ADR 0021 complete writer boundaries. These opaque values deliberately keep
+// their detached persistence payloads in module-private WeakMaps. A D1 adapter
+// can read the payload only after the nominal value has passed its assertion;
+// copied, serialized, or reflected objects therefore carry no write authority.
+export type ProviderSearchDocumentRowV2 = Readonly<{
+  publication_id: PublicationId;
+  provider_id: string;
+  projection_version: typeof PROVIDER_SEARCH_PROJECTION_VERSION;
+  display_name: string;
+  normalized_name: string;
+  provider_resource_content_hash: Sha256;
+}>;
+
+export type ProviderSearchFtsRowV2 = Readonly<{
+  publication_id: PublicationId;
+  provider_id: string;
+  display_name: string;
+}>;
+
+const providerSearchStagingProjectionV2Brand: unique symbol = Symbol(
+  "ProviderSearchStagingProjectionV2",
+);
+
+export type ProviderSearchStagingPersistenceV2 = Readonly<{
+  publicationId: PublicationId;
+  closureHash: Sha256;
+  stagingRevision: number;
+  documents: readonly ProviderSearchDocumentRowV2[];
+  ftsRows: readonly ProviderSearchFtsRowV2[];
+}>;
+
+export type ProviderSearchStagingProjectionV2 = Readonly<{
+  readonly [providerSearchStagingProjectionV2Brand]: true;
+}>;
+
+const trustedProviderSearchStagingProjectionsV2 = new WeakMap<
+  object,
+  ProviderSearchStagingPersistenceV2
+>();
+
+export const assertProviderSearchStagingProjectionV2: (
+  value: unknown,
+) => asserts value is ProviderSearchStagingProjectionV2 = (value) => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !(providerSearchStagingProjectionV2Brand in value) ||
+    value[providerSearchStagingProjectionV2Brand] !== true ||
+    !trustedProviderSearchStagingProjectionsV2.has(value)
+  )
+    throw new TypeError("provider search staging projection v2 is not trusted");
+};
+
+const providerSearchPersistenceV2 = (
+  projection: TrustedProviderSearchProjection,
+  stagingRevision = 0,
+): ProviderSearchStagingPersistenceV2 => {
+  assertProviderSearchProjection(projection);
+  assertSafeInteger(stagingRevision, 0, "provider search staging revision");
+  const documents = projection.documents.map((document) =>
+    Object.freeze({
+      publication_id: projection.publicationId,
+      provider_id: document.providerId,
+      projection_version: document.projectionVersion,
+      display_name: document.displayName,
+      normalized_name: document.normalizedName,
+      provider_resource_content_hash: document.providerResourceContentHash,
+    }),
+  );
+  const ftsRows = documents.map((document) =>
+    Object.freeze({
+      publication_id: document.publication_id,
+      provider_id: document.provider_id,
+      display_name: document.display_name,
+    }),
+  );
+  return Object.freeze({
+    publicationId: projection.publicationId,
+    closureHash: projection.closureHash,
+    stagingRevision,
+    documents: Object.freeze(documents),
+    ftsRows: Object.freeze(ftsRows),
+  });
+};
+
+export const projectProviderSearchStagingV2 = async (input: {
+  readonly projection: TrustedProviderSearchProjection;
+  readonly closureRows: ServingClosureRows;
+}): Promise<ProviderSearchStagingProjectionV2> => {
+  assertProviderSearchProjection(input.projection);
+  const rows = structuredClone(input.closureRows);
+  const closure = await projectServingClosureSeal(rows);
+  if (
+    closure.manifest.publicationId !== input.projection.publicationId ||
+    closure.manifest.closureHash !== input.projection.closureHash
+  )
+    throw new TypeError(
+      "provider search staging closure does not match projection",
+    );
+  const persistence = providerSearchPersistenceV2(
+    input.projection,
+    rows.stagingRevision,
+  );
+  const result = {};
+  Object.defineProperty(result, providerSearchStagingProjectionV2Brand, {
+    value: true,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  trustedProviderSearchStagingProjectionsV2.set(result, persistence);
+  return Object.freeze(result) as ProviderSearchStagingProjectionV2;
+};
+
+export const readProviderSearchStagingPersistenceV2 = (
+  value: ProviderSearchStagingProjectionV2,
+): ProviderSearchStagingPersistenceV2 => {
+  assertProviderSearchStagingProjectionV2(value);
+  const persistence = trustedProviderSearchStagingProjectionsV2.get(value);
+  if (persistence === undefined)
+    throw new TypeError("provider search staging projection v2 is not trusted");
+  return persistence;
+};
+
+export type ProviderSearchStagingRetryDecision = Readonly<{
+  outcome:
+    | "execute"
+    | "idempotent_success"
+    | "stale"
+    | "conflict"
+    | "integrity_failure";
+}>;
+
+export const classifyProviderSearchStagingRetryV2 = (input: {
+  readonly expected: ProviderSearchStagingProjectionV2;
+  readonly publicationState: PublicationState;
+  readonly sealed: boolean;
+  readonly stagingRevision: number;
+  readonly documents: readonly ProviderSearchDocumentRowV2[];
+  readonly ftsRows: readonly ProviderSearchFtsRowV2[];
+}): ProviderSearchStagingRetryDecision => {
+  const expected = readProviderSearchStagingPersistenceV2(input.expected);
+  if (input.stagingRevision !== expected.stagingRevision)
+    return Object.freeze({ outcome: "stale" });
+  if (
+    expected.documents.length === 0 &&
+    input.documents.length === 0 &&
+    input.ftsRows.length === 0
+  ) {
+    if (input.publicationState === "building" && !input.sealed)
+      return Object.freeze({ outcome: "execute" });
+    if (input.publicationState === "failed" && !input.sealed)
+      return Object.freeze({ outcome: "stale" });
+    return Object.freeze({ outcome: "integrity_failure" });
+  }
+  const documentsEqual =
+    JSON.stringify(input.documents) === JSON.stringify(expected.documents);
+  const ftsEqual =
+    JSON.stringify(input.ftsRows) === JSON.stringify(expected.ftsRows);
+  if (documentsEqual && ftsEqual)
+    return Object.freeze({ outcome: "idempotent_success" });
+  if (input.documents.length === 0 && input.ftsRows.length === 0) {
+    if (input.publicationState === "building" && !input.sealed)
+      return Object.freeze({ outcome: "execute" });
+    if (input.publicationState === "failed" && !input.sealed)
+      return Object.freeze({ outcome: "stale" });
+    return Object.freeze({ outcome: "integrity_failure" });
+  }
+  const actualProviderIds = new Set(
+    input.documents.map((row) => row.provider_id),
+  );
+  const expectedProviderIds = new Set(
+    expected.documents.map((row) => row.provider_id),
+  );
+  const overlaps = [...actualProviderIds].some((id) =>
+    expectedProviderIds.has(id),
+  );
+  return Object.freeze({
+    outcome: overlaps ? "conflict" : "integrity_failure",
+  });
+};
+
+export type ServingServingReceiptRowV2 = Readonly<
+  ServingServingReceiptRow & {
+    provider_search_projection_version: typeof PROVIDER_SEARCH_PROJECTION_VERSION;
+    provider_search_document_count: number;
+    provider_search_inventory_hash: Sha256;
+    provider_search_fts_build_version: typeof PROVIDER_SEARCH_FTS_BUILD_VERSION;
+    provider_search_fts_document_count: number;
+    provider_search_fts_queryable: 1;
+    provider_search_exact_parity: 1;
+  }
+>;
+
+export type ServingReadinessReceiptRowsV2 = Readonly<{
+  bindings: readonly ServingReadinessReceiptBindingRow[];
+  archives: readonly ServingArchiveReceiptRow[];
+  servings: readonly ServingServingReceiptRowV2[];
+  vectors: readonly ServingVectorReceiptRow[];
+  probes: readonly ServingProbeReceiptRow[];
+}>;
+
+export type ServingReadinessCommitPersistenceV2 = Readonly<{
+  providerSearch: ProviderSearchStagingPersistenceV2;
+  receiptRows: ServingReadinessReceiptRowsV2;
+  attestation: ServingReadinessAttestationProjectionV2;
+  transition: Readonly<{
+    publication_id: PublicationId;
+    closure_hash: Sha256;
+    expected_state: "building";
+    next_state: "ready";
+    ready_at_ms: number;
+  }>;
+}>;
+
+const servingReadinessCommitProjectionV2Brand: unique symbol = Symbol(
+  "ServingReadinessCommitProjectionV2",
+);
+export type ServingReadinessCommitProjectionV2 = Readonly<{
+  readonly [servingReadinessCommitProjectionV2Brand]: true;
+}>;
+const trustedServingReadinessCommitProjectionsV2 = new WeakMap<
+  object,
+  ServingReadinessCommitPersistenceV2
+>();
+
+export const assertServingReadinessCommitProjectionV2: (
+  value: unknown,
+) => asserts value is ServingReadinessCommitProjectionV2 = (value) => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !(servingReadinessCommitProjectionV2Brand in value) ||
+    value[servingReadinessCommitProjectionV2Brand] !== true ||
+    !trustedServingReadinessCommitProjectionsV2.has(value)
+  )
+    throw new TypeError(
+      "serving readiness commit projection v2 is not trusted",
+    );
+};
+
+const receiptDetailRowsV2 = (
+  proof: ServingReadinessProofV2,
+): ServingReadinessReceiptRowsV2 => {
+  const bindings: ServingReadinessReceiptBindingRow[] = [];
+  const archives: ServingArchiveReceiptRow[] = [];
+  const servings: ServingServingReceiptRowV2[] = [];
+  const vectors: ServingVectorReceiptRow[] = [];
+  const probes: ServingProbeReceiptRow[] = [];
+  for (const receiptProof of proof.receipts) {
+    const binding = trustedReadinessReceiptProofsV2.get(receiptProof);
+    if (binding === undefined)
+      throw new TypeError("readiness receipt proof v2 is not trusted");
+    const receipt = binding.receipt;
+    bindings.push(
+      Object.freeze({
+        publication_id: receiptProof.publication_id,
+        kind: receipt.kind,
+        receipt_version: receiptProof.receipt_version,
+        receipt_hash: receiptProof.receipt_hash,
+        environment: receiptProof.environment,
+        closure_hash: receiptProof.closure_hash,
+        bundle_hash: receiptProof.bundle_hash,
+        schema_version: receipt.binding.schemaVersion,
+        build_commit: receipt.binding.buildCommit,
+        observed_at_ms: receiptProof.observed_at_ms,
+      }),
+    );
+    switch (receipt.kind) {
+      case "archive":
+        archives.push(
+          Object.freeze({
+            publication_id: receiptProof.publication_id,
+            kind: "archive",
+            retained_bundle_hash: receipt.retainedBundleHash,
+            immutable: receipt.immutable ? 1 : 0,
+          }),
+        );
+        break;
+      case "serving": {
+        const providerProof = binding.providerProof;
+        assertProviderSearchArtifactProofV2(providerProof);
+        servings.push(
+          Object.freeze({
+            publication_id: receiptProof.publication_id,
+            kind: "serving",
+            enabled_provider_count: receipt.enabledProviderCount,
+            enabled_provider_scope_hash: receipt.enabledProviderScopeHash,
+            provider_slice_count: receipt.providerSliceCount,
+            provider_slice_hash: receipt.providerSliceHash,
+            provider_attribution_count: receipt.providerAttributionCount,
+            provider_attribution_hash: receipt.providerAttributionHash,
+            resource_count: receipt.resourceCount,
+            exact_document_count: receipt.exactDocumentCount,
+            resource_inventory_hash: receipt.resourceInventoryHash,
+            exact_search_inventory_hash: receipt.exactSearchInventoryHash,
+            fts_build_version: receipt.ftsBuildVersion,
+            fts_document_count: receipt.ftsDocumentCount,
+            fts_queryable: receipt.ftsQueryable ? 1 : 0,
+            foreign_keys_valid: receipt.foreignKeysValid ? 1 : 0,
+            content_hashes_valid: receipt.contentHashesValid ? 1 : 0,
+            unavailable_provider_isolation_valid:
+              receipt.unavailableProviderIsolationValid ? 1 : 0,
+            provider_search_projection_version:
+              providerProof.provider_search_projection_version,
+            provider_search_document_count:
+              providerProof.provider_search_document_count,
+            provider_search_inventory_hash:
+              providerProof.provider_search_inventory_hash,
+            provider_search_fts_build_version:
+              providerProof.provider_search_fts_build_version,
+            provider_search_fts_document_count:
+              providerProof.provider_search_fts_document_count,
+            provider_search_fts_queryable: 1,
+            provider_search_exact_parity: 1,
+          }),
+        );
+        break;
+      }
+      case "vectors":
+        vectors.push(
+          Object.freeze({
+            publication_id: receiptProof.publication_id,
+            kind: "vectors",
+            vector_namespace: receipt.namespace,
+            document_count: receipt.documentCount,
+            verified_document_count: receipt.verifiedDocumentCount,
+            vector_inventory_hash: receipt.vectorInventoryHash,
+            visibility_probe_version: receipt.visibilityProbeVersion,
+            mutation_id: receipt.mutationId,
+            all_ids_present: receipt.allIdsPresent ? 1 : 0,
+            all_namespaces_match: receipt.allNamespacesMatch ? 1 : 0,
+            queryable: receipt.queryable ? 1 : 0,
+          }),
+        );
+        break;
+      case "probes":
+        probes.push(
+          Object.freeze({
+            publication_id: receiptProof.publication_id,
+            kind: "probes",
+            probe_set_version: receipt.probeSetVersion,
+            integrity_passed: receipt.integrityPassed ? 1 : 0,
+            evidence_coverage_passed: receipt.evidenceCoveragePassed ? 1 : 0,
+            exact_search_passed: receipt.exactSearchPassed ? 1 : 0,
+            semantic_search_passed: receipt.semanticSearchPassed ? 1 : 0,
+            structured_filter_passed: receipt.structuredFilterPassed ? 1 : 0,
+            neutrality_passed: receipt.neutralityPassed ? 1 : 0,
+            version_isolation_passed: receipt.versionIsolationPassed ? 1 : 0,
+          }),
+        );
+        break;
+    }
+  }
+  return Object.freeze({
+    bindings: Object.freeze(
+      bindings.sort((a, b) => compareAscii(a.kind, b.kind)),
+    ),
+    archives: Object.freeze(archives),
+    servings: Object.freeze(servings),
+    vectors: Object.freeze(vectors),
+    probes: Object.freeze(probes),
+  });
+};
+
+/**
+ * Rebuilds nominal readiness authority after a process restart from exact
+ * schema-1.5 rows plus the independently reconstructed provider projection.
+ * Persisted hashes are compared with newly projected hashes; they are never
+ * treated as caller-supplied proof.
+ */
+export const reconstructServingReadinessProofV2FromPersistence = async (input: {
+  readonly manifest: TrustedImmutablePublicationManifest;
+  readonly providerProjection: TrustedProviderSearchProjection;
+  readonly providerFts: ProviderSearchFtsObservationV2;
+  readonly providerSearchDocuments: readonly ProviderSearchDocumentRowV2[];
+  readonly providerSearchFtsRows: readonly ProviderSearchFtsRowV2[];
+  readonly receiptRows: ServingReadinessReceiptRowsV2;
+  readonly attestation: ServingReadinessAttestationProjectionV2;
+}): Promise<ServingReadinessProofV2> => {
+  assertImmutablePublicationManifest(input.manifest);
+  assertProviderSearchProjection(input.providerProjection);
+  const observed = structuredClone({
+    providerFts: input.providerFts,
+    providerSearchDocuments: input.providerSearchDocuments,
+    providerSearchFtsRows: input.providerSearchFtsRows,
+    receiptRows: input.receiptRows,
+    attestation: input.attestation,
+  });
+  const providerPersistence = providerSearchPersistenceV2(
+    input.providerProjection,
+  );
+  if (
+    JSON.stringify(observed.providerSearchDocuments) !==
+      JSON.stringify(providerPersistence.documents) ||
+    JSON.stringify(observed.providerSearchFtsRows) !==
+      JSON.stringify(providerPersistence.ftsRows)
+  )
+    throw new TypeError("persisted provider search projection v2 is invalid");
+  const providerProof = projectProviderSearchArtifactProofV2({
+    manifest: input.manifest,
+    projection: input.providerProjection,
+    fts: observed.providerFts,
+  });
+  if (
+    observed.receiptRows.bindings.length !== 4 ||
+    observed.receiptRows.archives.length !== 1 ||
+    observed.receiptRows.servings.length !== 1 ||
+    observed.receiptRows.vectors.length !== 1 ||
+    observed.receiptRows.probes.length !== 1
+  )
+    throw new TypeError("persisted readiness receipt v2 set is incomplete");
+  const detail = {
+    archive: requireSingleRow(observed.receiptRows.archives, "archive v2"),
+    serving: requireSingleRow(observed.receiptRows.servings, "serving v2"),
+    vectors: requireSingleRow(observed.receiptRows.vectors, "vectors v2"),
+    probes: requireSingleRow(observed.receiptRows.probes, "probes v2"),
+  };
+  const persistedServing = detail.serving as Readonly<Record<string, unknown>>;
+  if (
+    persistedServing.provider_search_projection_version !==
+      providerProof.provider_search_projection_version ||
+    persistedServing.provider_search_document_count !==
+      providerProof.provider_search_document_count ||
+    persistedServing.provider_search_inventory_hash !==
+      providerProof.provider_search_inventory_hash ||
+    persistedServing.provider_search_fts_build_version !==
+      providerProof.provider_search_fts_build_version ||
+    persistedServing.provider_search_fts_document_count !==
+      providerProof.provider_search_fts_document_count ||
+    persistedServing.provider_search_fts_queryable !== 1 ||
+    persistedServing.provider_search_exact_parity !== 1
+  )
+    throw new TypeError("persisted provider serving receipt v2 is invalid");
+  const receipts: ReadinessReceipt[] = [];
+  const persistedProofByKind = new Map<
+    ReadinessReceipt["kind"],
+    ServingReadinessReceiptBindingRow
+  >();
+  for (const row of observed.receiptRows.bindings) {
+    if (
+      row.receipt_version !== READINESS_RECEIPT_VERSION_V2 ||
+      persistedProofByKind.has(row.kind) ||
+      detail[row.kind].publication_id !== row.publication_id
+    )
+      throw new TypeError("persisted readiness receipt v2 binding is invalid");
+    persistedProofByKind.set(row.kind, row);
+    const binding: ArtifactBinding = Object.freeze({
+      environment: row.environment as PublicationEnvironment,
+      publicationId: row.publication_id as PublicationId,
+      closureHash: row.closure_hash as Sha256,
+      bundleHash: row.bundle_hash as Sha256,
+      schemaVersion: row.schema_version,
+      buildCommit: row.build_commit,
+    });
+    const common = {
+      binding,
+      observedAt: timestampFromMs(
+        row.observed_at_ms,
+        "persisted readiness v2 observation",
+      ),
+    };
+    switch (row.kind) {
+      case "archive":
+        receipts.push({
+          ...common,
+          kind: "archive",
+          retainedBundleHash: detail.archive.retained_bundle_hash as Sha256,
+          immutable: receiptFlag(detail.archive.immutable, "archive immutable"),
+        });
+        break;
+      case "serving":
+        receipts.push({
+          ...common,
+          kind: "serving",
+          enabledProviderCount: detail.serving.enabled_provider_count,
+          enabledProviderScopeHash: detail.serving
+            .enabled_provider_scope_hash as Sha256,
+          providerSliceCount: detail.serving.provider_slice_count,
+          providerSliceHash: detail.serving.provider_slice_hash as Sha256,
+          providerAttributionCount: detail.serving.provider_attribution_count,
+          providerAttributionHash: detail.serving
+            .provider_attribution_hash as Sha256,
+          resourceCount: detail.serving.resource_count,
+          exactDocumentCount: detail.serving.exact_document_count,
+          resourceInventoryHash: detail.serving
+            .resource_inventory_hash as Sha256,
+          exactSearchInventoryHash: detail.serving
+            .exact_search_inventory_hash as Sha256,
+          ftsBuildVersion: detail.serving.fts_build_version,
+          ftsDocumentCount: detail.serving.fts_document_count,
+          ftsQueryable: receiptFlag(
+            detail.serving.fts_queryable,
+            "serving FTS queryable",
+          ),
+          foreignKeysValid: receiptFlag(
+            detail.serving.foreign_keys_valid,
+            "serving foreign keys",
+          ),
+          contentHashesValid: receiptFlag(
+            detail.serving.content_hashes_valid,
+            "serving content hashes",
+          ),
+          unavailableProviderIsolationValid: receiptFlag(
+            detail.serving.unavailable_provider_isolation_valid,
+            "serving unavailable provider isolation",
+          ),
+        });
+        break;
+      case "vectors":
+        receipts.push({
+          ...common,
+          kind: "vectors",
+          namespace: detail.vectors.vector_namespace as PublicationId,
+          documentCount: detail.vectors.document_count,
+          verifiedDocumentCount: detail.vectors.verified_document_count,
+          vectorInventoryHash: detail.vectors.vector_inventory_hash as Sha256,
+          visibilityProbeVersion: detail.vectors.visibility_probe_version,
+          mutationId: detail.vectors.mutation_id,
+          allIdsPresent: receiptFlag(
+            detail.vectors.all_ids_present,
+            "vector IDs present",
+          ),
+          allNamespacesMatch: receiptFlag(
+            detail.vectors.all_namespaces_match,
+            "vector namespaces",
+          ),
+          queryable: receiptFlag(detail.vectors.queryable, "vectors queryable"),
+        });
+        break;
+      case "probes":
+        receipts.push({
+          ...common,
+          kind: "probes",
+          probeSetVersion: detail.probes.probe_set_version,
+          integrityPassed: receiptFlag(
+            detail.probes.integrity_passed,
+            "probe integrity",
+          ),
+          evidenceCoveragePassed: receiptFlag(
+            detail.probes.evidence_coverage_passed,
+            "probe evidence coverage",
+          ),
+          exactSearchPassed: receiptFlag(
+            detail.probes.exact_search_passed,
+            "probe exact search",
+          ),
+          semanticSearchPassed: receiptFlag(
+            detail.probes.semantic_search_passed,
+            "probe semantic search",
+          ),
+          structuredFilterPassed: receiptFlag(
+            detail.probes.structured_filter_passed,
+            "probe structured filter",
+          ),
+          neutralityPassed: receiptFlag(
+            detail.probes.neutrality_passed,
+            "probe neutrality",
+          ),
+          versionIsolationPassed: receiptFlag(
+            detail.probes.version_isolation_passed,
+            "probe version isolation",
+          ),
+        });
+        break;
+    }
+  }
+  const receiptProofs = await Promise.all(
+    receipts.map((receipt) =>
+      projectReadinessReceiptProofV2({
+        receipt,
+        providerProof: receipt.kind === "serving" ? providerProof : null,
+      }),
+    ),
+  );
+  for (const proof of receiptProofs) {
+    const persisted = persistedProofByKind.get(proof.kind);
+    if (
+      persisted?.receipt_hash !== proof.receipt_hash ||
+      persisted.observed_at_ms !== proof.observed_at_ms
+    )
+      throw new TypeError("persisted readiness receipt v2 hash is invalid");
+  }
+  const reconstructed = await projectServingReadinessProofV2({
+    manifest: input.manifest,
+    receiptProofs,
+    environment: observed.attestation.environment,
+    readyAtMs: observed.attestation.ready_at_ms,
+    maximumReceiptAgeMs: observed.attestation.maximum_receipt_age_ms,
+  });
+  if (
+    JSON.stringify(reconstructed.attestation) !==
+    JSON.stringify(observed.attestation)
+  )
+    throw new TypeError("persisted readiness attestation v2 is invalid");
+  return reconstructed;
+};
+
+export const projectServingReadinessCommitV2 = async (input: {
+  readonly proof: ServingReadinessProofV2;
+  readonly closureRows: ServingClosureRows;
+  readonly persistedSeal: ServingClosureSealProjection;
+  readonly persistedProviderSearchDocuments: readonly ProviderSearchDocumentRowV2[];
+  readonly persistedProviderSearchFtsRows: readonly ProviderSearchFtsRowV2[];
+}): Promise<ServingReadinessCommitProjectionV2> => {
+  const proof = input.proof;
+  assertServingReadinessProofV2(proof);
+  // Nominal proofs are retained by identity; all caller-owned persistence
+  // observations are detached before the first digest yields.
+  const observed = structuredClone({
+    closureRows: input.closureRows,
+    persistedSeal: input.persistedSeal,
+    documents: input.persistedProviderSearchDocuments,
+    ftsRows: input.persistedProviderSearchFtsRows,
+  });
+  const receiptRows = receiptDetailRowsV2(proof);
+  const servingProof = proof.receipts.find(
+    (receipt) => receipt.kind === "serving",
+  );
+  if (servingProof === undefined)
+    throw new TypeError("serving readiness proof v2 lacks serving evidence");
+  const receiptBinding = trustedReadinessReceiptProofsV2.get(servingProof);
+  const providerProof = receiptBinding?.providerProof;
+  assertProviderSearchArtifactProofV2(providerProof);
+  const providerBinding =
+    trustedProviderSearchArtifactProofsV2.get(providerProof);
+  if (providerBinding === undefined)
+    throw new TypeError("provider search artifact proof v2 is not trusted");
+  const providerSearch = providerSearchPersistenceV2(
+    providerBinding.projection,
+  );
+  const closure = await projectServingClosureSeal(observed.closureRows);
+  const sealErrors = await verifyServingClosureSealProjection(
+    observed.closureRows,
+    observed.persistedSeal,
+  );
+  if (
+    sealErrors.length > 0 ||
+    closure.manifest.publicationId !== proof.attestation.publication_id ||
+    closure.manifest.closureHash !== proof.attestation.closure_hash ||
+    closure.manifest.bundleHash !== proof.attestation.bundle_hash ||
+    providerBinding.manifest.publicationId !== closure.manifest.publicationId ||
+    providerBinding.manifest.closureHash !== closure.manifest.closureHash ||
+    proof.receipts.some(
+      (receipt) => receipt.observed_at_ms < observed.closureRows.sealedAtMs,
+    ) ||
+    JSON.stringify(observed.documents) !==
+      JSON.stringify(providerSearch.documents) ||
+    JSON.stringify(observed.ftsRows) !== JSON.stringify(providerSearch.ftsRows)
+  )
+    throw new TypeError(
+      "serving readiness commit v2 does not match persisted sealed evidence",
+    );
+  const persistence = Object.freeze({
+    providerSearch,
+    receiptRows,
+    attestation: Object.freeze({ ...proof.attestation }),
+    transition: Object.freeze({
+      publication_id: proof.attestation.publication_id,
+      closure_hash: proof.attestation.closure_hash,
+      expected_state: "building" as const,
+      next_state: "ready" as const,
+      ready_at_ms: proof.attestation.ready_at_ms,
+    }),
+  });
+  const result = {};
+  Object.defineProperty(result, servingReadinessCommitProjectionV2Brand, {
+    value: true,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  trustedServingReadinessCommitProjectionsV2.set(result, persistence);
+  return Object.freeze(result) as ServingReadinessCommitProjectionV2;
+};
+
+export const readServingReadinessCommitPersistenceV2 = (
+  value: ServingReadinessCommitProjectionV2,
+): ServingReadinessCommitPersistenceV2 => {
+  assertServingReadinessCommitProjectionV2(value);
+  const persistence = trustedServingReadinessCommitProjectionsV2.get(value);
+  if (persistence === undefined)
+    throw new TypeError(
+      "serving readiness commit projection v2 is not trusted",
+    );
+  return persistence;
+};
+
+export const classifyServingReadinessCommitRetryV2 = (input: {
+  readonly expected: ServingReadinessCommitProjectionV2;
+  readonly publicationState: PublicationState;
+  readonly publicationReadyAtMs: number | null;
+  readonly publicationClosureHash: string;
+  readonly receiptRows: ServingReadinessReceiptRowsV2;
+  readonly attestation: ServingReadinessAttestationProjectionV2 | null;
+}): ServingReadinessCommitRetryDecision => {
+  const expected = readServingReadinessCommitPersistenceV2(input.expected);
+  const hasRows = !readinessRowsEmpty(input.receiptRows);
+  if (!hasRows && input.attestation === null) {
+    if (input.publicationClosureHash !== expected.transition.closure_hash)
+      return Object.freeze({ outcome: "integrity_failure" });
+    if (
+      input.publicationState === expected.transition.expected_state &&
+      input.publicationReadyAtMs === null
+    )
+      return Object.freeze({ outcome: "execute" });
+    if (
+      input.publicationState === "failed" &&
+      input.publicationReadyAtMs === null
+    )
+      return Object.freeze({ outcome: "stale" });
+    return Object.freeze({ outcome: "integrity_failure" });
+  }
+  if (
+    readinessRowsConflict(input.receiptRows, expected.receiptRows) ||
+    (input.attestation !== null &&
+      JSON.stringify(input.attestation) !==
+        JSON.stringify(expected.attestation))
+  )
+    return Object.freeze({ outcome: "conflict" });
+  if (
+    !exactReadinessRows(input.receiptRows, expected.receiptRows) ||
+    input.attestation === null
+  )
+    return Object.freeze({ outcome: "integrity_failure" });
+  if (
+    !(["ready", "active", "superseded", "rolled_back"] as const).includes(
+      input.publicationState as
+        "ready" | "active" | "superseded" | "rolled_back",
+    ) ||
+    input.publicationReadyAtMs !== expected.transition.ready_at_ms ||
+    input.publicationClosureHash !== expected.transition.closure_hash
+  )
+    return Object.freeze({ outcome: "integrity_failure" });
+  return Object.freeze({ outcome: "idempotent_success" });
+};
+
+export type ServingSwitchPersistenceV2 = Readonly<{
+  plan: HeadSwitchPlan;
+  preflight: ServingSwitchPreflightProofV2;
+  history: ServingSwitchHistoryRow;
+}>;
+
+const servingSwitchProjectionV2Brand: unique symbol = Symbol(
+  "ServingSwitchProjectionV2",
+);
+export type ServingSwitchProjectionV2 = Readonly<{
+  readonly [servingSwitchProjectionV2Brand]: true;
+}>;
+const trustedServingSwitchProjectionsV2 = new WeakMap<
+  object,
+  ServingSwitchPersistenceV2
+>();
+
+export const assertServingSwitchProjectionV2: (
+  value: unknown,
+) => asserts value is ServingSwitchProjectionV2 = (value) => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !(servingSwitchProjectionV2Brand in value) ||
+    value[servingSwitchProjectionV2Brand] !== true ||
+    !trustedServingSwitchProjectionsV2.has(value)
+  )
+    throw new TypeError("serving switch projection v2 is not trusted");
+};
+
+export const projectServingSwitchV2 = async (input: {
+  readonly preflight: ServingSwitchPreflightProofV2;
+  readonly target: PublicationRecord;
+  readonly currentHead: StoredPublicationHead | null;
+  readonly currentActive: PublicationRecord | null;
+  readonly authorizedBy: SwitchAuthorization;
+  readonly closureRows: ServingClosureRows;
+  readonly persistedSeal: ServingClosureSealProjection;
+  readonly persistedProviderSearchDocuments: readonly ProviderSearchDocumentRowV2[];
+  readonly persistedProviderSearchFtsRows: readonly ProviderSearchFtsRowV2[];
+  readonly persistedReceiptRows: ServingReadinessReceiptRowsV2 | null;
+  readonly persistedAttestation: ServingReadinessAttestationProjectionV2 | null;
+}): Promise<ServingSwitchProjectionV2> => {
+  assertServingSwitchPreflightProofV2(input.preflight);
+  const proofBinding = trustedServingSwitchPreflightProofsV2.get(
+    input.preflight,
+  );
+  if (proofBinding === undefined)
+    throw new TypeError("serving switch preflight proof v2 is not trusted");
+  const observed = structuredClone({
+    target: input.target,
+    currentHead: input.currentHead,
+    currentActive: input.currentActive,
+    authorizedBy: input.authorizedBy,
+    closureRows: input.closureRows,
+    persistedSeal: input.persistedSeal,
+    providerDocuments: input.persistedProviderSearchDocuments,
+    providerFtsRows: input.persistedProviderSearchFtsRows,
+    receiptRows: input.persistedReceiptRows,
+    attestation: input.persistedAttestation,
+  });
+  const closure = await projectServingClosureSeal(observed.closureRows);
+  const sealErrors = await verifyServingClosureSealProjection(
+    observed.closureRows,
+    observed.persistedSeal,
+  );
+  const providerBinding = trustedProviderSearchArtifactProofsV2.get(
+    proofBinding.providerProof,
+  );
+  if (providerBinding === undefined)
+    throw new TypeError("serving switch v2 provider proof is not trusted");
+  const providerSearch = providerSearchPersistenceV2(
+    providerBinding.projection,
+  );
+  if (
+    sealErrors.length > 0 ||
+    closure.manifest.publicationId !== proofBinding.manifest.publicationId ||
+    closure.manifest.closureHash !== proofBinding.manifest.closureHash ||
+    JSON.stringify(observed.providerDocuments) !==
+      JSON.stringify(providerSearch.documents) ||
+    JSON.stringify(observed.providerFtsRows) !==
+      JSON.stringify(providerSearch.ftsRows) ||
+    input.preflight.observed_at_ms < observed.closureRows.sealedAtMs
+  )
+    throw new TypeError(
+      "serving switch v2 does not match persisted sealed evidence",
+    );
+  if (input.preflight.action === "activate") {
+    const readinessProof = proofBinding.readinessProof;
+    assertServingReadinessProofV2(readinessProof);
+    const expectedRows = receiptDetailRowsV2(readinessProof);
+    if (
+      observed.receiptRows === null ||
+      observed.attestation === null ||
+      JSON.stringify(observed.receiptRows) !== JSON.stringify(expectedRows) ||
+      JSON.stringify(observed.attestation) !==
+        JSON.stringify(readinessProof.attestation)
+    )
+      throw new TypeError(
+        "serving switch activation v2 lacks persisted readiness",
+      );
+  } else if (observed.receiptRows !== null || observed.attestation !== null) {
+    throw new TypeError(
+      "serving switch rollback v2 carries readiness evidence",
+    );
+  }
+  if (
+    observed.target.publicationId !== proofBinding.manifest.publicationId ||
+    observed.target.closureHash !== proofBinding.manifest.closureHash ||
+    input.preflight.to_publication_id !== observed.target.publicationId ||
+    input.preflight.to_closure_hash !== observed.target.closureHash
+  )
+    throw new TypeError("serving switch v2 target does not bind its manifest");
+  const switchedAt = timestampFromMs(
+    input.preflight.switched_at_ms,
+    "switch v2 time",
+  );
+  const plan =
+    input.preflight.action === "activate"
+      ? planActivation({
+          candidate: observed.target,
+          currentHead: observed.currentHead,
+          currentActive: observed.currentActive,
+          switchedAt,
+          authorizedBy: observed.authorizedBy,
+        })
+      : (() => {
+          if (observed.currentHead === null || observed.currentActive === null)
+            throw new TypeError("rollback v2 lacks current serving state");
+          return planRollback({
+            currentHead: observed.currentHead,
+            defective: observed.currentActive,
+            target: observed.target,
+            switchedAt,
+            authorizedBy: observed.authorizedBy,
+          });
+        })();
+  const event = switchHistoryStep(plan);
+  if (
+    event.switchId !== input.preflight.switch_id ||
+    event.action !== input.preflight.action ||
+    event.expectedPriorGeneration !==
+      input.preflight.expected_prior_generation ||
+    event.newGeneration !== input.preflight.new_generation ||
+    event.fromPublicationId !== input.preflight.from_publication_id ||
+    event.fromClosureHash !== input.preflight.from_closure_hash ||
+    event.toPublicationId !== input.preflight.to_publication_id ||
+    event.toClosureHash !== input.preflight.to_closure_hash ||
+    (observed.currentHead?.rollbackCandidatePublicationId ?? null) !==
+      input.preflight.expected_prior_rollback_candidate_publication_id ||
+    (observed.currentHead === null
+      ? null
+      : assertTimestamp(
+          observed.currentHead.switchedAt,
+          "prior switch v2 time",
+        )) !== input.preflight.expected_prior_switched_at_ms
+  )
+    throw new TypeError(
+      "serving switch v2 preflight does not bind its lifecycle plan",
+    );
+  const eventHash = await digest("publication-switch-event", [
+    field("event_version", "text", SERVING_SWITCH_EVENT_VERSION),
+    field("switch_id", "text", event.switchId),
+    field("preflight_hash", "digest", input.preflight.preflight_hash),
+    field("action", "text", event.action),
+    field(
+      "expected_prior_generation",
+      "integer",
+      String(event.expectedPriorGeneration),
+    ),
+    nullableCanonical(
+      "expected_prior_rollback_candidate_publication_id",
+      "identifier",
+      observed.currentHead?.rollbackCandidatePublicationId ?? null,
+    ),
+    observed.currentHead === null
+      ? field("expected_prior_switched_at", "null", "null")
+      : field(
+          "expected_prior_switched_at",
+          "timestamp",
+          observed.currentHead.switchedAt,
+        ),
+    field("new_generation", "integer", String(event.newGeneration)),
+    nullableCanonical(
+      "from_publication_id",
+      "identifier",
+      event.fromPublicationId,
+    ),
+    nullableCanonical("from_closure_hash", "digest", event.fromClosureHash),
+    field("to_publication_id", "identifier", event.toPublicationId),
+    field("to_closure_hash", "digest", event.toClosureHash),
+    nullableCanonical(
+      "to_attestation_hash",
+      "digest",
+      input.preflight.to_attestation_hash,
+    ),
+    nullableCanonical(
+      "resulting_rollback_candidate_publication_id",
+      "identifier",
+      event.resultingRollbackCandidatePublicationId,
+    ),
+    field("switched_at", "timestamp", event.switchedAt),
+    field("authorized_by_kind", "text", event.authorizedBy.kind),
+    field("authorized_identity_id", "text", event.authorizedBy.identityId),
+  ]);
+  const history = Object.freeze({
+    switch_id: event.switchId,
+    event_version: SERVING_SWITCH_EVENT_VERSION,
+    event_hash: eventHash,
+    preflight_hash: input.preflight.preflight_hash,
+    action: event.action,
+    expected_prior_generation: event.expectedPriorGeneration,
+    expected_prior_rollback_candidate_publication_id:
+      observed.currentHead?.rollbackCandidatePublicationId ?? null,
+    expected_prior_switched_at_ms:
+      observed.currentHead === null
+        ? null
+        : assertTimestamp(
+            observed.currentHead.switchedAt,
+            "prior switch v2 time",
+          ),
+    new_generation: event.newGeneration,
+    from_publication_id: event.fromPublicationId,
+    from_closure_hash: event.fromClosureHash,
+    to_publication_id: event.toPublicationId,
+    to_closure_hash: event.toClosureHash,
+    to_attestation_hash: input.preflight.to_attestation_hash,
+    resulting_rollback_candidate_publication_id:
+      event.resultingRollbackCandidatePublicationId,
+    switched_at_ms: input.preflight.switched_at_ms,
+    authorized_by_kind: event.authorizedBy.kind,
+    authorized_identity_id: event.authorizedBy.identityId,
+  } satisfies ServingSwitchHistoryRow);
+  const persistence = Object.freeze({
+    plan,
+    preflight: input.preflight,
+    history,
+  });
+  const result = {};
+  Object.defineProperty(result, servingSwitchProjectionV2Brand, {
+    value: true,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  trustedServingSwitchProjectionsV2.set(result, persistence);
+  return Object.freeze(result) as ServingSwitchProjectionV2;
+};
+
+export const readServingSwitchPersistenceV2 = (
+  value: ServingSwitchProjectionV2,
+): ServingSwitchPersistenceV2 => {
+  assertServingSwitchProjectionV2(value);
+  const persistence = trustedServingSwitchProjectionsV2.get(value);
+  if (persistence === undefined)
+    throw new TypeError("serving switch projection v2 is not trusted");
+  return persistence;
+};
+
+export const classifyServingSwitchRetryV2 = (input: {
+  readonly expected: ServingSwitchProjectionV2;
+  readonly currentHead: StoredPublicationHead | null;
+  readonly preflightAtGeneration: ServingSwitchPreflightProofV2 | null;
+  readonly historyAtGeneration: ServingSwitchHistoryRow | null;
+  readonly targetState: PublicationState;
+  readonly formerState: PublicationState | null;
+}): ServingSwitchRetryDecision => {
+  const expected = readServingSwitchPersistenceV2(input.expected);
+  if (input.currentHead !== null) validateHead(input.currentHead);
+  const cas = expected.plan.steps.find(
+    (
+      step,
+    ): step is Extract<HeadSwitchStep, { kind: "compare_and_swap_head" }> =>
+      step.kind === "compare_and_swap_head",
+  );
+  if (cas === undefined)
+    throw new TypeError("switch v2 plan lacks its head CAS");
+  if (input.historyAtGeneration === null) {
+    if (input.preflightAtGeneration !== null)
+      return Object.freeze({
+        outcome: rowsExactlyEqual(
+          input.preflightAtGeneration,
+          expected.preflight,
+        )
+          ? "integrity_failure"
+          : "conflict",
+      });
+    if (!headsEqual(input.currentHead, cas.expected))
+      return Object.freeze({ outcome: "stale" });
+    const expectedTarget =
+      expected.history.action === "activate" ? "ready" : "superseded";
+    const expectedFormer =
+      expected.history.from_publication_id === null ? null : "active";
+    if (
+      input.targetState !== expectedTarget ||
+      input.formerState !== expectedFormer
+    )
+      return Object.freeze({ outcome: "integrity_failure" });
+    return Object.freeze({ outcome: "execute" });
+  }
+  if (!rowsExactlyEqual(input.historyAtGeneration, expected.history))
+    return Object.freeze({ outcome: "conflict" });
+  if (input.preflightAtGeneration === null)
+    return Object.freeze({ outcome: "integrity_failure" });
+  if (!rowsExactlyEqual(input.preflightAtGeneration, expected.preflight))
+    return Object.freeze({ outcome: "conflict" });
+  const expectedFormer =
+    expected.history.from_publication_id === null
+      ? null
+      : expected.history.action === "activate"
+        ? "superseded"
+        : "rolled_back";
+  if (
+    !headsEqual(input.currentHead, cas.next) ||
+    input.targetState !== "active" ||
+    input.formerState !== expectedFormer
+  )
+    return Object.freeze({ outcome: "integrity_failure" });
+  return Object.freeze({ outcome: "idempotent_success" });
 };

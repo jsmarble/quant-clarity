@@ -13,11 +13,16 @@ import {
   NFKC_CASEFOLD_RANGE_ENDS,
   NFKC_CASEFOLD_RANGE_STARTS,
   UNICODE_EXACT_SEARCH_DATA_VERSION,
+  UNICODE_NFKC_CASEFOLD_MAX_UNICODE_SCALAR_EXPANSION,
 } from "./unicode-17.generated.js";
 
 export const EXACT_SEARCH_NORMALIZATION_VERSION =
   "exact-search-normalization@1";
 export const EXACT_SEARCH_UNICODE_VERSION = UNICODE_EXACT_SEARCH_DATA_VERSION;
+// Generated from the pinned Unicode NFKC_Casefold table. NFC and separator
+// collapse cannot increase this per-input-scalar upper bound.
+export const EXACT_SEARCH_NORMALIZATION_MAX_UNICODE_SCALAR_EXPANSION =
+  UNICODE_NFKC_CASEFOLD_MAX_UNICODE_SCALAR_EXPANSION;
 
 const S_BASE = 0xac00;
 const L_BASE = 0x1100;

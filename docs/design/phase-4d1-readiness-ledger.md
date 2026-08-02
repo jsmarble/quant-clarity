@@ -18,7 +18,7 @@ Focused integration evidence stages a selected-plus-unavailable closure, queries
 
 The protected pipeline must seal and reread the closure; rebuild and probe FTS; persist the immutable R2 archive; write the publication-qualified Vectorize namespace; wait for mutation processing; verify every declared ID and namespace; run fixed exact, semantic, filter, neutrality, evidence, integrity, and version-isolation probes; then execute receipt inserts, aborting equality assertions, attestation insert, and `building` to `ready` in one `D1Database.batch()`.
 
-ADR 0021 and [Phase 4E](phase-4e-provider-search-core.md) resolve the provider-name projection and normalization design; [Phase 4F](phase-4f-provider-search-v2-proofs.md) adds the isolated v2 receipt/attestation proof primitives. The current schema-1.3 ledger remains v1 and does not satisfy complete `SRCH-002`; migration 0007 and the active writers must land together before provider-name readiness is durable.
+ADR 0021 and [Phase 4E](phase-4e-provider-search-core.md) resolve the provider-name projection and normalization design; [Phase 4F](phase-4f-provider-search-v2-proofs.md) adds the isolated v2 receipt/attestation proof primitives. This historical schema-1.3 ledger remains v1 and does not satisfy complete `SRCH-002`; [Phase 4G](phase-4g-provider-search-schema-writers.md) subsequently lands migration 0007 and the active v2 writers together.
 
 Phase 4D2 must add append-only switch history and exact-generation transactional activation/rollback. Initial activation must use an unexpired attestation. Rollback targets only the immediate candidate and revalidates retained serving/search artifacts rather than applying the original receipt age.
 
