@@ -1,0 +1,14 @@
+{
+  "fixture_kind": "synthetic_non_publishable",
+  "provider_id": "prv_e234a657-a08e-46e9-8bd6-d08dfb7a6079",
+  "roster_version": "synthetic-1.0.0",
+  "items": [
+    {
+      "roster_item_id": "fireworks-example-8b-standard",
+      "provider_model_id": "accounts/fireworks/models/example-8b",
+      "tier_key": "standard",
+      "endpoint_class": "serverless",
+      "material_region_key": ""
+    }
+  ]
+}

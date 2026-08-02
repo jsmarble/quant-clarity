@@ -12,6 +12,10 @@
     "./source-address": {
       "types": "./dist/source-address.d.ts",
       "default": "./dist/source-address.js"
+    },
+    "./publication-consistency": {
+      "types": "./dist/publication-consistency.d.ts",
+      "default": "./dist/publication-consistency.js"
     }
   },
   "types": "./dist/index.d.ts",

@@ -2,7 +2,7 @@
 
 | Attribute | Value |
 |---|---|
-| Status | Planned; no requirement or release gate in this matrix is verified |
+| Status | Implementation in progress; no release gate in this matrix is verified |
 | Requirements baseline | [`docs/product/requirements.md`](../product/requirements.md) |
 | Design baseline | [`docs/design/system-design.md`](system-design.md), sections 1–19 |
 | Coverage | 317 normative requirements, 13 success measures, and 24 derived release-acceptance anchors |
@@ -98,7 +98,7 @@ Verification IDs are planned stable anchors. The prefix states the primary verif
 
 | Source ID | PRD | Requirement summary | Planned design sections | Planned primary verification | Status |
 |---|---|---|---|---|---|
-| `DATA-001` | §7.1 | Each model shall have a stable internal identifier and stable public slug that do not depend on a single… | `D05`, `D07`, `D19` | Schema/contract — `CT-DATA-001` | Planned |
+| `DATA-001` | §7.1 | Each model shall have a stable internal identifier and stable public slug that do not depend on a single… | `D05`, `D07`, `D19` | Schema/contract — `CT-DATA-001`; [Phase 2 evidence](phase-2-implementation.md) | Implemented |
 | `DATA-002` | §7.1 | Each model shall store a canonical display name, normalized name, original publisher/developer, model… | `D05`, `D07`, `D19` | Schema/contract — `CT-DATA-002` | Planned |
 | `DATA-003` | §7.1 | Each model shall support zero or more explicitly named variants and bidirectional family/variant links. | `D05`, `D07`, `D19` | Schema/contract — `CT-DATA-003` | Planned |
 | `DATA-004` | §7.1 | Model aliases shall include common punctuation, case, separator, organization-prefix, and provider-ID… | `D05`, `D07`, `D19` | Schema/contract — `CT-DATA-004` | Planned |
@@ -113,13 +113,13 @@ Verification IDs are planned stable anchors. The prefix states the primary verif
 | `DATA-013` | §7.2 | The system shall distinguish canonical/base checkpoints from source-provided quantized variants. | `D05`, `D07`, `D19` | Schema/contract — `CT-DATA-013` | Planned |
 | `DATA-014` | §7.2 | Checkpoint relationships shall express derived from, quantized from, publisher-provided variant of, and… | `D05`, `D07`, `D19` | Schema/contract — `CT-DATA-014` | Planned |
 | `DATA-015` | §7.2 | If the public source is already quantized, the Model Facts label shall state that fact and shall not… | `D05`, `D07`, `D19` | Schema/contract — `CT-DATA-015` | Planned |
-| `DATA-020` | §7.3 | Every provider/model combination shall be represented as one or more offerings rather than placing… | `D05`, `D19` | Schema/contract — `CT-DATA-020` | Planned |
+| `DATA-020` | §7.3 | Every provider/model combination shall be represented as one or more offerings rather than placing… | `D05`, `D19` | Schema/contract — `CT-DATA-020`; [Phase 2 evidence](phase-2-implementation.md) | Implemented |
 | `DATA-021` | §7.3 | An offering shall include provider, provider model ID, display name, linked canonical model or variant,… | `D05`, `D19` | Schema/contract — `CT-DATA-021` | Planned |
 | `DATA-022` | §7.3 | Materially different deployment tiers, such as standard versus fast or serverless versus dedicated, shall be… | `D05`, `D19` | Schema/contract — `CT-DATA-022` | Planned |
 | `DATA-023` | §7.3 | Region shall create a distinct offering only when it changes price, precision, availability, or a… | `D05`, `D19` | Schema/contract — `CT-DATA-023` | Planned |
 | `DATA-024` | §7.3 | Provider aliases and corporate-name changes shall not alter stable provider IDs. | `D05`, `D19` | Schema/contract — `CT-DATA-024` | Planned |
 | `DATA-025` | §7.3 | An offering removed from a provider shall be retained historically and marked inactive rather than deleted. | `D05`, `D19` | Schema/contract — `CT-DATA-025` | Planned |
-| `DATA-030` | §7.4 | Each offering shall expose the provider’s raw precision string exactly as observed, the provider… | `D05`, `D07`, `D11`, `D19` | Schema/contract — `CT-DATA-030` | Planned |
+| `DATA-030` | §7.4 | Each offering shall expose the provider’s raw precision string exactly as observed, the provider… | `D05`, `D07`, `D11`, `D19` | Schema/contract — `CT-DATA-030`; [Phase 2 evidence](phase-2-implementation.md) | Implemented |
 | `DATA-031` | §7.4 | The normalized vocabulary shall support at minimum BF16, FP16, FP8, FP6, FP4, NVFP4, MXFP4, INT8, INT4,… | `D05`, `D07`, `D11`, `D19` | Schema/contract — `CT-DATA-031` | Planned |
 | `DATA-032` | §7.4 | Precision shall be scoped where evidence permits: stored weights, weight computation, activations,… | `D05`, `D07`, `D11`, `D19` | Schema/contract — `CT-DATA-032` | Planned |
 | `DATA-033` | §7.4 | A single scalar “precision” field shall not overwrite mixed-precision detail. The summary may say mixed… | `D05`, `D07`, `D11`, `D19` | Schema/contract — `CT-DATA-033` | Planned |
@@ -129,13 +129,13 @@ Verification IDs are planned stable anchors. The prefix states the primary verif
 | `DATA-037` | §7.4 | Provider API metadata may be published even when the provider’s public marketing page omits the same fact,… | `D05`, `D07`, `D11`, `D19` | Schema/contract — `CT-DATA-037` | Planned |
 | `DATA-038` | §7.4 | Asking the served language model to self-identify its precision shall not qualify as evidence. | `D05`, `D07`, `D11`, `D19` | Schema/contract — `CT-DATA-038` | Planned |
 | `DATA-039` | §7.4 | Unknown component precision shall remain unknown even if another component is known. | `D05`, `D07`, `D11`, `D19` | Schema/contract — `CT-DATA-039` | Planned |
-| `DATA-051` | §7.4 | Precision evidence shall identify the exact provider model ID, deployment tier, endpoint/availability class,… | `D05`, `D07`, `D11`, `D19` | Schema/contract — `CT-DATA-051` | Planned |
+| `DATA-051` | §7.4 | Precision evidence shall identify the exact provider model ID, deployment tier, endpoint/availability class,… | `D05`, `D07`, `D11`, `D19` | Schema/contract — `CT-DATA-051`; [Phase 2 evidence](phase-2-implementation.md) | Implemented |
 | `DATA-052` | §7.4 | A wider downstream stored, compute, activation, accumulation, or cache representation shall not be described… | `D05`, `D07`, `D11`, `D19` | Schema/contract — `CT-DATA-052` | Planned |
 | `DATA-053` | §7.4 | Precision normalization rules and display-order rules shall be independently versioned and exposed through… | `D05`, `D07`, `D11`, `D19` | Schema/contract — `CT-DATA-053` | Planned |
 | `DATA-054` | §7.4 | BF16 and FP16 shall remain distinct exact formats. QuantClarity shall not assert a universal quality… | `D05`, `D07`, `D11`, `D19` | Schema/contract — `CT-DATA-054` | Planned |
-| `DATA-040` | §7.5 | Each offering shall support standard input, output, and cached-input read prices per one million tokens. | `D05`, `D11`, `D19` | Schema/contract — `CT-DATA-040` | Planned |
+| `DATA-040` | §7.5 | Each offering shall support standard input, output, and cached-input read prices per one million tokens. | `D05`, `D11`, `D19` | Schema/contract — `CT-DATA-040`; [Phase 2 evidence](phase-2-implementation.md) | Implemented |
 | `DATA-041` | §7.5 | Price amounts shall use decimal-safe storage and shall retain the provider’s stated currency using an ISO… | `D05`, `D11`, `D19` | Schema/contract — `CT-DATA-041` | Planned |
-| `DATA-055` | §7.5 | When a provider explicitly states a currency, that currency shall be preserved. When a provider omits… | `D05`, `D11`, `D19` | Schema/contract — `CT-DATA-055` | Planned |
+| `DATA-055` | §7.5 | When a provider explicitly states a currency, that currency shall be preserved. When a provider omits… | `D05`, `D11`, `D19` | Schema/contract — `CT-DATA-055`; [Phase 2 evidence](phase-2-implementation.md) | Implemented |
 | `DATA-042` | §7.5 | Prices shall not be converted between currencies. The UI and API shall return the provider-stated currency… | `D05`, `D11`, `D19` | Schema/contract — `CT-DATA-042` | Planned |
 | `DATA-043` | §7.5 | A missing cached-input price shall be unknown/null, not zero and not equal to standard input. | `D05`, `D11`, `D19` | Schema/contract — `CT-DATA-043` | Planned |
 | `DATA-044` | §7.5 | Each current price shall include effective or observed time, source, unit, currency, and any material… | `D05`, `D11`, `D19` | Schema/contract — `CT-DATA-044` | Planned |
@@ -148,10 +148,10 @@ Verification IDs are planned stable anchors. The prefix states the primary verif
 | `DATA-056` | §7.5 | A standard comparable price shall mean a generally available, on-demand pay-as-you-go, non-batch rate… | `D05`, `D11`, `D19` | Schema/contract — `CT-DATA-056` | Planned |
 | `DATA-057` | §7.5 | Context-tiered or region-tiered rates shall retain their threshold/region. A displayed from price shall… | `D05`, `D11`, `D19` | Schema/contract — `CT-DATA-057` | Planned |
 | `DATA-058` | §7.5 | Promotional rates shall remain visibly separate from standard non-promotional rates and shall be excluded… | `D05`, `D11`, `D19` | Schema/contract — `CT-DATA-058` | Planned |
-| `DATA-060` | §7.6 | Every published non-null model, checkpoint, architecture, parameter, precision, price, offering, and… | `D05`, `D07`, `D08`, `D11`, `D14`, `D19` | Schema/contract — `CT-DATA-060` | Planned |
+| `DATA-060` | §7.6 | Every published non-null model, checkpoint, architecture, parameter, precision, price, offering, and… | `D05`, `D07`, `D08`, `D11`, `D14`, `D19` | Schema/contract — `CT-DATA-060`; [Phase 2 evidence](phase-2-implementation.md) | Implemented |
 | `DATA-061` | §7.6 | Evidence shall include source type, source owner, source locator, retrieval timestamp, extraction… | `D05`, `D07`, `D08`, `D11`, `D14`, `D19` | Schema/contract — `CT-DATA-061` | Planned |
 | `DATA-062` | §7.6 | Redacted raw evidence required for audit shall be retained privately for at least 24 months. The public site… | `D05`, `D07`, `D08`, `D11`, `D14`, `D19` | Schema/contract — `CT-DATA-062` | Planned |
-| `DATA-063` | §7.6 | Secrets, bearer tokens, account identifiers, personal data, and unrelated response content shall be redacted… | `D05`, `D07`, `D08`, `D11`, `D14`, `D19` | Schema/contract — `CT-DATA-063` | Planned |
+| `DATA-063` | §7.6 | Secrets, bearer tokens, account identifiers, personal data, and unrelated response content shall be redacted… | `D05`, `D07`, `D08`, `D11`, `D14`, `D19` | Schema/contract — `CT-DATA-063`; [Phase 2 evidence](phase-2-implementation.md) | Implemented |
 | `DATA-064` | §7.6 | Public evidence links shall point as directly as practical to the supporting provider or publisher resource.… | `D05`, `D07`, `D08`, `D11`, `D14`, `D19` | Schema/contract — `CT-DATA-064` | Planned |
 | `DATA-065` | §7.6 | Each model page and provider page shall show the most recent successful data refresh. Each offering shall… | `D05`, `D07`, `D08`, `D11`, `D14`, `D19` | Schema/contract — `CT-DATA-065` | Planned |
 | `DATA-066` | §7.6 | An offering shall become stale after it misses two consecutive scheduled refresh opportunities or after… | `D05`, `D07`, `D08`, `D11`, `D14`, `D19` | Schema/contract — `CT-DATA-066` | Planned |
@@ -249,7 +249,7 @@ Verification IDs are planned stable anchors. The prefix states the primary verif
 | `API-001` | §11.1 | The API shall be anonymous, public, read-only, and versioned under a stable major-version path. | `D09`, `D16`, `D19` | API conformance — `ACT-API-001` | Planned |
 | `API-002` | §11.1 | The initial API shall provide collections and detail resources for models, variants, providers, offerings,… | `D09`, `D16`, `D19` | API conformance — `ACT-API-002` | Planned |
 | `API-002A` | §11.1 | Model Facts and Offering Facts are presentation views backed by the model, variant, offering, price,… | `D09`, `D16`, `D19` | API conformance — `ACT-API-002A` | Planned |
-| `API-003` | §11.1 | API data shall be the same canonical published data used by the website. | `D09`, `D16`, `D19` | API conformance — `ACT-API-003` | Planned |
+| `API-003` | §11.1 | API data shall be the same canonical published data used by the website. | `D09`, `D16`, `D19` | API conformance — `ACT-API-003`; ADR 0013 local contract | Planned |
 | `API-004` | §11.1 | Responses shall use JSON and UTF-8, with documented field types, units, enums, null behavior, and timestamps. | `D09`, `D16`, `D19` | API conformance — `ACT-API-004` | Planned |
 | `API-005` | §11.1 | Unknown facts shall be null or an explicit unknown enum as documented; they shall not be omitted… | `D09`, `D16`, `D19` | API conformance — `ACT-API-005` | Planned |
 | `API-006` | §11.1 | Decimal prices shall be serialized without binary floating-point artifacts. | `D09`, `D16`, `D19` | API conformance — `ACT-API-006` | Planned |
@@ -271,7 +271,7 @@ Verification IDs are planned stable anchors. The prefix states the primary verif
 | `API-022` | §11.2 | Rate-limited responses shall use HTTP 429 and include a retry indication. | `D09`, `D12`, `D13`, `D15`, `D16`, `D19` | API conformance — `ACT-API-022` | Planned |
 | `API-023` | §11.2 | Rate limiting shall be treated as abuse/cost protection rather than exact billing accounting. Cloudflare’s… | `D09`, `D12`, `D13`, `D15`, `D16`, `D19` | API conformance — `ACT-API-023` | Planned |
 | `API-024` | §11.2 | Every public API request, including a cache hit, shall execute the applicable Worker rate-limit and… | `D09`, `D12`, `D13`, `D15`, `D16`, `D19` | API conformance — `ACT-API-024` | Planned |
-| `API-024A` | §11.2 | After rate-limit and validation checks, cacheable anonymous responses shall be served from Cloudflare… | `D09`, `D12`, `D13`, `D15`, `D16`, `D19` | API conformance — `ACT-API-024A` | Planned |
+| `API-024A` | §11.2 | After rate-limit and validation checks, cacheable anonymous responses shall be served from Cloudflare… | `D09`, `D12`, `D13`, `D15`, `D16`, `D19` | API conformance — `ACT-API-024A`; ADR 0013 local helpers | Planned |
 | `API-025` | §11.2 | The system shall support operator-configurable per-request ceilings for CPU time, subrequests, result count,… | `D09`, `D12`, `D13`, `D15`, `D16`, `D19` | API conformance — `ACT-API-025` | Planned |
 | `API-026` | §11.2 | Abuse/cost protection without application-stored visitor events, identifiers, queries, or traffic telemetry | `D09`, `D12`, `D13`, `D15`, `D16`, `D19` | API conformance — `ACT-API-026` | Planned |
 | `API-027` | §11.2 | The initial capacity target shall support at least 10,000 API requests per month in addition to… | `D09`, `D12`, `D13`, `D15`, `D16`, `D19` | API conformance — `ACT-API-027` | Planned |
@@ -288,16 +288,16 @@ Verification IDs are planned stable anchors. The prefix states the primary verif
 | `PIPE-006` | §12 | Long-running retrieval and AI-extraction work shall be durable across transient failures and platform restarts. | `D08`, `D12`, `D14`, `D16`, `D19` | Pipeline integration — `PIT-PIPE-006` | Planned |
 | `PIPE-007` | §12 | Retries shall use bounded exponential backoff with provider-specific limits and shall honor Retry-After and… | `D08`, `D12`, `D14`, `D16`, `D19` | Pipeline integration — `PIT-PIPE-007` | Planned |
 | `PIPE-008` | §12 | Repeated permanent failures shall enter quarantine without infinite retries or blocking the global run. | `D08`, `D12`, `D14`, `D16`, `D19` | Pipeline integration — `PIT-PIPE-008` | Planned |
-| `PIPE-010` | §12 | Each provider shall be integrated through an independently deployable/configurable logical adapter… | `D06`, `D12`, `D13`, `D16`, `D19` | Pipeline integration — `PIT-PIPE-010` | Planned |
+| `PIPE-010` | §12 | Each provider shall be integrated through an independently deployable/configurable logical adapter… | `D06`, `D12`, `D13`, `D16`, `D19` | Pipeline integration — `PIT-PIPE-010`; [Phase 2 evidence](phase-2-implementation.md) | Implemented |
 | `PIPE-011` | §12 | Adding a provider shall not require changing canonical model, offering, price, precision, or evidence… | `D06`, `D12`, `D13`, `D16`, `D19` | Pipeline integration — `PIT-PIPE-011` | Planned |
-| `PIPE-012` | §12 | An adapter shall declare source endpoints, required credentials, retrieval method, expected precision… | `D06`, `D12`, `D13`, `D16`, `D19` | Pipeline integration — `PIT-PIPE-012` | Planned |
+| `PIPE-012` | §12 | An adapter shall declare source endpoints, required credentials, retrieval method, expected precision… | `D06`, `D12`, `D13`, `D16`, `D19` | Pipeline integration — `PIT-PIPE-012`; [Phase 2 evidence](phase-2-implementation.md) | Implemented |
 | `PIPE-013` | §12 | Source URLs shall be operator-configured or allowlisted. No public user input may cause the pipeline to… | `D06`, `D12`, `D13`, `D16`, `D19` | Pipeline integration — `PIT-PIPE-013` | Planned |
 | `PIPE-014` | §12 | Adapters shall support provider APIs, authenticated model catalogs, public static pages, public… | `D06`, `D12`, `D13`, `D16`, `D19` | Pipeline integration — `PIT-PIPE-014` | Planned |
 | `PIPE-015` | §12 | API and structured catalog sources shall be preferred over page scraping when they expose the same fact more… | `D06`, `D12`, `D13`, `D16`, `D19` | Pipeline integration — `PIT-PIPE-015` | Planned |
 | `PIPE-016` | §12 | Browser execution shall be used only when required to obtain provider-published facts and shall declare only… | `D06`, `D12`, `D13`, `D16`, `D19` | Pipeline integration — `PIT-PIPE-016` | Planned |
-| `PIPE-017` | §12 | Adapter fixtures shall contain redacted representative responses for repeatable parser and schema-drift tests. | `D06`, `D12`, `D13`, `D16`, `D19` | Pipeline integration — `PIT-PIPE-017` | Planned |
+| `PIPE-017` | §12 | Adapter fixtures shall contain redacted representative responses for repeatable parser and schema-drift tests. | `D06`, `D12`, `D13`, `D16`, `D19` | Pipeline integration — `PIT-PIPE-017`; [Phase 2 evidence](phase-2-implementation.md) | Implemented |
 | `PIPE-018` | §12 | Provider credentials and affiliate secrets shall never be included in fixtures, logs, model prompts, public… | `D06`, `D12`, `D13`, `D16`, `D19` | Pipeline integration — `PIT-PIPE-018` | Planned |
-| `PIPE-019` | §12 | Each provider adapter shall have a version-controlled expected launch roster. Every roster item in a run… | `D06`, `D12`, `D13`, `D16`, `D19` | Pipeline integration — `PIT-PIPE-019` | Planned |
+| `PIPE-019` | §12 | Each provider adapter shall have a version-controlled expected launch roster. Every roster item in a run… | `D06`, `D12`, `D13`, `D16`, `D19` | Pipeline integration — `PIT-PIPE-019`; [Phase 2 evidence](phase-2-implementation.md) | Implemented |
 | `PIPE-020` | §12 | The precedence policy shall be applied per field because a publisher is authoritative for architecture while… | `D06`, `D12`, `D13`, `D16`, `D19` | Pipeline integration — `PIT-PIPE-020` | Planned |
 | `PIPE-021` | §12 | Conflicting lower-precedence facts shall be retained internally for audit and shall not silently overwrite… | `D06`, `D12`, `D13`, `D16`, `D19` | Pipeline integration — `PIT-PIPE-021` | Planned |
 | `PIPE-022` | §12 | When equally authoritative current sources conflict, the affected public field shall become unknown or not… | `D06`, `D12`, `D13`, `D16`, `D19` | Pipeline integration — `PIT-PIPE-022` | Planned |
@@ -419,7 +419,7 @@ Verification IDs are planned stable anchors. The prefix states the primary verif
 | `PRIV-003` | §18.1 | No cookies or visitor-specific browser persistence; identical public HTTP caching only | `D11`, `D13`, `D16`, `D19` | Privacy — `PVT-PRIV-003` | Planned |
 | `PRIV-004` | §18.1 | Source addresses are transient abuse inputs and never persisted or repurposed | `D09`, `D13`, `D16`, `D19` | Privacy — `PVT-PRIV-004` | Planned |
 | `PRIV-005` | §18.1 | GDPR-complete privacy notice describing zero storage and necessary Cloudflare processing | `D11`, `D13`, `D16`, `D19` | Privacy — `PVT-PRIV-005` | Planned |
-| `PRIV-006` | §18.1 | No raw visitor input retention; only path-only canonical detail caching by publication and stable ID | `D09`, `D11`, `D13`, `D16`, `D19` | Privacy — `PVT-PRIV-006` | Planned |
+| `PRIV-006` | §18.1 | No raw visitor input retention; only path-only canonical detail caching by publication and stable ID | `D09`, `D11`, `D13`, `D16`, `D19` | Privacy — `PVT-PRIV-006`; ADR 0013 local helpers | Planned |
 | `PRIV-007` | §18.1 | Privacy by design/default and a blocking zero-visitor-data gate | `D12`, `D13`, `D16`, `D19` | Privacy — `PVT-PRIV-007` | Planned |
 | `PRIV-008` | §18.1 | Current Cloudflare DPA, transfers, subprocessors, and data-location review | `D13`, `D16`, `D19` | Privacy — `PVT-PRIV-008` | Planned |
 | `PRIV-009` | §18.1 | Record of processing and documented GDPR role/duty determinations | `D13`, `D16`, `D19` | Privacy — `PVT-PRIV-009` | Planned |
@@ -444,8 +444,8 @@ Verification IDs are planned stable anchors. The prefix states the primary verif
 
 | Source ID | PRD | Requirement summary | Planned design sections | Planned primary verification | Status |
 |---|---|---|---|---|---|
-| `LEG-001` | §18.3 | Each provider adapter shall document lawful access method, relevant terms, robots behavior, Content… | `D06`, `D11`, `D13`, `D16`, `D19` | Legal/compliance — `LCT-LEG-001` | Planned |
-| `LEG-002` | §18.3 | The public product shall republish normalized facts and brief necessary evidence, not substantial… | `D06`, `D11`, `D13`, `D16`, `D19` | Legal/compliance — `LCT-LEG-002` | Planned |
+| `LEG-001` | §18.3 | Each provider adapter shall document lawful access method, relevant terms, robots behavior, Content… | `D06`, `D11`, `D13`, `D16`, `D19` | Legal/compliance — `LCT-LEG-001`; pending Fireworks register | Planned |
+| `LEG-002` | §18.3 | The public product shall republish normalized facts and brief necessary evidence, not substantial… | `D06`, `D11`, `D13`, `D16`, `D19` | Legal/compliance — `LCT-LEG-002`; synthetic fixture boundary | Planned |
 | `LEG-003` | §18.3 | Provider and model trademarks shall be used descriptively with a general non-affiliation notice. | `D06`, `D11`, `D13`, `D16`, `D19` | Legal/compliance — `LCT-LEG-003` | Planned |
 | `LEG-004` | §18.3 | Claims shall be neutrally worded and directly supported; the product shall not characterize conduct as… | `D06`, `D11`, `D13`, `D16`, `D19` | Legal/compliance — `LCT-LEG-004` | Planned |
 | `LEG-005` | §18.3 | A legal-contact mechanism may exist for formal notices while no general user feedback, correction, comment,… | `D06`, `D11`, `D13`, `D16`, `D19` | Legal/compliance — `LCT-LEG-005` | Planned |
@@ -481,7 +481,7 @@ Verification IDs are planned stable anchors. The prefix states the primary verif
 
 | Source ID | PRD | Requirement summary | Planned design sections | Planned primary verification | Status |
 |---|---|---|---|---|---|
-| `QA-001` | §21 | Unit tests shall cover normalization, precision parsing, lineage rules, currency handling, neutral… | `D16`, `D19` | Quality-gate audit — `QGA-QA-001` | Planned |
+| `QA-001` | §21 | Unit tests shall cover normalization, precision parsing, lineage rules, currency handling, neutral… | `D16`, `D19` | Quality-gate audit — `QGA-QA-001`; [Phase 2 evidence](phase-2-implementation.md) | Implemented |
 | `QA-002` | §21 | Contract tests shall run each provider adapter against redacted fixtures and detect source-schema drift. | `D16`, `D19` | Quality-gate audit — `QGA-QA-002` | Planned |
 | `QA-003` | §21 | End-to-end tests shall cover all primary user journeys without authentication. | `D16`, `D19` | Quality-gate audit — `QGA-QA-003` | Planned |
 | `QA-004` | §21 | API conformance tests shall validate OpenAPI examples, pagination, filters, sorting, caching, CORS, nulls,… | `D16`, `D19` | Quality-gate audit — `QGA-QA-004` | Planned |
@@ -490,9 +490,9 @@ Verification IDs are planned stable anchors. The prefix states the primary verif
 | `QA-007` | §21 | Security tests shall cover SSRF, redirect handling, stored/script injection from source data, prompt… | `D16`, `D19` | Quality-gate audit — `QGA-QA-007` | Planned |
 | `QA-008` | §21 | Performance tests shall validate initial load plus a tenfold traffic scenario and worst-case model pages… | `D16`, `D19` | Quality-gate audit — `QGA-QA-008` | Planned |
 | `QA-009` | §21 | Accessibility tests shall include automation plus manual keyboard, focus, zoom, color-independent state,… | `D16`, `D19` | Quality-gate audit — `QGA-QA-009` | Planned |
-| `QA-010` | §21 | A golden dataset shall encode known cases including canonical-versus-explicit variants, BF16/FP8/FP4… | `D16`, `D19` | Quality-gate audit — `QGA-QA-010` | Planned |
+| `QA-010` | §21 | A golden dataset shall encode known cases including canonical-versus-explicit variants, BF16/FP8/FP4… | `D16`, `D19` | Quality-gate audit — `QGA-QA-010`; synthetic case matrix | Planned |
 | `QA-011` | §21 | Before production use, each extraction-policy version shall achieve 100% precision (no unsupported published… | `D16`, `D19` | Quality-gate audit — `QGA-QA-011` | Planned |
-| `QA-012` | §21 | Golden tests shall prove that a provider-catalog base-model object’s default_precision value is not… | `D16`, `D19` | Quality-gate audit — `QGA-QA-012` | Planned |
+| `QA-012` | §21 | Golden tests shall prove that a provider-catalog base-model object’s default_precision value is not… | `D16`, `D19` | Quality-gate audit — `QGA-QA-012`; Fireworks negative fixture | Implemented |
 | `QA-013` | §21 | Search acceptance shall use version-controlled sets meeting the size and top-result/top-10 criteria in SM-06… | `D16`, `D19` | Quality-gate audit — `QGA-QA-013` | Planned |
 | `QA-014` | §21 | Rate-limit acceptance shall exercise the documented IPv4/IPv6 keying policy against normal shared-network,… | `D16`, `D19` | Quality-gate audit — `QGA-QA-014` | Planned |
 

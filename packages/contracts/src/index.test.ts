@@ -286,6 +286,7 @@ describe("provider adapter contract (PIPE-010–PIPE-019, SEC-003–SEC-006)", (
           scheme: "https",
           host: "api.example.invalid",
           path_template: "/models/{cursor}",
+          safe_locator_template: "/models",
           parameters: [
             {
               name: "cursor",
@@ -299,7 +300,10 @@ describe("provider adapter contract (PIPE-010–PIPE-019, SEC-003–SEC-006)", (
           ],
           method: "GET",
           authentication_class: "api_key",
-          allowed_headers: ["accept"],
+          credential_handle: "PROVIDER_API_KEY",
+          credential_injection: "header",
+          credential_header: "x-api-key",
+          allowed_headers: ["accept", "x-api-key"],
           source_type: "provider_api",
           pagination: "cursor",
           content_types: ["application/json"],
@@ -338,6 +342,8 @@ describe("provider adapter contract (PIPE-010–PIPE-019, SEC-003–SEC-006)", (
         items_per_run: 1_000,
       },
       compliance_review: {
+        register_path: "docs/compliance/sources/example.md",
+        register_hash: `sha256:${"c".repeat(64)}`,
         reviewer_role: "source compliance owner",
         reviewed_at: "2026-08-01T00:00:00.000Z",
         terms_version: "terms@2026-08-01",
@@ -396,6 +402,25 @@ describe("provider adapter contract (PIPE-010–PIPE-019, SEC-003–SEC-006)", (
     expect(
       validateAdapterManifestSemantics({
         ...manifest,
+        enabled_environments: ["production"],
+      } as AdapterManifest),
+    ).toContain("production compliance validation requires a valid asOf time");
+    expect(
+      validateAdapterManifestSemantics({
+        ...manifest,
+        sources: [
+          {
+            ...manifest.sources[0],
+            credential_handle: "UNDECLARED_KEY",
+          },
+        ],
+      } as AdapterManifest),
+    ).toContain(
+      "catalog: authenticated source lacks an exact credential handle",
+    );
+    expect(
+      validateAdapterManifestSemantics({
+        ...manifest,
         sources: [
           {
             ...manifest.sources[0],
@@ -416,6 +441,18 @@ describe("provider adapter contract (PIPE-010–PIPE-019, SEC-003–SEC-006)", (
         ],
       } as AdapterManifest),
     ).toContain("catalog: path template parameters do not match");
+    expect(
+      validateAdapterManifestSemantics({
+        ...manifest,
+        sources: [
+          {
+            ...manifest.sources[0],
+            path_template: "//169.254.169.254/latest/meta-data",
+            parameters: [],
+          },
+        ],
+      } as AdapterManifest),
+    ).toContain("catalog: unsafe path template");
     expect(
       validateAdapterManifestSemantics({
         ...manifest,
@@ -481,6 +518,7 @@ describe("provider adapter contract (PIPE-010–PIPE-019, SEC-003–SEC-006)", (
           source_id: "catalog",
           source_type: "provider_api",
           host: "api.example.invalid",
+          safe_locator_template: "/models",
           redirect_hosts: [],
         },
       ],
@@ -575,6 +613,40 @@ describe("provider adapter contract (PIPE-010–PIPE-019, SEC-003–SEC-006)", (
         { manifest, rosterItemIds: ["item-1"] },
       ),
     ).toContain("price-1: price/precision fact lacks exact offering scope");
+    expect(
+      validateAdapterBatchSemantics(
+        {
+          ...batch,
+          observations: [
+            {
+              ...batch.observations[0]!,
+              safe_locator:
+                "https://api.example.invalid/models?access_token=secret",
+            },
+          ],
+        },
+        { manifest, rosterItemIds: ["item-1"] },
+      ),
+    ).toContain(
+      `obs_${UUID}: source locator must not retain query or fragment data`,
+    );
+    expect(
+      validateAdapterBatchSemantics(
+        {
+          ...batch,
+          observations: [
+            {
+              ...batch.observations[0]!,
+              safe_locator:
+                "https://api.example.invalid/accounts/real-customer/models",
+            },
+          ],
+        },
+        { manifest, rosterItemIds: ["item-1"] },
+      ),
+    ).toContain(
+      `obs_${UUID}: source locator does not match its redacted template`,
+    );
   });
 });
 

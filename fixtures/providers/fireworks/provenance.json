@@ -1,0 +1,15 @@
+{
+  "fixture_kind": "synthetic_non_publishable",
+  "provider_id": "prv_e234a657-a08e-46e9-8bd6-d08dfb7a6079",
+  "source_types": ["authenticated_catalog", "public_static_page"],
+  "lawful_capture_method": "No capture. Hand-authored synthetic values informed only by public schema documentation.",
+  "observed_at": "2026-08-01T00:00:00.000Z",
+  "redaction_notes": "No source payload retained; all model identities and prices are invented.",
+  "retention_permission": "synthetic_only",
+  "publication_permission": false,
+  "parser_version": "fireworks-structured-1.0.0",
+  "source_policy_version": "source-precedence-1.0.0",
+  "content_hash": "sha256:0d5697d0873270661c730ddb1b5f04859f0be3cab8e3fd47848a12302b71f1f8",
+  "contains_authenticated_content": false,
+  "approval_reference": null
+}

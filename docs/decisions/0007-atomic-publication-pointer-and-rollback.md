@@ -61,3 +61,7 @@ Official references:
 - Populate old-version caches, activate a candidate, and prove new requests resolve the new key while pinned pages remain coherent.
 - Execute rollback under load and meet the four-hour objective with no more than one completed publication at risk.
 - Rebuild a removed serving generation and vector namespace solely from its R2 bundle.
+
+## Addendum: explicit read transport
+
+ADR 0013 defines the previously unresolved transport for this decision. Public clients use the optional `X-QuantClarity-Publication` request header; authenticated cursors carry the same pin and must agree with that header. Frontend service-bound requests sign the pin. Query head resolution returns a request-lifetime D1 bookmark that a cache-miss data query resumes, or performs an equivalent single head-joined read. Application Cache API keys use a synthesized same-origin reserved path containing only validated publication, resource, stable ID, and representation fields. Public immutable versioned URLs remain deferred.

@@ -72,9 +72,13 @@
           "scheme",
           "host",
           "path_template",
+          "safe_locator_template",
           "parameters",
           "method",
           "authentication_class",
+          "credential_handle",
+          "credential_injection",
+          "credential_header",
           "allowed_headers",
           "source_type",
           "pagination",
@@ -109,7 +113,12 @@
             "type": "string"
           },
           "path_template": {
-            "pattern": "^/",
+            "pattern": "^/(?!/)",
+            "maxLength": 1024,
+            "type": "string"
+          },
+          "safe_locator_template": {
+            "pattern": "^/(?!/)",
             "maxLength": 1024,
             "type": "string"
           },
@@ -221,6 +230,44 @@
               }
             ]
           },
+          "credential_handle": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Z][A-Z0-9_]{0,127}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "credential_injection": {
+            "anyOf": [
+              {
+                "const": "authorization_bearer",
+                "type": "string"
+              },
+              {
+                "const": "header",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "credential_header": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "allowed_headers": {
             "maxItems": 16,
             "uniqueItems": true,
@@ -283,7 +330,7 @@
           },
           "redirect_limit": {
             "minimum": 0,
-            "maximum": 5,
+            "maximum": 3,
             "type": "integer"
           },
           "redirect_hosts": {
@@ -458,6 +505,8 @@
       "additionalProperties": false,
       "type": "object",
       "required": [
+        "register_path",
+        "register_hash",
         "reviewer_role",
         "reviewed_at",
         "terms_version",
@@ -469,6 +518,15 @@
         "next_review_at"
       ],
       "properties": {
+        "register_path": {
+          "pattern": "^docs/compliance/sources/[a-z0-9-]+\\.md$",
+          "maxLength": 256,
+          "type": "string"
+        },
+        "register_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
         "reviewer_role": {
           "minLength": 1,
           "maxLength": 128,

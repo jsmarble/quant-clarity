@@ -149,4 +149,50 @@ describe("public API privacy and protocol boundary (API-013, PRIV-002–PRIV-007
     );
     expect(await response.text()).toBe("");
   });
+
+  it("allows publication pins through CORS without credentials", async () => {
+    const { env } = environment();
+    const response = await handleRequest(
+      new Request("https://api.example.test/v1/metadata", {
+        method: "OPTIONS",
+        headers: { "CF-Connecting-IP": "203.0.113.9" },
+      }),
+      env,
+    );
+    expect(response.headers.get("Access-Control-Allow-Headers")).toContain(
+      "X-QuantClarity-Publication",
+    );
+    expect(response.headers.get("Access-Control-Expose-Headers")).toBe(
+      "X-QuantClarity-Publication",
+    );
+    expect(response.headers.has("Access-Control-Allow-Credentials")).toBe(
+      false,
+    );
+  });
+
+  it("rejects malformed and duplicated publication pins", async () => {
+    for (const pin of [
+      "pub_not-a-uuid",
+      "pub_00000000-0000-4000-8000-000000000001, pub_00000000-0000-4000-8000-000000000002",
+    ]) {
+      const { env } = environment();
+      const response = await handleRequest(
+        new Request("https://api.example.test/v1/metadata", {
+          headers: {
+            "CF-Connecting-IP": "203.0.113.9",
+            "X-QuantClarity-Publication": pin,
+          },
+        }),
+        env,
+      );
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({
+        error: {
+          code: "invalid_parameter",
+          message:
+            "X-QuantClarity-Publication must be an exact publication ID.",
+        },
+      });
+    }
+  });
 });
