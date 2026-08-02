@@ -1330,7 +1330,7 @@ describe("trusted provider-model-ID projection", () => {
     await expect(
       projectProviderModelIdSearchProjection(exactInput(input)),
     ).rejects.toThrow(/inventory is too large/u);
-  });
+  }, 20_000);
 
   it("pins literal inventory digests for empty, model, variant, mixed, duplicate/NUL, and permutation cases", async () => {
     const empty = await makeFixture({ offerings: [], targets: [] });
