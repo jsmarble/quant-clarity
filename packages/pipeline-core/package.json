@@ -1,0 +1,12 @@
+{
+  "name": "@quant-clarity/pipeline-core",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MPL-2.0",
+  "type": "module",
+  "exports": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -b tsconfig.build.json"
+  }
+}

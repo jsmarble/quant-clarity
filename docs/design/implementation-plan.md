@@ -53,6 +53,8 @@ Exit evidence: canonical and adapter contract suites pass; the local inputs of `
 
 ## Phase 3 — durable acquisition and evidence pipeline
 
+Status: in progress. Runtime-neutral pipeline and acquisition-security kernels now implement locally testable scheduling, idempotency, retry, anomaly, destination, policy, budget, and pre-retention evidence decisions. They perform no I/O. Workflow/D1 integration, live source access, D1/R2 writes, DNS/fetch/browser execution, deployed canaries, and preview resources remain pending their existing approval and environment gates.
+
 1. After explicit budget/resource authorization, provision only the bounded preview frontend/API/query/pipeline Workers, D1, R2, Vectorize, Workflow, limiter, AI, and observability resources required by the vertical slice from checked-in inventory. Apply deletion protection and run preliminary preview/production-identity isolation checks; no production data/resource may exist yet.
 2. Implement the directly scheduled parent Workflow and independently identified provider child instances with occurrence/run/attempt identities and bounded idempotent steps.
 3. Implement exact-host acquisition, manual redirects, byte/time/page ceilings, DNS defense-in-depth, deployed SSRF canaries, robots/Content Signals policy evaluation, and Browser Sessions only when an approved source requires them.
