@@ -188,6 +188,48 @@ describe("canonical public contracts (DATA-040–DATA-061, API-002–API-006)", 
         display_name: knownFact(""),
       }),
     ).toBe(false);
+    for (const nulName of [
+      "\u0000Leading",
+      "Embedded\u0000Name",
+      "Trailing\u0000",
+      `${"\u{1f642}".repeat(199)}\u0000`,
+    ]) {
+      expect(validate({ ...provider, display_name: knownFact(nulName) })).toBe(
+        false,
+      );
+      expect(
+        checkProviderContract({
+          ...provider,
+          display_name: knownFact(nulName),
+        }),
+      ).toBe(false);
+    }
+    for (const controlName of ["C0\u0001Name", "C1\u0085Name"]) {
+      expect(
+        validate({ ...provider, display_name: knownFact(controlName) }),
+      ).toBe(true);
+      expect(
+        checkProviderContract({
+          ...provider,
+          display_name: knownFact(controlName),
+        }),
+      ).toBe(true);
+    }
+    const unknownDisplayName = {
+      evidence_ids: [],
+      observed_at: null,
+      state: "unknown",
+      value: null,
+    };
+    expect(validate({ ...provider, display_name: unknownDisplayName })).toBe(
+      true,
+    );
+    expect(
+      checkProviderContract({
+        ...provider,
+        display_name: unknownDisplayName,
+      }),
+    ).toBe(true);
     expect(
       checkProviderContract({
         ...provider,

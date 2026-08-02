@@ -378,6 +378,7 @@ export const ProviderSchema = Type.Object(
       Type.String({
         minLength: 1,
         maxLength: PROVIDER_DISPLAY_NAME_MAX_UNICODE_SCALARS,
+        pattern: "^[^\\u0000]*$",
       }),
       "ProviderDisplayNameFact",
     ),
@@ -427,6 +428,7 @@ export const checkProviderContract = (value: unknown): value is Provider => {
       const displayFact = displayName as Record<string, unknown>;
       if (displayFact.state === "known") {
         if (typeof displayFact.value !== "string") return false;
+        if (displayFact.value.includes("\u0000")) return false;
         const scalarLength = Array.from(displayFact.value).length;
         if (scalarLength > PROVIDER_DISPLAY_NAME_MAX_UNICODE_SCALARS)
           return false;

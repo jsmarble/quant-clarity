@@ -107,6 +107,18 @@ function applyServingProviderSearchMigration(database: DatabaseSync): void {
   );
 }
 
+function applyServingProviderNameNulGuardMigration(
+  database: DatabaseSync,
+): void {
+  applyAtomicMigration(
+    database,
+    readFileSync(
+      resolve("migrations", "serving", "0008_provider_name_nul_guard.sql"),
+      "utf8",
+    ),
+  );
+}
+
 function expectConstraint(action: () => unknown, message?: string): void {
   expect(action).toThrow(
     message ?? /constraint|mismatch|immutable|cannot|lacks|does not equal/iu,
@@ -1015,6 +1027,55 @@ describe("serving publication migrations (PIPE-050–PIPE-056)", () => {
         OTHER_HASH,
         generatedAtMs,
       );
+  }
+
+  function insertBuildingProviderSearchContext(
+    database: DatabaseSync,
+    publicationId: string,
+    providerId: string,
+    displayName: string,
+    sequence: number,
+  ): void {
+    insertBuildingPublication(
+      database,
+      publicationId,
+      { resources: 1, exactDocuments: 0, vectorDocuments: 0 },
+      null,
+      sequence,
+    );
+    database
+      .prepare(
+        "INSERT INTO publication_provider_slice(publication_id, provider_id, provider_slice_id, provider_run_id, carried_forward, freshness_state) VALUES (?, ?, ?, ?, 0, 'fresh')",
+      )
+      .run(publicationId, providerId, id("prn", sequence), id("pvr", sequence));
+    database
+      .prepare(
+        "INSERT INTO publication_provider_slice_metadata VALUES (?, ?, 'adapter@1', 'roster@1', 'register@1')",
+      )
+      .run(publicationId, providerId);
+    database
+      .prepare(
+        "INSERT INTO publication_resource VALUES (?, 'provider', ?, ?, ?)",
+      )
+      .run(
+        publicationId,
+        providerId,
+        JSON.stringify({
+          provider_id: providerId,
+          display_name: {
+            state: "known",
+            value: displayName,
+            observed_at: "2026-08-02T00:00:00.000Z",
+            evidence_ids: [id("evd", sequence)],
+          },
+        }),
+        HASH,
+      );
+    database
+      .prepare(
+        "INSERT INTO publication_provider_attribution VALUES (?, 'provider', ?, ?)",
+      )
+      .run(publicationId, providerId, providerId);
   }
 
   function insertReadinessAttestationFixture(
@@ -2731,7 +2792,7 @@ describe("serving publication migrations (PIPE-050–PIPE-056)", () => {
     expect(database.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
   });
 
-  it("adds the separate provider exact-search projection and closed v2 proof schemas in schema 1.5", () => {
+  it("adds the provider exact-search projection, closed v2 proofs, and NUL controls through schema 1.5.1", () => {
     const database = applyMigrations("serving");
     expect(
       database
@@ -2739,7 +2800,7 @@ describe("serving publication migrations (PIPE-050–PIPE-056)", () => {
           "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
         )
         .get(),
-    ).toEqual({ schema_version: "1.5.0" });
+    ).toEqual({ schema_version: "1.5.1" });
     expect(
       database
         .prepare(
@@ -2802,6 +2863,23 @@ describe("serving publication migrations (PIPE-050–PIPE-056)", () => {
     expect(
       schemas.find((row) => row.name === "publication_switch_history")?.sql,
     ).toContain("event_version = '1.0.0'");
+    expect(
+      database
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type = 'trigger' AND name = 'publication_provider_search_document_nul_insert_guard'",
+        )
+        .get(),
+    ).toEqual({
+      name: "publication_provider_search_document_nul_insert_guard",
+    });
+    const nulGuardSql = database
+      .prepare(
+        "SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = 'publication_provider_search_document_nul_insert_guard'",
+      )
+      .get() as { sql: string };
+    expect(nulGuardSql.sql).toContain("CAST(NEW.display_name AS BLOB)");
+    expect(nulGuardSql.sql).toContain("CAST(NEW.normalized_name AS BLOB)");
+    expect(nulGuardSql.sql).toContain("$.display_name.value");
     expect(database.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
   });
 
@@ -2939,6 +3017,59 @@ describe("serving publication migrations (PIPE-050–PIPE-056)", () => {
           .run(unavailablePublicationId, unavailableProviderId, HASH),
       "provider search document does not match eligible canonical provider content",
     );
+  });
+
+  it("rejects leading and embedded U+0000 bytes in provider search rows", () => {
+    const database = applyMigrations("serving");
+    expect(
+      database
+        .prepare(
+          "SELECT instr(CAST(? AS BLOB), CAST(char(0) AS BLOB)) AS leading, instr(CAST(? AS BLOB), CAST(char(0) AS BLOB)) AS embedded",
+        )
+        .get("\u0000A", "A\u0000B"),
+    ).toEqual({ leading: 1, embedded: 2 });
+
+    const cases = [
+      { displayName: "\u0000Leading", normalizedName: "leading" },
+      { displayName: "Embedded\u0000Name", normalizedName: "embedded name" },
+      { displayName: "Trailing\u0000", normalizedName: "trailing" },
+      { displayName: "Leading", normalizedName: "\u0000leading" },
+      { displayName: "Embedded Name", normalizedName: "embedded\u0000name" },
+      { displayName: "Trailing", normalizedName: "trailing\u0000" },
+    ] as const;
+    cases.forEach(({ displayName, normalizedName }, ordinal) => {
+      const sequence = 700 + ordinal * 10;
+      const publicationId = id("pub", sequence);
+      const providerId = id("prv", sequence + 1);
+      insertBuildingProviderSearchContext(
+        database,
+        publicationId,
+        providerId,
+        displayName,
+        sequence + 2,
+      );
+      expect(() =>
+        database
+          .prepare(
+            "INSERT INTO publication_provider_search_document VALUES (?, ?, 'provider-name@1', ?, ?, ?)",
+          )
+          .run(publicationId, providerId, displayName, normalizedName, HASH),
+      ).toThrow(/U\+0000|constraint/iu);
+    });
+    expect(
+      database
+        .prepare(
+          "SELECT count(*) AS count FROM publication_provider_search_document",
+        )
+        .get(),
+    ).toEqual({ count: 0 });
+    expect(
+      database
+        .prepare(
+          "SELECT count(*) AS count FROM publication_provider_search_fts",
+        )
+        .get(),
+    ).toEqual({ count: 0 });
   });
 
   it("persists the worst-case ProviderSchema Unicode normalization expansion", () => {
@@ -3313,6 +3444,170 @@ describe("serving publication migrations (PIPE-050–PIPE-056)", () => {
       { name: "publication_provider_search_document" },
       { name: "publication_provider_search_fts" },
     ]);
+    expect(database.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+    expect(database.prepare("PRAGMA integrity_check").get()).toEqual({
+      integrity_check: "ok",
+    });
+  });
+
+  it("preflights existing NUL data and the exact schema before migration 0008", () => {
+    const existing = applyMigrations(
+      "serving",
+      "0007_provider_search_exact_projection.sql",
+    );
+    const publicationId = id("pub", 760);
+    const providerId = id("prv", 761);
+    const displayName = "Existing\u0000Provider";
+    insertBuildingProviderSearchContext(
+      existing,
+      publicationId,
+      providerId,
+      displayName,
+      762,
+    );
+    existing
+      .prepare(
+        "INSERT INTO publication_provider_search_document VALUES (?, ?, 'provider-name@1', ?, ?, ?)",
+      )
+      .run(
+        publicationId,
+        providerId,
+        displayName,
+        "existing\u0000provider",
+        HASH,
+      );
+    expect(
+      existing
+        .prepare(
+          "SELECT instr(CAST(display_name AS BLOB), CAST(char(0) AS BLOB)) AS display_nul, instr(CAST(normalized_name AS BLOB), CAST(char(0) AS BLOB)) AS normalized_nul FROM publication_provider_search_document",
+        )
+        .get(),
+    ).toEqual({ display_nul: 9, normalized_nul: 9 });
+
+    expect(() => {
+      applyServingProviderNameNulGuardMigration(existing);
+    }).toThrow();
+    expect(
+      existing
+        .prepare(
+          "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+        )
+        .get(),
+    ).toEqual({ schema_version: "1.5.0" });
+    expect(
+      existing
+        .prepare(
+          "SELECT count(*) AS count FROM sqlite_master WHERE name = 'publication_provider_search_document_nul_insert_guard'",
+        )
+        .get(),
+    ).toEqual({ count: 0 });
+
+    const oldSchema = applyMigrations(
+      "serving",
+      "0006_exact_generation_activation.sql",
+    );
+    expect(() => {
+      applyServingProviderNameNulGuardMigration(oldSchema);
+    }).toThrow();
+    expect(
+      oldSchema
+        .prepare(
+          "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+        )
+        .get(),
+    ).toEqual({ schema_version: "1.4.0" });
+  });
+
+  it("advances a clean schema 1.5.0 database without rewriting provider rows", () => {
+    const database = applyMigrations(
+      "serving",
+      "0007_provider_search_exact_projection.sql",
+    );
+    const publicationId = id("pub", 764);
+    const providerId = id("prv", 765);
+    insertBuildingProviderSearchContext(
+      database,
+      publicationId,
+      providerId,
+      "Clean Provider",
+      766,
+    );
+    database
+      .prepare(
+        "INSERT INTO publication_provider_search_document VALUES (?, ?, 'provider-name@1', 'Clean Provider', 'clean provider', ?)",
+      )
+      .run(publicationId, providerId, HASH);
+    const before = database
+      .prepare(
+        "SELECT * FROM publication_provider_search_document WHERE publication_id = ? AND provider_id = ?",
+      )
+      .get(publicationId, providerId);
+
+    applyServingProviderNameNulGuardMigration(database);
+
+    expect(
+      database
+        .prepare(
+          "SELECT * FROM publication_provider_search_document WHERE publication_id = ? AND provider_id = ?",
+        )
+        .get(publicationId, providerId),
+    ).toEqual(before);
+    expect(
+      database
+        .prepare(
+          "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+        )
+        .get(),
+    ).toEqual({ schema_version: "1.5.1" });
+  });
+
+  it("rolls back a late migration 0008 failure and remains cleanly retryable", () => {
+    const database = applyMigrations(
+      "serving",
+      "0007_provider_search_exact_projection.sql",
+    );
+    database.exec(`
+      CREATE TRIGGER test_fail_schema_151_update
+      BEFORE UPDATE ON serving_schema_metadata
+      BEGIN SELECT RAISE(ABORT, 'injected late schema 1.5.1 failure'); END
+    `);
+
+    expect(() => {
+      applyServingProviderNameNulGuardMigration(database);
+    }).toThrow("injected late schema 1.5.1 failure");
+    expect(
+      database
+        .prepare(
+          "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+        )
+        .get(),
+    ).toEqual({ schema_version: "1.5.0" });
+    expect(
+      database
+        .prepare(
+          "SELECT count(*) AS count FROM sqlite_master WHERE name = 'publication_provider_search_document_nul_insert_guard'",
+        )
+        .get(),
+    ).toEqual({ count: 0 });
+
+    database.exec("DROP TRIGGER test_fail_schema_151_update");
+    applyServingProviderNameNulGuardMigration(database);
+    expect(
+      database
+        .prepare(
+          "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+        )
+        .get(),
+    ).toEqual({ schema_version: "1.5.1" });
+    expect(
+      database
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type = 'trigger' AND name = 'publication_provider_search_document_nul_insert_guard'",
+        )
+        .get(),
+    ).toEqual({
+      name: "publication_provider_search_document_nul_insert_guard",
+    });
     expect(database.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
     expect(database.prepare("PRAGMA integrity_check").get()).toEqual({
       integrity_check: "ok",

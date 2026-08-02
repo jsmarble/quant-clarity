@@ -991,6 +991,15 @@ describe("trusted provider search projection (SRCH-002, SRCH-006, BE-011)", () =
         await input([{ id: id("prv", 996), displayName: "" }]),
       ),
     ).rejects.toThrow("provider search resource is not contract-valid");
+    for (const [sequence, displayName] of [
+      [995, "\u0000Leading"],
+      [994, "Embedded\u0000Name"],
+    ] as const)
+      await expect(
+        projectProviderSearchProjection(
+          await input([{ id: id("prv", sequence), displayName }]),
+        ),
+      ).rejects.toThrow("provider search resource is not contract-valid");
   });
 
   it("projects known fresh and carried-stale names and skips honest unknowns (FE-023, FE-025)", async () => {
