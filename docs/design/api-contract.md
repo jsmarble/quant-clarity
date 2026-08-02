@@ -10,8 +10,8 @@
 ## Protocol
 
 - JSON uses UTF-8 and `application/json`; OpenAPI is JSON and YAML. GET and HEAD are resource methods, OPTIONS provides non-credentialed CORS, and every mutation method returns `405` with `Allow`.
-- Every data `GET` and `HEAD` accepts the optional `X-QuantClarity-Publication` request header and every data response includes the selected value. Without the header or an authenticated cursor, the API resolves the active publication. A cursor implicitly pins its publication and must agree with the header when both are present. Data responses include `ETag`; responses vary on the validated publication header and representation dimensions only. Public responses do not expose a retained request-correlation identifier.
-- A malformed pin is rejected. An expired, unavailable, unknown, or never-public pin returns the same generic `409 publication_expired` with the current publication header and no candidate-state detail. CORS allows the fixed request header and exposes the response header.
+- Every data `GET` and `HEAD` accepts optional `If-None-Match` and `X-QuantClarity-Publication` request headers and every data response includes the selected publication. Without the publication header or an authenticated cursor, the API resolves the active publication. A cursor implicitly pins its publication and must agree with the header when both are present. Data responses include `ETag`; responses vary on the validated publication header and representation dimensions only. Public responses do not expose a retained request-correlation identifier.
+- A malformed pin is rejected. An expired, unavailable, unknown, or never-public pin returns the same generic `409 publication_expired` with the current publication header and no candidate-state detail. CORS allows exactly `If-None-Match` and the publication request header and exposes exactly `ETag` and the publication response header.
 - Clients must ignore additive fields and tolerate unknown enum values. A removed field or changed meaning requires `/v2` or at least six months of published deprecation.
 - Unknown scalar facts are `null`; state-bearing fields use documented extensible enums. Zero is numeric string `"0"`, never null. Collections are always arrays.
 - Decimal amounts are strings; timestamps are RFC 3339 UTC; IDs and slugs are strings.
@@ -102,6 +102,7 @@ IDs, resource type, publication ID, and relationship IDs are structural fields; 
 | `PrecisionObservation` | `precision_id`, `offering_id`, normalized format, summary format, raw field/value/definition, optional format variant, component facts, exact applicability tuple, observed time, evidence IDs |
 | `EvidenceSummary` | the evidence summary shape above, plus subject resource ID and applicability-safe field name; never private payload/key |
 | `Metadata` | publication/dataset ID, schema version, API version, methodology version/effective date/URL, precision-vocabulary version, price-policy version, published time, next planned refresh window start/end, generated time, active provider/offering/model counts, degradation notices |
+| `Methodology` | methodology version, effective time, and stable human-readable methodology URL; this versioned policy metadata is not a duplicate canonical fact entity |
 
 `total_parameters` and `active_parameters` include raw value, normalized decimal string, and `exact|approximate|unknown`. Checkpoint relationships expose publisher organization, repository/artifact URL and ID, revision/commit, publication date, declared weight format, quantization, file/checkpoint format, role, and evidenced lineage edges. Model Facts projects only model/variant/checkpoint fields. Offering Facts projects the exact offering scope, serving/component precision, three independent price roles, status/freshness, observations, and evidence. Neither view duplicates canonical entities.
 
@@ -127,13 +128,13 @@ Precision sort uses the public versioned organizational display order and exact 
 ## Pagination and cursors
 
 - Default limit 25; maximum 100. Search returns at most 20 public results. An unfiltered semantic request makes one Vectorize call with at most 50 candidates; a filtered request makes at most eight calls returning ten candidates each, for at most 80 aggregate candidates before merge.
-- Cursor payload: publication ID, resource, normalized filters, normalized sort list, last complete sort tuple, stable ID, issued-at, and expiry.
-- Cursor is authenticated with HMAC-SHA-256, is opaque to clients, expires after 15 minutes, and is rejected if tampered, expired, or used with different parameters.
+- Cursor payload: the fixed-order ADR 0016 version and key ID, publication ID, resource, normalized query hash and filters, normalized sort list, immutable page limit, last complete sort tuple, stable ID, issued-at, and expiry.
+- Cursor text is NFC-normalized before canonical comparison. The cursor is authenticated with HMAC-SHA-256 current/next overlap keys, is opaque to clients, expires after at most 15 minutes, and is rejected if tampered, expired, or used with different parameters or a different page limit.
 - Active and rollback-candidate snapshots remain hot for at least seven days, longer than every cursor TTL.
 
 ## Search query planning
 
-`q` is required, trimmed Unicode, 1–200 bytes after normalization. Filter count is at most ten, response count 20, and no regex/wildcard syntax is accepted. One user semantic request may consume one unfiltered or at most eight filtered Vectorize query calls.
+`q` is required, trimmed and NFC-normalized Unicode, 1–200 UTF-8 bytes after normalization. Filter count is at most ten, response count 20, and no regex/wildcard syntax is accepted. One user semantic request may consume one unfiltered or at most eight filtered Vectorize query calls.
 
 Vector grain is one document per canonical model or explicit variant per publication. No offering-derived duplication is allowed. Every `SRCH-004` filter has a complete D1 eligibility plan before semantic retrieval:
 
@@ -154,7 +155,7 @@ Validation and route-cost rate limiting run first. The edge Worker then asks the
 publication_id + resource_type + validated_stable_resource_id + representation
 ```
 
-The public active URL is only a resolver; it is never copied into the cache object identity. The candidate pointer switch therefore creates a new cache namespace without relying on purge. Old HTML or JSON may still be served only when its request is explicitly pinned to that old publication. Free-text search, collections, filters, sorts, cursors, and every request containing a query string are `private, no-store` and never enter the application Cache API. The internal Cache API key is a synthesized same-origin, non-routable reserved path containing only cache-format version, validated publication ID, resource type, validated canonical stable resource ID, and representation. It never contains the raw URL, slug, query, cursor, request headers, or source-address material.
+The public active URL is only a resolver; it is never copied into the cache object identity. The candidate pointer switch therefore creates a new cache namespace without relying on purge. Old HTML or JSON may still be served only when its request is explicitly pinned to that old publication. Free-text search, collections, filters, sorts, cursors, and every request containing a query string are `private, no-store` and never enter the application Cache API. The internal Cache API key is a synthesized same-origin, non-routable reserved path at a fixed environment-owned trusted HTTPS origin. It contains only cache-format version, validated publication ID, resource type, validated canonical stable resource ID, and representation. It never derives its origin from the request and never contains the raw URL, slug, query, cursor, request headers, or source-address material.
 
 Astro SSR resolves one publication ID at request start, passes it to every API read, and embeds it as `data-publication-id` and page metadata. Client requests from that page pin to the embedded ID. If that publication has aged beyond hot retention, the API returns `409 publication_expired` with the current publication so the client can reload rather than mix versions. SSR HTML cache keys contain the publication ID; stale-while-revalidate never crosses a publication key. Chaos tests populate multiple PoPs, switch and roll back the pointer, and assert every rendered page/API sequence stays entirely on one version.
 

@@ -228,6 +228,8 @@ Verification IDs are planned stable anchors. The prefix states the primary verif
 
 ### Search
 
+[Phase 5A](phase-5a-local-api-kernel.md) records bounded local decision targets for `SRCH-002`, `SRCH-004`–`SRCH-006`, `SRCH-008`, and `SRCH-009`. It deliberately disables public semantic processing and leaves every search row `Planned` pending the complete acceptance set and deployed search evidence.
+
 | Source ID | PRD | Requirement summary | Planned design sections | Planned primary verification | Status |
 |---|---|---|---|---|---|
 | `SRCH-001` | §10 | Search shall combine exact/keyword retrieval with semantic vector retrieval. | `D10`, `D16`, `D19` | Search acceptance — `SAT-SRCH-001` | Planned |
@@ -243,6 +245,8 @@ Verification IDs are planned stable anchors. The prefix states the primary verif
 | `SRCH-011` | §10 | The system shall support future pivot/facet counts by provider and precision without requiring a breaking… | `D10`, `D16`, `D19` | Search acceptance — `SAT-SRCH-011` | Planned |
 
 ### Public API
+
+[Phase 5A](phase-5a-local-api-kernel.md) records the local contract and decision boundary for `API-001`–`API-018` and `API-020`–`API-026`. Pure plans, fakes, and generated contracts do not complete the runtime, load, privacy, or legal evidence, so every row remains `Planned`.
 
 | Source ID | PRD | Requirement summary | Planned design sections | Planned primary verification | Status |
 |---|---|---|---|---|---|
@@ -394,6 +398,8 @@ Verification IDs are planned stable anchors. The prefix states the primary verif
 
 ### Security and abuse
 
+[Phase 5A](phase-5a-local-api-kernel.md) contributes local negative-capability and bounds targets to `SEC-001`, `SEC-007`, and `SEC-011`; deployed penetration, platform-limit, and zero-visitor-data evidence remains required and the rows stay `Planned`.
+
 | Source ID | PRD | Requirement summary | Planned design sections | Planned primary verification | Status |
 |---|---|---|---|---|---|
 | `SEC-001` | §17 | The public Worker shall expose no data mutation, pipeline trigger, credential validation, or privileged… | `D03`, `D06`, `D07`, `D09`, `D12`, `D13`, `D16`, `D19` | Security — `SST-SEC-001` | Planned |
@@ -411,6 +417,8 @@ Verification IDs are planned stable anchors. The prefix states the primary verif
 | `SEC-013` | §17 | A documented incident procedure shall cover credential exposure, source poisoning, erroneous mass… | `D03`, `D06`, `D07`, `D09`, `D12`, `D13`, `D16`, `D19` | Security — `SST-SEC-013` | Planned |
 
 ### Privacy
+
+[Phase 5A](phase-5a-local-api-kernel.md) contributes local decision targets to `PRIV-003`, `PRIV-004`, `PRIV-006`, `PRIV-007`, and `PRIV-011`. It creates no legal or deployed privacy evidence and does not advance these rows beyond `Planned`.
 
 | Source ID | PRD | Requirement summary | Planned design sections | Planned primary verification | Status |
 |---|---|---|---|---|---|
@@ -478,6 +486,8 @@ Verification IDs are planned stable anchors. The prefix states the primary verif
 | `OPS-008` | §20 | A twice-yearly disaster-recovery exercise shall verify restoration of canonical data, evidence links, and… | `D12`, `D14`, `D16`, `D19` | Operational/recovery — `ORT-OPS-008` | Planned |
 
 ### Testing and quality
+
+[Phase 5A](phase-5a-local-api-kernel.md) defines local targets contributing to `QA-004`–`QA-006` and `QA-014`; complete API, search, publication, cache, abuse, and multi-PoP artifacts are still pending.
 
 | Source ID | PRD | Requirement summary | Planned design sections | Planned primary verification | Status |
 |---|---|---|---|---|---|

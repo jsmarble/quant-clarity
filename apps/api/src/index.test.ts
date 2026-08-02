@@ -45,7 +45,7 @@ describe("public API privacy and protocol boundary (API-013, PRIV-002–PRIV-007
     expect(JSON.stringify(body)).not.toContain("request_id");
   });
 
-  it("rate limits before resource lookup and returns Retry-After", async () => {
+  it("withholds a planned resource error until rate limiting succeeds", async () => {
     const { env } = environment([false]);
     const response = await handleRequest(
       new Request("https://api.example.test/v1/not-present", {
@@ -150,7 +150,25 @@ describe("public API privacy and protocol boundary (API-013, PRIV-002–PRIV-007
     expect(await response.text()).toBe("");
   });
 
-  it("allows publication pins through CORS without credentials", async () => {
+  it.each([
+    ["rate limiting", environment([false]).env, "203.0.113.9", 429],
+    ["unsafe source address", environment().env, "not-an-address", 503],
+  ])(
+    "returns no HEAD body when %s fails",
+    async (_case, env, address, status) => {
+      const response = await handleRequest(
+        new Request("https://api.example.test/v1/metadata", {
+          method: "HEAD",
+          headers: { "CF-Connecting-IP": address },
+        }),
+        env,
+      );
+      expect(response.status).toBe(status);
+      expect(await response.text()).toBe("");
+    },
+  );
+
+  it("allows only conditional reads and publication pins through CORS", async () => {
     const { env } = environment();
     const response = await handleRequest(
       new Request("https://api.example.test/v1/metadata", {
@@ -159,14 +177,28 @@ describe("public API privacy and protocol boundary (API-013, PRIV-002–PRIV-007
       }),
       env,
     );
-    expect(response.headers.get("Access-Control-Allow-Headers")).toContain(
-      "X-QuantClarity-Publication",
+    expect(response.headers.get("Access-Control-Allow-Headers")).toBe(
+      "If-None-Match, X-QuantClarity-Publication",
     );
     expect(response.headers.get("Access-Control-Expose-Headers")).toBe(
-      "X-QuantClarity-Publication",
+      "ETag, X-QuantClarity-Publication",
     );
+    expect(response.headers.get("Allow")).toBe("GET, HEAD, OPTIONS");
     expect(response.headers.has("Access-Control-Allow-Credentials")).toBe(
       false,
+    );
+  });
+
+  it("exposes validators on bounded JSON responses", async () => {
+    const { env } = environment();
+    const response = await handleRequest(
+      new Request("https://api.example.test/v1/metadata", {
+        headers: { "CF-Connecting-IP": "203.0.113.9" },
+      }),
+      env,
+    );
+    expect(response.headers.get("Access-Control-Expose-Headers")).toBe(
+      "ETag, X-QuantClarity-Publication",
     );
   });
 

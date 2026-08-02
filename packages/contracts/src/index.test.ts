@@ -14,6 +14,7 @@ import {
   type AdapterManifest,
   type FactState,
   type IdPrefix,
+  MethodologyDetailSchema,
   ModelFamilySchema,
   PriceSchema,
   PrecisionFormatSchema,
@@ -151,6 +152,31 @@ describe("canonical public contracts (DATA-040–DATA-061, API-002–API-006)", 
     expect(validate(family)).toBe(true);
     expect(validate({ ...family, display_name: "Example Family" })).toBe(false);
     expect(validate({ ...family, slug: "example-family" })).toBe(false);
+  });
+
+  it("keeps versioned methodology metadata distinct from canonical facts", () => {
+    const validate = standaloneValidator(MethodologyDetailSchema);
+    const detail = {
+      data: {
+        methodology_version: "1.0.0",
+        methodology_effective_at: "2026-08-01T00:00:00.000Z",
+        methodology_url: "https://example.invalid/methodology/1.0.0",
+      },
+      meta: {
+        resource: "methodologies",
+        publication_id: `pub_${UUID}`,
+        schema_version: "1.0.0",
+        sort: ["version"],
+        filters: {},
+      },
+    };
+    expect(validate(detail)).toBe(true);
+    expect(
+      validate({
+        ...detail,
+        data: { ...detail.data, content: "duplicate methodology body" },
+      }),
+    ).toBe(false);
   });
 
   it("accepts future public enum values but never known unknown", () => {

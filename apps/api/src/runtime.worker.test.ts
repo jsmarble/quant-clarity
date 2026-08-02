@@ -33,4 +33,23 @@ describe("public API in workerd (API-013, API-024)", () => {
       expect(response.headers.has("Set-Cookie")).toBe(false);
     },
   );
+
+  it("keeps the deployed CORS surface noncredentialed and conditional-read only", async () => {
+    const response = await exports.default.fetch(
+      new Request("https://api.example.test/v1/metadata", {
+        method: "OPTIONS",
+        headers: { "CF-Connecting-IP": "198.51.100.24" },
+      }),
+    );
+    expect(response.headers.get("Access-Control-Allow-Headers")).toBe(
+      "If-None-Match, X-QuantClarity-Publication",
+    );
+    expect(response.headers.get("Access-Control-Expose-Headers")).toBe(
+      "ETag, X-QuantClarity-Publication",
+    );
+    expect(response.headers.get("Allow")).toBe("GET, HEAD, OPTIONS");
+    expect(response.headers.has("Access-Control-Allow-Credentials")).toBe(
+      false,
+    );
+  });
 });

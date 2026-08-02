@@ -13,6 +13,8 @@
     { "path": "packages/pipeline-core/tsconfig.test.json" },
     { "path": "packages/publication-core/tsconfig.build.json" },
     { "path": "packages/publication-core/tsconfig.test.json" },
+    { "path": "packages/api-core/tsconfig.build.json" },
+    { "path": "packages/api-core/tsconfig.test.json" },
     { "path": "packages/adapters/fireworks" },
     { "path": "packages/adapters/fireworks/tsconfig.test.json" },
     { "path": "packages/testing" },

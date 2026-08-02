@@ -4,7 +4,7 @@ This directory contains deterministic machine-readable contracts generated from 
 
 The generated baseline includes:
 
-- public collection/detail OpenAPI paths for model families, models, variants, providers, offerings, prices, precision observations, evidence summaries, search, and metadata (`API-001`–`API-018`);
+- equivalent deterministic OpenAPI JSON and YAML documents with collection/detail paths for methodology metadata, model families, models, variants, providers, offerings, prices, precision observations, evidence summaries, search, and dataset metadata (`API-001`–`API-018`);
 - canonical public resource and evidence schemas (`DATA-001`–`DATA-067`);
 - provider-adapter manifest, candidate, batch, and terminal-roster contracts (`PIPE-010`–`PIPE-019`, `PIPE-030`–`PIPE-045`);
 - publication manifest/head contracts (`PIPE-050`–`PIPE-056`); and
@@ -12,6 +12,6 @@ The generated baseline includes:
 - route-specific filter, neutral-sort, limit, and response-metadata policies (`API-002`–`API-018`); and
 - semantic validation for adapter manifests, terminal batches, publication closure, and head activation.
 
-Remaining Phase 1 contract work includes authenticated cursor and search-document/index schemas, methodology response schemas, and validating human-readable examples for every public resource. Active path-only details are cacheable through a publication-scoped internal cache key; collections and every request with a query string are `private, no-store`. A public publication-pinning path or header protocol is deliberately not invented here and requires an explicit design/ADR decision before it can become part of the public API.
+Remaining contract work includes the authenticated cursor and search-document/index schemas and validated human-readable examples for every public resource. Active path-only details are cacheable through a publication-scoped internal cache key; collections and every request with a query string are `private, no-store`. ADR 0013 defines `X-QuantClarity-Publication` as the public publication pin, and ADR 0016 defines the bounded local cursor, service-envelope, conditional-request, and cache-origin decisions without claiming deployed runtime behavior.
 
 Contracts must trace to PRD requirement IDs and remain compatible with the versioning rules in the PRD. Do not create redundant Model Facts or Offering Facts canonical entities; those are presentation views over model and offering resources.
