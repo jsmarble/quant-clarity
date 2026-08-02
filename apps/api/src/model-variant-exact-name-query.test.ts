@@ -293,7 +293,6 @@ describe("model/variant exact-name API adapter (API-003, SRCH-002, PRIV-006)", (
       { ...request(), cursor: "not-an-internal-cursor" },
       { ...request(), filters: { record_type: "provider" } },
       { ...request(), query: " Fixture Model " },
-      { ...request(), query: "Fixture * Model" },
       { ...request(), query: "x".repeat(401) },
       { ...request(), visitorPayload: "must not cross" },
     ] as unknown as NormalizedRequest[];

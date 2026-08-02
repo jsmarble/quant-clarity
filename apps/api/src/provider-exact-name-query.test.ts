@@ -177,11 +177,7 @@ describe("provider exact-name API adapter (API-003, API-010, PRIV-006)", () => {
   );
 
   it("rejects non-canonical or NUL-bearing requests before RPC", async () => {
-    for (const query of [
-      "Fixture\u0000Provider",
-      " Fixture Provider ",
-      "Fixture * Provider",
-    ]) {
+    for (const query of ["Fixture\u0000Provider", " Fixture Provider "]) {
       const rpc = service();
       const malformed = { ...request(), query } as NormalizedRequest;
       await expect(

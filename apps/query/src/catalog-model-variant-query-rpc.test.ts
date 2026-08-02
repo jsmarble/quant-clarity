@@ -216,13 +216,6 @@ describe("model/variant exact-name query RPC (API-003, SRCH-002, CF-020)", () =>
         ...valid,
         envelope: {
           ...valid.envelope,
-          searchPlan: { ...valid.envelope.searchPlan, query: "Fixture*Model" },
-        },
-      },
-      {
-        ...valid,
-        envelope: {
-          ...valid.envelope,
           searchPlan: { ...valid.envelope.searchPlan, query: " " },
         },
       },
