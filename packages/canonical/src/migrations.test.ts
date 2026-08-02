@@ -72,6 +72,16 @@ function applyServingSealedClosureMigration(database: DatabaseSync): void {
   );
 }
 
+function applyServingReadinessReceiptMigration(database: DatabaseSync): void {
+  applyAtomicMigration(
+    database,
+    readFileSync(
+      resolve("migrations", "serving", "0005_readiness_receipt_ledger.sql"),
+      "utf8",
+    ),
+  );
+}
+
 function expectConstraint(action: () => unknown, message?: string): void {
   expect(action).toThrow(
     message ?? /constraint|mismatch|immutable|cannot|lacks|does not equal/iu,
@@ -979,6 +989,33 @@ describe("serving publication migrations (PIPE-050–PIPE-056)", () => {
         HASH,
         OTHER_HASH,
         generatedAtMs,
+      );
+  }
+
+  function insertReadinessAttestationFixture(
+    database: DatabaseSync,
+    publicationId: string,
+    readyAtMs: number,
+  ): void {
+    database
+      .prepare(
+        "INSERT INTO publication_readiness_attestation VALUES (?, 'local', ?, ?, '1.0.0', ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run(
+        publicationId,
+        OTHER_HASH,
+        HASH,
+        readyAtMs,
+        readyAtMs,
+        readyAtMs,
+        readyAtMs,
+        readyAtMs,
+        readyAtMs,
+        HASH,
+        HASH,
+        HASH,
+        HASH,
+        HASH,
       );
   }
 
@@ -2224,5 +2261,176 @@ describe("serving publication migrations (PIPE-050–PIPE-056)", () => {
     expect(
       database.prepare("SELECT count(*) AS count FROM publication_head").get(),
     ).toEqual({ count: 0 });
+  });
+
+  it("adds publication-scoped FTS and an immutable readiness ledger while keeping head switching closed", () => {
+    const database = applyMigrations(
+      "serving",
+      "0005_readiness_receipt_ledger.sql",
+    );
+    expect(
+      database
+        .prepare(
+          "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+        )
+        .get(),
+    ).toEqual({ schema_version: "1.3.0" });
+    expect(
+      database
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE name IN ('publication_search_fts', 'publication_readiness_receipt', 'publication_archive_receipt', 'publication_serving_receipt', 'publication_vector_receipt', 'publication_probe_receipt', 'publication_readiness_attestation') ORDER BY name",
+        )
+        .all()
+        .map((row) => (row as { name: string }).name),
+    ).toEqual([
+      "publication_archive_receipt",
+      "publication_probe_receipt",
+      "publication_readiness_attestation",
+      "publication_readiness_receipt",
+      "publication_search_fts",
+      "publication_serving_receipt",
+      "publication_vector_receipt",
+    ]);
+    expectConstraint(
+      () =>
+        database
+          .prepare(
+            "INSERT INTO publication_readiness_receipt VALUES (?, 'archive', '1.0.0', ?, 'local', ?, ?, '1.0.0', 'git:test', 1)",
+          )
+          .run(id("pub", 290), HASH, HASH, HASH),
+      "readiness receipt does not bind the sealed building publication",
+    );
+    expectConstraint(
+      () =>
+        database
+          .prepare("INSERT INTO publication_head VALUES (1, ?, NULL, 3, 1)")
+          .run(id("pub", 291)),
+      "publication head switching is not implemented",
+    );
+    expect(database.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+  });
+
+  it("atomically rejects malformed metadata and colliding readiness objects", () => {
+    const malformed = applyMigrations(
+      "serving",
+      "0004_sealed_publication_closure.sql",
+    );
+    malformed.exec("DROP TABLE serving_schema_metadata");
+    malformed.exec(
+      "CREATE TABLE serving_schema_metadata(singleton INTEGER, schema_version TEXT, created_at_ms INTEGER)",
+    );
+    malformed.exec(
+      "INSERT INTO serving_schema_metadata VALUES (1, '1.2.0', 0), (2, '1.2.0', 0)",
+    );
+    expect(() => {
+      applyServingReadinessReceiptMigration(malformed);
+    }).toThrow();
+    expect(
+      malformed
+        .prepare(
+          "SELECT count(*) AS count FROM sqlite_master WHERE name = 'publication_search_fts'",
+        )
+        .get(),
+    ).toEqual({ count: 0 });
+
+    const collision = applyMigrations(
+      "serving",
+      "0004_sealed_publication_closure.sql",
+    );
+    collision.exec("CREATE TABLE publication_readiness_receipt(fake TEXT)");
+    expect(() => {
+      applyServingReadinessReceiptMigration(collision);
+    }).toThrow();
+    expect(
+      collision
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE name IN ('publication_search_fts', 'publication_readiness_receipt') ORDER BY name",
+        )
+        .all(),
+    ).toEqual([{ name: "publication_readiness_receipt" }]);
+    expect(
+      collision
+        .prepare(
+          "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+        )
+        .get(),
+    ).toEqual({ schema_version: "1.2.0" });
+  });
+
+  it("preserves selected-content and overlapping-slice readiness fences in schema 1.3", () => {
+    const database = applyMigrations(
+      "serving",
+      "0005_readiness_receipt_ledger.sql",
+    );
+    database.exec("PRAGMA foreign_keys = OFF");
+    database.exec(
+      "DROP TRIGGER publication_readiness_attestation_insert_guard",
+    );
+
+    const unavailablePublicationId = id("pub", 300);
+    insertBuildingPublication(
+      database,
+      unavailablePublicationId,
+      { resources: 1, exactDocuments: 1, vectorDocuments: 1 },
+      null,
+      1,
+    );
+    database
+      .prepare(
+        "INSERT INTO publication_provider_slice(publication_id, provider_id, provider_slice_id, provider_run_id, carried_forward, freshness_state) VALUES (?, ?, NULL, ?, 0, 'unavailable')",
+      )
+      .run(unavailablePublicationId, id("prv", 301), id("pvr", 302));
+    insertReadinessAttestationFixture(database, unavailablePublicationId, 2);
+    expectConstraint(
+      () =>
+        database
+          .prepare(
+            "UPDATE publication SET state = 'ready', ready_at_ms = 2 WHERE publication_id = ?",
+          )
+          .run(unavailablePublicationId),
+      "publication selected content or provider lineage is incomplete",
+    );
+
+    const firstPublicationId = id("pub", 303);
+    const competingPublicationId = id("pub", 304);
+    const providerId = id("prv", 305);
+    const providerRunId = id("pvr", 306);
+    const providerSliceId = id("prn", 307);
+    for (const [publicationId, generatedAtMs] of [
+      [firstPublicationId, 3],
+      [competingPublicationId, 4],
+    ] as const) {
+      insertBuildingPublication(
+        database,
+        publicationId,
+        { resources: 1, exactDocuments: 1, vectorDocuments: 1 },
+        null,
+        generatedAtMs,
+      );
+      database
+        .prepare(
+          "INSERT INTO publication_provider_slice(publication_id, provider_id, provider_slice_id, provider_run_id, carried_forward, freshness_state) VALUES (?, ?, ?, ?, 0, 'fresh')",
+        )
+        .run(publicationId, providerId, providerSliceId, providerRunId);
+      insertReadinessAttestationFixture(
+        database,
+        publicationId,
+        generatedAtMs + 2,
+      );
+    }
+    database
+      .prepare(
+        "UPDATE publication SET state = 'ready', ready_at_ms = 5 WHERE publication_id = ?",
+      )
+      .run(firstPublicationId);
+    expectConstraint(
+      () =>
+        database
+          .prepare(
+            "UPDATE publication SET state = 'ready', ready_at_ms = 6 WHERE publication_id = ?",
+          )
+          .run(competingPublicationId),
+      "publication selected content or provider lineage is incomplete",
+    );
   });
 });
