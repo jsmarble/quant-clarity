@@ -22,6 +22,7 @@
     { "path": "apps/api/tsconfig.test.json" },
     { "path": "apps/query" },
     { "path": "apps/pipeline" },
+    { "path": "apps/pipeline/tsconfig.test.json" },
     { "path": "tools" }
   ]
 }

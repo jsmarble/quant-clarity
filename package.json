@@ -29,7 +29,7 @@
     "privacy:check": "tsx tools/check-privacy.ts",
     "supply-chain:check": "tsx tools/check-licenses.ts && npm audit --audit-level=high && npm sbom --sbom-format cyclonedx >/dev/null",
     "test": "vitest run",
-    "test:workers": "vitest run --config vitest.worker.config.ts",
+    "test:workers": "vitest run --config vitest.worker.config.ts && vitest run --config vitest.pipeline.worker.config.ts",
     "test:web": "playwright test --config playwright.config.ts",
     "test:web:production": "QUANTCLARITY_BUILD_ENV=production QUANTCLARITY_SITE_ORIGIN=https://quantclarity.invalid npm run build -w @quant-clarity/web && QUANTCLARITY_EXPECTED_SITE_ORIGIN=https://quantclarity.invalid playwright test --config playwright.config.ts",
     "test:watch": "vitest",
