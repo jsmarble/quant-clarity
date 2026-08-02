@@ -1,4 +1,4 @@
-import { env } from "cloudflare:workers";
+import { env, exports } from "cloudflare:workers";
 import { applyD1Migrations } from "cloudflare:test";
 import { beforeAll, describe, expect, it } from "vitest";
 
@@ -19,10 +19,35 @@ import {
   PROVIDER_EXACT_NAME_SELECT_SQL,
   readProviderExactNamePage,
 } from "./provider-exact-name.js";
+import type { QueryServiceEnvelope } from "@quant-clarity/api-core";
 
 const PUBLICATION_A = "pub_eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee" as const;
 const PUBLICATION_B = "pub_ffffffff-ffff-4fff-8fff-ffffffffffff" as const;
 const PUBLICATION_C = "pub_12345678-1234-4123-8123-123456789abc" as const;
+
+const rpcEnvelope = (
+  publicationId: string,
+  query: string,
+): QueryServiceEnvelope => ({
+  audience: "quantclarity-catalog-query-v1",
+  continuation: null,
+  environment: "local",
+  filters: { record_type: "provider" },
+  limit: 20,
+  operation: { kind: "search" },
+  publicationId,
+  searchPlan: {
+    filters: { record_type: "provider" },
+    kind: "exact_structured",
+    limit: 20,
+    query,
+    semanticCalls: 0,
+    semanticCandidates: 0,
+    semanticDegraded: "disabled",
+  },
+  sort: ["relevance", "stable_id"],
+  version: 1,
+});
 
 const publish = async (
   fixture: Awaited<ReturnType<typeof createReadyPublicationFixture>>,
@@ -50,6 +75,60 @@ describe("provider exact-name reader in workerd/D1 (SRCH-002, SRCH-006, SRCH-008
     await applyServingSwitchV2(
       env.SERVING_DB,
       await createActivationProjectionV2(fixtureA, activatedAtA),
+    );
+
+    const selected = await exports.CatalogQueryService.resolvePublicationV1({
+      version: 1,
+      audience: "quantclarity-catalog-query-v1",
+      environment: "local",
+      requestedPublicationId: null,
+    });
+    expect(selected).toMatchObject({
+      outcome: "selected",
+      publicationId: PUBLICATION_A,
+    });
+    expect(selected).toHaveProperty("bookmark");
+    if (selected.outcome !== "selected") throw new Error("selection failed");
+    await expect(
+      exports.CatalogQueryService.readProviderExactNameTierV1({
+        version: 1,
+        audience: "quantclarity-catalog-query-v1",
+        environment: "local",
+        bookmark: selected.bookmark,
+        envelope: rpcEnvelope(PUBLICATION_A, "Fixture Provider"),
+      }),
+    ).resolves.toMatchObject({
+      outcome: "page",
+      page: {
+        publicationId: PUBLICATION_A,
+        results: [{ resourceType: "provider", matchKind: "provider_name" }],
+      },
+    });
+    await expect(
+      exports.CatalogQueryService.resolvePublicationV1({
+        version: 1,
+        audience: "quantclarity-catalog-query-v1",
+        environment: "preview",
+        requestedPublicationId: null,
+      }),
+    ).resolves.toEqual({ outcome: "integrity_failure" });
+    await expect(
+      exports.CatalogQueryService.resolvePublicationV1({
+        version: 1,
+        audience: "quantclarity-catalog-query-v1",
+        environment: "local",
+        requestedPublicationId: PUBLICATION_C,
+      }),
+    ).resolves.toEqual({
+      outcome: "publication_expired",
+      currentPublicationId: PUBLICATION_A,
+    });
+    const publicResponse = await exports.default.fetch(
+      new Request("https://query.example.test/v1/search?q=Fixture"),
+    );
+    expect(publicResponse.status).toBe(404);
+    expect(publicResponse.headers.get("Cache-Control")).toBe(
+      "private, no-store",
     );
 
     await expect(
@@ -103,6 +182,17 @@ describe("provider exact-name reader in workerd/D1 (SRCH-002, SRCH-006, SRCH-008
     );
     await publish(fixtureB);
     await expect(
+      exports.CatalogQueryService.resolvePublicationV1({
+        version: 1,
+        audience: "quantclarity-catalog-query-v1",
+        environment: "local",
+        requestedPublicationId: PUBLICATION_B,
+      }),
+    ).resolves.toEqual({
+      outcome: "publication_expired",
+      currentPublicationId: PUBLICATION_A,
+    });
+    await expect(
       readProviderExactNamePage(env.SERVING_DB, {
         publicationId: PUBLICATION_B,
         query: "Inactive Provider",
@@ -129,6 +219,46 @@ describe("provider exact-name reader in workerd/D1 (SRCH-002, SRCH-006, SRCH-008
         activeA,
       ),
     );
+    await expect(
+      exports.CatalogQueryService.resolvePublicationV1({
+        version: 1,
+        audience: "quantclarity-catalog-query-v1",
+        environment: "local",
+        requestedPublicationId: PUBLICATION_A,
+      }),
+    ).resolves.toMatchObject({
+      outcome: "selected",
+      publicationId: PUBLICATION_A,
+    });
+    await expect(
+      exports.CatalogQueryService.readProviderExactNameTierV1({
+        version: 1,
+        audience: "quantclarity-catalog-query-v1",
+        environment: "local",
+        bookmark: selected.bookmark,
+        envelope: rpcEnvelope(PUBLICATION_A, "Fixture Provider"),
+      }),
+    ).resolves.toMatchObject({
+      outcome: "page",
+      page: {
+        publicationId: PUBLICATION_A,
+        results: [{ resourceType: "provider" }],
+      },
+    });
+
+    const selectedBBeforeRollback =
+      await exports.CatalogQueryService.resolvePublicationV1({
+        version: 1,
+        audience: "quantclarity-catalog-query-v1",
+        environment: "local",
+        requestedPublicationId: PUBLICATION_B,
+      });
+    expect(selectedBBeforeRollback).toMatchObject({
+      outcome: "selected",
+      publicationId: PUBLICATION_B,
+    });
+    if (selectedBBeforeRollback.outcome !== "selected")
+      throw new Error("pre-rollback selection failed");
 
     await expect(
       readProviderExactNamePage(env.SERVING_DB, {
@@ -173,6 +303,33 @@ describe("provider exact-name reader in workerd/D1 (SRCH-002, SRCH-006, SRCH-008
         now - 60_000,
       ),
     );
+    await expect(
+      exports.CatalogQueryService.resolvePublicationV1({
+        version: 1,
+        audience: "quantclarity-catalog-query-v1",
+        environment: "local",
+        requestedPublicationId: PUBLICATION_B,
+      }),
+    ).resolves.toMatchObject({
+      outcome: "selected",
+      publicationId: PUBLICATION_B,
+    });
+    await expect(
+      exports.CatalogQueryService.readProviderExactNameTierV1({
+        version: 1,
+        audience: "quantclarity-catalog-query-v1",
+        environment: "local",
+        bookmark: selectedBBeforeRollback.bookmark,
+        envelope: rpcEnvelope(PUBLICATION_B, "Inactive Provider"),
+      }),
+    ).resolves.toEqual({
+      outcome: "page",
+      page: {
+        publicationId: PUBLICATION_B,
+        results: [],
+        nextAfterProviderId: null,
+      },
+    });
     await expect(
       readProviderExactNamePage(env.SERVING_DB, {
         publicationId: PUBLICATION_B,

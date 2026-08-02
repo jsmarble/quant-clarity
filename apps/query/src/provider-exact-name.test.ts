@@ -510,7 +510,7 @@ describe("provider exact-name D1 reader (SRCH-002, SRCH-006, SRCH-008)", () => {
     });
   });
 
-  it("contains only a fixed SELECT path with active-head proof and indexed equality", () => {
+  it("contains only a fixed SELECT path with hot-head proof and indexed equality", () => {
     expect(PROVIDER_EXACT_NAME_SELECT_SQL).toMatch(
       /publication\.publication_id = \?1/u,
     );
@@ -521,10 +521,7 @@ describe("provider exact-name D1 reader (SRCH-002, SRCH-006, SRCH-008)", () => {
       /head\.rollback_candidate_publication_id = publication\.publication_id/u,
     );
     expect(PROVIDER_EXACT_NAME_SELECT_SQL).toMatch(
-      /publication\.state = 'superseded'/u,
-    );
-    expect(PROVIDER_EXACT_NAME_SELECT_SQL).toMatch(
-      /publication\.state = 'rolled_back'/u,
+      /publication\.state IN \('superseded', 'rolled_back'\)/u,
     );
     expect(PROVIDER_EXACT_NAME_SELECT_SQL).toMatch(
       /document\.normalized_name = \?2/u,

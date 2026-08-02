@@ -58,3 +58,4 @@ Accepted ADRs describe implementation choices; they do not amend product require
 - [ADR 0020](0020-exact-generation-publication-switching.md) — fresh switch preflights, exact-generation head changes, and append-only history
 - [ADR 0021](0021-canonical-provider-exact-search.md) — canonical provider exact-search documents without provider-derived model ranking
 - [ADR 0022](0022-forbid-nul-provider-display-names.md) — forbid NUL in canonical provider display names and exact-name queries
+- [ADR 0023](0023-local-query-rpc-and-bookmark-continuity.md) — closed local query RPC and D1 bookmark continuity for the first provider exact tier
