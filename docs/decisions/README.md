@@ -64,3 +64,4 @@ Accepted ADRs describe implementation choices; they do not amend product require
 - [ADR 0026](0026-blob-model-variant-exact-search-cutover.md) — UTF-8 BLOB persistence and split durable-proof/query cutover for model/variant exact names
 - [ADR 0027](0027-trusted-provider-model-id-projection.md) — trusted one-row-per-Offering provider-model-ID projection and deferred reader semantics
 - [ADR 0028](0028-provider-model-id-durable-storage-cutover.md) — dual-index UTF-8 BLOB persistence and v4 proof cutover for provider model IDs
+- [ADR 0029](0029-provider-model-id-exact-reader.md) — literal raw-first provider-model-ID equality mapped to canonical Model or Variant targets

@@ -8,8 +8,8 @@ import {
 } from "@quant-clarity/api-core";
 import { MODEL_DISPLAY_NAME_MAX_UNICODE_SCALARS } from "@quant-clarity/contracts";
 import {
-  MODEL_VARIANT_NAME_SEARCH_MAX_RESOURCE_BYTES,
   MODEL_VARIANT_NAME_SEARCH_MAX_NORMALIZED_NAME_UTF8_BYTES,
+  PROVIDER_MODEL_ID_SEARCH_MAX_RESOURCE_BYTES,
   normalizeExactSearchName,
 } from "@quant-clarity/publication-core";
 
@@ -18,24 +18,26 @@ const UUID_V4 =
 const PUBLICATION_ID = new RegExp(`^pub_${UUID_V4}$`, "u");
 const MODEL_ID = new RegExp(`^mdl_${UUID_V4}$`, "u");
 const VARIANT_ID = new RegExp(`^var_${UUID_V4}$`, "u");
+const PROVIDER_ID = new RegExp(`^prv_${UUID_V4}$`, "u");
 const EVIDENCE_ID = new RegExp(`^evd_${UUID_V4}$`, "u");
 const RFC3339_MILLISECONDS =
   /^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\.[0-9]{3}Z$/u;
 const UTF8 = new TextEncoder();
 const AUDIENCE = "quantclarity-catalog-query-v1" as const;
-const MAX_QUERY_BYTES = MODEL_DISPLAY_NAME_MAX_UNICODE_SCALARS * 4;
+const MAX_QUERY_UTF8_BYTES = 200;
+const MAX_DISPLAY_NAME_UTF8_BYTES = MODEL_DISPLAY_NAME_MAX_UNICODE_SCALARS * 4;
 const MIN_SERIALIZED_EVIDENCE_ID_BYTES = 42;
 const MAX_EVIDENCE_IDS_PER_FACT = Math.floor(
-  MODEL_VARIANT_NAME_SEARCH_MAX_RESOURCE_BYTES /
+  PROVIDER_MODEL_ID_SEARCH_MAX_RESOURCE_BYTES /
     MIN_SERIALIZED_EVIDENCE_ID_BYTES,
 );
 const MAX_EVIDENCE_IDS_PER_PAGE = 20 * MAX_EVIDENCE_IDS_PER_FACT;
 
-export type ModelVariantExactNameApiResult = Readonly<{
-  tier: 1;
+export type ProviderModelIdExactApiResult = Readonly<{
+  tier: 2;
   resourceType: "model" | "variant";
   resourceId: string;
-  matchKind: "canonical_name";
+  matchKind: "provider_model_id";
   displayName: Readonly<{
     state: "known";
     value: string;
@@ -45,11 +47,11 @@ export type ModelVariantExactNameApiResult = Readonly<{
   semanticDegraded: "disabled";
 }>;
 
-export type ModelVariantExactNameApiOutcome =
+export type ProviderModelIdExactApiOutcome =
   | Readonly<{
       success: true;
       publicationId: string;
-      results: readonly ModelVariantExactNameApiResult[];
+      results: readonly ProviderModelIdExactApiResult[];
     }>
   | Readonly<{
       success: false;
@@ -65,13 +67,13 @@ export type ModelVariantExactNameApiOutcome =
         | "read_failure";
     }>;
 
-export interface ModelVariantCatalogQueryRpcV1 {
+export interface ProviderModelIdCatalogQueryRpcV1 {
   resolvePublicationV1(input: unknown): Promise<unknown>;
-  readModelVariantExactNameTierV1(input: unknown): Promise<unknown>;
+  readProviderModelIdExactTierV1(input: unknown): Promise<unknown>;
 }
 
-export type ModelVariantExactNameApiInput = Readonly<{
-  service: ModelVariantCatalogQueryRpcV1;
+export type ProviderModelIdExactApiInput = Readonly<{
+  service: ProviderModelIdCatalogQueryRpcV1;
   request: NormalizedRequest;
   environment: DeploymentEnvironment;
   limits: ApiLimits;
@@ -85,19 +87,29 @@ const snapshotOwnRecord = (
     return null;
   const prototype: unknown = Object.getPrototypeOf(value);
   if (prototype !== Object.prototype && prototype !== null) return null;
-  const actualKeys = Object.keys(value).sort();
+  const ownKeys = Reflect.ownKeys(value);
+  if (ownKeys.some((key) => typeof key !== "string")) return null;
+  const actualKeys = (ownKeys as string[]).sort();
   const sortedExpected = [...expectedKeys].sort();
   if (
     actualKeys.length !== sortedExpected.length ||
     sortedExpected.some((key, index) => actualKeys[index] !== key)
   )
     return null;
-  const source = value as Record<string, unknown>;
   const snapshot: Record<string, unknown> = Object.create(null) as Record<
     string,
     unknown
   >;
-  for (const key of expectedKeys) snapshot[key] = source[key];
+  for (const key of expectedKeys) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (
+      descriptor === undefined ||
+      !("value" in descriptor) ||
+      descriptor.enumerable !== true
+    )
+      return null;
+    snapshot[key] = descriptor.value;
+  }
   return snapshot;
 };
 
@@ -106,12 +118,32 @@ const snapshotArray = (
   maximumLength: number,
 ): readonly unknown[] | null => {
   if (!Array.isArray(value)) return null;
-  const length: number = value.length;
+  if (Object.getPrototypeOf(value) !== Array.prototype) return null;
+  const length = value.length;
   if (!Number.isSafeInteger(length) || length < 0 || length > maximumLength)
     return null;
+  const ownKeys = Reflect.ownKeys(value);
+  if (
+    ownKeys.length !== length + 1 ||
+    ownKeys.some(
+      (key) =>
+        typeof key !== "string" ||
+        (key !== "length" &&
+          (!/^(?:0|[1-9][0-9]*)$/u.test(key) || Number(key) >= length)),
+    )
+  )
+    return null;
   const snapshot: unknown[] = [];
-  for (let index = 0; index < length; index += 1)
-    snapshot.push((value as readonly unknown[])[index]);
+  for (let index = 0; index < length; index += 1) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+    if (
+      descriptor === undefined ||
+      !("value" in descriptor) ||
+      descriptor.enumerable !== true
+    )
+      return null;
+    snapshot.push(descriptor.value);
+  }
   return snapshot;
 };
 
@@ -121,22 +153,33 @@ const validEnvironment = (value: unknown): value is DeploymentEnvironment =>
   value === "production" ||
   value === "test";
 
+const validUnicodeScalars = (value: string): boolean => {
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index);
+    if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
+      if (index + 1 >= value.length) return false;
+      const trailing = value.charCodeAt(index + 1);
+      if (trailing < 0xdc00 || trailing > 0xdfff) return false;
+      index += 1;
+    } else if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) return false;
+  }
+  return true;
+};
+
 const validQuery = (value: unknown): value is string => {
   if (
     typeof value !== "string" ||
-    value.length > MODEL_DISPLAY_NAME_MAX_UNICODE_SCALARS * 2 ||
-    Array.from(value).length === 0 ||
-    Array.from(value).length > MODEL_DISPLAY_NAME_MAX_UNICODE_SCALARS ||
-    UTF8.encode(value).byteLength > MAX_QUERY_BYTES
+    value.length === 0 ||
+    value.length > MAX_QUERY_UTF8_BYTES ||
+    !validUnicodeScalars(value)
   )
     return false;
   try {
-    if (value !== value.normalize("NFC").trim()) return false;
-    const normalized = normalizeExactSearchName(value);
+    const bytes = UTF8.encode(value).byteLength;
     return (
-      UTF8.encode(normalized).byteLength > 0 &&
-      UTF8.encode(normalized).byteLength <=
-        MODEL_VARIANT_NAME_SEARCH_MAX_NORMALIZED_NAME_UTF8_BYTES
+      value === value.normalize("NFC").trim() &&
+      bytes > 0 &&
+      bytes <= MAX_QUERY_UTF8_BYTES
     );
   } catch {
     return false;
@@ -149,22 +192,57 @@ const canonicalTimestamp = (value: string): boolean => {
   return Number.isFinite(parsed) && new Date(parsed).toISOString() === value;
 };
 
-const snapshotFilter = (
-  value: unknown,
-): Readonly<{
-  filters: Readonly<Record<string, "model" | "variant">>;
+type ParsedFilters = Readonly<{
+  filters: Readonly<Record<string, string>>;
   recordType: "model" | "variant" | null;
-}> | null => {
+}>;
+
+const snapshotFilters = (value: unknown): ParsedFilters | null => {
   if (typeof value !== "object" || value === null || Array.isArray(value))
     return null;
   const prototype: unknown = Object.getPrototypeOf(value);
   if (prototype !== Object.prototype && prototype !== null) return null;
-  const keys = Object.keys(value);
-  if (keys.length === 0) return { filters: {}, recordType: null };
-  if (keys.length !== 1 || keys[0] !== "record_type") return null;
-  const recordType = (value as Record<string, unknown>).record_type;
-  if (recordType !== "model" && recordType !== "variant") return null;
-  return { filters: { record_type: recordType }, recordType };
+  const ownKeys = Reflect.ownKeys(value);
+  if (ownKeys.some((key) => typeof key !== "string")) return null;
+  const keys = (ownKeys as string[]).sort();
+  if (
+    keys.length > 2 ||
+    keys.some((key) => key !== "provider" && key !== "record_type")
+  )
+    return null;
+  const source: Record<string, unknown> = Object.create(null) as Record<
+    string,
+    unknown
+  >;
+  for (const key of keys) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (
+      descriptor === undefined ||
+      !("value" in descriptor) ||
+      descriptor.enumerable !== true
+    )
+      return null;
+    source[key] = descriptor.value;
+  }
+  const recordType = source.record_type;
+  const provider = source.provider;
+  if (
+    (recordType !== undefined &&
+      recordType !== "model" &&
+      recordType !== "variant") ||
+    (provider !== undefined &&
+      (typeof provider !== "string" || !PROVIDER_ID.test(provider)))
+  )
+    return null;
+  const filters: Record<string, string> = {};
+  if (typeof provider === "string") filters.provider = provider;
+  if (recordType === "model" || recordType === "variant")
+    filters.record_type = recordType;
+  return {
+    filters,
+    recordType:
+      recordType === "model" || recordType === "variant" ? recordType : null,
+  };
 };
 
 type ParsedRequest = Readonly<{
@@ -207,23 +285,23 @@ const parseRequest = (value: unknown): ParsedRequest | null => {
     const operation = snapshotOwnRecord(request.operation, ["kind"]);
     const route = snapshotOwnRecord(request.route, ["operation", "policy"]);
     const routeOperation = snapshotOwnRecord(route?.operation, ["kind"]);
-    const filter = snapshotFilter(request.filters);
+    const filters = snapshotFilters(request.filters);
     const sort = snapshotArray(request.sort, 2);
     if (
       operation?.kind !== "search" ||
       route?.policy !== "search" ||
       routeOperation?.kind !== "search" ||
-      filter === null ||
+      filters === null ||
       sort?.length !== 2 ||
       sort[0] !== "relevance" ||
       sort[1] !== "stable_id"
     )
       return null;
     return {
-      recordType: filter.recordType,
+      recordType: filters.recordType,
       request: {
         cursor: null,
-        filters: filter.filters,
+        filters: filters.filters,
         hasQueryString: true,
         limit: request.limit as number,
         limitProvided: request.limitProvided,
@@ -276,20 +354,15 @@ type ResolverClassification =
   | Readonly<{ kind: "selected"; publicationId: string; bookmark: string }>
   | Readonly<{
       kind: "failure";
-      outcome: Exclude<ModelVariantExactNameApiOutcome, { success: true }>;
+      outcome: Exclude<ProviderModelIdExactApiOutcome, { success: true }>;
     }>
   | Readonly<{ kind: "invalid" }>;
 
 const classifyResolver = (value: unknown): ResolverClassification => {
   try {
-    if (typeof value !== "object" || value === null || Array.isArray(value))
-      return { kind: "invalid" };
-    const prototype: unknown = Object.getPrototypeOf(value);
-    if (prototype !== Object.prototype && prototype !== null)
-      return { kind: "invalid" };
-    const keys = Object.keys(value).sort();
-    if (keys.length === 1 && keys[0] === "outcome") {
-      const outcome = (value as Record<string, unknown>).outcome;
+    const oneField = snapshotOwnRecord(value, ["outcome"]);
+    if (oneField !== null) {
+      const outcome = oneField.outcome;
       if (
         outcome === "integrity_failure" ||
         outcome === "publication_not_ready" ||
@@ -298,55 +371,47 @@ const classifyResolver = (value: unknown): ResolverClassification => {
         return { kind: "failure", outcome: { success: false, code: outcome } };
       return { kind: "invalid" };
     }
-    if (
-      keys.length === 2 &&
-      keys[0] === "currentPublicationId" &&
-      keys[1] === "outcome"
-    ) {
-      const source = value as Record<string, unknown>;
-      const currentPublicationId = source.currentPublicationId;
-      const outcome = source.outcome;
+    const expired = snapshotOwnRecord(value, [
+      "currentPublicationId",
+      "outcome",
+    ]);
+    if (expired !== null) {
       if (
-        outcome === "publication_expired" &&
-        typeof currentPublicationId === "string" &&
-        PUBLICATION_ID.test(currentPublicationId)
+        expired.outcome === "publication_expired" &&
+        typeof expired.currentPublicationId === "string" &&
+        PUBLICATION_ID.test(expired.currentPublicationId)
       )
         return {
           kind: "failure",
           outcome: {
             success: false,
             code: "publication_expired",
-            currentPublicationId,
+            currentPublicationId: expired.currentPublicationId,
           },
         };
       return { kind: "invalid" };
     }
+    const selected = snapshotOwnRecord(value, [
+      "bookmark",
+      "outcome",
+      "publicationId",
+    ]);
+    if (selected === null) return { kind: "invalid" };
     if (
-      keys.length !== 3 ||
-      keys[0] !== "bookmark" ||
-      keys[1] !== "outcome" ||
-      keys[2] !== "publicationId"
-    )
-      return { kind: "invalid" };
-    const source = value as Record<string, unknown>;
-    const bookmark = source.bookmark;
-    const outcome = source.outcome;
-    const publicationId = source.publicationId;
-    if (
-      outcome !== "selected" ||
-      typeof publicationId !== "string" ||
-      !PUBLICATION_ID.test(publicationId) ||
-      typeof bookmark !== "string" ||
-      bookmark.length === 0 ||
-      bookmark.length > 4096 ||
-      bookmark === "first-primary" ||
-      bookmark === "first-unconstrained"
+      selected.outcome !== "selected" ||
+      typeof selected.publicationId !== "string" ||
+      !PUBLICATION_ID.test(selected.publicationId) ||
+      typeof selected.bookmark !== "string" ||
+      selected.bookmark.length === 0 ||
+      selected.bookmark.length > 4096 ||
+      selected.bookmark === "first-primary" ||
+      selected.bookmark === "first-unconstrained"
     )
       return { kind: "invalid" };
     return {
       kind: "selected",
-      publicationId,
-      bookmark,
+      publicationId: selected.publicationId,
+      bookmark: selected.bookmark,
     };
   } catch {
     return { kind: "invalid" };
@@ -356,7 +421,7 @@ const classifyResolver = (value: unknown): ResolverClassification => {
 const snapshotFact = (
   value: unknown,
   maximumEvidenceItems: number,
-): ModelVariantExactNameApiResult["displayName"] | null => {
+): ProviderModelIdExactApiResult["displayName"] | null => {
   const fact = snapshotOwnRecord(value, [
     "evidence_ids",
     "observed_at",
@@ -368,9 +433,10 @@ const snapshotFact = (
     fact.state !== "known" ||
     typeof fact.value !== "string" ||
     fact.value.length > MODEL_DISPLAY_NAME_MAX_UNICODE_SCALARS * 2 ||
+    !validUnicodeScalars(fact.value) ||
     Array.from(fact.value).length === 0 ||
     Array.from(fact.value).length > MODEL_DISPLAY_NAME_MAX_UNICODE_SCALARS ||
-    UTF8.encode(fact.value).byteLength > MAX_QUERY_BYTES ||
+    UTF8.encode(fact.value).byteLength > MAX_DISPLAY_NAME_UTF8_BYTES ||
     typeof fact.observed_at !== "string" ||
     !canonicalTimestamp(fact.observed_at)
   )
@@ -397,7 +463,7 @@ const snapshotFact = (
 const snapshotResult = (
   value: unknown,
   maximumEvidenceItems: number,
-): ModelVariantExactNameApiResult | null => {
+): ProviderModelIdExactApiResult | null => {
   const result = snapshotOwnRecord(value, [
     "displayName",
     "matchKind",
@@ -408,13 +474,13 @@ const snapshotResult = (
   ]);
   if (result === null) return null;
   if (
-    result.tier !== 1 ||
+    result.tier !== 2 ||
     (result.resourceType !== "model" && result.resourceType !== "variant") ||
     typeof result.resourceId !== "string" ||
     (result.resourceType === "model"
       ? !MODEL_ID.test(result.resourceId)
       : !VARIANT_ID.test(result.resourceId)) ||
-    result.matchKind !== "canonical_name" ||
+    result.matchKind !== "provider_model_id" ||
     result.semanticDegraded !== "disabled"
   )
     return null;
@@ -422,19 +488,37 @@ const snapshotResult = (
   return displayName === null
     ? null
     : {
-        tier: 1,
+        tier: 2,
         resourceType: result.resourceType,
         resourceId: result.resourceId,
-        matchKind: "canonical_name",
+        matchKind: "provider_model_id",
         displayName,
         semanticDegraded: "disabled",
       };
 };
 
+const compareUtf8 = (left: string, right: string): number => {
+  const leftBytes = UTF8.encode(left);
+  const rightBytes = UTF8.encode(right);
+  const shared = Math.min(leftBytes.length, rightBytes.length);
+  for (let index = 0; index < shared; index += 1) {
+    const leftByte = leftBytes[index];
+    const rightByte = rightBytes[index];
+    if (leftByte === undefined || rightByte === undefined)
+      throw new Error("UTF-8 comparison state is invalid");
+    if (leftByte !== rightByte) return leftByte < rightByte ? -1 : 1;
+  }
+  return leftBytes.length === rightBytes.length
+    ? 0
+    : leftBytes.length < rightBytes.length
+      ? -1
+      : 1;
+};
+
 type TierClassification =
   | Readonly<{
       kind: "page";
-      results: readonly ModelVariantExactNameApiResult[];
+      results: readonly ProviderModelIdExactApiResult[];
     }>
   | Readonly<{ kind: "failure"; code: "integrity_failure" | "read_failure" }>
   | Readonly<{ kind: "invalid" }>;
@@ -443,47 +527,37 @@ const classifyTier = (
   value: unknown,
   publicationId: string,
   limit: number,
-  query: string,
   recordType: "model" | "variant" | null,
   maxResponseBytes: number,
 ): TierClassification => {
   try {
-    if (typeof value !== "object" || value === null || Array.isArray(value))
-      return { kind: "invalid" };
-    const prototype: unknown = Object.getPrototypeOf(value);
-    if (prototype !== Object.prototype && prototype !== null)
-      return { kind: "invalid" };
-    const keys = Object.keys(value).sort();
-    const source = value as Record<string, unknown>;
-    if (keys.length === 1 && keys[0] === "outcome") {
-      const outcome = source.outcome;
-      return outcome === "integrity_failure" || outcome === "read_failure"
-        ? { kind: "failure", code: outcome }
+    const failure = snapshotOwnRecord(value, ["outcome"]);
+    if (failure !== null) {
+      return failure.outcome === "integrity_failure" ||
+        failure.outcome === "read_failure"
+        ? { kind: "failure", code: failure.outcome }
         : { kind: "invalid" };
     }
-    if (keys.length !== 2 || keys[0] !== "outcome" || keys[1] !== "page")
-      return { kind: "invalid" };
-    const outcome = source.outcome;
-    const pageValue = source.page;
-    if (outcome !== "page") return { kind: "invalid" };
-    const page = snapshotOwnRecord(pageValue, [
-      "nextAfterResourceId",
+    const response = snapshotOwnRecord(value, ["outcome", "page"]);
+    if (response === null) return { kind: "invalid" };
+    if (response.outcome !== "page") return { kind: "invalid" };
+    const page = snapshotOwnRecord(response.page, [
+      "matchModes",
+      "nextContinuation",
       "publicationId",
       "results",
     ]);
     if (page === null) return { kind: "invalid" };
     if (page.publicationId !== publicationId) return { kind: "invalid" };
-    const nextAfterResourceId = page.nextAfterResourceId;
+    const rows = snapshotArray(page.results, limit);
+    const matchModes = snapshotArray(page.matchModes, limit);
+    if (rows === null || matchModes === null) return { kind: "invalid" };
     if (
-      nextAfterResourceId !== null &&
-      (typeof nextAfterResourceId !== "string" ||
-        (!MODEL_ID.test(nextAfterResourceId) &&
-          !VARIANT_ID.test(nextAfterResourceId)))
+      matchModes.length !== rows.length ||
+      matchModes.some((mode) => mode !== "raw" && mode !== "normalized")
     )
       return { kind: "invalid" };
-    const rows = snapshotArray(page.results, limit);
-    if (rows === null) return { kind: "invalid" };
-    const results: ModelVariantExactNameApiResult[] = [];
+    const results: ProviderModelIdExactApiResult[] = [];
     let remainingEvidenceItems = Math.min(
       MAX_EVIDENCE_IDS_PER_PAGE,
       Math.floor(maxResponseBytes / MIN_SERIALIZED_EVIDENCE_ID_BYTES),
@@ -497,32 +571,83 @@ const classifyTier = (
       remainingEvidenceItems -= result.displayName.evidence_ids.length;
       results.push(result);
     }
-    if (
-      nextAfterResourceId !== null &&
-      (results.length !== limit ||
-        results.at(-1)?.resourceId !== nextAfterResourceId)
-    )
-      return { kind: "invalid" };
-    const expectedOrderingKey = normalizeExactSearchName(query);
-    const seenIds = new Set<string>();
+
+    const seen = new Set<string>();
+    let priorMatchMode: "raw" | "normalized" | null = null;
+    let priorOrderingKey: string | null = null;
     let priorId = "";
-    for (const result of results) {
+    const orderingKeys: string[] = [];
+    for (const [index, result] of results.entries()) {
+      const matchMode = matchModes[index] as "raw" | "normalized";
       if (
         (recordType !== null && result.resourceType !== recordType) ||
-        normalizeExactSearchName(result.displayName.value) !==
-          expectedOrderingKey ||
-        seenIds.has(result.resourceId) ||
-        result.resourceId <= priorId
+        seen.has(result.resourceId)
       )
         return { kind: "invalid" };
-      seenIds.add(result.resourceId);
+      const orderingKey = normalizeExactSearchName(result.displayName.value);
+      if (
+        UTF8.encode(orderingKey).byteLength >
+          MODEL_VARIANT_NAME_SEARCH_MAX_NORMALIZED_NAME_UTF8_BYTES ||
+        (priorMatchMode === "normalized" && matchMode === "raw") ||
+        (priorMatchMode === matchMode &&
+          priorOrderingKey !== null &&
+          (compareUtf8(orderingKey, priorOrderingKey) < 0 ||
+            (compareUtf8(orderingKey, priorOrderingKey) === 0 &&
+              result.resourceId <= priorId)))
+      )
+        return { kind: "invalid" };
+      seen.add(result.resourceId);
+      priorMatchMode = matchMode;
+      priorOrderingKey = orderingKey;
       priorId = result.resourceId;
+      orderingKeys.push(orderingKey);
     }
-    const safePage = {
+
+    let nextContinuation: Readonly<{
+      matchMode: "raw" | "normalized";
+      normalizedTargetDisplayName: string;
+      resourceId: string;
+    }> | null = null;
+    if (page.nextContinuation !== null) {
+      const continuation = snapshotOwnRecord(page.nextContinuation, [
+        "matchMode",
+        "normalizedTargetDisplayName",
+        "resourceId",
+      ]);
+      const last = results.at(-1);
+      const lastOrderingKey = orderingKeys.at(-1);
+      if (
+        continuation === null ||
+        (continuation.matchMode !== "raw" &&
+          continuation.matchMode !== "normalized") ||
+        typeof continuation.normalizedTargetDisplayName !== "string" ||
+        !validUnicodeScalars(continuation.normalizedTargetDisplayName) ||
+        UTF8.encode(continuation.normalizedTargetDisplayName).byteLength ===
+          0 ||
+        UTF8.encode(continuation.normalizedTargetDisplayName).byteLength >
+          MODEL_VARIANT_NAME_SEARCH_MAX_NORMALIZED_NAME_UTF8_BYTES ||
+        typeof continuation.resourceId !== "string" ||
+        (!MODEL_ID.test(continuation.resourceId) &&
+          !VARIANT_ID.test(continuation.resourceId)) ||
+        results.length !== limit ||
+        last === undefined ||
+        lastOrderingKey === undefined ||
+        continuation.normalizedTargetDisplayName !== lastOrderingKey ||
+        continuation.resourceId !== last.resourceId ||
+        continuation.matchMode !== matchModes.at(-1)
+      )
+        return { kind: "invalid" };
+      nextContinuation = {
+        matchMode: continuation.matchMode,
+        normalizedTargetDisplayName: continuation.normalizedTargetDisplayName,
+        resourceId: continuation.resourceId,
+      };
+    }
+    const safeResponse = {
       outcome: "page",
-      page: { publicationId, results, nextAfterResourceId },
+      page: { publicationId, results, matchModes, nextContinuation },
     };
-    if (UTF8.encode(JSON.stringify(safePage)).byteLength > maxResponseBytes)
+    if (UTF8.encode(JSON.stringify(safeResponse)).byteLength > maxResponseBytes)
       return { kind: "invalid" };
     return { kind: "page", results };
   } catch {
@@ -530,9 +655,9 @@ const classifyTier = (
   }
 };
 
-export const readModelVariantExactNameFromQueryV1 = async (
-  input: ModelVariantExactNameApiInput,
-): Promise<ModelVariantExactNameApiOutcome> => {
+export const readProviderModelIdExactFromQueryV1 = async (
+  input: ProviderModelIdExactApiInput,
+): Promise<ProviderModelIdExactApiOutcome> => {
   try {
     const outer = snapshotOwnRecord(input, [
       "environment",
@@ -601,7 +726,7 @@ export const readModelVariantExactNameFromQueryV1 = async (
       return { success: false, code: "invalid_input" };
     }
 
-    const tierMethod = service.readModelVariantExactNameTierV1;
+    const tierMethod = service.readProviderModelIdExactTierV1;
     if (typeof tierMethod !== "function")
       return { success: false, code: "integrity_failure" };
     let tierValue: unknown;
@@ -620,7 +745,6 @@ export const readModelVariantExactNameFromQueryV1 = async (
       tierValue,
       resolved.publicationId,
       request.limit,
-      query,
       parsedRequest.recordType,
       limits.maxResponseBytes,
     );

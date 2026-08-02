@@ -663,17 +663,6 @@ function validateAndNormalizeRequestCore(
         parameter: "q",
         reason: "invalid",
       });
-    if (
-      ["*", "\\", "[", "]", "{", "}", "|"].some((value) =>
-        normalizedQuery.includes(value),
-      )
-    )
-      return failure(
-        "invalid_parameter",
-        "The search query contains unsupported search syntax.",
-        400,
-        { parameter: "q", reason: "unsupported syntax" },
-      );
     query = normalizedQuery;
   }
 
@@ -1350,8 +1339,7 @@ export function buildExactStructuredSearchPlan(
   if (
     query !== normalizedText(query) ||
     UTF8.encode(query).byteLength === 0 ||
-    UTF8.encode(query).byteLength > limits.maxSearchQueryBytes ||
-    ["*", "\\", "[", "]", "{", "}", "|"].some((value) => query.includes(value))
+    UTF8.encode(query).byteLength > limits.maxSearchQueryBytes
   )
     throw new RangeError(
       "The search plan query is not normalized and bounded.",
@@ -1421,10 +1409,7 @@ export function buildQueryServiceEnvelope(
       query === null ||
       query !== normalizedText(query) ||
       UTF8.encode(query).byteLength === 0 ||
-      UTF8.encode(query).byteLength > limits.maxSearchQueryBytes ||
-      ["*", "\\", "[", "]", "{", "}", "|"].some((value) =>
-        query.includes(value),
-      )
+      UTF8.encode(query).byteLength > limits.maxSearchQueryBytes
     )
       throw new RangeError("The search query is not normalized and bounded.");
   } else if (query !== null) {

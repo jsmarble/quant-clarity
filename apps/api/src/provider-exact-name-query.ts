@@ -85,10 +85,6 @@ const validEnvironment = (value: unknown): value is DeploymentEnvironment =>
   value === "test";
 
 const normalizedQuery = (value: string): boolean => {
-  if (
-    ["*", "\\", "[", "]", "{", "}", "|"].some((token) => value.includes(token))
-  )
-    return false;
   try {
     return value === value.normalize("NFC").trim().replace(/\s+/gu, " ");
   } catch {

@@ -181,15 +181,11 @@ describe("bounded validation and normalization", () => {
   });
 
   it.each(["*", "model\\d+", "model[0-9]", "model{2}", "model|variant"])(
-    "ACT-API-010 rejects wildcard or regex construct %s",
+    "ACT-API-010 treats wildcard or regex-looking construct %s as literal text",
     (syntax) => {
       const result = request("/v1/search", `q=${encodeURIComponent(syntax)}`);
-      expect(result.success).toBe(false);
-      if (!result.success)
-        expect(result.error.details?.[0]).toEqual({
-          parameter: "q",
-          reason: "unsupported syntax",
-        });
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.request.query).toBe(syntax);
     },
   );
 
@@ -869,7 +865,6 @@ describe("cache, representation, and privacy helpers", () => {
       { ...base, filters: { provider: "beta,alpha" } },
       { ...base, filters: { winner: true } },
       { ...base, limit: 21 },
-      { ...base, query: "*" },
       { ...base, query: "x".repeat(201) },
       { ...base, sort: ["relevance", "name", "stable_id"] },
     ] as NormalizedRequest[])

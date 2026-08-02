@@ -3,6 +3,7 @@ import { MODEL_DISPLAY_NAME_MAX_UNICODE_SCALARS } from "@quant-clarity/contracts
 import {
   MODEL_VARIANT_NAME_SEARCH_MAX_NORMALIZED_NAME_UTF8_BYTES,
   normalizeExactSearchName,
+  PROVIDER_MODEL_ID_SEARCH_MAX_NORMALIZED_UTF8_BYTES,
 } from "@quant-clarity/publication-core";
 
 import {
@@ -15,10 +16,16 @@ import {
   readProviderExactNamePage,
   type ProviderExactNamePage,
 } from "./provider-exact-name.js";
+import {
+  ProviderModelIdExactError,
+  readProviderModelIdExactPage,
+  type ProviderModelIdExactPage,
+} from "./provider-model-id-exact.js";
 
 const UUID_V4 =
   "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
 const PUBLICATION_ID = new RegExp(`^pub_${UUID_V4}$`, "u");
+const PROVIDER_ID = new RegExp(`^prv_${UUID_V4}$`, "u");
 const UTF8 = new TextEncoder();
 const ENVIRONMENTS = new Set(["local", "preview", "production", "test"]);
 const AUDIENCE = "quantclarity-catalog-query-v1" as const;
@@ -99,6 +106,19 @@ export type ReadModelVariantExactNameTierV1Outcome =
   | Readonly<{ outcome: "integrity_failure" }>
   | Readonly<{ outcome: "read_failure" }>;
 
+export type ReadProviderModelIdExactTierV1Input = Readonly<{
+  version: 1;
+  audience: typeof AUDIENCE;
+  environment: QueryRpcEnvironment;
+  bookmark: string;
+  envelope: QueryServiceEnvelope;
+}>;
+
+export type ReadProviderModelIdExactTierV1Outcome =
+  | Readonly<{ outcome: "page"; page: ProviderModelIdExactPage }>
+  | Readonly<{ outcome: "integrity_failure" }>
+  | Readonly<{ outcome: "read_failure" }>;
+
 type ResolveRow = Readonly<{
   current_publication_id: string;
   rollback_candidate_publication_id: string | null;
@@ -146,8 +166,7 @@ const normalizedQuery = (value: unknown): value is string => {
     typeof value !== "string" ||
     value.includes("\u0000") ||
     UTF8.encode(value).byteLength === 0 ||
-    UTF8.encode(value).byteLength > 200 ||
-    ["*", "\\", "[", "]", "{", "}", "|"].some((token) => value.includes(token))
+    UTF8.encode(value).byteLength > 200
   )
     return false;
   try {
@@ -163,9 +182,7 @@ const normalizedModelVariantQuery = (value: unknown): value is string => {
     value.length > MODEL_DISPLAY_NAME_MAX_UNICODE_SCALARS * 2 ||
     Array.from(value).length === 0 ||
     Array.from(value).length > MODEL_DISPLAY_NAME_MAX_UNICODE_SCALARS ||
-    UTF8.encode(value).byteLength >
-      MODEL_DISPLAY_NAME_MAX_UNICODE_SCALARS * 4 ||
-    ["*", "\\", "[", "]", "{", "}", "|"].some((token) => value.includes(token))
+    UTF8.encode(value).byteLength > MODEL_DISPLAY_NAME_MAX_UNICODE_SCALARS * 4
   )
     return false;
   try {
@@ -424,6 +441,261 @@ const parseModelVariantReadInput = (
   }
 };
 
+type ParsedProviderModelIdReadInput = Readonly<{
+  environment: QueryRpcEnvironment;
+  bookmark: string;
+  publicationId: string;
+  query: string;
+  providerId: string | null;
+  recordType: "model" | "variant" | null;
+  limit: number;
+}>;
+
+const ownDataRecord = (
+  value: unknown,
+  expectedKeys: readonly string[],
+): Record<string, unknown> | null => {
+  try {
+    if (typeof value !== "object" || value === null || Array.isArray(value))
+      return null;
+    const prototype: unknown = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) return null;
+    const actualKeys = Reflect.ownKeys(value);
+    if (
+      actualKeys.some((key) => typeof key !== "string") ||
+      actualKeys.length !== expectedKeys.length ||
+      [...expectedKeys]
+        .sort()
+        .some(
+          (key, index) => [...(actualKeys as string[])].sort()[index] !== key,
+        )
+    )
+      return null;
+    const result: Record<string, unknown> = Object.create(null) as Record<
+      string,
+      unknown
+    >;
+    for (const key of expectedKeys) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (
+        descriptor === undefined ||
+        !("value" in descriptor) ||
+        descriptor.enumerable !== true
+      )
+        return null;
+      result[key] = descriptor.value;
+    }
+    return result;
+  } catch {
+    return null;
+  }
+};
+
+const ownDataArray = (
+  value: unknown,
+  expectedLength: number,
+): readonly unknown[] | null => {
+  try {
+    if (
+      !Array.isArray(value) ||
+      Object.getPrototypeOf(value) !== Array.prototype
+    )
+      return null;
+    const lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
+    if (
+      lengthDescriptor === undefined ||
+      !("value" in lengthDescriptor) ||
+      lengthDescriptor.value !== expectedLength
+    )
+      return null;
+    const keys = Reflect.ownKeys(value);
+    if (
+      keys.length !== expectedLength + 1 ||
+      keys.some(
+        (key) =>
+          typeof key !== "string" ||
+          (key !== "length" &&
+            (!/^(?:0|[1-9][0-9]*)$/u.test(key) ||
+              Number(key) >= expectedLength)),
+      )
+    )
+      return null;
+    const result: unknown[] = [];
+    for (let index = 0; index < expectedLength; index += 1) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+      if (
+        descriptor === undefined ||
+        !("value" in descriptor) ||
+        descriptor.enumerable !== true
+      )
+        return null;
+      result.push(descriptor.value);
+    }
+    return result;
+  } catch {
+    return null;
+  }
+};
+
+const providerModelIdFilters = (
+  value: unknown,
+): Readonly<{
+  providerId: string | null;
+  recordType: "model" | "variant" | null;
+  canonical: Readonly<Record<string, string>>;
+}> | null => {
+  try {
+    if (typeof value !== "object" || value === null || Array.isArray(value))
+      return null;
+    const prototype: unknown = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) return null;
+    const keys = Reflect.ownKeys(value);
+    if (
+      keys.some((key) => typeof key !== "string") ||
+      keys.length > 2 ||
+      keys.some((key) => key !== "provider" && key !== "record_type")
+    )
+      return null;
+    const snapshot = ownDataRecord(value, keys as string[]);
+    if (snapshot === null) return null;
+    const provider = snapshot.provider;
+    const recordType = snapshot.record_type;
+    if (
+      (provider !== undefined &&
+        (typeof provider !== "string" || !PROVIDER_ID.test(provider))) ||
+      (recordType !== undefined &&
+        recordType !== "model" &&
+        recordType !== "variant")
+    )
+      return null;
+    const canonical: Record<string, string> = {};
+    if (typeof provider === "string") canonical.provider = provider;
+    if (recordType === "model" || recordType === "variant")
+      canonical.record_type = recordType;
+    return {
+      providerId: typeof provider === "string" ? provider : null,
+      recordType:
+        recordType === "model" || recordType === "variant" ? recordType : null,
+      canonical,
+    };
+  } catch {
+    return null;
+  }
+};
+
+const providerModelIdQuery = (value: unknown): value is string => {
+  if (typeof value !== "string") return false;
+  try {
+    if (
+      value !== value.normalize("NFC").trim() ||
+      Array.from(value).length === 0 ||
+      Array.from(value).some((scalar) => {
+        const point = scalar.codePointAt(0);
+        return point !== undefined && point >= 0xd800 && point <= 0xdfff;
+      }) ||
+      UTF8.encode(value).byteLength > 200
+    )
+      return false;
+    let normalized = "";
+    try {
+      normalized = normalizeExactSearchName(value);
+    } catch (error) {
+      if (!(error instanceof RangeError)) return false;
+    }
+    return (
+      UTF8.encode(normalized).byteLength <=
+      PROVIDER_MODEL_ID_SEARCH_MAX_NORMALIZED_UTF8_BYTES
+    );
+  } catch {
+    return false;
+  }
+};
+
+const parseProviderModelIdReadInput = (
+  value: unknown,
+): ParsedProviderModelIdReadInput | null => {
+  const outer = ownDataRecord(value, [
+    "audience",
+    "bookmark",
+    "envelope",
+    "environment",
+    "version",
+  ]);
+  if (
+    outer?.version !== 1 ||
+    outer.audience !== AUDIENCE ||
+    !environment(outer.environment) ||
+    typeof outer.bookmark !== "string" ||
+    outer.bookmark.length === 0 ||
+    outer.bookmark.length > 4096 ||
+    outer.bookmark === "first-primary" ||
+    outer.bookmark === "first-unconstrained"
+  )
+    return null;
+  const envelope = ownDataRecord(outer.envelope, [
+    "audience",
+    "continuation",
+    "environment",
+    "filters",
+    "limit",
+    "operation",
+    "publicationId",
+    "searchPlan",
+    "sort",
+    "version",
+  ]);
+  if (
+    envelope?.audience !== AUDIENCE ||
+    envelope.version !== 1 ||
+    envelope.environment !== outer.environment ||
+    envelope.continuation !== null ||
+    typeof envelope.publicationId !== "string" ||
+    !PUBLICATION_ID.test(envelope.publicationId) ||
+    typeof envelope.limit !== "number" ||
+    !Number.isSafeInteger(envelope.limit) ||
+    envelope.limit < 1 ||
+    envelope.limit > 20
+  )
+    return null;
+  const filters = providerModelIdFilters(envelope.filters);
+  const operation = ownDataRecord(envelope.operation, ["kind"]);
+  const sort = ownDataArray(envelope.sort, 2);
+  const plan = ownDataRecord(envelope.searchPlan, [
+    "filters",
+    "kind",
+    "limit",
+    "query",
+    "semanticCalls",
+    "semanticCandidates",
+    "semanticDegraded",
+  ]);
+  const planFilters = providerModelIdFilters(plan?.filters);
+  if (
+    filters === null ||
+    planFilters === null ||
+    operation?.kind !== "search" ||
+    sort?.[0] !== "relevance" ||
+    sort[1] !== "stable_id" ||
+    plan?.kind !== "exact_structured" ||
+    plan.limit !== envelope.limit ||
+    !providerModelIdQuery(plan.query) ||
+    plan.semanticCalls !== 0 ||
+    plan.semanticCandidates !== 0 ||
+    plan.semanticDegraded !== "disabled" ||
+    JSON.stringify(planFilters.canonical) !== JSON.stringify(filters.canonical)
+  )
+    return null;
+  return {
+    environment: outer.environment,
+    bookmark: outer.bookmark,
+    publicationId: envelope.publicationId,
+    query: plan.query,
+    providerId: filters.providerId,
+    recordType: filters.recordType,
+    limit: envelope.limit,
+  };
+};
+
 const d1Rows = (value: unknown): unknown[] | null => {
   if (!record(value) || value.success !== true || !Array.isArray(value.results))
     return null;
@@ -582,6 +854,41 @@ export const readModelVariantExactNameTierV1 = async (
     return { outcome: "page", page };
   } catch (error) {
     if (error instanceof ModelVariantExactNameError)
+      return {
+        outcome:
+          error.code === "read_failure" ? "read_failure" : "integrity_failure",
+      };
+    return { outcome: "read_failure" };
+  }
+};
+
+export const readProviderModelIdExactTierV1 = async (
+  database: D1Database,
+  protectedEnvironment: unknown,
+  input: unknown,
+): Promise<ReadProviderModelIdExactTierV1Outcome> => {
+  const parsed = parseProviderModelIdReadInput(input);
+  if (
+    parsed === null ||
+    !environment(protectedEnvironment) ||
+    parsed.environment !== protectedEnvironment
+  )
+    return { outcome: "integrity_failure" };
+  try {
+    const page = await readProviderModelIdExactPage(
+      database.withSession(parsed.bookmark),
+      {
+        publicationId: parsed.publicationId,
+        query: parsed.query,
+        providerId: parsed.providerId,
+        recordType: parsed.recordType,
+        continuation: null,
+        limit: parsed.limit,
+      },
+    );
+    return { outcome: "page", page };
+  } catch (error) {
+    if (error instanceof ProviderModelIdExactError)
       return {
         outcome:
           error.code === "read_failure" ? "read_failure" : "integrity_failure",

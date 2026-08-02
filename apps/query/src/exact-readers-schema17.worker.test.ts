@@ -5,6 +5,7 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 import {
   projectServingSwitchPreflightProofV4,
   projectServingSwitchV4,
+  normalizeExactSearchName,
   readProviderModelIdSearchStagingPersistenceV1,
   readProviderSearchStagingPersistenceV2,
   readServingReadinessCommitPersistenceV4,
@@ -26,6 +27,10 @@ import {
 } from "../../pipeline/test/serving-switch-v4-fixture.js";
 import { readModelVariantExactNamePage } from "./model-variant-exact-name.js";
 import { readProviderExactNamePage } from "./provider-exact-name.js";
+import {
+  PROVIDER_MODEL_ID_EXACT_CANDIDATE_SELECT_SQL,
+  readProviderModelIdExactPage,
+} from "./provider-model-id-exact.js";
 
 vi.mock("@quant-clarity/publication-core", async (importOriginal) => {
   const actual = await importOriginal<typeof PublicationCoreModule>();
@@ -184,7 +189,14 @@ const activation = async (
 
 beforeAll(async () => {
   await applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS);
-  fixture = await createServingV4Fixture(PUBLICATION, GENERATED_AT);
+  fixture = await createServingV4Fixture(PUBLICATION, GENERATED_AT, [
+    { rawProviderModelId: "\u0000" },
+    { rawProviderModelId: "\u0000", status: "inactive", stale: true },
+    { rawProviderModelId: "   ", status: "inactive", stale: true },
+    { rawProviderModelId: "Accounts/Alpha" },
+    { rawProviderModelId: "ACCOUNTS/ALPHA", status: "unavailable" },
+    { rawProviderModelId: "ACCOUNTS/ALPHA" },
+  ]);
   await seedModelVariantNameSearchBuildingPublication(
     env.SERVING_DB,
     fixture.base,
@@ -204,6 +216,26 @@ beforeAll(async () => {
 });
 
 describe("schema-1.7 current exact readers (SRCH-002, SRCH-006, SRCH-009, QA-005, QA-006)", () => {
+  it("orders normalized-name BLOBs by unsigned UTF-8 bytes across BMP and supplementary planes", async () => {
+    const bmp = new TextEncoder().encode("\uE000");
+    const supplementary = new TextEncoder().encode("\u{10000}");
+    const result = await env.SERVING_DB.prepare(
+      `SELECT label
+       FROM (
+         SELECT 'supplementary' AS label, ?1 AS normalized_name_utf8
+         UNION ALL
+         SELECT 'bmp' AS label, ?2 AS normalized_name_utf8
+       )
+       ORDER BY normalized_name_utf8 ASC`,
+    )
+      .bind(supplementary, bmp)
+      .all();
+    expect(result.results).toEqual([
+      { label: "bmp" },
+      { label: "supplementary" },
+    ]);
+  });
+
   it("selects the real v4 head and returns canonical provider facts without admitting NUL", async () => {
     await expect(
       env.SERVING_DB.prepare(
@@ -304,5 +336,155 @@ describe("schema-1.7 current exact readers (SRCH-002, SRCH-006, SRCH-009, QA-005
         },
       ],
     });
+  });
+
+  it("reads a canonical target through the schema-1.7 provider-model-ID BLOB indexes", async () => {
+    const persisted = readProviderModelIdSearchStagingPersistenceV1(
+      fixture.providerModelIdStaging,
+    );
+    const first = persisted.rows[0];
+    if (first === undefined)
+      throw new Error("provider-model-ID fixture missing");
+    const query = new TextDecoder().decode(
+      new Uint8Array(first.raw_provider_model_id_utf8),
+    );
+    await expect(
+      readProviderModelIdExactPage(env.SERVING_DB, {
+        publicationId: PUBLICATION,
+        query,
+        providerId: null,
+        recordType: null,
+        continuation: null,
+        limit: 20,
+      }),
+    ).resolves.toMatchObject({
+      publicationId: PUBLICATION,
+      nextContinuation: null,
+      results: [
+        {
+          tier: 2,
+          resourceType: first.target_resource_type,
+          resourceId: first.target_resource_id,
+          matchKind: "provider_model_id",
+          semanticDegraded: "disabled",
+          displayName: { state: "known" },
+        },
+      ],
+    });
+  });
+
+  it("proves normalized-only dedupe, eligibility, and same-witness filters in real D1", async () => {
+    const encode = (value: string): Uint8Array =>
+      new TextEncoder().encode(value);
+    const candidateRows = async (query: string) =>
+      env.SERVING_DB.prepare(PROVIDER_MODEL_ID_EXACT_CANDIDATE_SELECT_SQL)
+        .bind(
+          PUBLICATION,
+          encode(query),
+          encode(normalizeExactSearchName(query)),
+          null,
+          null,
+          -1,
+          new Uint8Array(),
+          "",
+          21,
+          1_048_576,
+        )
+        .all();
+
+    const normalizedWitnesses = await env.SERVING_DB.prepare(
+      `SELECT
+         count(*) AS total_count,
+         sum(CASE
+           WHEN json_extract(resource.resource_json, '$.status.state') = 'known'
+            AND json_extract(resource.resource_json, '$.status.value') = 'active'
+            AND json_extract(resource.resource_json, '$.stale') = 0
+           THEN 1 ELSE 0 END) AS eligible_count
+       FROM publication_provider_model_id_search_document AS document
+       JOIN publication_resource AS resource
+         ON resource.publication_id = document.publication_id
+        AND resource.resource_type = 'offering'
+        AND resource.resource_id = document.offering_id
+       WHERE document.publication_id = ?1
+         AND document.normalized_provider_model_id_utf8 = ?2`,
+    )
+      .bind(PUBLICATION, encode(normalizeExactSearchName("accounts/alpha")))
+      .first();
+    expect(normalizedWitnesses).toEqual({
+      total_count: 3,
+      eligible_count: 2,
+    });
+
+    const normalizedOnly = await candidateRows("accounts/alpha");
+    expect(normalizedOnly.results).toHaveLength(2);
+    expect(normalizedOnly.results[1]).toMatchObject({
+      row_kind: "candidate",
+      match_mode: 1,
+      offering_id: "off_00000004-0000-4000-8000-000000000001",
+      target_resource_type: "model",
+    });
+
+    const rawWithExcludedDuplicate = await candidateRows("\u0000");
+    expect(rawWithExcludedDuplicate.results).toHaveLength(2);
+    expect(rawWithExcludedDuplicate.results[1]).toMatchObject({
+      row_kind: "candidate",
+      match_mode: 0,
+      offering_id: "off_00000001-0000-4000-8000-000000000001",
+    });
+    const rawWitnesses = await env.SERVING_DB.prepare(
+      `SELECT
+         count(*) AS total_count,
+         sum(CASE
+           WHEN json_extract(resource.resource_json, '$.status.state') = 'known'
+            AND json_extract(resource.resource_json, '$.status.value') = 'active'
+            AND json_extract(resource.resource_json, '$.stale') = 0
+           THEN 1 ELSE 0 END) AS eligible_count
+       FROM publication_provider_model_id_search_document AS document
+       JOIN publication_resource AS resource
+         ON resource.publication_id = document.publication_id
+        AND resource.resource_type = 'offering'
+        AND resource.resource_id = document.offering_id
+       WHERE document.publication_id = ?1
+         AND document.raw_provider_model_id_utf8 = ?2`,
+    )
+      .bind(PUBLICATION, encode("\u0000"))
+      .first();
+    expect(rawWitnesses).toEqual({ total_count: 2, eligible_count: 1 });
+
+    const persisted = readProviderModelIdSearchStagingPersistenceV1(
+      fixture.providerModelIdStaging,
+    );
+    const providerId = persisted.rows[0]?.provider_id;
+    if (providerId === undefined) throw new Error("provider fixture missing");
+    const base = {
+      publicationId: PUBLICATION,
+      query: "accounts/alpha",
+      continuation: null,
+      limit: 20,
+    } as const;
+    await expect(
+      readProviderModelIdExactPage(env.SERVING_DB, {
+        ...base,
+        providerId,
+        recordType: "model",
+      }),
+    ).resolves.toMatchObject({
+      matchModes: ["normalized"],
+      results: [{ resourceType: "model" }],
+    });
+    await expect(
+      readProviderModelIdExactPage(env.SERVING_DB, {
+        ...base,
+        providerId: "prv_99999999-9999-4999-8999-999999999999",
+        recordType: "model",
+      }),
+    ).resolves.toMatchObject({ results: [], matchModes: [] });
+    await expect(
+      readProviderModelIdExactPage(env.SERVING_DB, {
+        ...base,
+        providerId,
+        recordType: "variant",
+      }),
+    ).resolves.toMatchObject({ results: [], matchModes: [] });
   });
 });
