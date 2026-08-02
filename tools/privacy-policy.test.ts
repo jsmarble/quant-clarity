@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   findBrowserContentViolations,
   findContentViolations,
+  findControlledPipelineContentViolations,
   findGeneratedArtifactViolations,
   validateGeneratedFrontendConfig,
   validatePublicWorkerConfig,
@@ -60,6 +61,24 @@ describe("zero-visitor-data static policy (GATE-zero-visitor-data)", () => {
     expect(
       findBrowserContentViolations("await caches.open('visitor')"),
     ).toContain("browser Cache API");
+  });
+
+  it("keeps controlled A2 pipeline adapters free of visitor inputs and echoed payloads", () => {
+    expect(
+      findControlledPipelineContentViolations(
+        "export const run = (request: Request) => request.headers;",
+      ),
+    ).toEqual(expect.arrayContaining(["request object"]));
+    expect(
+      findControlledPipelineContentViolations(
+        "throw new Error(`invalid payload ${payload}`);",
+      ),
+    ).toContain("error payload interpolation");
+    expect(
+      findControlledPipelineContentViolations(
+        'throw new Error("controlled projection is invalid");',
+      ),
+    ).toEqual([]);
   });
 
   it("rejects telemetry export and enabled observability mutations", () => {

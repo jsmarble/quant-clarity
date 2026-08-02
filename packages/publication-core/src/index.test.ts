@@ -2970,6 +2970,36 @@ describe("portable backup manifest validation (BE-010–BE-012, OPS-008)", () =>
     );
   });
 
+  it("rejects reconstructible provider and model search projections from backup inventories", async () => {
+    const manifest = await backup();
+    for (const excludedTable of [
+      "publication_provider_search_document",
+      "fts_publication_provider_name",
+      "publication_model_variant_name_search_document",
+    ]) {
+      const withoutRoot = {
+        ...manifest,
+        tables: [
+          ...manifest.tables,
+          {
+            table: excludedTable,
+            chunkCount: 0,
+            rowCount: 0,
+            byteCount: 0,
+          },
+        ],
+      };
+      const candidate = {
+        ...withoutRoot,
+        rootHash: await buildBackupRootHash(withoutRoot),
+      };
+
+      expect(await validateBackup(candidate)).toContain(
+        `backup table inventory contains unexpected table ${excludedTable}`,
+      );
+    }
+  });
+
   it("rejects a self-consistent truncated export against trusted closure facts", async () => {
     const manifest = await backup();
     const tables = manifest.tables.map((table) =>

@@ -59,7 +59,12 @@ const publish = async (
 };
 
 beforeAll(async () => {
-  await applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS);
+  await applyD1Migrations(
+    env.SERVING_DB,
+    env.TEST_MIGRATIONS.filter(
+      (migration) => migration.name <= "0008_provider_name_nul_guard.sql",
+    ),
+  );
 });
 
 describe("provider exact-name reader in workerd/D1 (SRCH-002, SRCH-006, SRCH-008, QA-006)", () => {
