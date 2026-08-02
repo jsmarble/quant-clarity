@@ -298,6 +298,15 @@ const isHotPublicationSentinel = (
   );
 };
 
+const successfulD1Rows = (value: unknown): unknown[] | null => {
+  if (typeof value !== "object" || value === null || Array.isArray(value))
+    return null;
+  const result = value as Record<string, unknown>;
+  return result.success === true && Array.isArray(result.results)
+    ? result.results
+    : null;
+};
+
 const rehydrate = async (
   rowValue: unknown,
   normalizedQuery: string,
@@ -369,7 +378,7 @@ export const readProviderExactNamePage = async (
   const validated = validateInput(input);
   let rowValues: unknown[];
   try {
-    const result = await database
+    const result: unknown = await database
       .prepare(PROVIDER_EXACT_NAME_SELECT_SQL)
       .bind(
         validated.publicationId,
@@ -379,9 +388,9 @@ export const readProviderExactNamePage = async (
         validated.limit + 1,
       )
       .all<ProviderExactNameRow>();
-    if (!result.success || !Array.isArray(result.results))
-      throw new ProviderExactNameError("read_failure");
-    rowValues = result.results;
+    const results = successfulD1Rows(result);
+    if (results === null) throw new ProviderExactNameError("read_failure");
+    rowValues = results;
   } catch (error) {
     if (error instanceof ProviderExactNameError) throw error;
     throw new ProviderExactNameError("read_failure");
