@@ -1,0 +1,50 @@
+{
+  "$id": "OfferingApplicability",
+  "additionalProperties": false,
+  "type": "object",
+  "required": [
+    "provider_id",
+    "provider_model_id",
+    "tier_key",
+    "endpoint_class",
+    "material_region_key",
+    "component_scope"
+  ],
+  "properties": {
+    "provider_id": {
+      "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "provider_model_id": {
+      "minLength": 1,
+      "maxLength": 256,
+      "type": "string"
+    },
+    "tier_key": {
+      "minLength": 1,
+      "maxLength": 128,
+      "type": "string"
+    },
+    "endpoint_class": {
+      "minLength": 1,
+      "maxLength": 128,
+      "type": "string"
+    },
+    "material_region_key": {
+      "maxLength": 128,
+      "type": "string"
+    },
+    "component_scope": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "maxLength": 128,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  }
+}

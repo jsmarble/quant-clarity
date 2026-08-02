@@ -1,0 +1,12 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2024", "DOM"],
+    "noEmit": true,
+    "rootDir": "..",
+    "skipLibCheck": true,
+    "types": ["node"]
+  },
+  "include": ["./**/*.ts", "../vitest.config.ts", "../vitest.worker.config.ts"],
+  "references": [{ "path": "../packages/contracts" }]
+}

@@ -1,0 +1,5 @@
+{
+  "$id": "ResourceId",
+  "pattern": "^(org|fam|mdl|var|als|slg|chk|mck|edg|par|prv|off|scp|aff|src|obs|evd|clm|cfl|prc|cmp|pcs|occ|run|pvr|out|anm|qrn|pol|prn|pub)_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+  "type": "string"
+}

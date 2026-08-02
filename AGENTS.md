@@ -6,18 +6,12 @@ QuantClarity is a free, public-data project that makes inference-provider precis
 
 ## Current phase
 
-The repository is in the system-design phase. The approved product requirements are the source of truth:
+The repository is in the implementation phase. The approved product requirements and approved system design are the source of truth:
 
 - `docs/product/requirements.md`
+- `docs/design/system-design.md`
 
-Until `docs/design/system-design.md` is marked approved:
-
-- Do not scaffold application runtime code.
-- Do not choose a frontend framework, package manager, database schema, Worker decomposition, or deployment topology without recording and reviewing the design decision.
-- Do not add production dependencies or Cloudflare resources.
-- Prefer design artifacts, contracts, schemas, fixtures, and traceability over implementation.
-
-When the system design is approved, update this section and add the exact setup, lint, type-check, test, build, and deployment commands before beginning broad implementation.
+The product owner approved the design, its Section 2.4 defaults, the zero-visitor-data/GDPR amendment, and the ADR 0012 Workers frontend amendment on 2026-08-01. Implement accepted ADRs in vertical slices. `apps/web` uses current Astro SSR on Cloudflare Workers with Static Assets; do not restore the superseded Pages topology or choose a legacy adapter.
 
 ## Product invariants
 
@@ -37,7 +31,10 @@ These rules are non-negotiable unless the PRD itself is explicitly amended:
 - Every non-null public fact requires evidence and an observation timestamp.
 - Stale, inactive, conditional, promotional, and unknown states must remain explicit.
 - No login, administration dashboard, public editing, user contribution, feedback, review, rating, or moderation surface is in scope.
-- No outside visitor analytics, behavioral targeting, session replay, or user profiling is allowed.
+- Store no visitor information. Public frontend/API/query Workers must have cookies, browser persistence, request logs/traces, custom request telemetry, analytics, beacons, request correlation IDs, click tracking, and visitor-derived durable cache keys disabled.
+- Cloudflare may process network data transiently to deliver and protect requests as infrastructure processor; never copy source addresses or derived actor keys into QuantClarity storage, logs, metrics, alerts, or artifacts.
+- Free-text search and every query-string/filter response are `private, no-store`. Cache only identical path-only public representations by publication ID plus validated stable resource ID.
+- Referral links are direct exact-allowlisted destinations with one static program ID, adjacent disclosure, no referrer, and no redirects, pixels, callbacks, personalized identifiers, cookies, or click logs.
 
 ## Requirements discipline
 
@@ -63,8 +60,8 @@ These rules are non-negotiable unless the PRD itself is explicitly amended:
 
 ## Cloudflare constraints
 
-- Keep managed application compute, storage, orchestration, search, observability, and visitor analytics Cloudflare-native, subject only to the narrow external-source and AI-processing exceptions in the PRD.
-- Use Cloudflare Pages for the frontend, a Worker for the public API, and Vectorize or a Vectorize-backed Cloudflare search capability for semantic search, as required by the PRD.
+- Keep managed application compute, storage, orchestration, search, and non-visitor control-plane observability Cloudflare-native, subject only to the narrow external-source and AI-processing exceptions in the PRD. No visitor analytics service is allowed.
+- Use an Astro SSR Cloudflare Worker with Workers Static Assets for the frontend, a separate Worker for the public API, and Vectorize or a Vectorize-backed Cloudflare search capability for semantic search, as required by the amended PRD.
 - Do not select the remaining Cloudflare products until the system design evaluates the requirements and records the decision.
 - Before relying on a Cloudflare API, binding, limit, price, compatibility flag, or configuration field, verify it against current official Cloudflare documentation and the installed Wrangler schema/types.
 - Define production, preview, and local environments explicitly. Preview work must not mutate production data or indexes.
@@ -80,7 +77,9 @@ These rules are non-negotiable unless the PRD itself is explicitly amended:
 - Validate and encode all provider-controlled content before storage or display.
 - Keep public API filtering, pagination, search fan-out, query length, response size, CPU, and subrequest use explicitly bounded.
 - Do not log authorization headers, source credentials, full authenticated responses, or verbatim search queries.
-- Treat affiliate redirects as security-sensitive allowlisted redirects.
+- Do not implement affiliate/click redirects. Validate direct referral destinations against the exact allowlist.
+- Public Workers must keep invocation logs, traces, Tail/Logpush export, Analytics Engine request events, Web Analytics, and custom telemetry disabled. Do not use `console.*` in public-serving code.
+- Do not enable cookie-setting Cloudflare challenges, JavaScript bot detections, Turnstile, Waiting Room/session affinity, unique-visitor identifiers, Always Online, Zaraz, or equivalent features.
 - Prefer least-privilege bindings and separate identities for public reads, pipeline writes, and deployment operations.
 
 ## Engineering workflow
@@ -108,19 +107,31 @@ Documentation must distinguish facts, decisions, assumptions, open questions, an
 
 ## Verification
 
-The repository currently has no runtime toolchain. For documentation-only changes:
+Supported runtime: Node 24.18.0 and npm 11.19.0. Tool versions and install-script approvals are lockfile-pinned.
 
-- Verify Markdown structure and internal paths.
-- Check that requirement IDs remain unique when editing the PRD.
-- Inspect `git diff --check` and `git status --short`.
-- Confirm no secrets, authenticated payloads, or macOS metadata are introduced.
+- Initial setup: `mise trust && mise install && mise exec -- npx --yes npm@11.19.0 install`
+- Clean install: `mise exec -- npx --yes npm@11.19.0 ci`
+- Format: `mise exec -- npx --yes npm@11.19.0 run format`
+- Format check: `mise exec -- npx --yes npm@11.19.0 run format:check`
+- Lint: `mise exec -- npx --yes npm@11.19.0 run lint`
+- Type-check: `mise exec -- npx --yes npm@11.19.0 run typecheck`
+- Generate contracts: `mise exec -- npx --yes npm@11.19.0 run contracts:generate`
+- Check generated contracts: `mise exec -- npx --yes npm@11.19.0 run contracts:check`
+- Check zero-visitor-data rules: `mise exec -- npx --yes npm@11.19.0 run privacy:check`
+- Unit tests: `mise exec -- npx --yes npm@11.19.0 test`
+- Worker-runtime integration tests: `mise exec -- npx --yes npm@11.19.0 run test:workers`
+- Generate Cloudflare types: `mise exec -- npx --yes npm@11.19.0 run cf:types`
+- Check Cloudflare type drift: `mise exec -- npx --yes npm@11.19.0 run cf:types:check`
+- Check environment isolation inventory: `mise exec -- npx --yes npm@11.19.0 run environments:check`
+- Check dependency licenses, vulnerabilities, and SBOM generation: `mise exec -- npx --yes npm@11.19.0 run supply-chain:check`
+- Dry-run builds: `mise exec -- npx --yes npm@11.19.0 run build`
+- Full local/CI gate: `mise exec -- npx --yes npm@11.19.0 run verify`
 
-Once a toolchain is approved, replace this section with exact commands. Never claim a check passed unless it was run successfully.
+No preview or production deployment command is authorized yet. Resource inventory, legal/source registers, privacy accountability artifacts, and protected deployment configuration must pass their gates first. For documentation changes, also check local Markdown targets, unique PRD IDs, `git diff --check`, `git status --short`, and the absence of secrets/authenticated payloads/macOS metadata. Never claim a check passed unless it was run successfully.
 
 ## Repository policy
 
 - The public repository will not solicit contributions or operate public Issues or Discussions.
 - Do not add contribution prompts, issue templates, discussion links, or support promises.
-- Source-code and dataset licensing are separate decisions and remain unresolved until explicitly approved.
-- Keep generated files, dependencies, local secrets, Wrangler state, coverage, logs, and editor metadata out of Git.
-
+- Source code is MPL-2.0. Dataset/API terms remain separate and unresolved until explicitly approved.
+- Keep dependencies, compiler caches, local secrets, Wrangler state, coverage, logs, and editor metadata out of Git. Version only reviewed deterministic generated contracts under `contracts/generated/` and Wrangler binding declarations; CI must prove they are current.

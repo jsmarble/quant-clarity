@@ -1,0 +1,21 @@
+{
+  "$id": "FactState",
+  "anyOf": [
+    {
+      "const": "known",
+      "type": "string"
+    },
+    {
+      "const": "unknown",
+      "type": "string"
+    },
+    {
+      "const": "not_applicable",
+      "type": "string"
+    },
+    {
+      "const": "unavailable",
+      "type": "string"
+    }
+  ]
+}

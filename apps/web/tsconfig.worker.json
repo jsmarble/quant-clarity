@@ -1,0 +1,20 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "paths": {
+      "@quant-clarity/domain/source-address": [
+        "../../packages/domain/src/source-address.ts"
+      ]
+    },
+    "skipLibCheck": true,
+    "types": ["./worker-configuration.d.ts"]
+  },
+  "include": [
+    "src/lib/http.ts",
+    "src/lib/rate-limit.ts",
+    "src/worker.ts",
+    "worker-configuration.d.ts"
+  ],
+  "references": [{ "path": "../../packages/domain" }]
+}

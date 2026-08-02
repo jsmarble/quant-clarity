@@ -1,0 +1,158 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+
+interface Props {
+  versioned?: boolean;
+}
+
+const { versioned = false } = Astro.props;
+const currentPath = versioned ? "/methodology/1.0.0" : "/methodology";
+const title = versioned
+  ? "Methodology v1.0.0 — QuantClarity"
+  : "Methodology — QuantClarity";
+---
+
+<BaseLayout
+  title={title}
+  description="How QuantClarity defines precision, groups models, evaluates evidence, handles freshness and prices, and preserves neutral ordering."
+  currentPath={currentPath}
+>
+  <article class="prose shell">
+    <header class="page-header flush">
+      <p class="eyebrow">Methodology version 1.0.0 · Effective 2026-08-01</p>
+      <h1>How QuantClarity handles facts</h1>
+      <p class="lede narrow">
+        QuantClarity publishes scoped, evidence-backed facts. It does not rank
+        or recommend inference providers.
+      </p>
+      {
+        !versioned && (
+          <p>
+            The stable record of this methodology is available at{" "}
+            <a href="/methodology/1.0.0">version 1.0.0</a>.
+          </p>
+        )
+      }
+    </header>
+
+    <h2>Precision vocabulary and scope</h2>
+    <dl>
+      <dt>Source-checkpoint precision</dt>
+      <dd>
+        The declared weight format of an identified upstream checkpoint. A
+        checkpoint may be canonical, publisher-provided quantized, or a
+        separately evidenced third-party conversion.
+      </dd>
+      <dt>Source-provided quantization</dt>
+      <dd>
+        A quantized checkpoint or variant published or explicitly endorsed by
+        the original model publisher.
+      </dd>
+      <dt>Serving-weights precision</dt>
+      <dd>
+        The stored weight representation for an exact provider offering, tier,
+        endpoint class, and material region established by evidence.
+      </dd>
+      <dt>Compute and component precision</dt>
+      <dd>
+        Computation formats are recorded separately for weight computation,
+        activations, accumulation, KV cache, attention, experts, shared layers,
+        and other explicitly named components. A known component never fills an
+        unknown sibling component.
+      </dd>
+      <dt>Normalized labels</dt>
+      <dd>
+        BF16, FP16, FP8, FP6, FP4, NVFP4, MXFP4, INT8, and INT4 retain their
+        exact labels. Format details such as FP8 E4M3/E5M2 and block formats are
+        retained when supplied. BF16 and FP16 are distinct; neither is assigned
+        a universal quality advantage.
+      </dd>
+      <dt>Mixed, other, and unknown</dt>
+      <dd>
+        Mixed preserves component details; other preserves an evidenced format
+        outside the current vocabulary; unknown means no supported exact-scope
+        fact is available. Names, speed, price, accelerators, reputation, and a
+        served model's self-description are never substitutes for evidence.
+      </dd>
+    </dl>
+    <p>
+      A wider downstream format does not restore information discarded by a
+      lower-precision source checkpoint. Expanding INT4 or FP8 source weights
+      into BF16 does not recreate discarded source information.
+    </p>
+
+    <h2>Model grouping</h2>
+    <p>
+      A provider's serving precision alone does not split a canonical model. An
+      explicitly named and selectable precision or material variant receives its
+      own variant resource and links to its canonical family. Alias matching
+      never hides an explicit variant distinction, and canonical and variant
+      provider comparisons remain separate.
+    </p>
+
+    <h2>Evidence and source precedence</h2>
+    <p>
+      Precedence is field-specific, not simply “newest wins.” Exact provider API
+      or authenticated-catalog facts lead for the exact offering, followed by
+      exact provider-controlled public documentation. Publisher-controlled
+      checkpoints and documentation lead for upstream identity, architecture,
+      and checkpoint facts. Exact provider support or changelog statements may
+      follow. Independent structured catalogs support discovery and conflict
+      detection; community discussion is only a lead for investigation.
+    </p>
+    <p>
+      Applicability and verification are checked before precedence or recency.
+      Equally authoritative unresolved conflicts publish as unknown. Every
+      non-null fact identifies evidence and an observation time; lower-priority
+      conflicts cannot silently overwrite a winning claim.
+    </p>
+
+    <h2>Freshness and status</h2>
+    <p>
+      An offering becomes stale after two consecutive completed Monday/Thursday
+      refresh opportunities without a successful exact-offering observation, or
+      after more than eight elapsed days since its last successful
+      observation—whichever happens first. A run still within its 12-hour
+      terminal deadline is not yet missed. Stale active and historical offerings
+      remain visible through explicit filters, while the default table is
+      limited to active, non-stale offerings.
+    </p>
+
+    <h2>Prices</h2>
+    <p>
+      Input, output, and cached-input prices stay separate; a missing cached
+      input price is unknown, never zero. The provider-stated currency is
+      preserved without foreign-exchange conversion. If a provider omits
+      currency, USD is visibly labeled as a system default rather than a
+      provider statement.
+    </p>
+    <p>
+      Standard comparable prices are generally available, on-demand,
+      pay-as-you-go rates without subscriptions, commitments, volume minimums,
+      batch conditions, or dedicated deployments. Conditional, subscription,
+      batch, volume, committed-use, context-tiered, region-tiered, “from,” and
+      promotional prices remain visible with their exact qualifiers, but do not
+      replace or enter the default standard-price sort unless explicitly
+      included. Numeric price sorting always uses one visible currency scope.
+    </p>
+
+    <h2>Neutral comparison and ordering</h2>
+    <p>
+      The default offering order is provider display name ascending, then stable
+      offering ID ascending. Users may explicitly sort by provider, normalized
+      precision label, each standard comparable price role, freshness, or
+      status. Precision display order is organizational only—not fidelity,
+      quality, or lineage ranking—and mixed, other, and unknown remain explicit.
+      Affiliate status and commission never affect facts, inclusion, relevance,
+      filters, or ordering.
+    </p>
+
+    <h2>Material-change log</h2>
+    <p>
+      Version 1.0.0 establishes the initial precision vocabulary, model-grouping
+      rules, evidence precedence, freshness policy, price treatment, and neutral
+      comparison behavior. Future material changes will receive a new stable
+      version and an entry here; historical versions will remain available.
+    </p>
+  </article>
+</BaseLayout>

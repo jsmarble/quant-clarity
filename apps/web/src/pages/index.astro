@@ -1,0 +1,84 @@
+---
+import SearchForm from "../components/SearchForm.astro";
+import BaseLayout from "../layouts/BaseLayout.astro";
+---
+
+<BaseLayout
+  title="QuantClarity — inference precision, pricing, and provenance"
+  description="Compare public inference-provider precision, pricing, model lineage, and evidence without rankings or tracking."
+>
+  <section class="hero shell">
+    <div class="hero-copy">
+      <p class="eyebrow">Public facts, kept in context</p>
+      <h1>Know what a provider is actually serving.</h1>
+      <p class="lede">
+        QuantClarity makes inference-provider precision, pricing, model lineage,
+        and provenance facts accessible and comparable—without ranking
+        providers.
+      </p>
+    </div>
+    <SearchForm />
+  </section>
+
+  <section class="section shell" aria-labelledby="why-title">
+    <div class="section-heading">
+      <p class="eyebrow">Why serving precision matters</p>
+      <h2 id="why-title">Two facts that answer different questions</h2>
+    </div>
+    <div class="fact-example">
+      <article>
+        <span class="fact-number" aria-hidden="true">01</span>
+        <h3>Source checkpoint</h3>
+        <p>
+          Describes the model artifact and source-provided quantization. It does
+          not prove what a provider deploys.
+        </p>
+      </article>
+      <div class="fact-connector" aria-hidden="true">≠</div>
+      <article>
+        <span class="fact-number" aria-hidden="true">02</span>
+        <h3>Provider offering</h3>
+        <p>
+          Describes the exact tier, endpoint class, and material region
+          supported by provider evidence.
+        </p>
+      </article>
+    </div>
+    <p class="callout">
+      A wider serving or compute representation cannot restore information
+      already absent from a lower-precision source checkpoint. BF16 and FP16
+      remain distinct formats; QuantClarity does not imply a universal quality
+      order.
+    </p>
+  </section>
+
+  <section class="section shell" aria-labelledby="principles-title">
+    <div class="section-heading">
+      <p class="eyebrow">Designed as a public service</p>
+      <h2 id="principles-title">Useful because the facts are useful</h2>
+    </div>
+    <div class="principle-grid">
+      <article class="principle-card">
+        <h3>Unknown stays unknown</h3>
+        <p>
+          No fact is inferred from reputation, hardware, naming, speed, or
+          expectation.
+        </p>
+      </article>
+      <article class="principle-card">
+        <h3>Neutral by construction</h3>
+        <p>
+          Affiliate status never affects inclusion, facts, ordering, filtering,
+          or prose.
+        </p>
+      </article>
+      <article class="principle-card">
+        <h3>Zero visitor data</h3>
+        <p>
+          No accounts, cookies, browser storage, analytics, beacons, or click
+          tracking.
+        </p>
+      </article>
+    </div>
+  </section>
+</BaseLayout>

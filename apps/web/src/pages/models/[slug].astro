@@ -1,0 +1,22 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+
+const slug = Astro.params.slug ?? "requested-model";
+Astro.response.status = 404;
+---
+
+<BaseLayout
+  title="Model not published — QuantClarity"
+  description="The requested model is not present in the current QuantClarity publication."
+  currentPath={`/models/${slug}`}
+>
+  <section class="page-header shell">
+    <p class="eyebrow">Model Facts unavailable</p>
+    <h1>This model is not published</h1>
+    <p class="lede narrow">
+      No evidence-backed model record exists at this path in the current
+      publication. QuantClarity does not fill missing facts with guesses.
+    </p>
+    <a class="button-link" href="/models">Browse published models</a>
+  </section>
+</BaseLayout>

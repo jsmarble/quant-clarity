@@ -1,0 +1,50 @@
+{
+  "$id": "ErrorEnvelope",
+  "additionalProperties": false,
+  "type": "object",
+  "required": [
+    "error"
+  ],
+  "properties": {
+    "error": {
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "code",
+        "message"
+      ],
+      "properties": {
+        "code": {
+          "pattern": "^[a-z][a-z0-9_]{0,63}$",
+          "type": "string"
+        },
+        "message": {
+          "maxLength": 200,
+          "type": "string"
+        },
+        "details": {
+          "maxItems": 10,
+          "type": "array",
+          "items": {
+            "additionalProperties": false,
+            "type": "object",
+            "required": [
+              "parameter",
+              "reason"
+            ],
+            "properties": {
+              "parameter": {
+                "maxLength": 64,
+                "type": "string"
+              },
+              "reason": {
+                "maxLength": 200,
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

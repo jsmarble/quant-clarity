@@ -16,13 +16,20 @@ node_modules/
 
 # Build, test, and local runtime output
 dist/
+dist-worker/
 build/
 .output/
 .cache/
+.astro/
 coverage/
+playwright-report/
+test-results/
+dogfood-output/
 .wrangler/
 .turbo/
 *.log
+*.tsbuildinfo
+results.sarif
 
 # Editors
 .idea/
@@ -32,4 +39,3 @@ coverage/
 # Temporary files
 tmp/
 temp/
-

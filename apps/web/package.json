@@ -1,0 +1,23 @@
+{
+  "name": "@quant-clarity/web",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MPL-2.0",
+  "type": "module",
+  "scripts": {
+    "build": "ASTRO_TELEMETRY_DISABLED=1 astro check && ASTRO_TELEMETRY_DISABLED=1 astro build && tsx ../../tools/sanitize-web-build.ts && WRANGLER_SEND_METRICS=false wrangler deploy --dry-run --outdir dist-worker",
+    "cf:types": "WRANGLER_SEND_METRICS=false wrangler types --env-interface Env worker-configuration.d.ts",
+    "cf:types:check": "WRANGLER_SEND_METRICS=false wrangler types --check --env-interface Env worker-configuration.d.ts",
+    "dev": "ASTRO_TELEMETRY_DISABLED=1 WRANGLER_SEND_METRICS=false astro dev",
+    "preview": "ASTRO_TELEMETRY_DISABLED=1 WRANGLER_SEND_METRICS=false astro preview",
+    "typecheck": "ASTRO_TELEMETRY_DISABLED=1 astro check && tsc -p tsconfig.test.json --noEmit && tsc -p tsconfig.worker.json --noEmit"
+  },
+  "dependencies": {
+    "@astrojs/cloudflare": "14.1.7",
+    "@quant-clarity/domain": "0.0.0",
+    "astro": "7.1.6"
+  },
+  "devDependencies": {
+    "@astrojs/check": "0.9.10"
+  }
+}

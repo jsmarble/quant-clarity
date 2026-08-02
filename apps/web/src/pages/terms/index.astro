@@ -1,0 +1,31 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+
+export const prerender = true;
+---
+
+<BaseLayout
+  title="Terms — QuantClarity"
+  description="Working terms and data-use release status for QuantClarity."
+  currentPath="/terms"
+>
+  <article class="prose shell">
+    <header class="page-header flush">
+      <p class="eyebrow">Working notice · Not approved for production</p>
+      <h1>Terms</h1>
+      <p class="lede narrow">
+        Prices and deployments can change. Verify facts with the provider before
+        purchasing or relying on a deployment decision.
+      </p>
+    </header>
+    <p>
+      QuantClarity is an independent public-data service, not an inference
+      provider and not affiliated with the providers or publishers it describes.
+      Names and trademarks are used descriptively.
+    </p>
+    <p>
+      Source code is licensed under MPL-2.0. Dataset and API terms remain
+      separate and must be approved before public release.
+    </p>
+  </article>
+</BaseLayout>

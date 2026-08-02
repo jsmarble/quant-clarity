@@ -1,0 +1,15 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/contracts" },
+    { "path": "packages/contracts/tsconfig.test.json" },
+    { "path": "packages/domain" },
+    { "path": "packages/domain/tsconfig.test.json" },
+    { "path": "packages/testing" },
+    { "path": "apps/api" },
+    { "path": "apps/api/tsconfig.test.json" },
+    { "path": "apps/query" },
+    { "path": "apps/pipeline" },
+    { "path": "tools" }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "allowJs": true,
+    "jsx": "preserve",
+    "jsxImportSource": "astro",
+    "outDir": "dist-types",
+    "rootDir": "src",
+    "types": ["astro/client"]
+  },
+  "include": [".astro/types.d.ts", "src/**/*.astro", "src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts", "src/lib/rate-limit.ts", "src/worker.ts"],
+  "references": [{ "path": "../../packages/domain" }]
+}

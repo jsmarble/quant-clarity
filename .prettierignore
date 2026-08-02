@@ -1,0 +1,16 @@
+node_modules
+dist
+dist-worker
+coverage
+playwright-report
+test-results
+.wrangler
+.astro
+results.sarif
+contracts/generated
+**/worker-configuration.d.ts
+AGENTS.md
+README.md
+contracts/README.md
+docs
+fixtures/README.md

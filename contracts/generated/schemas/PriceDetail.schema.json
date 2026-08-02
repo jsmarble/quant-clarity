@@ -1,0 +1,310 @@
+{
+  "$id": "PriceDetail",
+  "additionalProperties": false,
+  "type": "object",
+  "required": [
+    "data",
+    "meta"
+  ],
+  "properties": {
+    "data": {
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "price_id",
+        "offering_id",
+        "role",
+        "price_class",
+        "amount_decimal",
+        "currency",
+        "currency_provenance",
+        "unit",
+        "conditions",
+        "is_standard_comparable",
+        "effective_from",
+        "effective_to",
+        "observed_at",
+        "evidence_ids"
+      ],
+      "properties": {
+        "price_id": {
+          "pattern": "^pcs_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "type": "string"
+        },
+        "offering_id": {
+          "pattern": "^off_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "type": "string"
+        },
+        "role": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "x-extensible-enum": [
+            "input",
+            "output",
+            "cached_input"
+          ]
+        },
+        "price_class": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "x-extensible-enum": [
+            "standard",
+            "promotional",
+            "batch",
+            "subscription",
+            "committed",
+            "volume",
+            "dedicated",
+            "region_tiered",
+            "context_tiered",
+            "other_conditional"
+          ]
+        },
+        "amount_decimal": {
+          "pattern": "^(0|[1-9][0-9]{0,23})(\\.[0-9]{1,18})?$",
+          "maxLength": 64,
+          "type": "string"
+        },
+        "currency": {
+          "pattern": "^[A-Z]{3}$",
+          "type": "string"
+        },
+        "currency_provenance": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "x-extensible-enum": [
+            "provider_stated",
+            "system_default"
+          ]
+        },
+        "unit": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "x-extensible-enum": [
+            "per_million_tokens"
+          ]
+        },
+        "conditions": {
+          "maxItems": 32,
+          "type": "array",
+          "items": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        },
+        "is_standard_comparable": {
+          "type": "boolean"
+        },
+        "effective_from": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "effective_to": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "observed_at": {
+          "format": "date-time",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
+          "type": "string"
+        },
+        "evidence_ids": {
+          "minItems": 1,
+          "uniqueItems": true,
+          "type": "array",
+          "items": {
+            "pattern": "^evd_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          }
+        }
+      }
+    },
+    "meta": {
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "resource",
+        "publication_id",
+        "schema_version",
+        "sort",
+        "filters",
+        "currency_scope"
+      ],
+      "properties": {
+        "resource": {
+          "const": "prices",
+          "type": "string"
+        },
+        "publication_id": {
+          "pattern": "^pub_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "type": "string"
+        },
+        "schema_version": {
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+          "type": "string"
+        },
+        "sort": {
+          "minItems": 1,
+          "maxItems": 8,
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "const": "amount",
+                "type": "string"
+              },
+              {
+                "const": "observed_at",
+                "type": "string"
+              },
+              {
+                "const": "stable_id",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "filters": {
+          "additionalProperties": false,
+          "type": "object",
+          "properties": {
+            "offering": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "provider": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "role": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "currency": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "price_class": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "standard_comparable": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "promotional": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "effective_since": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "observed_since": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            }
+          }
+        },
+        "currency_scope": {
+          "pattern": "^[A-Z]{3}$",
+          "type": "string"
+        }
+      }
+    }
+  }
+}

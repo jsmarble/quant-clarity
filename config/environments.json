@@ -1,0 +1,77 @@
+{
+  "schema_version": "1.0.0",
+  "status": "logical_inventory_only",
+  "environments": [
+    {
+      "name": "local",
+      "build_environment": "local",
+      "canonical_origin_required": false,
+      "provisioned": false,
+      "resource_prefix": "quant-clarity-local",
+      "write_identity": "local-only",
+      "may_access_production": false,
+      "secret_bindings": {
+        "frontend_worker": ["RATE_LIMIT_HMAC_KEY"],
+        "api_worker": ["RATE_LIMIT_HMAC_KEY"]
+      }
+    },
+    {
+      "name": "test",
+      "build_environment": "test",
+      "canonical_origin_required": false,
+      "provisioned": false,
+      "resource_prefix": "quant-clarity-test",
+      "write_identity": "ci-ephemeral-only",
+      "may_access_production": false,
+      "secret_bindings": {
+        "frontend_worker": ["RATE_LIMIT_HMAC_KEY"],
+        "api_worker": ["RATE_LIMIT_HMAC_KEY"]
+      }
+    },
+    {
+      "name": "preview",
+      "build_environment": "preview",
+      "canonical_origin_required": false,
+      "provisioned": false,
+      "resource_prefix": "quant-clarity-preview",
+      "write_identity": "github-preview-environment-pending",
+      "may_access_production": false,
+      "secret_bindings": {
+        "frontend_worker": ["RATE_LIMIT_HMAC_KEY"],
+        "api_worker": ["RATE_LIMIT_HMAC_KEY"]
+      }
+    },
+    {
+      "name": "production",
+      "build_environment": "production",
+      "canonical_origin_required": true,
+      "provisioned": false,
+      "resource_prefix": "quant-clarity-production",
+      "write_identity": "github-production-environment-pending",
+      "may_access_production": true,
+      "secret_bindings": {
+        "frontend_worker": ["RATE_LIMIT_HMAC_KEY"],
+        "api_worker": ["RATE_LIMIT_HMAC_KEY"]
+      }
+    }
+  ],
+  "resource_classes": [
+    "frontend_worker",
+    "api_worker",
+    "query_worker",
+    "pipeline_worker",
+    "d1_canonical",
+    "d1_serving",
+    "r2_evidence",
+    "r2_backup",
+    "vectorize",
+    "workflow",
+    "rate_limiter"
+  ],
+  "notes": [
+    "No Cloudflare resource or credential is represented as provisioned.",
+    "Concrete resource IDs, routes, bindings, and protected identities remain deployment-gated.",
+    "Secret names are inventory only. Values must be installed independently into each Worker through protected Cloudflare secret facilities.",
+    "Preview and test identities must never receive production write access."
+  ]
+}
