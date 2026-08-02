@@ -27,21 +27,46 @@ function applyMigrations(
   const migrationDirectory = resolve("migrations", directory);
   for (const filename of readdirSync(migrationDirectory).sort()) {
     if (through !== undefined && filename > through) continue;
-    database.exec(readFileSync(resolve(migrationDirectory, filename), "utf8"));
+    applyAtomicMigration(
+      database,
+      readFileSync(resolve(migrationDirectory, filename), "utf8"),
+    );
   }
   return database;
+}
+
+function applyAtomicMigration(database: DatabaseSync, sql: string): void {
+  database.exec("BEGIN IMMEDIATE");
+  try {
+    database.exec(sql);
+    database.exec("COMMIT");
+  } catch (error) {
+    database.exec("ROLLBACK");
+    throw error;
+  }
 }
 
 function applyServingProviderDispositionMigration(
   database: DatabaseSync,
 ): void {
-  database.exec(
+  applyAtomicMigration(
+    database,
     readFileSync(
       resolve(
         "migrations",
         "serving",
         "0003_publication_provider_dispositions.sql",
       ),
+      "utf8",
+    ),
+  );
+}
+
+function applyServingSealedClosureMigration(database: DatabaseSync): void {
+  applyAtomicMigration(
+    database,
+    readFileSync(
+      resolve("migrations", "serving", "0004_sealed_publication_closure.sql"),
       "utf8",
     ),
   );
@@ -1225,7 +1250,10 @@ describe("serving publication migrations (PIPE-050–PIPE-056)", () => {
   });
 
   it("persists an unavailable disposition but rejects an empty candidate as ready", () => {
-    const database = applyMigrations("serving");
+    const database = applyMigrations(
+      "serving",
+      "0003_publication_provider_dispositions.sql",
+    );
     const activePublicationId = id("pub", 170);
     const activeModelId = id("mdl", 171);
     insertBuildingPublication(database, activePublicationId);
@@ -1342,7 +1370,10 @@ describe("serving publication migrations (PIPE-050–PIPE-056)", () => {
     ["stale without a slice", null, 1, "stale"],
     ["non-carried stale", id("prn", 192), 0, "stale"],
   ])("rejects %s", (_case, providerSliceId, carriedForward, freshnessState) => {
-    const database = applyMigrations("serving");
+    const database = applyMigrations(
+      "serving",
+      "0003_publication_provider_dispositions.sql",
+    );
     const publicationId = id("pub", 193);
     insertBuildingPublication(database, publicationId, {
       resources: 0,
@@ -1385,7 +1416,10 @@ describe("serving publication migrations (PIPE-050–PIPE-056)", () => {
       "pvr_0000000g-0000-4000-8000-000000000001",
     ],
   ])("rejects malformed %s", (_case, sliceId, providerId, providerRunId) => {
-    const database = applyMigrations("serving");
+    const database = applyMigrations(
+      "serving",
+      "0003_publication_provider_dispositions.sql",
+    );
     const publicationId = id("pub", 195);
     insertBuildingPublication(database, publicationId, {
       resources: 0,
@@ -1402,7 +1436,10 @@ describe("serving publication migrations (PIPE-050–PIPE-056)", () => {
   });
 
   it("reuses selected content only with identical provider/run lineage", () => {
-    const database = applyMigrations("serving");
+    const database = applyMigrations(
+      "serving",
+      "0003_publication_provider_dispositions.sql",
+    );
     const providerSliceId = id("prn", 196);
     const providerId = id("prv", 197);
     const providerRunId = id("pvr", 198);
@@ -1514,7 +1551,10 @@ describe("serving publication migrations (PIPE-050–PIPE-056)", () => {
   });
 
   it("allows failed/building retries and fences both overlapping-build races", () => {
-    const database = applyMigrations("serving");
+    const database = applyMigrations(
+      "serving",
+      "0003_publication_provider_dispositions.sql",
+    );
     const providerSliceId = id("prn", 214);
     const providerId = id("prv", 215);
     const providerRunId = id("pvr", 216);
@@ -1619,7 +1659,10 @@ describe("serving publication migrations (PIPE-050–PIPE-056)", () => {
   });
 
   it("rejects a slice occurrence from a future publication", () => {
-    const database = applyMigrations("serving");
+    const database = applyMigrations(
+      "serving",
+      "0003_publication_provider_dispositions.sql",
+    );
     const olderCandidateId = id("pub", 222);
     const futurePublicationId = id("pub", 223);
     const providerSliceId = id("prn", 224);
@@ -1678,7 +1721,10 @@ describe("serving publication migrations (PIPE-050–PIPE-056)", () => {
   });
 
   it("requires complete closure before a head can select a publication", () => {
-    const database = applyMigrations("serving");
+    const database = applyMigrations(
+      "serving",
+      "0003_publication_provider_dispositions.sql",
+    );
     const publicationId = id("pub", 201);
     const modelId = id("mdl", 202);
     insertBuildingPublication(database, publicationId);
@@ -1936,7 +1982,10 @@ describe("serving publication migrations (PIPE-050–PIPE-056)", () => {
   });
 
   it("rejects resource type mismatches and post-readiness staging", () => {
-    const database = applyMigrations("serving");
+    const database = applyMigrations(
+      "serving",
+      "0003_publication_provider_dispositions.sql",
+    );
     const publicationId = id("pub", 210);
     insertBuildingPublication(database, publicationId);
     expectConstraint(
@@ -1981,7 +2030,10 @@ describe("serving publication migrations (PIPE-050–PIPE-056)", () => {
   });
 
   it("rejects a count-masked missing search document", () => {
-    const database = applyMigrations("serving");
+    const database = applyMigrations(
+      "serving",
+      "0003_publication_provider_dispositions.sql",
+    );
     const publicationId = id("pub", 220);
     insertBuildingPublication(database, publicationId, {
       resources: 2,
@@ -2013,5 +2065,164 @@ describe("serving publication migrations (PIPE-050–PIPE-056)", () => {
           .run(publicationId),
       "publication closure counts are incomplete",
     );
+  });
+
+  it("adds the sealed-closure schema only to an unheaded non-queryable database", () => {
+    const database = applyMigrations(
+      "serving",
+      "0004_sealed_publication_closure.sql",
+    );
+    expect(
+      database
+        .prepare(
+          "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+        )
+        .get(),
+    ).toEqual({ schema_version: "1.2.0" });
+    expect(
+      database
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'publication_%' ORDER BY name",
+        )
+        .all()
+        .map((row) => (row as { name: string }).name),
+    ).toEqual(
+      expect.arrayContaining([
+        "publication_closure_seal",
+        "publication_inventory_chunk",
+        "publication_provider_attribution",
+        "publication_provider_slice_metadata",
+        "publication_staging_revision",
+        "publication_vector_inventory",
+      ]),
+    );
+    expect(database.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+  });
+
+  it("rejects legacy queryable state before changing schema metadata", () => {
+    const database = applyMigrations(
+      "serving",
+      "0003_publication_provider_dispositions.sql",
+    );
+    const publicationId = id("pub", 230);
+    const modelId = id("mdl", 231);
+    insertBuildingPublication(database, publicationId);
+    database
+      .prepare(
+        "INSERT INTO publication_provider_slice VALUES (?, ?, ?, ?, 0, 'fresh')",
+      )
+      .run(id("prn", 232), publicationId, id("prv", 233), id("pvr", 234));
+    database
+      .prepare(
+        "INSERT INTO publication_resource VALUES (?, 'model', ?, '{}', ?)",
+      )
+      .run(publicationId, modelId, HASH);
+    database
+      .prepare(
+        "INSERT INTO publication_search_document VALUES (?, ?, 'model', ?, 'one', '[]', '', '[]', 'one', ?)",
+      )
+      .run(publicationId, VECTOR_ID, modelId, HASH);
+    database
+      .prepare(
+        "UPDATE publication SET state = 'ready', ready_at_ms = 2 WHERE publication_id = ?",
+      )
+      .run(publicationId);
+
+    expect(() => {
+      applyServingSealedClosureMigration(database);
+    }).toThrow();
+    expect(
+      database
+        .prepare(
+          "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+        )
+        .get(),
+    ).toEqual({ schema_version: "1.1.0" });
+    expect(
+      database
+        .prepare(
+          "SELECT count(*) AS count FROM sqlite_master WHERE type = 'table' AND name = 'publication_closure_seal'",
+        )
+        .get(),
+    ).toEqual({ count: 0 });
+  });
+
+  it("atomically rejects malformed metadata and colliding 1.2 objects", () => {
+    const malformed = applyMigrations(
+      "serving",
+      "0003_publication_provider_dispositions.sql",
+    );
+    malformed.exec("DROP TABLE serving_schema_metadata");
+    malformed.exec(
+      "CREATE TABLE serving_schema_metadata(singleton INTEGER, schema_version TEXT, created_at_ms INTEGER)",
+    );
+    malformed.exec(
+      "INSERT INTO serving_schema_metadata VALUES (2, '1.1.0', 0)",
+    );
+    expect(() => {
+      applyServingSealedClosureMigration(malformed);
+    }).toThrow();
+    expect(
+      malformed
+        .prepare(
+          "SELECT count(*) AS count FROM sqlite_master WHERE type = 'table' AND name = 'publication_closure_seal'",
+        )
+        .get(),
+    ).toEqual({ count: 0 });
+
+    const collision = applyMigrations(
+      "serving",
+      "0003_publication_provider_dispositions.sql",
+    );
+    collision.exec("CREATE TABLE publication_vector_inventory(fake TEXT)");
+    expect(() => {
+      applyServingSealedClosureMigration(collision);
+    }).toThrow();
+    expect(
+      collision
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('publication_staging_revision', 'publication_provider_slice_metadata', 'publication_provider_attribution', 'publication_vector_inventory') ORDER BY name",
+        )
+        .all(),
+    ).toEqual([{ name: "publication_vector_inventory" }]);
+    expect(
+      collision
+        .prepare(
+          "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+        )
+        .get(),
+    ).toEqual({ schema_version: "1.1.0" });
+  });
+
+  it("keeps readiness and every publication-head mutation closed for Phase 4D", () => {
+    const database = applyMigrations(
+      "serving",
+      "0004_sealed_publication_closure.sql",
+    );
+    const publicationId = id("pub", 280);
+    insertBuildingPublication(database, publicationId, {
+      resources: 0,
+      exactDocuments: 0,
+      vectorDocuments: 0,
+    });
+    expectConstraint(
+      () =>
+        database
+          .prepare(
+            "UPDATE publication SET state = 'ready', ready_at_ms = 3 WHERE publication_id = ?",
+          )
+          .run(publicationId),
+      "readiness receipts are not persisted",
+    );
+    expectConstraint(
+      () =>
+        database
+          .prepare("INSERT INTO publication_head VALUES (1, ?, NULL, 3, 1)")
+          .run(publicationId),
+      "publication head switching is not implemented",
+    );
+    expect(
+      database.prepare("SELECT count(*) AS count FROM publication_head").get(),
+    ).toEqual({ count: 0 });
   });
 });

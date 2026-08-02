@@ -1,20 +1,33 @@
 import { createHash } from "node:crypto";
+import { readdirSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 
 import { describe, expect, it } from "vitest";
 
 import {
   buildBackupRootHash,
   buildImmutableManifest,
+  buildImmutableManifestFromPersistedContent,
+  canonicalizePublicationJson,
   decideHotRetention,
+  derivePublicationVectorId,
   deriveNormalizedPublicationHead,
   evaluateReadiness,
   hashCanonicalTuple,
+  hashPublicationResourceContent,
+  hashPublicationResourceChunk,
+  hashPublicationSearchDocumentContent,
+  hashPublicationSearchChunk,
+  hashPublicationVectorChunk,
   planActivation,
   planRollback,
+  projectServingClosureSeal,
   selectPublication,
   validateBackupManifest,
   validateManifestInput,
   verifyImmutableManifest,
+  verifyServingClosureSealProjection,
   type ArtifactBinding,
   type BackupManifest,
   type ImmutablePublicationManifest,
@@ -22,6 +35,14 @@ import {
   type PublicationManifestInput,
   type PublicationRecord,
   type ReadinessReceipt,
+  type ServingChunkClosureRow,
+  type ServingClosureRows,
+  type ServingProviderAttributionClosureRow,
+  type ServingProviderSliceClosureRow,
+  type ServingPublicationClosureRow,
+  type ServingResourceClosureRow,
+  type ServingSearchDocumentClosureRow,
+  type ServingVectorClosureRow,
   type SwitchAuthorization,
 } from "./index.js";
 
@@ -41,6 +62,24 @@ const NOW = "2026-08-01T12:00:00.000Z";
 const AUTHORIZATION = {
   kind: "pipeline" as const,
   identityId: "pipeline-publication-test",
+};
+
+const applyServingMigrations = (): DatabaseSync => {
+  const database = new DatabaseSync(":memory:");
+  database.exec("PRAGMA foreign_keys = ON");
+  for (const filename of readdirSync(resolve("migrations", "serving")).sort()) {
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      database.exec(
+        readFileSync(resolve("migrations", "serving", filename), "utf8"),
+      );
+      database.exec("COMMIT");
+    } catch (error) {
+      database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+  return database;
 };
 
 const manifestInput = (): PublicationManifestInput => ({
@@ -226,6 +265,532 @@ describe("immutable publication closure (PIPE-050, PIPE-051, BE-011)", () => {
         { name: "ideograph", type: "text", value: "界" },
       ]),
     ).resolves.toBe(expected);
+  });
+
+  it("canonicalizes persisted JSON and recomputes content hashes before sealing", async () => {
+    expect(canonicalizePublicationJson('{"a":[2,1],"z":1}', "object")).toBe(
+      '{"a":[2,1],"z":1}',
+    );
+    const base = manifestInput();
+    const persistedResources = await Promise.all(
+      base.resources.map(async (resource, index) => {
+        const value = {
+          resourceType: resource.resourceType,
+          resourceId: resource.resourceId,
+          resourceJson: index === 0 ? '{"a":2,"z":1}' : '{"name":"one"}',
+        };
+        return {
+          ...value,
+          contentHash: await hashPublicationResourceContent(value),
+        };
+      }),
+    );
+    const persistedSearchDocuments = await Promise.all(
+      base.searchDocuments.map(async (document) => {
+        const value = {
+          resourceType: document.resourceType,
+          resourceId: document.resourceId,
+          documentId: document.documentId,
+          normalizedName: "one",
+          aliasesJson: "[]",
+          publisherName: "Publisher",
+          providerModelIdsJson: "[]",
+          documentText: "one model",
+        };
+        return {
+          ...value,
+          contentHash: await hashPublicationSearchDocumentContent(value),
+        };
+      }),
+    );
+    const vectors = base.vectors.map((vector, index) => ({
+      ...vector,
+      searchDocumentContentHash:
+        persistedSearchDocuments[index]?.contentHash ?? HASH_A,
+    }));
+    const manifest = await buildImmutableManifestFromPersistedContent({
+      ...base,
+      resources: persistedResources,
+      searchDocuments: persistedSearchDocuments,
+      vectors,
+    });
+    await expect(verifyImmutableManifest(manifest)).resolves.toEqual([]);
+    await expect(
+      buildImmutableManifestFromPersistedContent({
+        ...base,
+        resources: [
+          { ...persistedResources[0]!, contentHash: HASH_A },
+          ...persistedResources.slice(1),
+        ],
+        searchDocuments: persistedSearchDocuments,
+        vectors,
+      }),
+    ).rejects.toThrow(/resource content hash does not match/u);
+    await expect(
+      hashPublicationResourceContent({
+        resourceType: "model",
+        resourceId: `mdl_${UUID_A}`,
+        resourceJson: '{"z":1,"a":2}',
+      }),
+    ).rejects.toThrow(/must be canonical/u);
+  });
+
+  it("uses fixed content-hash vectors and rejects ambiguous JSON bytes", async () => {
+    await expect(
+      hashPublicationResourceContent({
+        resourceType: "model",
+        resourceId: `mdl_${UUID_A}`,
+        resourceJson:
+          '{"label":"精度","nested":{"emoji":"🔒","values":[1,2,3]}}',
+      }),
+    ).resolves.toBe(
+      "sha256:e0de6e4b207796e89441c4f9191294ef21a4d874eb94b31a367ccecd577764c6",
+    );
+    await expect(
+      hashPublicationSearchDocumentContent({
+        resourceType: "model",
+        resourceId: `mdl_${UUID_A}`,
+        documentId: VECTOR_A,
+        normalizedName: "módèle",
+        aliasesJson: '["模型","🔒"]',
+        publisherName: "Éditeur",
+        providerModelIdsJson: '["alpha"]',
+        documentText: "Modèle 精度 🔒",
+      }),
+    ).resolves.toBe(
+      "sha256:746fc9249681799ed9d9b65cca28f554c92165a0c4fa2d17373cfafc33379732",
+    );
+    for (const invalid of [
+      '{"x":1,"x":2}',
+      '{ "x":1}',
+      '{"z":1,"a":2}',
+      '{"x":-0}',
+      '{"x":1.5}',
+      '{"x":9007199254740992}',
+      '{"x":9007199254740993}',
+      '{"é":1}',
+      "not-json",
+    ])
+      expect(() => canonicalizePublicationJson(invalid, "object")).toThrow();
+    expect(() => canonicalizePublicationJson("[]", "object")).toThrow(
+      /must be an object/u,
+    );
+    expect(() =>
+      canonicalizePublicationJson(`${"[".repeat(66)}0${"]".repeat(66)}`),
+    ).toThrow(/deeply nested/u);
+    expect(() =>
+      canonicalizePublicationJson(`{"x":"${"a".repeat(1_000_001)}"}`),
+    ).toThrow(/byte limit/u);
+    await expect(
+      hashPublicationSearchDocumentContent({
+        resourceType: "model",
+        resourceId: `mdl_${UUID_A}`,
+        documentId: VECTOR_A,
+        normalizedName: "one",
+        aliasesJson: '[ "alias"]',
+        publisherName: "Publisher",
+        providerModelIdsJson: "[]",
+        documentText: "one",
+      }),
+    ).rejects.toThrow(/must be canonical/u);
+  });
+
+  it("projects exact persisted serving rows into the only accepted seal", async () => {
+    const publicationId = `pub_${UUID_B}` as const;
+    const modelId = `mdl_${UUID_A}`;
+    const providerId = `prv_${UUID_A}`;
+    const unavailableProviderId = `prv_${UUID_B}`;
+    const vectorId = await derivePublicationVectorId(
+      publicationId,
+      "model",
+      modelId,
+    );
+    const resources = await Promise.all(
+      [
+        {
+          resourceType: "model" as const,
+          resourceId: modelId,
+          resourceJson: '{"name":"Model"}',
+        },
+        {
+          resourceType: "provider" as const,
+          resourceId: providerId,
+          resourceJson: '{"name":"Provider"}',
+        },
+      ].map(async (resource) => ({
+        ...resource,
+        contentHash: await hashPublicationResourceContent(resource),
+      })),
+    );
+    const searchDocumentBase = {
+      resourceType: "model" as const,
+      resourceId: modelId,
+      documentId: vectorId,
+      normalizedName: "model",
+      aliasesJson: "[]",
+      publisherName: "Publisher",
+      providerModelIdsJson: "[]",
+      documentText: "model document",
+    };
+    const searchDocuments = [
+      {
+        ...searchDocumentBase,
+        contentHash:
+          await hashPublicationSearchDocumentContent(searchDocumentBase),
+      },
+    ];
+    const vectors = [
+      {
+        resourceType: "model" as const,
+        resourceId: modelId,
+        vectorId,
+        searchDocumentContentHash: searchDocuments[0]!.contentHash,
+        embeddingInputHash: HASH_C,
+      },
+    ];
+    const chunkDescriptors = [
+      {
+        kind: "resources" as const,
+        ordinal: 0,
+        firstKey: `model:${modelId}`,
+        lastKey: `provider:${providerId}`,
+        itemCount: 2,
+        contentHash: await hashPublicationResourceChunk(resources),
+      },
+      {
+        kind: "exact_search" as const,
+        ordinal: 0,
+        firstKey: `model:${modelId}`,
+        lastKey: `model:${modelId}`,
+        itemCount: 1,
+        contentHash: await hashPublicationSearchChunk(searchDocuments),
+      },
+      {
+        kind: "vectors" as const,
+        ordinal: 0,
+        firstKey: `model:${modelId}`,
+        lastKey: `model:${modelId}`,
+        itemCount: 1,
+        contentHash: await hashPublicationVectorChunk(publicationId, vectors),
+      },
+    ];
+    const providerSlices = [
+      {
+        providerId,
+        providerSliceId: `prn_${UUID_A}`,
+        providerRunId: `pvr_${UUID_A}`,
+        adapterVersion: "adapter@1",
+        rosterVersion: "roster@1",
+        sourceRegisterVersion: "register@1",
+        carriedForward: false,
+        freshnessState: "fresh" as const,
+      },
+      {
+        providerId: unavailableProviderId,
+        providerSliceId: null,
+        providerRunId: `pvr_${UUID_B}`,
+        adapterVersion: "adapter@1",
+        rosterVersion: "roster@1",
+        sourceRegisterVersion: "register@1",
+        carriedForward: false,
+        freshnessState: "unavailable" as const,
+      },
+    ];
+    const expected = await buildImmutableManifestFromPersistedContent({
+      contractVersion: "1.0.0",
+      publicationId,
+      sourceRunId: `run_${UUID_A}`,
+      parentPublicationId: null,
+      generatedAt: "2026-08-01T11:00:00.000Z",
+      versions: {
+        schema: "1.0.0",
+        methodology: "methodology@1",
+        precisionNormalization: "precision@1",
+        precisionDisplayOrder: "display@1",
+        pricePolicy: "price@1",
+        sourcePolicy: "source@1",
+        embedding: "embedding@1",
+        buildCommit: "git:abc123",
+      },
+      enabledProviderScopeVersion: "launch@1",
+      enabledProviderIds: [providerId, unavailableProviderId],
+      providerSlices,
+      providerAttributions: [
+        {
+          resourceType: "provider",
+          resourceId: providerId,
+          providerId,
+        },
+      ],
+      resources,
+      searchDocuments,
+      vectors,
+      chunks: chunkDescriptors,
+      bundleHash: HASH_C,
+    });
+    const database = applyServingMigrations();
+    database
+      .prepare(
+        "INSERT INTO publication (publication_id, state, schema_version, methodology_version, precision_normalization_version, precision_display_order_version, price_policy_version, source_policy_version, embedding_version, build_commit, source_run_id, parent_publication_id, generated_at_ms, ready_at_ms, activated_at_ms, resource_count, exact_document_count, vector_document_count, exact_index_hash, vector_index_version, closure_hash, failure_codes_json, created_at_ms) VALUES (?, 'building', ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL, NULL, ?, ?, ?, ?, 'vector@1', ?, '[]', ?)",
+      )
+      .run(
+        publicationId,
+        expected.versions.schema,
+        expected.versions.methodology,
+        expected.versions.precisionNormalization,
+        expected.versions.precisionDisplayOrder,
+        expected.versions.pricePolicy,
+        expected.versions.sourcePolicy,
+        expected.versions.embedding,
+        expected.versions.buildCommit,
+        expected.sourceRunId,
+        Date.parse(expected.generatedAt),
+        expected.resources.length,
+        expected.searchDocuments.length,
+        expected.vectors.length,
+        HASH_A,
+        expected.closureHash,
+        Date.parse(expected.generatedAt),
+      );
+    for (const slice of providerSlices) {
+      database
+        .prepare(
+          "INSERT INTO publication_provider_slice VALUES (?, ?, ?, ?, ?, ?)",
+        )
+        .run(
+          slice.providerSliceId,
+          publicationId,
+          slice.providerId,
+          slice.providerRunId,
+          slice.carriedForward ? 1 : 0,
+          slice.freshnessState,
+        );
+      database
+        .prepare(
+          "INSERT INTO publication_provider_slice_metadata VALUES (?, ?, ?, ?, ?)",
+        )
+        .run(
+          publicationId,
+          slice.providerId,
+          slice.adapterVersion,
+          slice.rosterVersion,
+          slice.sourceRegisterVersion,
+        );
+    }
+    for (const resource of resources)
+      database
+        .prepare("INSERT INTO publication_resource VALUES (?, ?, ?, ?, ?)")
+        .run(
+          publicationId,
+          resource.resourceType,
+          resource.resourceId,
+          resource.resourceJson,
+          resource.contentHash,
+        );
+    database
+      .prepare(
+        "INSERT INTO publication_provider_attribution VALUES (?, ?, ?, ?)",
+      )
+      .run(publicationId, "provider", providerId, providerId);
+    for (const document of searchDocuments)
+      database
+        .prepare(
+          "INSERT INTO publication_search_document VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .run(
+          publicationId,
+          document.documentId,
+          document.resourceType,
+          document.resourceId,
+          document.normalizedName,
+          document.aliasesJson,
+          document.publisherName,
+          document.providerModelIdsJson,
+          document.documentText,
+          document.contentHash,
+        );
+    for (const vector of vectors)
+      database
+        .prepare(
+          "INSERT INTO publication_vector_inventory VALUES (?, ?, ?, ?, ?, ?, ?)",
+        )
+        .run(
+          publicationId,
+          publicationId,
+          vector.vectorId,
+          vector.resourceType,
+          vector.resourceId,
+          vector.searchDocumentContentHash,
+          vector.embeddingInputHash,
+        );
+    for (const chunk of chunkDescriptors)
+      database
+        .prepare(
+          "INSERT INTO publication_inventory_chunk VALUES (?, ?, ?, ?, ?, ?, ?)",
+        )
+        .run(
+          publicationId,
+          chunk.kind,
+          chunk.ordinal,
+          chunk.firstKey,
+          chunk.lastKey,
+          chunk.itemCount,
+          chunk.contentHash,
+        );
+    const rows: ServingClosureRows = {
+      publication: database
+        .prepare(
+          "SELECT publication_id, source_run_id, parent_publication_id, generated_at_ms, schema_version, methodology_version, precision_normalization_version, precision_display_order_version, price_policy_version, source_policy_version, embedding_version, build_commit, closure_hash FROM publication WHERE publication_id = ?",
+        )
+        .get(publicationId) as unknown as ServingPublicationClosureRow,
+      providerSlices: database
+        .prepare(
+          "SELECT disposition.provider_id, disposition.provider_slice_id, disposition.provider_run_id, metadata.adapter_version, metadata.roster_version, metadata.source_register_version, disposition.carried_forward, disposition.freshness_state FROM publication_provider_slice AS disposition JOIN publication_provider_slice_metadata AS metadata USING (publication_id, provider_id) WHERE disposition.publication_id = ? ORDER BY disposition.provider_id",
+        )
+        .all(publicationId) as unknown as ServingProviderSliceClosureRow[],
+      providerAttributions: database
+        .prepare(
+          "SELECT resource_type, resource_id, provider_id FROM publication_provider_attribution WHERE publication_id = ? ORDER BY resource_type, resource_id",
+        )
+        .all(
+          publicationId,
+        ) as unknown as ServingProviderAttributionClosureRow[],
+      resources: database
+        .prepare(
+          "SELECT resource_type, resource_id, resource_json, content_hash FROM publication_resource WHERE publication_id = ? ORDER BY resource_type, resource_id",
+        )
+        .all(publicationId) as unknown as ServingResourceClosureRow[],
+      searchDocuments: database
+        .prepare(
+          "SELECT document_id, resource_type, resource_id, normalized_name, aliases_json, publisher_name, provider_model_ids_json, document_text, content_hash FROM publication_search_document WHERE publication_id = ? ORDER BY resource_type, resource_id",
+        )
+        .all(publicationId) as unknown as ServingSearchDocumentClosureRow[],
+      vectors: database
+        .prepare(
+          "SELECT vector_namespace, vector_id, resource_type, resource_id, search_document_content_hash, embedding_input_hash FROM publication_vector_inventory WHERE publication_id = ? ORDER BY resource_type, resource_id",
+        )
+        .all(publicationId) as unknown as ServingVectorClosureRow[],
+      chunks: database
+        .prepare(
+          "SELECT kind, ordinal, first_key, last_key, item_count, content_hash FROM publication_inventory_chunk WHERE publication_id = ? ORDER BY kind, ordinal",
+        )
+        .all(publicationId) as unknown as ServingChunkClosureRow[],
+      manifestContractVersion: "1.0.0",
+      enabledProviderScopeVersion: "launch@1",
+      bundleHash: HASH_C,
+      stagingRevision: (
+        database
+          .prepare(
+            "SELECT revision FROM publication_staging_revision WHERE publication_id = ?",
+          )
+          .get(publicationId) as unknown as { revision: number }
+      ).revision,
+      sealedAtMs: Date.parse(NOW),
+    };
+    const projected = await projectServingClosureSeal(rows);
+    expect(projected.manifest).toEqual(expected);
+    await expect(
+      verifyServingClosureSealProjection(rows, projected.seal),
+    ).resolves.toEqual([]);
+    await expect(
+      verifyServingClosureSealProjection(rows, {
+        ...projected.seal,
+        vector_inventory_hash: HASH_A,
+      }),
+    ).resolves.toContain(
+      "vector_inventory_hash does not match persisted closure",
+    );
+    await expect(
+      projectServingClosureSeal({
+        ...rows,
+        chunks: rows.chunks.map((chunk, index) =>
+          index === 0 ? { ...chunk, content_hash: HASH_A } : chunk,
+        ),
+      }),
+    ).rejects.toThrow(/chunk content hash does not match/u);
+    const seal = projected.seal;
+    const sealParameters = [
+      seal.publication_id,
+      seal.staging_revision,
+      seal.manifest_contract_version,
+      seal.hash_domain,
+      seal.hash_encoding_version,
+      seal.enabled_provider_scope_version,
+      seal.enabled_provider_count,
+      seal.provider_slice_count,
+      seal.provider_attribution_count,
+      seal.resource_count,
+      seal.exact_document_count,
+      seal.vector_document_count,
+      seal.chunk_count,
+      seal.bundle_hash,
+      seal.enabled_provider_scope_hash,
+      seal.provider_slice_hash,
+      seal.provider_attribution_hash,
+      seal.resource_inventory_hash,
+      seal.exact_search_inventory_hash,
+      seal.vector_inventory_hash,
+      seal.chunk_root_hash,
+      seal.closure_hash,
+      seal.sealed_at_ms,
+    ] as const;
+    database.exec("SAVEPOINT staging_race");
+    database
+      .prepare(
+        "INSERT INTO publication_inventory_chunk VALUES (?, 'resources', 1, 'z', 'z', 1, ?)",
+      )
+      .run(publicationId, HASH_A);
+    expect(() =>
+      database
+        .prepare(
+          "INSERT INTO publication_closure_seal VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .run(...sealParameters),
+    ).toThrow(/staging revision changed/u);
+    database.exec("ROLLBACK TO staging_race");
+    database.exec("RELEASE staging_race");
+    database
+      .prepare(
+        "INSERT INTO publication_closure_seal VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run(...sealParameters);
+    expect(
+      database
+        .prepare(
+          "SELECT closure_hash, vector_inventory_hash, chunk_root_hash FROM publication_closure_seal WHERE publication_id = ?",
+        )
+        .get(publicationId),
+    ).toEqual({
+      closure_hash: expected.closureHash,
+      vector_inventory_hash: expected.vectorInventoryHash,
+      chunk_root_hash: expected.chunkRootHash,
+    });
+    expect(() =>
+      database
+        .prepare(
+          "UPDATE publication_staging_revision SET revision = revision + 1 WHERE publication_id = ?",
+        )
+        .run(publicationId),
+    ).toThrow(/trigger-managed/u);
+    expect(() =>
+      database
+        .prepare(
+          "INSERT INTO publication_resource VALUES (?, 'model', ?, '{}', ?)",
+        )
+        .run(publicationId, `mdl_${UUID_C}`, HASH_A),
+    ).toThrow(/sealed publication closure is immutable/u);
+    expect(() =>
+      database
+        .prepare(
+          "UPDATE publication SET state = 'ready', ready_at_ms = ? WHERE publication_id = ?",
+        )
+        .run(Date.parse(NOW), publicationId),
+    ).toThrow(/readiness receipts are not persisted/u);
+    expect(() =>
+      database
+        .prepare("INSERT INTO publication_head VALUES (1, ?, NULL, ?, 1)")
+        .run(publicationId, Date.parse(NOW)),
+    ).toThrow(/head switching is not implemented/u);
   });
 
   it("hashes all policy versions and inventories with deterministic ordering", async () => {
