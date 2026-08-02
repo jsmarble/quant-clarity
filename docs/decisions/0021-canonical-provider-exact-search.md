@@ -5,6 +5,7 @@
 - Decision owners: Product owner, staff engineer, search lead
 - Related requirements: `SM-06`, `RULE-017`, `FE-010`, `FE-011`, `FE-013`, `FE-023`, `FE-025`, `FE-026`, `SRCH-002`, `SRCH-006`–`SRCH-010`, `PIPE-044`, `PIPE-050`–`PIPE-053`, `BE-003`, `BE-011`, `CF-022`, `AFF-004`, `PRIV-006`, `PRIV-007`, `PRIV-011`, `QA-005`, `QA-006`
 - Extends: ADRs 0005, 0013, 0015, 0018, and 0019
+- Partially superseded by: ADR 0030 replaces normalized-display-name ordering only for the composed exact-search operation; this ADR's standalone tier behavior and all other decisions remain accepted
 
 ## Context
 

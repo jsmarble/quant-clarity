@@ -26,6 +26,10 @@ import {
   type ServingV4Fixture,
 } from "../../pipeline/test/serving-switch-v4-fixture.js";
 import { readModelVariantExactNamePage } from "./model-variant-exact-name.js";
+import {
+  EXACT_PROVIDER_MODEL_ID_RAW_MARKER,
+  readMergedExactSearchPage,
+} from "./merged-exact-search.js";
 import { readProviderExactNamePage } from "./provider-exact-name.js";
 import {
   PROVIDER_MODEL_ID_EXACT_CANDIDATE_SELECT_SQL,
@@ -196,6 +200,7 @@ beforeAll(async () => {
     { rawProviderModelId: "Accounts/Alpha" },
     { rawProviderModelId: "ACCOUNTS/ALPHA", status: "unavailable" },
     { rawProviderModelId: "ACCOUNTS/ALPHA" },
+    { rawProviderModelId: "Schema 17\u0000Model" },
   ]);
   await seedModelVariantNameSearchBuildingPublication(
     env.SERVING_DB,
@@ -389,6 +394,8 @@ describe("schema-1.7 current exact readers (SRCH-002, SRCH-006, SRCH-009, QA-005
           "",
           21,
           1_048_576,
+          0,
+          0,
         )
         .all();
 
@@ -486,5 +493,97 @@ describe("schema-1.7 current exact readers (SRCH-002, SRCH-006, SRCH-009, QA-005
         recordType: "variant",
       }),
     ).resolves.toMatchObject({ results: [], matchModes: [] });
+  });
+
+  it("merges exact tiers and serves the merged RPC through one pinned workerd session", async () => {
+    const preparedSql: string[] = [];
+    const countedDatabase = {
+      prepare: (sql: string) => {
+        preparedSql.push(sql);
+        return env.SERVING_DB.prepare(sql);
+      },
+    };
+    const direct = await readMergedExactSearchPage(countedDatabase, {
+      publicationId: PUBLICATION,
+      query: "\u0000",
+      recordType: null,
+      continuation: null,
+      limit: 20,
+    });
+    expect(preparedSql).toHaveLength(3);
+    expect(preparedSql.every((sql) => /^\s*(?:WITH|SELECT)\b/u.test(sql))).toBe(
+      true,
+    );
+    expect(direct).toMatchObject({
+      publicationId: PUBLICATION,
+      semanticDegraded: "disabled",
+      nextContinuation: null,
+      results: [
+        {
+          tierMarker: EXACT_PROVIDER_MODEL_ID_RAW_MARKER,
+          resourceType: "model",
+          matchKind: "provider_model_id",
+        },
+      ],
+    });
+
+    preparedSql.length = 0;
+    const deduplicated = await readMergedExactSearchPage(countedDatabase, {
+      publicationId: PUBLICATION,
+      query: "Schema 17\u0000Model",
+      recordType: null,
+      continuation: null,
+      limit: 20,
+    });
+    expect(deduplicated.results).toHaveLength(1);
+    expect(deduplicated.results[0]).toMatchObject({
+      tierMarker: "exact-v1:c",
+      resourceId: "mdl_00000001-0000-4000-8000-000000000001",
+      matchKind: "canonical_name",
+    });
+    expect(preparedSql).toHaveLength(2);
+
+    const selected = await exports.CatalogQueryService.resolvePublicationV1({
+      version: 1,
+      audience: "quantclarity-catalog-query-v1",
+      environment: "local",
+      requestedPublicationId: null,
+    });
+    if (selected.outcome !== "selected")
+      throw new Error("publication selection failed");
+    await expect(
+      exports.CatalogQueryService.readMergedExactSearchV1({
+        version: 1,
+        audience: "quantclarity-catalog-query-v1",
+        environment: "local",
+        bookmark: selected.bookmark,
+        envelope: {
+          version: 1,
+          audience: "quantclarity-catalog-query-v1",
+          environment: "local",
+          operation: { kind: "search" },
+          publicationId: PUBLICATION,
+          filters: {},
+          sort: ["relevance", "stable_id"],
+          limit: 20,
+          continuation: null,
+          searchPlan: {
+            kind: "exact_structured",
+            query: "\u0000",
+            filters: {},
+            limit: 20,
+            semanticCandidates: 0,
+            semanticCalls: 0,
+            semanticDegraded: "disabled",
+          },
+        },
+      }),
+    ).resolves.toMatchObject({
+      outcome: "page",
+      page: {
+        publicationId: PUBLICATION,
+        results: [{ tierMarker: EXACT_PROVIDER_MODEL_ID_RAW_MARKER }],
+      },
+    });
   });
 });

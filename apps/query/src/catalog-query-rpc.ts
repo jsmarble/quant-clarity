@@ -21,11 +21,23 @@ import {
   readProviderModelIdExactPage,
   type ProviderModelIdExactPage,
 } from "./provider-model-id-exact.js";
+import {
+  EXACT_CANONICAL_MARKER,
+  EXACT_PROVIDER_MARKER,
+  EXACT_PROVIDER_MODEL_ID_NORMALIZED_MARKER,
+  EXACT_PROVIDER_MODEL_ID_RAW_MARKER,
+  MergedExactSearchError,
+  readMergedExactSearchPage,
+  type MergedExactSearchContinuation,
+  type MergedExactSearchPage,
+} from "./merged-exact-search.js";
 
 const UUID_V4 =
   "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
 const PUBLICATION_ID = new RegExp(`^pub_${UUID_V4}$`, "u");
 const PROVIDER_ID = new RegExp(`^prv_${UUID_V4}$`, "u");
+const MODEL_ID = new RegExp(`^mdl_${UUID_V4}$`, "u");
+const VARIANT_ID = new RegExp(`^var_${UUID_V4}$`, "u");
 const UTF8 = new TextEncoder();
 const ENVIRONMENTS = new Set(["local", "preview", "production", "test"]);
 const AUDIENCE = "quantclarity-catalog-query-v1" as const;
@@ -116,6 +128,19 @@ export type ReadProviderModelIdExactTierV1Input = Readonly<{
 
 export type ReadProviderModelIdExactTierV1Outcome =
   | Readonly<{ outcome: "page"; page: ProviderModelIdExactPage }>
+  | Readonly<{ outcome: "integrity_failure" }>
+  | Readonly<{ outcome: "read_failure" }>;
+
+export type ReadMergedExactSearchV1Input = Readonly<{
+  version: 1;
+  audience: typeof AUDIENCE;
+  environment: QueryRpcEnvironment;
+  bookmark: string;
+  envelope: QueryServiceEnvelope;
+}>;
+
+export type ReadMergedExactSearchV1Outcome =
+  | Readonly<{ outcome: "page"; page: MergedExactSearchPage }>
   | Readonly<{ outcome: "integrity_failure" }>
   | Readonly<{ outcome: "read_failure" }>;
 
@@ -696,6 +721,180 @@ const parseProviderModelIdReadInput = (
   };
 };
 
+type ParsedMergedExactSearchInput = Readonly<{
+  environment: QueryRpcEnvironment;
+  bookmark: string;
+  publicationId: string;
+  query: string;
+  recordType: "model" | "variant" | "provider" | null;
+  continuation: MergedExactSearchContinuation | null;
+  limit: number;
+}>;
+
+const mergedRecordTypeFilter = (
+  value: unknown,
+): "model" | "variant" | "provider" | null | undefined => {
+  try {
+    if (typeof value !== "object" || value === null || Array.isArray(value))
+      return undefined;
+    const prototype: unknown = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) return undefined;
+    const ownKeys = Reflect.ownKeys(value);
+    if (ownKeys.some((key) => typeof key !== "string")) return undefined;
+    const filter = ownDataRecord(value, ownKeys as string[]);
+    if (filter === null) return undefined;
+    const keys = Object.keys(filter);
+    if (keys.length === 0) return null;
+    if (keys.length !== 1 || keys[0] !== "record_type") return undefined;
+    return filter.record_type === "model" ||
+      filter.record_type === "variant" ||
+      filter.record_type === "provider"
+      ? filter.record_type
+      : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+const mergedContinuation = (
+  value: unknown,
+): MergedExactSearchContinuation | null | undefined => {
+  if (value === null) return null;
+  const continuation = ownDataRecord(value, ["lastSortTuple", "stableId"]);
+  const tuple = ownDataArray(continuation?.lastSortTuple, 2);
+  const marker = tuple?.[0];
+  if (
+    continuation === null ||
+    tuple === null ||
+    (marker !== EXACT_CANONICAL_MARKER &&
+      marker !== EXACT_PROVIDER_MODEL_ID_RAW_MARKER &&
+      marker !== EXACT_PROVIDER_MODEL_ID_NORMALIZED_MARKER &&
+      marker !== EXACT_PROVIDER_MARKER) ||
+    typeof continuation.stableId !== "string" ||
+    tuple[1] !== continuation.stableId ||
+    (marker === EXACT_PROVIDER_MARKER
+      ? !PROVIDER_ID.test(continuation.stableId)
+      : !MODEL_ID.test(continuation.stableId) &&
+        !VARIANT_ID.test(continuation.stableId))
+  )
+    return undefined;
+  return Object.freeze({
+    tierMarker: marker,
+    resourceId: continuation.stableId,
+  });
+};
+
+const parseMergedExactSearchInput = (
+  value: unknown,
+): ParsedMergedExactSearchInput | null => {
+  const outer = ownDataRecord(value, [
+    "audience",
+    "bookmark",
+    "envelope",
+    "environment",
+    "version",
+  ]);
+  if (
+    outer?.version !== 1 ||
+    outer.audience !== AUDIENCE ||
+    !environment(outer.environment) ||
+    typeof outer.bookmark !== "string" ||
+    outer.bookmark.length === 0 ||
+    outer.bookmark.length > 4096 ||
+    outer.bookmark === "first-primary" ||
+    outer.bookmark === "first-unconstrained"
+  )
+    return null;
+  const envelope = ownDataRecord(outer.envelope, [
+    "audience",
+    "continuation",
+    "environment",
+    "filters",
+    "limit",
+    "operation",
+    "publicationId",
+    "searchPlan",
+    "sort",
+    "version",
+  ]);
+  if (
+    envelope?.audience !== AUDIENCE ||
+    envelope.version !== 1 ||
+    envelope.environment !== outer.environment ||
+    typeof envelope.publicationId !== "string" ||
+    !PUBLICATION_ID.test(envelope.publicationId) ||
+    typeof envelope.limit !== "number" ||
+    !Number.isSafeInteger(envelope.limit) ||
+    envelope.limit < 1 ||
+    envelope.limit > 20
+  )
+    return null;
+  const recordType = mergedRecordTypeFilter(envelope.filters);
+  const continuation = mergedContinuation(envelope.continuation);
+  const operation = ownDataRecord(envelope.operation, ["kind"]);
+  const sort = ownDataArray(envelope.sort, 2);
+  const plan = ownDataRecord(envelope.searchPlan, [
+    "filters",
+    "kind",
+    "limit",
+    "query",
+    "semanticCalls",
+    "semanticCandidates",
+    "semanticDegraded",
+  ]);
+  const planRecordType = mergedRecordTypeFilter(plan?.filters);
+  if (
+    recordType === undefined ||
+    continuation === undefined ||
+    operation?.kind !== "search" ||
+    sort?.[0] !== "relevance" ||
+    sort[1] !== "stable_id" ||
+    plan?.kind !== "exact_structured" ||
+    plan.limit !== envelope.limit ||
+    !providerModelIdQuery(plan.query) ||
+    plan.semanticCalls !== 0 ||
+    plan.semanticCandidates !== 0 ||
+    plan.semanticDegraded !== "disabled" ||
+    planRecordType !== recordType
+  )
+    return null;
+  const marker = continuation?.tierMarker;
+  let normalized = "";
+  try {
+    normalized = normalizeExactSearchName(plan.query);
+  } catch (error) {
+    if (!(error instanceof RangeError)) return null;
+  }
+  if (
+    (recordType === "provider" &&
+      marker !== undefined &&
+      marker !== EXACT_PROVIDER_MARKER) ||
+    ((recordType === "model" || recordType === "variant") &&
+      marker === EXACT_PROVIDER_MARKER) ||
+    (recordType === "model" &&
+      continuation !== null &&
+      !MODEL_ID.test(continuation.resourceId)) ||
+    (recordType === "variant" &&
+      continuation !== null &&
+      !VARIANT_ID.test(continuation.resourceId)) ||
+    ((marker === EXACT_CANONICAL_MARKER ||
+      marker === EXACT_PROVIDER_MODEL_ID_NORMALIZED_MARKER) &&
+      normalized.length === 0) ||
+    (marker === EXACT_PROVIDER_MARKER &&
+      (normalized.length === 0 || plan.query.includes("\u0000")))
+  )
+    return null;
+  return {
+    environment: outer.environment,
+    bookmark: outer.bookmark,
+    publicationId: envelope.publicationId,
+    query: plan.query,
+    recordType,
+    continuation,
+    limit: envelope.limit,
+  };
+};
+
 const d1Rows = (value: unknown): unknown[] | null => {
   if (!record(value) || value.success !== true || !Array.isArray(value.results))
     return null;
@@ -889,6 +1088,38 @@ export const readProviderModelIdExactTierV1 = async (
     return { outcome: "page", page };
   } catch (error) {
     if (error instanceof ProviderModelIdExactError)
+      return {
+        outcome:
+          error.code === "read_failure" ? "read_failure" : "integrity_failure",
+      };
+    return { outcome: "read_failure" };
+  }
+};
+
+export const readMergedExactSearchV1 = async (
+  database: D1Database,
+  protectedEnvironment: unknown,
+  input: unknown,
+): Promise<ReadMergedExactSearchV1Outcome> => {
+  const parsed = parseMergedExactSearchInput(input);
+  if (
+    parsed === null ||
+    !environment(protectedEnvironment) ||
+    parsed.environment !== protectedEnvironment
+  )
+    return { outcome: "integrity_failure" };
+  try {
+    const session = database.withSession(parsed.bookmark);
+    const page = await readMergedExactSearchPage(session, {
+      publicationId: parsed.publicationId,
+      query: parsed.query,
+      recordType: parsed.recordType,
+      continuation: parsed.continuation,
+      limit: parsed.limit,
+    });
+    return { outcome: "page", page };
+  } catch (error) {
+    if (error instanceof MergedExactSearchError)
       return {
         outcome:
           error.code === "read_failure" ? "read_failure" : "integrity_failure",

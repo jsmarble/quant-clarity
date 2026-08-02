@@ -11,6 +11,7 @@ import {
   PROVIDER_MODEL_ID_EXACT_MAX_QUERY_BYTES,
   PROVIDER_MODEL_ID_EXACT_TARGET_SELECT_SQL,
   ProviderModelIdExactError,
+  readMergedProviderModelIdExactPage,
   readProviderModelIdExactPage,
 } from "./provider-model-id-exact.js";
 
@@ -145,6 +146,7 @@ const candidateSentinel = () => ({
   name_projection_version: null,
   name_resource_content_hash: null,
   normalized_name_utf8: null,
+  ordering_name_utf8: null,
   display_name_bytes_match: null,
   offering_resource_content_hash: null,
   target_resource_content_hash: null,
@@ -177,6 +179,7 @@ const fixtureResults = async (
     offeringId: OFFERING_ID,
   },
   providerModelId = query,
+  stableIdOrdering = false,
 ) => {
   const resourceType = identity.resourceType ?? "model";
   const offeringJson = resourceJson(
@@ -218,6 +221,7 @@ const fixtureResults = async (
           name_projection_version: "model-variant-name@1",
           name_resource_content_hash: targetHash,
           normalized_name_utf8: toBuffer(normalizedName),
+          ordering_name_utf8: toBuffer(stableIdOrdering ? "" : normalizedName),
           display_name_bytes_match: 1,
           offering_resource_content_hash: offeringHash,
           target_resource_content_hash: targetHash,
@@ -356,6 +360,25 @@ describe("provider-model-ID exact reader (SRCH-002, SRCH-006, SRCH-008, SRCH-009
       PROVIDER_ID,
       "model",
     ]);
+  });
+
+  it("enables canonical-name overlap exclusion only for merged composition before LIMIT", async () => {
+    const standalone = new FakeDatabase(await fixtureResults("fixture-id"));
+    await readProviderModelIdExactPage(standalone.asD1(), input("fixture-id"));
+    const merged = new FakeDatabase(
+      await fixtureResults("fixture-id", 0, undefined, "fixture-id", true),
+    );
+    await readMergedProviderModelIdExactPage(
+      merged.asD1(),
+      input("fixture-id"),
+    );
+    expect(standalone.calls[0]?.values.slice(10, 12)).toEqual([0, 0]);
+    expect(merged.calls[0]?.values.slice(10, 12)).toEqual([1, 1]);
+    expect(
+      PROVIDER_MODEL_ID_EXACT_CANDIDATE_SELECT_SQL.match(
+        /name\.normalized_name_utf8 <> \?3/gu,
+      ),
+    ).toHaveLength(2);
   });
 
   it("maps a normalized-only Variant witness to its exact canonical Variant", async () => {

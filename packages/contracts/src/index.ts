@@ -1249,10 +1249,11 @@ const SEARCH_SEMANTIC_DEGRADATION_VALUES = [
   "disabled",
   "eligibility_limit",
   "temporarily_unavailable",
+  "not_applicable",
 ] as const;
 
 const SEARCH_SEMANTIC_DEGRADATION_MEANINGS =
-  "Known values: none means the applicable semantic plan completed; disabled means applicable semantic work was intentionally not attempted; eligibility_limit means complete eligibility exceeded the bounded plan and no incomplete subset was queried; temporarily_unavailable means a semantic dependency failed and partial semantic candidates were discarded. This required non-null open string has no default.";
+  "Known values: none means the applicable semantic plan completed; disabled means applicable semantic work was intentionally not attempted; eligibility_limit means complete eligibility exceeded the bounded plan and no incomplete subset was queried; temporarily_unavailable means a semantic dependency failed and partial semantic candidates were discarded; not_applicable means the requested resource scope has no semantic corpus. This required non-null open string has no default.";
 
 export const SearchSemanticDegradationSchema = checkableExtensibleString(
   SEARCH_SEMANTIC_DEGRADATION_VALUES,
@@ -1318,6 +1319,7 @@ const SEARCH_FALLBACK_ONLY_STATES = new Set<string>([
   "disabled",
   "eligibility_limit",
   "temporarily_unavailable",
+  "not_applicable",
 ]);
 
 const searchCollectionWorkerValidationCandidate = (value: unknown): unknown => {
