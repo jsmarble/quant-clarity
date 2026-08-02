@@ -8,7 +8,9 @@ import {
   AdapterBatchSchema,
   AdapterManifestSchema,
   CandidateFactSchema,
+  checkModelContract,
   checkProviderContract,
+  checkVariantContract,
   derivePublicationVectorId,
   EvidenceIdSchema,
   FactSchema,
@@ -17,6 +19,7 @@ import {
   type IdPrefix,
   MethodologyDetailSchema,
   ModelFamilySchema,
+  ModelSchema,
   PriceSchema,
   PrecisionFormatSchema,
   PROVIDER_DISPLAY_NAME_MAX_UNICODE_SCALARS,
@@ -32,6 +35,7 @@ import {
   validateAdapterManifestSemantics,
   validatePublicationActivation,
   validatePublicationManifestSemantics,
+  VariantSchema,
 } from "./index.js";
 
 const UUID = "00000000-0000-4000-8000-000000000001";
@@ -240,6 +244,128 @@ describe("canonical public contracts (DATA-040–DATA-061, API-002–API-006)", 
         last_successful_refresh: knownFact("2026-08-01T00:00:00.000+00:00"),
       }),
     ).toBe(false);
+  });
+
+  it("validates complete model and variant resources with JSON Schema Unicode parity", () => {
+    const validateModel = standaloneValidator(ModelSchema);
+    const validateVariant = standaloneValidator(VariantSchema);
+    const unknownFact = {
+      state: "unknown",
+      value: null,
+      observed_at: null,
+      evidence_ids: [],
+    };
+    const derivedCount = {
+      value: 0,
+      observed_at: "2026-08-01T00:00:00.000Z",
+      derivation_version: "cataloged-provider-count@1",
+    };
+    const common = {
+      family_id: `fam_${UUID}`,
+      slug: knownFact("example-model"),
+      display_name: knownFact("🙂".repeat(200)),
+      publisher: knownFact("Example Publisher"),
+      release_date: knownFact("2026-08-01"),
+      modalities: knownFact(["🙂".repeat(128)]),
+      context_window_tokens: unknownFact,
+      maximum_output_tokens: unknownFact,
+      license: knownFact("🙂".repeat(256)),
+      architecture: knownFact("🙂".repeat(256)),
+      total_parameters: knownFact({
+        raw_value: "🙂".repeat(128),
+        normalized_decimal: null,
+        approximation: "🙂".repeat(128),
+      }),
+      active_parameters: unknownFact,
+      source_weight_format: knownFact("🙂".repeat(128)),
+      source_quantization: unknownFact,
+      checkpoints: [],
+      status: knownFact("active"),
+      cataloged_provider_count: derivedCount,
+      last_model_data_refresh: knownFact("2026-08-01T00:00:00.000Z"),
+    };
+    const model = {
+      model_id: `mdl_${UUID}`,
+      ...common,
+      authoritative_checkpoint_ids: [],
+    };
+    const variant = {
+      variant_id: `var_${UUID}`,
+      model_id: `mdl_${UUID}`,
+      ...common,
+      variant_kind: knownFact("🙂".repeat(128)),
+      selection_evidence: knownFact("🙂".repeat(512)),
+      checkpoint_ids: [],
+    };
+
+    expect(validateModel(model)).toBe(true);
+    expect(checkModelContract(model)).toBe(true);
+    expect(validateVariant(variant)).toBe(true);
+    expect(checkVariantContract(variant)).toBe(true);
+
+    const distinctAstralModalities = {
+      ...model,
+      modalities: knownFact(["🙂", "🚀", "x"]),
+    };
+    expect(validateModel(distinctAstralModalities)).toBe(true);
+    expect(checkModelContract(distinctAstralModalities)).toBe(true);
+    const duplicateAstralModalities = {
+      ...model,
+      modalities: knownFact(["🙂", "🚀", "🙂"]),
+    };
+    expect(validateModel(duplicateAstralModalities)).toBe(false);
+    expect(checkModelContract(duplicateAstralModalities)).toBe(false);
+
+    const checkpoint = {
+      checkpoint_id: `chk_${UUID}`,
+      publisher_organization_id: `org_${UUID}`,
+      checkpoint_kind: knownFact("🙂".repeat(128)),
+      repository_locator: knownFact("🙂".repeat(2048)),
+      repository_id: knownFact("🙂".repeat(256)),
+      revision: knownFact("🙂".repeat(256)),
+      published_at: unknownFact,
+      declared_weight_format: knownFact("🙂".repeat(128)),
+      quantization: knownFact("🙂".repeat(128)),
+      file_format: knownFact("🙂".repeat(128)),
+      role: knownFact("🙂".repeat(128)),
+      lineage_edges: [
+        {
+          from_checkpoint_id: `chk_${UUID}`,
+          to_checkpoint_id: `chk_00000000-0000-4000-8000-000000000002`,
+          relationship: "🙂".repeat(128),
+          observed_at: "2026-08-01T00:00:00.000Z",
+          evidence_ids: [`evd_${UUID}`],
+        },
+      ],
+    };
+    const modelWithCheckpoint = {
+      ...model,
+      authoritative_checkpoint_ids: [`chk_${UUID}`],
+      checkpoints: [checkpoint],
+    };
+    expect(validateModel(modelWithCheckpoint)).toBe(true);
+    expect(checkModelContract(modelWithCheckpoint)).toBe(true);
+
+    const nulModelName = {
+      ...model,
+      display_name: knownFact("Leading\u0000Model"),
+    };
+    expect(validateModel(nulModelName)).toBe(true);
+    expect(checkModelContract(nulModelName)).toBe(true);
+
+    const overlongModel = {
+      ...model,
+      display_name: knownFact("🙂".repeat(201)),
+    };
+    expect(validateModel(overlongModel)).toBe(false);
+    expect(checkModelContract(overlongModel)).toBe(false);
+    expect(
+      checkModelContract({
+        ...model,
+        release_date: knownFact("2026-02-30"),
+      }),
+    ).toBe(false);
+    expect(checkVariantContract({ ...variant, unexpected: true })).toBe(false);
   });
 
   it("requires evidence for public identity names and slugs", () => {
