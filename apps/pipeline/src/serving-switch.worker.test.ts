@@ -9,6 +9,7 @@ import type {
 } from "@quant-clarity/publication-core";
 
 import { applyServingSwitch } from "./serving-switch.js";
+import { applyReadinessCommit } from "./readiness-commit.js";
 import {
   createActivationProjection,
   createReadyPublicationFixture,
@@ -378,6 +379,9 @@ describe("fixed serving switch transaction in workerd (PIPE-044, PIPE-050–PIPE
     await expect(
       applyServingSwitch(env.SERVING_DB, activationA),
     ).resolves.toMatchObject({ outcome: "applied", generation: 1 });
+    await expect(
+      applyReadinessCommit(env.SERVING_DB, fixtureA.readinessCommit),
+    ).resolves.toMatchObject({ outcome: "idempotent_success" });
     await expect(
       applyServingSwitch(env.SERVING_DB, activationA),
     ).resolves.toMatchObject({ outcome: "idempotent_success", generation: 1 });

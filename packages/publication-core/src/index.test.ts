@@ -6,11 +6,13 @@ import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 
 import {
+  assertServingReadinessCommitProjection,
   assertServingSwitchProjection,
   buildBackupRootHash,
   buildImmutableManifest,
   buildImmutableManifestFromPersistedContent,
   canonicalizePublicationJson,
+  classifyServingReadinessCommitRetry,
   classifyServingSwitchRetry,
   decideHotRetention,
   derivePublicationVectorId,
@@ -26,6 +28,7 @@ import {
   planRollback,
   projectServingClosureSeal,
   projectServingReadinessAttestation,
+  projectServingReadinessCommit,
   projectServingReadinessReceiptRows,
   projectServingSwitch,
   readServingReadinessReceipts,
@@ -1094,7 +1097,7 @@ describe("immutable publication closure (PIPE-050, PIPE-051, BE-011)", () => {
       closureRows: rows,
       persistedSeal: seal,
       receiptRows: projectedReceiptRows,
-      environment: "local",
+      environment: "local" as const,
       readyAtMs,
       maximumReceiptAgeMs: readinessMaximumAgeMs,
     });
@@ -1132,6 +1135,176 @@ describe("immutable publication closure (PIPE-050, PIPE-051, BE-011)", () => {
         maximumReceiptAgeMs: readinessMaximumAgeMs,
       }),
     ).rejects.toThrow(/serving readiness environment is invalid/u);
+
+    const mutableCommitInput = structuredClone({
+      closureRows: rows,
+      persistedSeal: seal,
+      receiptRows: projectedReceiptRows,
+      environment: "local" as const,
+      readyAtMs,
+      maximumReceiptAgeMs: readinessMaximumAgeMs,
+    });
+    const commitPromise = projectServingReadinessCommit(mutableCommitInput);
+    Reflect.set(
+      mutableCommitInput.receiptRows.bindings[0]!,
+      "receipt_hash",
+      HASH_A,
+    );
+    Reflect.set(
+      mutableCommitInput.closureRows.publication,
+      "closure_hash",
+      HASH_A,
+    );
+    const commitDecision = await commitPromise;
+    if (commitDecision.decision !== "ready")
+      throw new Error("readiness commit was unexpectedly blocked");
+    const commitProjection = commitDecision.projection;
+    expect(() => {
+      assertServingReadinessCommitProjection(commitProjection);
+    }).not.toThrow();
+    expect(() => {
+      assertServingReadinessCommitProjection(
+        JSON.parse(JSON.stringify(commitProjection)),
+      );
+    }).toThrow(/not trusted/u);
+    const reflectedCommitForgery = JSON.parse(
+      JSON.stringify(commitProjection),
+    ) as object;
+    for (const symbol of Object.getOwnPropertySymbols(commitProjection))
+      Object.defineProperty(
+        reflectedCommitForgery,
+        symbol,
+        Object.getOwnPropertyDescriptor(commitProjection, symbol)!,
+      );
+    expect(() => {
+      assertServingReadinessCommitProjection(reflectedCommitForgery);
+    }).toThrow(/not trusted/u);
+    expect(
+      commitProjection.receiptRows.bindings.find(
+        (row) => row.kind === "archive",
+      )?.receipt_hash,
+    ).toBe(
+      projectedReceiptRows.bindings.find((row) => row.kind === "archive")
+        ?.receipt_hash,
+    );
+    expect(commitProjection.attestation).toEqual(
+      attestationDecision.attestation,
+    );
+    Reflect.set(
+      mutableCommitInput.receiptRows.bindings[1]!,
+      "receipt_hash",
+      HASH_B,
+    );
+    expect(
+      commitProjection.receiptRows.bindings.find(
+        (row) => row.kind === "serving",
+      )?.receipt_hash,
+    ).toBe(
+      projectedReceiptRows.bindings.find((row) => row.kind === "serving")
+        ?.receipt_hash,
+    );
+    const emptyReceiptRows: ServingReadinessReceiptRows = {
+      bindings: [],
+      archives: [],
+      servings: [],
+      vectors: [],
+      probes: [],
+    };
+    expect(
+      classifyServingReadinessCommitRetry({
+        expected: commitProjection,
+        publicationState: "building",
+        publicationReadyAtMs: null,
+        publicationClosureHash: expected.closureHash,
+        receiptRows: emptyReceiptRows,
+        attestation: null,
+      }),
+    ).toEqual({ outcome: "execute" });
+    expect(
+      classifyServingReadinessCommitRetry({
+        expected: commitProjection,
+        publicationState: "ready",
+        publicationReadyAtMs: readyAtMs,
+        publicationClosureHash: expected.closureHash,
+        receiptRows: commitProjection.receiptRows,
+        attestation: commitProjection.attestation,
+      }),
+    ).toEqual({ outcome: "idempotent_success" });
+    for (const publicationState of [
+      "active",
+      "superseded",
+      "rolled_back",
+    ] as const)
+      expect(
+        classifyServingReadinessCommitRetry({
+          expected: commitProjection,
+          publicationState,
+          publicationReadyAtMs: readyAtMs,
+          publicationClosureHash: expected.closureHash,
+          receiptRows: commitProjection.receiptRows,
+          attestation: commitProjection.attestation,
+        }),
+      ).toEqual({ outcome: "idempotent_success" });
+    for (const publicationState of ["building", "failed"] as const)
+      expect(
+        classifyServingReadinessCommitRetry({
+          expected: commitProjection,
+          publicationState,
+          publicationReadyAtMs: readyAtMs,
+          publicationClosureHash: expected.closureHash,
+          receiptRows: commitProjection.receiptRows,
+          attestation: commitProjection.attestation,
+        }),
+      ).toEqual({ outcome: "integrity_failure" });
+    expect(
+      classifyServingReadinessCommitRetry({
+        expected: commitProjection,
+        publicationState: "building",
+        publicationReadyAtMs: null,
+        publicationClosureHash: expected.closureHash,
+        receiptRows: {
+          ...emptyReceiptRows,
+          bindings: [commitProjection.receiptRows.bindings[0]!],
+        },
+        attestation: null,
+      }),
+    ).toEqual({ outcome: "integrity_failure" });
+    expect(
+      classifyServingReadinessCommitRetry({
+        expected: commitProjection,
+        publicationState: "building",
+        publicationReadyAtMs: null,
+        publicationClosureHash: expected.closureHash,
+        receiptRows: {
+          ...commitProjection.receiptRows,
+          bindings: commitProjection.receiptRows.bindings.map((row, index) =>
+            index === 0 ? { ...row, receipt_hash: HASH_A } : row,
+          ),
+        },
+        attestation: null,
+      }),
+    ).toEqual({ outcome: "conflict" });
+    expect(
+      classifyServingReadinessCommitRetry({
+        expected: commitProjection,
+        publicationState: "failed",
+        publicationReadyAtMs: null,
+        publicationClosureHash: expected.closureHash,
+        receiptRows: emptyReceiptRows,
+        attestation: null,
+      }),
+    ).toEqual({ outcome: "stale" });
+    for (const publicationState of ["ready", "active"] as const)
+      expect(
+        classifyServingReadinessCommitRetry({
+          expected: commitProjection,
+          publicationState,
+          publicationReadyAtMs: readyAtMs,
+          publicationClosureHash: expected.closureHash,
+          receiptRows: emptyReceiptRows,
+          attestation: null,
+        }),
+      ).toEqual({ outcome: "integrity_failure" });
 
     database.exec("BEGIN IMMEDIATE");
     try {

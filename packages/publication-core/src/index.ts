@@ -2600,6 +2600,197 @@ export const verifyServingReadinessAttestationProjection = async (
   return Object.freeze(errors);
 };
 
+const servingReadinessCommitProjectionBrand: unique symbol = Symbol(
+  "ServingReadinessCommitProjection",
+);
+const trustedServingReadinessCommitProjections = new WeakSet<object>();
+
+export type ServingReadinessCommitProjection = Readonly<{
+  receiptRows: ServingReadinessReceiptRows;
+  attestation: ServingReadinessAttestationProjection;
+  transition: Readonly<{
+    publication_id: PublicationId;
+    closure_hash: Sha256;
+    expected_state: "building";
+    next_state: "ready";
+    ready_at_ms: number;
+  }>;
+  readonly [servingReadinessCommitProjectionBrand]: true;
+}>;
+
+export const assertServingReadinessCommitProjection: (
+  value: unknown,
+) => asserts value is ServingReadinessCommitProjection = (value) => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !(servingReadinessCommitProjectionBrand in value) ||
+    value[servingReadinessCommitProjectionBrand] !== true ||
+    !trustedServingReadinessCommitProjections.has(value)
+  )
+    throw new TypeError("serving readiness commit projection is not trusted");
+};
+
+const freezeReadinessReceiptRows = (
+  rows: ServingReadinessReceiptRows,
+): ServingReadinessReceiptRows =>
+  Object.freeze({
+    bindings: Object.freeze(
+      rows.bindings
+        .map((row) => Object.freeze({ ...row }))
+        .sort((left, right) => compareAscii(left.kind, right.kind)),
+    ),
+    archives: Object.freeze(
+      rows.archives.map((row) => Object.freeze({ ...row })),
+    ),
+    servings: Object.freeze(
+      rows.servings.map((row) => Object.freeze({ ...row })),
+    ),
+    vectors: Object.freeze(
+      rows.vectors.map((row) => Object.freeze({ ...row })),
+    ),
+    probes: Object.freeze(rows.probes.map((row) => Object.freeze({ ...row }))),
+  });
+
+export type ServingReadinessCommitDecision =
+  | Readonly<{
+      decision: "ready";
+      readyAt: string;
+      closureHash: Sha256;
+      projection: ServingReadinessCommitProjection;
+    }>
+  | Extract<ReadinessDecision, { decision: "blocked" }>;
+
+export const projectServingReadinessCommit = async (
+  callerInput: ServingReadinessAttestationInput,
+): Promise<ServingReadinessCommitDecision> => {
+  // Capture one detached view before the first digest yields. The trusted
+  // projection must not retain caller-owned rows that can drift after hashing.
+  const input = structuredClone(callerInput);
+  const decision = await projectServingReadinessAttestation(input);
+  if (decision.decision === "blocked") return decision;
+  const receiptRows = freezeReadinessReceiptRows(input.receiptRows);
+  const attestation = Object.freeze({ ...decision.attestation });
+  const transition = Object.freeze({
+    publication_id: attestation.publication_id as PublicationId,
+    closure_hash: attestation.closure_hash as Sha256,
+    expected_state: "building" as const,
+    next_state: "ready" as const,
+    ready_at_ms: attestation.ready_at_ms,
+  });
+  const projection = { receiptRows, attestation, transition };
+  Object.defineProperty(projection, servingReadinessCommitProjectionBrand, {
+    value: true,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  trustedServingReadinessCommitProjections.add(projection);
+  return Object.freeze({
+    decision: "ready",
+    readyAt: decision.readyAt,
+    closureHash: decision.closureHash,
+    projection: Object.freeze(projection) as ServingReadinessCommitProjection,
+  });
+};
+
+export type ServingReadinessCommitRetryDecision = Readonly<{
+  outcome:
+    | "execute"
+    | "idempotent_success"
+    | "stale"
+    | "conflict"
+    | "integrity_failure";
+}>;
+
+const exactReadinessRows = (
+  left: ServingReadinessReceiptRows,
+  right: ServingReadinessReceiptRows,
+): boolean => JSON.stringify(left) === JSON.stringify(right);
+
+const readinessRowsConflict = (
+  actual: ServingReadinessReceiptRows,
+  expected: ServingReadinessReceiptRows,
+): boolean => {
+  const groups = [
+    [actual.bindings, expected.bindings],
+    [actual.archives, expected.archives],
+    [actual.servings, expected.servings],
+    [actual.vectors, expected.vectors],
+    [actual.probes, expected.probes],
+  ] as const;
+  return groups.some(([actualRows, expectedRows]) =>
+    actualRows.some((actualRow) =>
+      expectedRows.every(
+        (expectedRow) =>
+          JSON.stringify(actualRow) !== JSON.stringify(expectedRow),
+      ),
+    ),
+  );
+};
+
+const readinessRowsEmpty = (rows: ServingReadinessReceiptRows): boolean =>
+  rows.bindings.length === 0 &&
+  rows.archives.length === 0 &&
+  rows.servings.length === 0 &&
+  rows.vectors.length === 0 &&
+  rows.probes.length === 0;
+
+export const classifyServingReadinessCommitRetry = (input: {
+  readonly expected: ServingReadinessCommitProjection;
+  readonly publicationState: PublicationState;
+  readonly publicationReadyAtMs: number | null;
+  readonly publicationClosureHash: string;
+  readonly receiptRows: ServingReadinessReceiptRows;
+  readonly attestation: ServingReadinessAttestationProjection | null;
+}): ServingReadinessCommitRetryDecision => {
+  assertServingReadinessCommitProjection(input.expected);
+  const expected = input.expected;
+  const hasRows = !readinessRowsEmpty(input.receiptRows);
+  if (!hasRows && input.attestation === null) {
+    if (
+      input.publicationClosureHash !== expected.transition.closure_hash ||
+      (input.publicationReadyAtMs !== null &&
+        (!Number.isSafeInteger(input.publicationReadyAtMs) ||
+          input.publicationReadyAtMs < 0))
+    )
+      return Object.freeze({ outcome: "integrity_failure" });
+    if (
+      input.publicationState === expected.transition.expected_state &&
+      input.publicationReadyAtMs === null
+    )
+      return Object.freeze({ outcome: "execute" });
+    if (
+      input.publicationState === "failed" &&
+      input.publicationReadyAtMs === null
+    )
+      return Object.freeze({ outcome: "stale" });
+    return Object.freeze({ outcome: "integrity_failure" });
+  }
+  if (
+    readinessRowsConflict(input.receiptRows, expected.receiptRows) ||
+    (input.attestation !== null &&
+      JSON.stringify(input.attestation) !==
+        JSON.stringify(expected.attestation))
+  )
+    return Object.freeze({ outcome: "conflict" });
+  if (
+    !exactReadinessRows(input.receiptRows, expected.receiptRows) ||
+    input.attestation === null
+  )
+    return Object.freeze({ outcome: "integrity_failure" });
+  if (
+    !(["ready", "active", "superseded", "rolled_back"] as const).includes(
+      input.publicationState as
+        "ready" | "active" | "superseded" | "rolled_back",
+    ) ||
+    input.publicationReadyAtMs !== expected.transition.ready_at_ms ||
+    input.publicationClosureHash !== expected.transition.closure_hash
+  )
+    return Object.freeze({ outcome: "integrity_failure" });
+  return Object.freeze({ outcome: "idempotent_success" });
+};
+
 export type PublicationState =
   "building" | "failed" | "ready" | "active" | "superseded" | "rolled_back";
 export type PublicationRecord = Readonly<{
