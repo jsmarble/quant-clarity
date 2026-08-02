@@ -10,6 +10,7 @@ import {
   buildImmutableManifest,
   buildImmutableManifestFromPersistedContent,
   canonicalizePublicationJson,
+  classifyServingSwitchRetry,
   decideHotRetention,
   derivePublicationVectorId,
   deriveNormalizedPublicationHead,
@@ -25,8 +26,10 @@ import {
   projectServingClosureSeal,
   projectServingReadinessAttestation,
   projectServingReadinessReceiptRows,
+  projectServingSwitch,
   readServingReadinessReceipts,
   selectPublication,
+  SERVING_BACKUP_TABLES,
   validateBackupManifest,
   validateManifestInput,
   verifyImmutableManifest,
@@ -48,6 +51,8 @@ import {
   type ServingReadinessReceiptRows,
   type ServingReadinessAttestationProjection,
   type ServingSearchDocumentClosureRow,
+  type ServingSwitchHistoryRow,
+  type ServingSwitchPreflightRow,
   type ServingVectorClosureRow,
   type SwitchAuthorization,
 } from "./index.js";
@@ -238,6 +243,86 @@ const insertReadinessAttestation = (
       row.probes_receipt_hash,
       row.attestation_hash,
     );
+};
+
+const insertServingSwitch = (
+  database: DatabaseSync,
+  preflight: ServingSwitchPreflightRow,
+  history: ServingSwitchHistoryRow,
+): void => {
+  const preflightValues = [
+    preflight.switch_id,
+    preflight.preflight_version,
+    preflight.preflight_hash,
+    preflight.action,
+    preflight.environment,
+    preflight.expected_prior_generation,
+    preflight.expected_prior_rollback_candidate_publication_id,
+    preflight.expected_prior_switched_at_ms,
+    preflight.new_generation,
+    preflight.from_publication_id,
+    preflight.from_closure_hash,
+    preflight.to_publication_id,
+    preflight.to_closure_hash,
+    preflight.to_attestation_hash,
+    preflight.switched_at_ms,
+    preflight.observed_at_ms,
+    preflight.maximum_age_ms,
+    preflight.valid_until_ms,
+    preflight.fts_build_version,
+    preflight.fts_source_document_count,
+    preflight.fts_index_document_count,
+    preflight.fts_source_inventory_hash,
+    preflight.fts_exact_parity,
+    preflight.archive_bundle_hash,
+    preflight.archive_immutable,
+    preflight.vector_namespace,
+    preflight.vector_document_count,
+    preflight.vector_verified_document_count,
+    preflight.vector_inventory_hash,
+    preflight.vector_visibility_probe_version,
+    preflight.vector_mutation_id,
+    preflight.vector_all_ids_present,
+    preflight.vector_all_namespaces_match,
+    preflight.vector_queryable,
+    preflight.probe_set_version,
+    preflight.integrity_passed,
+    preflight.exact_search_passed,
+    preflight.semantic_search_passed,
+    preflight.structured_filter_passed,
+    preflight.neutrality_passed,
+    preflight.version_isolation_passed,
+  ] as const;
+  database
+    .prepare(
+      `INSERT INTO publication_switch_preflight VALUES (${preflightValues.map(() => "?").join(", ")})`,
+    )
+    .run(...preflightValues);
+  const historyValues = [
+    history.switch_id,
+    history.event_version,
+    history.event_hash,
+    history.preflight_hash,
+    history.action,
+    history.expected_prior_generation,
+    history.expected_prior_rollback_candidate_publication_id,
+    history.expected_prior_switched_at_ms,
+    history.new_generation,
+    history.from_publication_id,
+    history.from_closure_hash,
+    history.to_publication_id,
+    history.to_closure_hash,
+    history.to_attestation_hash,
+    history.resulting_rollback_candidate_publication_id,
+    history.switched_at_ms,
+    history.authorized_by_kind,
+    history.authorized_identity_id,
+  ] as const;
+  database
+    .prepare(
+      `INSERT INTO publication_switch_history VALUES (${historyValues.map(() => "?").join(", ")})`,
+    )
+    .run(...historyValues);
 };
 
 const manifestInput = (): PublicationManifestInput => ({
@@ -986,6 +1071,7 @@ describe("immutable publication closure (PIPE-050, PIPE-051, BE-011)", () => {
       }),
     ).rejects.toThrow(/receipt hash does not match/u);
     const readyAtMs = Date.parse("2026-08-01T12:05:00.000Z");
+    const readinessMaximumAgeMs = 10 * 365 * 24 * 60 * 60 * 1000;
     const preSealReceiptRows = await projectServingReadinessReceiptRows(
       readinessEvidence.map((receipt) =>
         receipt.kind === "archive"
@@ -1000,7 +1086,7 @@ describe("immutable publication closure (PIPE-050, PIPE-051, BE-011)", () => {
         receiptRows: preSealReceiptRows,
         environment: "local",
         readyAtMs,
-        maximumReceiptAgeMs: 10 * 60 * 1000,
+        maximumReceiptAgeMs: readinessMaximumAgeMs,
       }),
     ).rejects.toThrow(/observation predates closure seal/u);
     const attestationDecision = await projectServingReadinessAttestation({
@@ -1009,13 +1095,13 @@ describe("immutable publication closure (PIPE-050, PIPE-051, BE-011)", () => {
       receiptRows: projectedReceiptRows,
       environment: "local",
       readyAtMs,
-      maximumReceiptAgeMs: 10 * 60 * 1000,
+      maximumReceiptAgeMs: readinessMaximumAgeMs,
     });
     expect(attestationDecision.decision).toBe("ready");
     if (attestationDecision.decision !== "ready")
       throw new Error("expected a ready attestation projection");
     expect(attestationDecision.attestation.attestation_hash).toBe(
-      "sha256:4674c1d89196cd3595110011e860468d5688198b12e106424d7507f09718b399",
+      "sha256:fa43a4f57403f221a8c7a0c2fef2b7dffc01b0d28c3199b5d0ee3c96211cd2ba",
     );
     await expect(
       verifyServingReadinessAttestationProjection(
@@ -1025,7 +1111,7 @@ describe("immutable publication closure (PIPE-050, PIPE-051, BE-011)", () => {
           receiptRows: projectedReceiptRows,
           environment: "local",
           readyAtMs,
-          maximumReceiptAgeMs: 10 * 60 * 1000,
+          maximumReceiptAgeMs: readinessMaximumAgeMs,
         },
         {
           ...attestationDecision.attestation,
@@ -1042,7 +1128,7 @@ describe("immutable publication closure (PIPE-050, PIPE-051, BE-011)", () => {
         receiptRows: projectedReceiptRows,
         environment: "test" as unknown as "local",
         readyAtMs,
-        maximumReceiptAgeMs: 10 * 60 * 1000,
+        maximumReceiptAgeMs: readinessMaximumAgeMs,
       }),
     ).rejects.toThrow(/serving readiness environment is invalid/u);
 
@@ -1084,7 +1170,7 @@ describe("immutable publication closure (PIPE-050, PIPE-051, BE-011)", () => {
         receiptRows: persistedRows,
         environment: "local",
         readyAtMs,
-        maximumReceiptAgeMs: 10 * 60 * 1000,
+        maximumReceiptAgeMs: readinessMaximumAgeMs,
       });
       if (persistedDecision.decision !== "ready")
         throw new Error(
@@ -1117,7 +1203,7 @@ describe("immutable publication closure (PIPE-050, PIPE-051, BE-011)", () => {
           receiptRows: selectReadinessReceiptRows(database, publicationId),
           environment: "local",
           readyAtMs,
-          maximumReceiptAgeMs: 10 * 60 * 1000,
+          maximumReceiptAgeMs: readinessMaximumAgeMs,
         },
         persistedAttestation,
       ),
@@ -1136,11 +1222,471 @@ describe("immutable publication closure (PIPE-050, PIPE-051, BE-011)", () => {
         )
         .run(HASH_A, publicationId),
     ).toThrow(/readiness receipt is immutable/u);
-    expect(() =>
+
+    const switchProjection = await projectServingSwitch({
+      action: "activate",
+      target: {
+        publicationId,
+        closureHash: expected.closureHash,
+        state: "ready",
+        generatedAt: expected.generatedAt,
+        readyAt: new Date(readyAtMs).toISOString(),
+        firstActivatedAt: null,
+        lastHeadReferencedAt: null,
+      },
+      currentHead: null,
+      currentActive: null,
+      switchedAt: "2026-08-01T12:06:00.000Z",
+      authorizedBy: AUTHORIZATION,
+      closureRows: rows,
+      persistedSeal: seal,
+      receiptRows: selectReadinessReceiptRows(database, publicationId),
+      persistedAttestation,
+      artifactProof: {
+        environment: "local",
+        observedAtMs: Date.parse("2026-08-01T12:05:30.000Z"),
+        maximumAgeMs: 5 * 60 * 1000,
+        ftsBuildVersion: "fts5-unicode61@1",
+        ftsSourceDocumentCount: expected.searchDocuments.length,
+        ftsIndexDocumentCount: expected.searchDocuments.length,
+        ftsSourceInventoryHash: expected.exactSearchInventoryHash,
+        ftsExactParity: true,
+        archiveBundleHash: expected.bundleHash,
+        archiveImmutable: true,
+        vectorNamespace: publicationId,
+        vectorDocumentCount: expected.vectors.length,
+        vectorVerifiedDocumentCount: expected.vectors.length,
+        vectorInventoryHash: expected.vectorInventoryHash,
+        vectorVisibilityProbeVersion: "vector-visibility@1",
+        vectorMutationId: "mutation-switch-1",
+        vectorAllIdsPresent: true,
+        vectorAllNamespacesMatch: true,
+        vectorQueryable: true,
+        probeSetVersion: "search-gold@1",
+        integrityPassed: true,
+        exactSearchPassed: true,
+        semanticSearchPassed: true,
+        structuredFilterPassed: true,
+        neutralityPassed: true,
+        versionIsolationPassed: true,
+      },
+    });
+    expect(switchProjection.plan.operation).toBe("activate");
+    expect(switchProjection.preflight).toMatchObject({
+      action: "activate",
+      expected_prior_generation: 0,
+      new_generation: 1,
+      from_publication_id: null,
+      to_publication_id: publicationId,
+      to_attestation_hash: persistedAttestation.attestation_hash,
+    });
+    expect(switchProjection.history).toMatchObject({
+      action: "activate",
+      expected_prior_generation: 0,
+      new_generation: 1,
+      resulting_rollback_candidate_publication_id: null,
+      authorized_by_kind: "pipeline",
+      authorized_identity_id: AUTHORIZATION.identityId,
+    });
+    expect(switchProjection.preflight.preflight_hash).toBe(
+      "sha256:d48b3d83a6c569a985cf3a2275aad7b0763f3d351543ef42bb275bf7b3386eef",
+    );
+    expect(switchProjection.history.event_hash).toBe(
+      "sha256:6a13b569e022114e971e5e021abda5e5c973eff380cb09a551bc2352a3ac0555",
+    );
+    const switchedHead: StoredPublicationHead = {
+      activePublicationId: publicationId,
+      rollbackCandidatePublicationId: null,
+      switchedAt: "2026-08-01T12:06:00.000Z",
+      generation: 1,
+    };
+    expect(
+      classifyServingSwitchRetry({
+        expected: switchProjection,
+        currentHead: null,
+        historyAtGeneration: null,
+        targetState: "ready",
+        formerState: null,
+      }),
+    ).toEqual({ outcome: "execute" });
+    for (const targetState of ["active", "failed"] as const)
+      expect(
+        classifyServingSwitchRetry({
+          expected: switchProjection,
+          currentHead: null,
+          historyAtGeneration: null,
+          targetState,
+          formerState: null,
+        }),
+      ).toEqual({ outcome: "integrity_failure" });
+    expect(
+      classifyServingSwitchRetry({
+        expected: switchProjection,
+        currentHead: null,
+        historyAtGeneration: null,
+        targetState: "ready",
+        formerState: "active",
+      }),
+    ).toEqual({ outcome: "integrity_failure" });
+    expect(
+      classifyServingSwitchRetry({
+        expected: switchProjection,
+        currentHead: switchedHead,
+        historyAtGeneration: null,
+        targetState: "active",
+        formerState: null,
+      }),
+    ).toEqual({ outcome: "stale" });
+    expect(
+      classifyServingSwitchRetry({
+        expected: switchProjection,
+        currentHead: switchedHead,
+        historyAtGeneration: switchProjection.history,
+        targetState: "active",
+        formerState: null,
+      }),
+    ).toEqual({ outcome: "idempotent_success" });
+    expect(
+      classifyServingSwitchRetry({
+        expected: switchProjection,
+        currentHead: switchedHead,
+        historyAtGeneration: {
+          ...switchProjection.history,
+          event_hash: HASH_A,
+        },
+        targetState: "active",
+        formerState: null,
+      }),
+    ).toEqual({ outcome: "conflict" });
+    expect(
+      classifyServingSwitchRetry({
+        expected: switchProjection,
+        currentHead: null,
+        historyAtGeneration: switchProjection.history,
+        targetState: "active",
+        formerState: null,
+      }),
+    ).toEqual({ outcome: "integrity_failure" });
+    const rollbackProjection = await projectServingSwitch({
+      action: "rollback",
+      target: {
+        publicationId,
+        closureHash: expected.closureHash,
+        state: "superseded",
+        generatedAt: expected.generatedAt,
+        readyAt: new Date(readyAtMs).toISOString(),
+        firstActivatedAt: "2026-08-01T12:06:00.000Z",
+        lastHeadReferencedAt: "2026-08-01T12:06:30.000Z",
+      },
+      currentHead: {
+        activePublicationId: `pub_${UUID_C}`,
+        rollbackCandidatePublicationId: publicationId,
+        switchedAt: "2026-08-01T12:06:30.000Z",
+        generation: 1,
+      },
+      currentActive: {
+        publicationId: `pub_${UUID_C}`,
+        closureHash: HASH_A,
+        state: "active",
+        generatedAt: "2026-08-01T10:00:00.000Z",
+        readyAt: "2026-08-01T10:30:00.000Z",
+        firstActivatedAt: "2026-08-01T11:00:00.000Z",
+        lastHeadReferencedAt: "2026-08-01T12:06:30.000Z",
+      },
+      switchedAt: "2026-08-01T12:07:00.000Z",
+      authorizedBy: { kind: "operator", identityId: "operator.release" },
+      closureRows: rows,
+      persistedSeal: seal,
+      receiptRows: null,
+      persistedAttestation: null,
+      artifactProof: {
+        environment: "local",
+        observedAtMs: Date.parse("2026-08-01T12:06:45.000Z"),
+        maximumAgeMs: 60 * 1000,
+        ftsBuildVersion: "fts5-unicode61@1",
+        ftsSourceDocumentCount: expected.searchDocuments.length,
+        ftsIndexDocumentCount: expected.searchDocuments.length,
+        ftsSourceInventoryHash: expected.exactSearchInventoryHash,
+        ftsExactParity: true,
+        archiveBundleHash: expected.bundleHash,
+        archiveImmutable: true,
+        vectorNamespace: publicationId,
+        vectorDocumentCount: expected.vectors.length,
+        vectorVerifiedDocumentCount: expected.vectors.length,
+        vectorInventoryHash: expected.vectorInventoryHash,
+        vectorVisibilityProbeVersion: "vector-visibility@1",
+        vectorMutationId: "mutation-rollback-1",
+        vectorAllIdsPresent: true,
+        vectorAllNamespacesMatch: true,
+        vectorQueryable: true,
+        probeSetVersion: "search-gold@1",
+        integrityPassed: true,
+        exactSearchPassed: true,
+        semanticSearchPassed: true,
+        structuredFilterPassed: true,
+        neutralityPassed: true,
+        versionIsolationPassed: true,
+      },
+    });
+    expect(rollbackProjection.preflight).toMatchObject({
+      action: "rollback",
+      expected_prior_generation: 1,
+      new_generation: 2,
+      from_publication_id: `pub_${UUID_C}`,
+      to_publication_id: publicationId,
+      to_attestation_hash: null,
+    });
+    expect(rollbackProjection.history).toMatchObject({
+      action: "rollback",
+      resulting_rollback_candidate_publication_id: `pub_${UUID_C}`,
+      authorized_by_kind: "operator",
+    });
+    const rollbackHead: StoredPublicationHead = {
+      activePublicationId: `pub_${UUID_C}`,
+      rollbackCandidatePublicationId: publicationId,
+      switchedAt: "2026-08-01T12:06:30.000Z",
+      generation: 1,
+    };
+    expect(
+      classifyServingSwitchRetry({
+        expected: rollbackProjection,
+        currentHead: rollbackHead,
+        historyAtGeneration: null,
+        targetState: "superseded",
+        formerState: "active",
+      }),
+    ).toEqual({ outcome: "execute" });
+    expect(
+      classifyServingSwitchRetry({
+        expected: rollbackProjection,
+        currentHead: rollbackHead,
+        historyAtGeneration: null,
+        targetState: "rolled_back",
+        formerState: "active",
+      }),
+    ).toEqual({ outcome: "integrity_failure" });
+    expect(
+      classifyServingSwitchRetry({
+        expected: rollbackProjection,
+        currentHead: rollbackHead,
+        historyAtGeneration: null,
+        targetState: "superseded",
+        formerState: "superseded",
+      }),
+    ).toEqual({ outcome: "integrity_failure" });
+    await expect(
+      projectServingSwitch({
+        action: "rollback",
+        target: {
+          publicationId,
+          closureHash: expected.closureHash,
+          state: "superseded",
+          generatedAt: expected.generatedAt,
+          readyAt: new Date(readyAtMs).toISOString(),
+          firstActivatedAt: "2026-08-01T12:06:00.000Z",
+          lastHeadReferencedAt: "2026-08-01T12:06:30.000Z",
+        },
+        currentHead: {
+          activePublicationId: `pub_${UUID_C}`,
+          rollbackCandidatePublicationId: publicationId,
+          switchedAt: "2026-08-01T12:06:30.000Z",
+          generation: 1,
+        },
+        currentActive: {
+          publicationId: `pub_${UUID_C}`,
+          closureHash: HASH_A,
+          state: "active",
+          generatedAt: "2026-08-01T10:00:00.000Z",
+          readyAt: "2026-08-01T10:30:00.000Z",
+          firstActivatedAt: "2026-08-01T11:00:00.000Z",
+          lastHeadReferencedAt: "2026-08-01T12:06:30.000Z",
+        },
+        switchedAt: "2026-08-01T12:07:00.000Z",
+        authorizedBy: { kind: "operator", identityId: "operator.release" },
+        closureRows: rows,
+        persistedSeal: seal,
+        receiptRows: null,
+        persistedAttestation: null,
+        artifactProof: {
+          environment: "local",
+          observedAtMs: Date.parse("2026-08-01T12:06:45.000Z"),
+          maximumAgeMs: 60 * 1000,
+          ftsBuildVersion: "fts5-unicode61@1",
+          ftsSourceDocumentCount: expected.searchDocuments.length,
+          ftsIndexDocumentCount: expected.searchDocuments.length,
+          ftsSourceInventoryHash: expected.exactSearchInventoryHash,
+          ftsExactParity: true,
+          archiveBundleHash: expected.bundleHash,
+          archiveImmutable: true,
+          vectorNamespace: publicationId,
+          vectorDocumentCount: expected.vectors.length,
+          vectorVerifiedDocumentCount: expected.vectors.length - 1,
+          vectorInventoryHash: expected.vectorInventoryHash,
+          vectorVisibilityProbeVersion: "vector-visibility@1",
+          vectorMutationId: "mutation-rollback-1",
+          vectorAllIdsPresent: true,
+          vectorAllNamespacesMatch: true,
+          vectorQueryable: true,
+          probeSetVersion: "search-gold@1",
+          integrityPassed: true,
+          exactSearchPassed: true,
+          semanticSearchPassed: true,
+          structuredFilterPassed: true,
+          neutralityPassed: true,
+          versionIsolationPassed: true,
+        },
+      }),
+    ).rejects.toThrow(/does not prove/u);
+    await expect(
+      projectServingSwitch({
+        action: "activate",
+        target: {
+          publicationId,
+          closureHash: expected.closureHash,
+          state: "ready",
+          generatedAt: expected.generatedAt,
+          readyAt: new Date(readyAtMs).toISOString(),
+          firstActivatedAt: null,
+          lastHeadReferencedAt: null,
+        },
+        currentHead: null,
+        currentActive: null,
+        switchedAt: "2026-08-01T12:06:00.000Z",
+        authorizedBy: AUTHORIZATION,
+        closureRows: rows,
+        persistedSeal: seal,
+        receiptRows: selectReadinessReceiptRows(database, publicationId),
+        persistedAttestation: {
+          ...persistedAttestation,
+          attestation_hash: HASH_A,
+        },
+        artifactProof: {
+          ...switchProjection.preflight,
+          environment: "local",
+          observedAtMs: Date.parse("2026-08-01T12:05:30.000Z"),
+          maximumAgeMs: 5 * 60 * 1000,
+          ftsBuildVersion: "fts5-unicode61@1",
+          ftsSourceDocumentCount: expected.searchDocuments.length,
+          ftsIndexDocumentCount: expected.searchDocuments.length,
+          ftsSourceInventoryHash: expected.exactSearchInventoryHash,
+          ftsExactParity: true,
+          archiveBundleHash: expected.bundleHash,
+          archiveImmutable: true,
+          vectorNamespace: publicationId,
+          vectorDocumentCount: expected.vectors.length,
+          vectorVerifiedDocumentCount: expected.vectors.length,
+          vectorInventoryHash: expected.vectorInventoryHash,
+          vectorVisibilityProbeVersion: "vector-visibility@1",
+          vectorMutationId: "mutation-switch-1",
+          vectorAllIdsPresent: true,
+          vectorAllNamespacesMatch: true,
+          vectorQueryable: true,
+          probeSetVersion: "search-gold@1",
+          integrityPassed: true,
+          exactSearchPassed: true,
+          semanticSearchPassed: true,
+          structuredFilterPassed: true,
+          neutralityPassed: true,
+          versionIsolationPassed: true,
+        },
+      }),
+    ).rejects.toThrow(/attestation is invalid/u);
+
+    const databaseClockMs = Math.floor(Date.now() / 1_000) * 1_000;
+    const persistedSwitch = await projectServingSwitch({
+      action: "activate",
+      target: {
+        publicationId,
+        closureHash: expected.closureHash,
+        state: "ready",
+        generatedAt: expected.generatedAt,
+        readyAt: new Date(readyAtMs).toISOString(),
+        firstActivatedAt: null,
+        lastHeadReferencedAt: null,
+      },
+      currentHead: null,
+      currentActive: null,
+      switchedAt: new Date(databaseClockMs + 1_000).toISOString(),
+      authorizedBy: AUTHORIZATION,
+      closureRows: rows,
+      persistedSeal: seal,
+      receiptRows: selectReadinessReceiptRows(database, publicationId),
+      persistedAttestation,
+      artifactProof: {
+        environment: "local",
+        observedAtMs: databaseClockMs,
+        maximumAgeMs: 60 * 1000,
+        ftsBuildVersion: "fts5-unicode61@1",
+        ftsSourceDocumentCount: expected.searchDocuments.length,
+        ftsIndexDocumentCount: expected.searchDocuments.length,
+        ftsSourceInventoryHash: expected.exactSearchInventoryHash,
+        ftsExactParity: true,
+        archiveBundleHash: expected.bundleHash,
+        archiveImmutable: true,
+        vectorNamespace: publicationId,
+        vectorDocumentCount: expected.vectors.length,
+        vectorVerifiedDocumentCount: expected.vectors.length,
+        vectorInventoryHash: expected.vectorInventoryHash,
+        vectorVisibilityProbeVersion: "vector-visibility@1",
+        vectorMutationId: "mutation-persisted-switch-1",
+        vectorAllIdsPresent: true,
+        vectorAllNamespacesMatch: true,
+        vectorQueryable: true,
+        probeSetVersion: "search-gold@1",
+        integrityPassed: true,
+        exactSearchPassed: true,
+        semanticSearchPassed: true,
+        structuredFilterPassed: true,
+        neutralityPassed: true,
+        versionIsolationPassed: true,
+      },
+    });
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      insertServingSwitch(
+        database,
+        persistedSwitch.preflight,
+        persistedSwitch.history,
+      );
+      database.exec("COMMIT");
+    } catch (error) {
+      database.exec("ROLLBACK");
+      throw error;
+    }
+    expect(
       database
-        .prepare("INSERT INTO publication_head VALUES (1, ?, NULL, ?, 1)")
-        .run(publicationId, Date.parse(NOW)),
-    ).toThrow(/head switching is not implemented/u);
+        .prepare(
+          "SELECT active_publication_id, rollback_candidate_publication_id, switched_at_ms, generation FROM publication_head",
+        )
+        .get(),
+    ).toEqual({
+      active_publication_id: publicationId,
+      rollback_candidate_publication_id: null,
+      switched_at_ms: databaseClockMs + 1_000,
+      generation: 1,
+    });
+    expect(
+      database
+        .prepare(
+          "SELECT state, ready_at_ms, activated_at_ms FROM publication WHERE publication_id = ?",
+        )
+        .get(publicationId),
+    ).toEqual({
+      state: "active",
+      ready_at_ms: readyAtMs,
+      activated_at_ms: databaseClockMs + 1_000,
+    });
+    expect(
+      database
+        .prepare(
+          "SELECT event_hash, preflight_hash, new_generation FROM publication_switch_history WHERE switch_id = ?",
+        )
+        .get(persistedSwitch.history.switch_id),
+    ).toEqual({
+      event_hash: persistedSwitch.history.event_hash,
+      preflight_hash: persistedSwitch.preflight.preflight_hash,
+      new_generation: 1,
+    });
   });
 
   it("hashes all policy versions and inventories with deterministic ordering", async () => {
@@ -1699,6 +2245,21 @@ describe("closed activation and rollback plans (PIPE-050–PIPE-056, QA-006)", (
         } as unknown as SwitchAuthorization,
       }),
     ).toThrow(/authorization identity/u);
+    for (const identityId of [
+      "UPPERCASE",
+      "contains space",
+      "visitor\nheader",
+      `pipeline-${"x".repeat(128)}`,
+    ])
+      expect(() =>
+        planActivation({
+          candidate: record(`pub_${UUID_B}`, "ready"),
+          currentHead: null,
+          currentActive: null,
+          switchedAt: NOW,
+          authorizedBy: { kind: "pipeline", identityId },
+        }),
+      ).toThrow(/authorization identity/u);
     expect(() =>
       planActivation({
         candidate: record(`pub_${UUID_B}`, "ready"),
@@ -1775,7 +2336,7 @@ describe("closed activation and rollback plans (PIPE-050–PIPE-056, QA-006)", (
         switchedAt: NOW,
         authorizedBy: AUTHORIZATION,
       }),
-    ).not.toThrow();
+    ).toThrow(/retained immediate candidate/u);
     expect(() =>
       planRollback({
         currentHead: { ...currentHead, switchedAt: NOW },
@@ -1864,6 +2425,17 @@ describe("publication selection and hot retention (API-003, API-024A, PIPE-052, 
     ).toEqual({
       outcome: "publication_expired",
       currentPublicationId: active.publicationId,
+    });
+    expect(
+      selectPublication({
+        requestedPublicationId: previous.publicationId,
+        head: currentHead,
+        hotPublications: [active, { ...previous, state: "rolled_back" }],
+      }),
+    ).toEqual({
+      outcome: "selected",
+      publicationId: previous.publicationId,
+      source: "pin",
     });
     expect(
       selectPublication({
@@ -1995,6 +2567,20 @@ describe("portable backup manifest validation (BE-010–BE-012, OPS-008)", () =>
           rowCount: 2,
           byteCount: 96,
         },
+        ...SERVING_BACKUP_TABLES.filter(
+          (table) =>
+            ![
+              "publication",
+              "publication_provider_slice",
+              "publication_resource",
+              "publication_search_document",
+            ].includes(table),
+        ).map((table) => ({
+          table,
+          chunkCount: 0,
+          rowCount: 0,
+          byteCount: 0,
+        })),
       ],
       chunks: [
         {

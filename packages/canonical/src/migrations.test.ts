@@ -11,6 +11,7 @@ import { canonicalPrice } from "./index.js";
 
 const HASH = `sha256:${"a".repeat(64)}`;
 const OTHER_HASH = `sha256:${"b".repeat(64)}`;
+const THIRD_HASH = `sha256:${"c".repeat(64)}`;
 const VECTOR_ID = "c".repeat(64);
 const OTHER_VECTOR_ID = "d".repeat(64);
 
@@ -77,6 +78,16 @@ function applyServingReadinessReceiptMigration(database: DatabaseSync): void {
     database,
     readFileSync(
       resolve("migrations", "serving", "0005_readiness_receipt_ledger.sql"),
+      "utf8",
+    ),
+  );
+}
+
+function applyServingActivationMigration(database: DatabaseSync): void {
+  applyAtomicMigration(
+    database,
+    readFileSync(
+      resolve("migrations", "serving", "0006_exact_generation_activation.sql"),
       "utf8",
     ),
   );
@@ -1016,6 +1027,246 @@ describe("serving publication migrations (PIPE-050–PIPE-056)", () => {
         HASH,
         HASH,
         HASH,
+      );
+  }
+
+  function insertAttestedReadyPublication(
+    database: DatabaseSync,
+    publicationId: string,
+    sequence: number,
+    clockMs: number,
+  ): void {
+    const providerId = id("prv", sequence);
+    const providerRunId = id("pvr", sequence + 1);
+    const providerSliceId = id("prn", sequence + 2);
+    const modelId = id("mdl", sequence + 3);
+    const vectorId = sequence.toString(16).padStart(64, "0");
+    const generatedAtMs = clockMs - 5_000;
+    const sealedAtMs = clockMs - 4_000;
+    const observedAtMs = clockMs - 3_000;
+    const readyAtMs = clockMs - 2_000;
+    const maximumReceiptAgeMs = 120_000;
+
+    insertBuildingPublication(
+      database,
+      publicationId,
+      { resources: 1, exactDocuments: 1, vectorDocuments: 1 },
+      null,
+      generatedAtMs,
+    );
+    database
+      .prepare(
+        "INSERT INTO publication_provider_slice(publication_id, provider_id, provider_slice_id, provider_run_id, carried_forward, freshness_state) VALUES (?, ?, ?, ?, 0, 'fresh')",
+      )
+      .run(publicationId, providerId, providerSliceId, providerRunId);
+    database
+      .prepare(
+        "INSERT INTO publication_provider_slice_metadata VALUES (?, ?, 'adapter@1', 'roster@1', 'register@1')",
+      )
+      .run(publicationId, providerId);
+    database
+      .prepare(
+        "INSERT INTO publication_resource VALUES (?, 'model', ?, '{}', ?)",
+      )
+      .run(publicationId, modelId, HASH);
+    database
+      .prepare(
+        "INSERT INTO publication_search_document VALUES (?, ?, 'model', ?, 'example', '[]', 'Publisher', '[]', 'example model', ?)",
+      )
+      .run(publicationId, vectorId, modelId, HASH);
+    database
+      .prepare(
+        "INSERT INTO publication_vector_inventory VALUES (?, ?, ?, 'model', ?, ?, ?)",
+      )
+      .run(publicationId, publicationId, vectorId, modelId, HASH, OTHER_HASH);
+    for (const [kind, key] of [
+      ["resources", `model:${modelId}`],
+      ["exact_search", vectorId],
+      ["vectors", vectorId],
+    ] as const)
+      database
+        .prepare(
+          "INSERT INTO publication_inventory_chunk VALUES (?, ?, 0, ?, ?, 1, ?)",
+        )
+        .run(publicationId, kind, key, key, HASH);
+    const revision = database
+      .prepare(
+        "SELECT revision FROM publication_staging_revision WHERE publication_id = ?",
+      )
+      .get(publicationId) as { revision: number };
+    database
+      .prepare(
+        "INSERT INTO publication_closure_seal(publication_id, staging_revision, manifest_contract_version, hash_domain, hash_encoding_version, enabled_provider_scope_version, enabled_provider_count, provider_slice_count, provider_attribution_count, resource_count, exact_document_count, vector_document_count, chunk_count, bundle_hash, enabled_provider_scope_hash, provider_slice_hash, provider_attribution_hash, resource_inventory_hash, exact_search_inventory_hash, vector_inventory_hash, chunk_root_hash, closure_hash, sealed_at_ms) VALUES (?, ?, '1.0.0', 'publication-closure', '1', 'scope@1', 1, 1, 0, 1, 1, 1, 3, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run(
+        publicationId,
+        revision.revision,
+        HASH,
+        HASH,
+        HASH,
+        HASH,
+        HASH,
+        HASH,
+        HASH,
+        HASH,
+        OTHER_HASH,
+        sealedAtMs,
+      );
+    for (const kind of ["archive", "serving", "vectors", "probes"])
+      database
+        .prepare(
+          "INSERT INTO publication_readiness_receipt VALUES (?, ?, '1.0.0', ?, 'local', ?, ?, '1.0.0', 'commit', ?)",
+        )
+        .run(publicationId, kind, HASH, OTHER_HASH, HASH, observedAtMs);
+    database
+      .prepare(
+        "INSERT INTO publication_archive_receipt VALUES (?, 'archive', ?, 1)",
+      )
+      .run(publicationId, HASH);
+    database
+      .prepare(
+        "INSERT INTO publication_serving_receipt VALUES (?, 'serving', 1, ?, 1, ?, 0, ?, 1, 1, ?, ?, 'fts5-unicode61@1', 1, 1, 1, 1, 1)",
+      )
+      .run(publicationId, HASH, HASH, HASH, HASH, HASH);
+    database
+      .prepare(
+        "INSERT INTO publication_vector_receipt VALUES (?, 'vectors', ?, 1, 1, ?, 'vector-visibility@1', 'mutation-1', 1, 1, 1)",
+      )
+      .run(publicationId, publicationId, HASH);
+    database
+      .prepare(
+        "INSERT INTO publication_probe_receipt VALUES (?, 'probes', 'search-gold@1', 1, 1, 1, 1, 1, 1, 1)",
+      )
+      .run(publicationId);
+    database
+      .prepare(
+        "INSERT INTO publication_readiness_attestation VALUES (?, 'local', ?, ?, '1.0.0', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run(
+        publicationId,
+        OTHER_HASH,
+        HASH,
+        readyAtMs,
+        maximumReceiptAgeMs,
+        observedAtMs + maximumReceiptAgeMs,
+        observedAtMs,
+        observedAtMs,
+        observedAtMs,
+        observedAtMs,
+        HASH,
+        HASH,
+        HASH,
+        HASH,
+        HASH,
+      );
+    database
+      .prepare(
+        "UPDATE publication SET state = 'ready', ready_at_ms = ? WHERE publication_id = ?",
+      )
+      .run(readyAtMs, publicationId);
+  }
+
+  function switchPreflightValues(input: {
+    switchId: string;
+    action: "activate" | "rollback";
+    expectedGeneration: number;
+    expectedRollbackPublicationId: string | null;
+    expectedSwitchedAtMs: number | null;
+    fromPublicationId: string | null;
+    toPublicationId: string;
+    switchedAtMs: number;
+    observedAtMs: number;
+  }): (string | number | null)[] {
+    return [
+      input.switchId,
+      "1.0.0",
+      HASH,
+      input.action,
+      "local",
+      input.expectedGeneration,
+      input.expectedRollbackPublicationId,
+      input.expectedSwitchedAtMs,
+      input.expectedGeneration + 1,
+      input.fromPublicationId,
+      input.fromPublicationId === null ? null : OTHER_HASH,
+      input.toPublicationId,
+      OTHER_HASH,
+      input.action === "activate" ? HASH : null,
+      input.switchedAtMs,
+      input.observedAtMs,
+      60_000,
+      input.observedAtMs + 60_000,
+      "fts5-unicode61@1",
+      1,
+      1,
+      HASH,
+      1,
+      HASH,
+      1,
+      input.toPublicationId,
+      1,
+      1,
+      HASH,
+      "vector-visibility@1",
+      "mutation-1",
+      1,
+      1,
+      1,
+      "search-gold@1",
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+    ];
+  }
+
+  function insertSwitchPreflight(
+    database: DatabaseSync,
+    values: readonly (string | number | null)[],
+  ): void {
+    database
+      .prepare(
+        `INSERT INTO publication_switch_preflight VALUES (${values.map(() => "?").join(", ")})`,
+      )
+      .run(...values);
+  }
+
+  function insertSwitchHistory(
+    database: DatabaseSync,
+    input: {
+      switchId: string;
+      eventHash: string;
+      action: "activate" | "rollback";
+      expectedGeneration: number;
+      expectedRollbackPublicationId: string | null;
+      expectedSwitchedAtMs: number | null;
+      fromPublicationId: string | null;
+      toPublicationId: string;
+      switchedAtMs: number;
+    },
+  ): void {
+    database
+      .prepare(
+        "INSERT INTO publication_switch_history VALUES (?, '1.0.0', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pipeline', 'pipeline:test')",
+      )
+      .run(
+        input.switchId,
+        input.eventHash,
+        HASH,
+        input.action,
+        input.expectedGeneration,
+        input.expectedRollbackPublicationId,
+        input.expectedSwitchedAtMs,
+        input.expectedGeneration + 1,
+        input.fromPublicationId,
+        input.fromPublicationId === null ? null : OTHER_HASH,
+        input.toPublicationId,
+        OTHER_HASH,
+        input.action === "activate" ? HASH : null,
+        input.fromPublicationId,
+        input.switchedAtMs,
       );
   }
 
@@ -2432,5 +2683,543 @@ describe("serving publication migrations (PIPE-050–PIPE-056)", () => {
           .run(competingPublicationId),
       "publication selected content or provider lineage is incomplete",
     );
+  });
+
+  it("adds exact-generation switch preflights and append-only history in schema 1.4", () => {
+    const database = applyMigrations(
+      "serving",
+      "0006_exact_generation_activation.sql",
+    );
+    expect(
+      database
+        .prepare(
+          "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+        )
+        .get(),
+    ).toEqual({ schema_version: "1.4.0" });
+    expect(
+      database
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('publication_switch_preflight', 'publication_switch_history') ORDER BY name",
+        )
+        .all(),
+    ).toEqual([
+      { name: "publication_switch_history" },
+      { name: "publication_switch_preflight" },
+    ]);
+    expect(
+      database
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type = 'trigger' AND name = 'publication_head_closed_delete'",
+        )
+        .get(),
+    ).toEqual({ name: "publication_head_closed_delete" });
+    expect(database.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+  });
+
+  it("atomically rejects malformed metadata and colliding activation objects", () => {
+    const malformed = applyMigrations(
+      "serving",
+      "0005_readiness_receipt_ledger.sql",
+    );
+    malformed.exec("DROP TABLE serving_schema_metadata");
+    malformed.exec(
+      "CREATE TABLE serving_schema_metadata(singleton INTEGER, schema_version TEXT, created_at_ms INTEGER)",
+    );
+    malformed.exec(
+      "INSERT INTO serving_schema_metadata VALUES (1, '1.3.0', 0), (2, '1.3.0', 0)",
+    );
+    expect(() => {
+      applyServingActivationMigration(malformed);
+    }).toThrow();
+    expect(
+      malformed
+        .prepare(
+          "SELECT count(*) AS count FROM sqlite_master WHERE name = 'publication_switch_preflight'",
+        )
+        .get(),
+    ).toEqual({ count: 0 });
+
+    const collision = applyMigrations(
+      "serving",
+      "0005_readiness_receipt_ledger.sql",
+    );
+    collision.exec("CREATE TABLE publication_switch_history(fake TEXT)");
+    expect(() => {
+      applyServingActivationMigration(collision);
+    }).toThrow();
+    expect(
+      collision
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE name IN ('publication_switch_preflight', 'publication_switch_history') ORDER BY name",
+        )
+        .all(),
+    ).toEqual([{ name: "publication_switch_history" }]);
+    expect(
+      collision
+        .prepare(
+          "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+        )
+        .get(),
+    ).toEqual({ schema_version: "1.3.0" });
+  });
+
+  it("activates and rolls back only through fresh exact-generation switch events", () => {
+    const database = applyMigrations(
+      "serving",
+      "0006_exact_generation_activation.sql",
+    );
+    const clockMs = Math.floor(Date.now() / 1_000) * 1_000;
+    const firstPublicationId = id("pub", 400);
+    const secondPublicationId = id("pub", 410);
+    insertAttestedReadyPublication(database, firstPublicationId, 401, clockMs);
+    insertAttestedReadyPublication(database, secondPublicationId, 411, clockMs);
+
+    const firstPreflight = switchPreflightValues({
+      switchId: "publication-switch|activate|1|first",
+      action: "activate",
+      expectedGeneration: 0,
+      expectedRollbackPublicationId: null,
+      expectedSwitchedAtMs: null,
+      fromPublicationId: null,
+      toPublicationId: firstPublicationId,
+      switchedAtMs: clockMs + 1_000,
+      observedAtMs: clockMs,
+    });
+    insertSwitchPreflight(database, firstPreflight);
+    const competingFirstPreflight = [...firstPreflight];
+    competingFirstPreflight[0] = "publication-switch|activate|1|competing";
+    expectConstraint(() => {
+      insertSwitchPreflight(database, competingFirstPreflight);
+    });
+    expectConstraint(
+      () =>
+        database
+          .prepare(
+            "UPDATE publication_switch_preflight SET vector_queryable = 0 WHERE switch_id = ?",
+          )
+          .run(String(firstPreflight[0])),
+      "switch preflight is immutable",
+    );
+    insertSwitchHistory(database, {
+      switchId: String(firstPreflight[0]),
+      eventHash: HASH,
+      action: "activate",
+      expectedGeneration: 0,
+      expectedRollbackPublicationId: null,
+      expectedSwitchedAtMs: null,
+      fromPublicationId: null,
+      toPublicationId: firstPublicationId,
+      switchedAtMs: clockMs + 1_000,
+    });
+    expect(
+      database
+        .prepare(
+          "SELECT active_publication_id, rollback_candidate_publication_id, generation FROM publication_head",
+        )
+        .get(),
+    ).toEqual({
+      active_publication_id: firstPublicationId,
+      rollback_candidate_publication_id: null,
+      generation: 1,
+    });
+    expectConstraint(
+      () =>
+        database
+          .prepare(
+            "UPDATE publication SET state = 'superseded' WHERE publication_id = ?",
+          )
+          .run(firstPublicationId),
+      "publication demotion lacks its exact switch event",
+    );
+    expectConstraint(() => {
+      insertSwitchPreflight(
+        database,
+        switchPreflightValues({
+          switchId: "publication-switch|activate|2|wrong-rollback",
+          action: "activate",
+          expectedGeneration: 1,
+          expectedRollbackPublicationId: secondPublicationId,
+          expectedSwitchedAtMs: clockMs + 1_000,
+          fromPublicationId: firstPublicationId,
+          toPublicationId: secondPublicationId,
+          switchedAtMs: clockMs + 2_000,
+          observedAtMs: clockMs,
+        }),
+      );
+    }, "switch preflight does not match the exact head generation");
+    expectConstraint(() => {
+      insertSwitchPreflight(
+        database,
+        switchPreflightValues({
+          switchId: "publication-switch|activate|2|wrong-time",
+          action: "activate",
+          expectedGeneration: 1,
+          expectedRollbackPublicationId: null,
+          expectedSwitchedAtMs: clockMs,
+          fromPublicationId: firstPublicationId,
+          toPublicationId: secondPublicationId,
+          switchedAtMs: clockMs + 2_000,
+          observedAtMs: clockMs,
+        }),
+      );
+    }, "switch preflight does not match the exact head generation");
+
+    const secondPreflight = switchPreflightValues({
+      switchId: "publication-switch|activate|2|second",
+      action: "activate",
+      expectedGeneration: 1,
+      expectedRollbackPublicationId: null,
+      expectedSwitchedAtMs: clockMs + 1_000,
+      fromPublicationId: firstPublicationId,
+      toPublicationId: secondPublicationId,
+      switchedAtMs: clockMs + 2_000,
+      observedAtMs: clockMs,
+    });
+    insertSwitchPreflight(database, secondPreflight);
+    expectConstraint(
+      () =>
+        database
+          .prepare(
+            "UPDATE publication SET state = 'active', activated_at_ms = ? WHERE publication_id = ?",
+          )
+          .run(clockMs + 2_000, secondPublicationId),
+      "publication activation lacks its exact switch event",
+    );
+    insertSwitchHistory(database, {
+      switchId: String(secondPreflight[0]),
+      eventHash: OTHER_HASH,
+      action: "activate",
+      expectedGeneration: 1,
+      expectedRollbackPublicationId: null,
+      expectedSwitchedAtMs: clockMs + 1_000,
+      fromPublicationId: firstPublicationId,
+      toPublicationId: secondPublicationId,
+      switchedAtMs: clockMs + 2_000,
+    });
+    expect(
+      database
+        .prepare(
+          "SELECT publication_id, state FROM publication WHERE publication_id IN (?, ?) ORDER BY publication_id",
+        )
+        .all(firstPublicationId, secondPublicationId),
+    ).toEqual([
+      { publication_id: firstPublicationId, state: "superseded" },
+      { publication_id: secondPublicationId, state: "active" },
+    ]);
+
+    const rollbackPreflight = switchPreflightValues({
+      switchId: "publication-switch|rollback|3|first",
+      action: "rollback",
+      expectedGeneration: 2,
+      expectedRollbackPublicationId: firstPublicationId,
+      expectedSwitchedAtMs: clockMs + 2_000,
+      fromPublicationId: secondPublicationId,
+      toPublicationId: firstPublicationId,
+      switchedAtMs: clockMs + 3_000,
+      observedAtMs: clockMs,
+    });
+    insertSwitchPreflight(database, rollbackPreflight);
+    expectConstraint(
+      () =>
+        database
+          .prepare(
+            "UPDATE publication SET state = 'active' WHERE publication_id = ?",
+          )
+          .run(firstPublicationId),
+      "publication rollback lacks its exact switch event",
+    );
+    insertSwitchHistory(database, {
+      switchId: String(rollbackPreflight[0]),
+      eventHash: THIRD_HASH,
+      action: "rollback",
+      expectedGeneration: 2,
+      expectedRollbackPublicationId: firstPublicationId,
+      expectedSwitchedAtMs: clockMs + 2_000,
+      fromPublicationId: secondPublicationId,
+      toPublicationId: firstPublicationId,
+      switchedAtMs: clockMs + 3_000,
+    });
+    expect(
+      database
+        .prepare(
+          "SELECT active_publication_id, rollback_candidate_publication_id, generation FROM publication_head",
+        )
+        .get(),
+    ).toEqual({
+      active_publication_id: firstPublicationId,
+      rollback_candidate_publication_id: secondPublicationId,
+      generation: 3,
+    });
+    expect(
+      database
+        .prepare("SELECT state FROM publication WHERE publication_id = ?")
+        .get(secondPublicationId),
+    ).toEqual({ state: "rolled_back" });
+
+    expectConstraint(() => {
+      insertSwitchPreflight(
+        database,
+        switchPreflightValues({
+          switchId: "publication-switch|rollback|4|second",
+          action: "rollback",
+          expectedGeneration: 3,
+          expectedRollbackPublicationId: secondPublicationId,
+          expectedSwitchedAtMs: clockMs + 3_000,
+          fromPublicationId: firstPublicationId,
+          toPublicationId: secondPublicationId,
+          switchedAtMs: clockMs + 4_000,
+          observedAtMs: clockMs,
+        }),
+      );
+    }, "rollback target is not the immediate superseded publication");
+    expectConstraint(
+      () =>
+        database
+          .prepare(
+            "UPDATE publication_head SET generation = 5 WHERE singleton = 1",
+          )
+          .run(),
+      "publication head update is not the exact next generation",
+    );
+    expectConstraint(
+      () => database.prepare("DELETE FROM publication_head").run(),
+      "publication head switching is not implemented",
+    );
+    expectConstraint(
+      () =>
+        database
+          .prepare(
+            "UPDATE publication_switch_history SET authorized_identity_id = 'operator:test' WHERE new_generation = 1",
+          )
+          .run(),
+      "switch history is append-only",
+    );
+    expect(database.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+  });
+
+  it("rolls a complete switch batch back when late lifecycle application fails", () => {
+    const database = applyMigrations(
+      "serving",
+      "0006_exact_generation_activation.sql",
+    );
+    const clockMs = Math.floor(Date.now() / 1_000) * 1_000;
+    const firstPublicationId = id("pub", 440);
+    const secondPublicationId = id("pub", 450);
+    insertAttestedReadyPublication(database, firstPublicationId, 441, clockMs);
+    insertAttestedReadyPublication(database, secondPublicationId, 451, clockMs);
+
+    const firstPreflight = switchPreflightValues({
+      switchId: "publication-switch|activate|1|late-failure-first",
+      action: "activate",
+      expectedGeneration: 0,
+      expectedRollbackPublicationId: null,
+      expectedSwitchedAtMs: null,
+      fromPublicationId: null,
+      toPublicationId: firstPublicationId,
+      switchedAtMs: clockMs + 1_000,
+      observedAtMs: clockMs,
+    });
+    insertSwitchPreflight(database, firstPreflight);
+    insertSwitchHistory(database, {
+      switchId: String(firstPreflight[0]),
+      eventHash: HASH,
+      action: "activate",
+      expectedGeneration: 0,
+      expectedRollbackPublicationId: null,
+      expectedSwitchedAtMs: null,
+      fromPublicationId: null,
+      toPublicationId: firstPublicationId,
+      switchedAtMs: clockMs + 1_000,
+    });
+
+    database.exec(`
+      CREATE TRIGGER test_fail_late_demotion
+      BEFORE UPDATE OF state ON publication
+      WHEN OLD.publication_id = '${firstPublicationId}' AND NEW.state = 'superseded'
+      BEGIN SELECT RAISE(ABORT, 'injected late demotion failure'); END
+    `);
+    const secondSwitchId = "publication-switch|activate|2|late-failure-second";
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      insertSwitchPreflight(
+        database,
+        switchPreflightValues({
+          switchId: secondSwitchId,
+          action: "activate",
+          expectedGeneration: 1,
+          expectedRollbackPublicationId: null,
+          expectedSwitchedAtMs: clockMs + 1_000,
+          fromPublicationId: firstPublicationId,
+          toPublicationId: secondPublicationId,
+          switchedAtMs: clockMs + 2_000,
+          observedAtMs: clockMs,
+        }),
+      );
+      expectConstraint(() => {
+        insertSwitchHistory(database, {
+          switchId: secondSwitchId,
+          eventHash: OTHER_HASH,
+          action: "activate",
+          expectedGeneration: 1,
+          expectedRollbackPublicationId: null,
+          expectedSwitchedAtMs: clockMs + 1_000,
+          fromPublicationId: firstPublicationId,
+          toPublicationId: secondPublicationId,
+          switchedAtMs: clockMs + 2_000,
+        });
+      }, "injected late demotion failure");
+    } finally {
+      database.exec("ROLLBACK");
+    }
+
+    expect(
+      database
+        .prepare(
+          "SELECT active_publication_id, rollback_candidate_publication_id, switched_at_ms, generation FROM publication_head",
+        )
+        .get(),
+    ).toEqual({
+      active_publication_id: firstPublicationId,
+      rollback_candidate_publication_id: null,
+      switched_at_ms: clockMs + 1_000,
+      generation: 1,
+    });
+    expect(
+      database
+        .prepare(
+          "SELECT publication_id, state, activated_at_ms FROM publication WHERE publication_id IN (?, ?) ORDER BY publication_id",
+        )
+        .all(firstPublicationId, secondPublicationId),
+    ).toEqual([
+      {
+        publication_id: firstPublicationId,
+        state: "active",
+        activated_at_ms: clockMs + 1_000,
+      },
+      {
+        publication_id: secondPublicationId,
+        state: "ready",
+        activated_at_ms: null,
+      },
+    ]);
+    expect(
+      database
+        .prepare(
+          "SELECT count(*) AS count FROM publication_switch_preflight WHERE switch_id = ?",
+        )
+        .get(secondSwitchId),
+    ).toEqual({ count: 0 });
+    expect(
+      database
+        .prepare(
+          "SELECT count(*) AS count FROM publication_switch_history WHERE new_generation = 2",
+        )
+        .get(),
+    ).toEqual({ count: 0 });
+  });
+
+  it("rejects stale activation proof and bidirectional FTS drift", () => {
+    const database = applyMigrations(
+      "serving",
+      "0006_exact_generation_activation.sql",
+    );
+    const clockMs = Math.floor(Date.now() / 1_000) * 1_000;
+    const publicationId = id("pub", 430);
+    insertAttestedReadyPublication(database, publicationId, 431, clockMs);
+
+    const stale = switchPreflightValues({
+      switchId: "publication-switch|activate|1|stale",
+      action: "activate",
+      expectedGeneration: 0,
+      expectedRollbackPublicationId: null,
+      expectedSwitchedAtMs: null,
+      fromPublicationId: null,
+      toPublicationId: publicationId,
+      switchedAtMs: clockMs - 60_000,
+      observedAtMs: clockMs - 120_000,
+    });
+    expectConstraint(() => {
+      insertSwitchPreflight(database, stale);
+    }, "switch preflight is stale or outside the database clock bound");
+
+    database
+      .prepare(
+        "INSERT INTO publication_search_fts(publication_id, document_id, normalized_name, aliases, publisher_name, provider_model_ids, document_text) VALUES (?, ?, 'extra', '[]', '', '[]', 'extra')",
+      )
+      .run(publicationId, "f".repeat(64));
+    const drifted = switchPreflightValues({
+      switchId: "publication-switch|activate|1|drifted",
+      action: "activate",
+      expectedGeneration: 0,
+      expectedRollbackPublicationId: null,
+      expectedSwitchedAtMs: null,
+      fromPublicationId: null,
+      toPublicationId: publicationId,
+      switchedAtMs: clockMs + 1_000,
+      observedAtMs: clockMs,
+    });
+    expectConstraint(() => {
+      insertSwitchPreflight(database, drifted);
+    }, "switch preflight FTS does not exactly match its sealed source");
+    expect(
+      database.prepare("SELECT count(*) AS count FROM publication_head").get(),
+    ).toEqual({ count: 0 });
+  });
+
+  it("rechecks FTS parity after preflight and before changing the head", () => {
+    const database = applyMigrations(
+      "serving",
+      "0006_exact_generation_activation.sql",
+    );
+    const clockMs = Math.floor(Date.now() / 1_000) * 1_000;
+    const publicationId = id("pub", 460);
+    insertAttestedReadyPublication(database, publicationId, 461, clockMs);
+    const preflight = switchPreflightValues({
+      switchId: "publication-switch|activate|1|post-preflight-drift",
+      action: "activate",
+      expectedGeneration: 0,
+      expectedRollbackPublicationId: null,
+      expectedSwitchedAtMs: null,
+      fromPublicationId: null,
+      toPublicationId: publicationId,
+      switchedAtMs: clockMs + 1_000,
+      observedAtMs: clockMs,
+    });
+    insertSwitchPreflight(database, preflight);
+    database
+      .prepare("DELETE FROM publication_search_fts WHERE publication_id = ?")
+      .run(publicationId);
+
+    expectConstraint(() => {
+      insertSwitchHistory(database, {
+        switchId: String(preflight[0]),
+        eventHash: HASH,
+        action: "activate",
+        expectedGeneration: 0,
+        expectedRollbackPublicationId: null,
+        expectedSwitchedAtMs: null,
+        fromPublicationId: null,
+        toPublicationId: publicationId,
+        switchedAtMs: clockMs + 1_000,
+      });
+    }, "switch-time FTS parity changed after preflight");
+    expect(
+      database.prepare("SELECT count(*) AS count FROM publication_head").get(),
+    ).toEqual({ count: 0 });
+    expect(
+      database
+        .prepare(
+          "SELECT state, activated_at_ms FROM publication WHERE publication_id = ?",
+        )
+        .get(publicationId),
+    ).toEqual({ state: "ready", activated_at_ms: null });
+    expect(
+      database
+        .prepare(
+          "SELECT count(*) AS count FROM publication_switch_history WHERE switch_id = ?",
+        )
+        .get(String(preflight[0])),
+    ).toEqual({ count: 0 });
   });
 });

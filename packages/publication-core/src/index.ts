@@ -26,6 +26,7 @@ const PROVIDER_FRESHNESS_STATES = new Set<string>([
   "unavailable",
 ]);
 const SWITCH_AUTHORIZATION_KINDS = new Set<string>(["pipeline", "operator"]);
+const SWITCH_AUTHORIZATION_ID = /^[a-z0-9][a-z0-9._:@/-]{0,127}$/u;
 const PUBLICATION_ENVIRONMENTS = new Set<string>([
   "local",
   "test",
@@ -2706,8 +2707,7 @@ const validateHead = (head: StoredPublicationHead): void => {
 const validateAuthorization = (authorization: SwitchAuthorization): void => {
   if (
     !SWITCH_AUTHORIZATION_KINDS.has(authorization.kind) ||
-    !isAscii(authorization.identityId) ||
-    authorization.identityId.length === 0
+    !SWITCH_AUTHORIZATION_ID.test(authorization.identityId)
   )
     throw new TypeError("switch authorization identity is invalid");
 };
@@ -2903,8 +2903,7 @@ export const planRollback = (input: {
   if (
     input.currentHead.rollbackCandidatePublicationId !==
       input.target.publicationId ||
-    (input.target.state !== "superseded" &&
-      input.target.state !== "rolled_back") ||
+    input.target.state !== "superseded" ||
     input.target.firstActivatedAt === null
   )
     throw new TypeError(
@@ -2979,6 +2978,579 @@ export const planRollback = (input: {
   });
 };
 
+export const SERVING_SWITCH_PREFLIGHT_VERSION = "1.0.0";
+export const SERVING_SWITCH_EVENT_VERSION = "1.0.0";
+
+export type ServingSwitchArtifactProof = Readonly<{
+  environment: Exclude<PublicationEnvironment, "test">;
+  observedAtMs: number;
+  maximumAgeMs: number;
+  ftsBuildVersion: string;
+  ftsSourceDocumentCount: number;
+  ftsIndexDocumentCount: number;
+  ftsSourceInventoryHash: Sha256;
+  ftsExactParity: boolean;
+  archiveBundleHash: Sha256;
+  archiveImmutable: boolean;
+  vectorNamespace: PublicationId;
+  vectorDocumentCount: number;
+  vectorVerifiedDocumentCount: number;
+  vectorInventoryHash: Sha256;
+  vectorVisibilityProbeVersion: string;
+  vectorMutationId: string;
+  vectorAllIdsPresent: boolean;
+  vectorAllNamespacesMatch: boolean;
+  vectorQueryable: boolean;
+  probeSetVersion: string;
+  integrityPassed: boolean;
+  exactSearchPassed: boolean;
+  semanticSearchPassed: boolean;
+  structuredFilterPassed: boolean;
+  neutralityPassed: boolean;
+  versionIsolationPassed: boolean;
+}>;
+
+export type ServingSwitchPreflightRow = Readonly<{
+  switch_id: string;
+  preflight_version: "1.0.0";
+  preflight_hash: Sha256;
+  action: "activate" | "rollback";
+  environment: Exclude<PublicationEnvironment, "test">;
+  expected_prior_generation: number;
+  expected_prior_rollback_candidate_publication_id: PublicationId | null;
+  expected_prior_switched_at_ms: number | null;
+  new_generation: number;
+  from_publication_id: PublicationId | null;
+  from_closure_hash: Sha256 | null;
+  to_publication_id: PublicationId;
+  to_closure_hash: Sha256;
+  to_attestation_hash: Sha256 | null;
+  switched_at_ms: number;
+  observed_at_ms: number;
+  maximum_age_ms: number;
+  valid_until_ms: number;
+  fts_build_version: string;
+  fts_source_document_count: number;
+  fts_index_document_count: number;
+  fts_source_inventory_hash: Sha256;
+  fts_exact_parity: 0 | 1;
+  archive_bundle_hash: Sha256;
+  archive_immutable: 0 | 1;
+  vector_namespace: PublicationId;
+  vector_document_count: number;
+  vector_verified_document_count: number;
+  vector_inventory_hash: Sha256;
+  vector_visibility_probe_version: string;
+  vector_mutation_id: string;
+  vector_all_ids_present: 0 | 1;
+  vector_all_namespaces_match: 0 | 1;
+  vector_queryable: 0 | 1;
+  probe_set_version: string;
+  integrity_passed: 0 | 1;
+  exact_search_passed: 0 | 1;
+  semantic_search_passed: 0 | 1;
+  structured_filter_passed: 0 | 1;
+  neutrality_passed: 0 | 1;
+  version_isolation_passed: 0 | 1;
+}>;
+
+export type ServingSwitchHistoryRow = Readonly<{
+  switch_id: string;
+  event_version: "1.0.0";
+  event_hash: Sha256;
+  preflight_hash: Sha256;
+  action: "activate" | "rollback";
+  expected_prior_generation: number;
+  expected_prior_rollback_candidate_publication_id: PublicationId | null;
+  expected_prior_switched_at_ms: number | null;
+  new_generation: number;
+  from_publication_id: PublicationId | null;
+  from_closure_hash: Sha256 | null;
+  to_publication_id: PublicationId;
+  to_closure_hash: Sha256;
+  to_attestation_hash: Sha256 | null;
+  resulting_rollback_candidate_publication_id: PublicationId | null;
+  switched_at_ms: number;
+  authorized_by_kind: "pipeline" | "operator";
+  authorized_identity_id: string;
+}>;
+
+export type ServingSwitchProjection = Readonly<{
+  plan: HeadSwitchPlan;
+  preflight: ServingSwitchPreflightRow;
+  history: ServingSwitchHistoryRow;
+}>;
+
+const nullableCanonical = (
+  name: string,
+  type: "digest" | "identifier",
+  value: string | null,
+): CanonicalField =>
+  value === null ? field(name, "null", "null") : field(name, type, value);
+
+const switchHistoryStep = (
+  plan: HeadSwitchPlan,
+): Extract<HeadSwitchStep, { kind: "append_switch_history" }> => {
+  const step = plan.steps.find(
+    (
+      candidate,
+    ): candidate is Extract<
+      HeadSwitchStep,
+      { kind: "append_switch_history" }
+    > => candidate.kind === "append_switch_history",
+  );
+  if (step === undefined)
+    throw new TypeError("switch plan lacks its history event");
+  return step;
+};
+
+export const projectServingSwitch = async (input: {
+  readonly action: "activate" | "rollback";
+  readonly target: PublicationRecord;
+  readonly currentHead: StoredPublicationHead | null;
+  readonly currentActive: PublicationRecord | null;
+  readonly switchedAt: string;
+  readonly authorizedBy: SwitchAuthorization;
+  readonly closureRows: ServingClosureRows;
+  readonly persistedSeal: ServingClosureSealProjection;
+  readonly receiptRows: ServingReadinessReceiptRows | null;
+  readonly persistedAttestation: ServingReadinessAttestationProjection | null;
+  readonly artifactProof: ServingSwitchArtifactProof;
+}): Promise<ServingSwitchProjection> => {
+  if (!SERVING_PUBLICATION_ENVIRONMENTS.has(input.artifactProof.environment))
+    throw new TypeError("serving switch environment is invalid");
+  validateAuthorization(input.authorizedBy);
+  const switchedAtMs = assertTimestamp(input.switchedAt, "switch time");
+  assertSafeInteger(
+    input.artifactProof.observedAtMs,
+    0,
+    "switch preflight observation time",
+  );
+  assertSafeInteger(
+    input.artifactProof.maximumAgeMs,
+    0,
+    "maximum switch preflight age",
+  );
+  if (input.artifactProof.observedAtMs > switchedAtMs)
+    throw new TypeError("switch preflight observation follows switch time");
+  const validUntilMs =
+    input.artifactProof.observedAtMs + input.artifactProof.maximumAgeMs;
+  assertSafeInteger(
+    validUntilMs,
+    switchedAtMs,
+    "switch preflight validity deadline",
+  );
+
+  const closure = await projectServingClosureSeal(input.closureRows);
+  const sealErrors = await verifyServingClosureSealProjection(
+    input.closureRows,
+    input.persistedSeal,
+  );
+  const [sealError] = sealErrors;
+  if (sealError !== undefined)
+    throw new TypeError(`persisted closure seal is invalid: ${sealError}`);
+  if (
+    closure.manifest.publicationId !== input.target.publicationId ||
+    closure.manifest.closureHash !== input.target.closureHash
+  )
+    throw new TypeError("switch target does not bind the sealed closure");
+  if (input.artifactProof.observedAtMs < input.closureRows.sealedAtMs)
+    throw new TypeError("switch preflight observation predates closure seal");
+
+  const proof = input.artifactProof;
+  if (
+    proof.ftsBuildVersion !== READINESS_FTS_BUILD_VERSION ||
+    proof.ftsSourceDocumentCount !== closure.manifest.searchDocuments.length ||
+    proof.ftsIndexDocumentCount !== closure.manifest.searchDocuments.length ||
+    proof.ftsSourceInventoryHash !==
+      closure.manifest.exactSearchInventoryHash ||
+    !proof.ftsExactParity ||
+    proof.archiveBundleHash !== closure.manifest.bundleHash ||
+    !proof.archiveImmutable ||
+    proof.vectorNamespace !== closure.manifest.publicationId ||
+    proof.vectorDocumentCount !== closure.manifest.vectors.length ||
+    proof.vectorVerifiedDocumentCount !== closure.manifest.vectors.length ||
+    proof.vectorInventoryHash !== closure.manifest.vectorInventoryHash ||
+    proof.vectorVisibilityProbeVersion !== VECTOR_VISIBILITY_PROBE_VERSION ||
+    !isAscii(proof.vectorMutationId) ||
+    proof.vectorMutationId.length === 0 ||
+    proof.vectorMutationId.length > 128 ||
+    !proof.vectorAllIdsPresent ||
+    !proof.vectorAllNamespacesMatch ||
+    !proof.vectorQueryable ||
+    proof.probeSetVersion !== READINESS_PROBE_SET_VERSION ||
+    !proof.integrityPassed ||
+    !proof.exactSearchPassed ||
+    !proof.semanticSearchPassed ||
+    !proof.structuredFilterPassed ||
+    !proof.neutralityPassed ||
+    !proof.versionIsolationPassed
+  )
+    throw new TypeError(
+      "switch preflight does not prove the sealed serving artifacts",
+    );
+
+  let plan: HeadSwitchPlan;
+  let attestationHash: Sha256 | null = null;
+  if (input.action === "activate") {
+    if (input.receiptRows === null || input.persistedAttestation === null)
+      throw new TypeError("activation lacks persisted readiness evidence");
+    const attestationInput: ServingReadinessAttestationInput = {
+      closureRows: input.closureRows,
+      persistedSeal: input.persistedSeal,
+      receiptRows: input.receiptRows,
+      environment: proof.environment,
+      readyAtMs: input.persistedAttestation.ready_at_ms,
+      maximumReceiptAgeMs: input.persistedAttestation.maximum_receipt_age_ms,
+    };
+    const attestationErrors = await verifyServingReadinessAttestationProjection(
+      attestationInput,
+      input.persistedAttestation,
+    );
+    const [attestationError] = attestationErrors;
+    if (attestationError !== undefined)
+      throw new TypeError(
+        `persisted readiness attestation is invalid: ${attestationError}`,
+      );
+    if (
+      input.persistedAttestation.publication_id !==
+        input.target.publicationId ||
+      input.persistedAttestation.closure_hash !== input.target.closureHash ||
+      switchedAtMs > input.persistedAttestation.effective_valid_until_ms
+    )
+      throw new TypeError("activation attestation is expired or mismatched");
+    attestationHash = input.persistedAttestation.attestation_hash as Sha256;
+    plan = planActivation({
+      candidate: input.target,
+      currentHead: input.currentHead,
+      currentActive: input.currentActive,
+      switchedAt: input.switchedAt,
+      authorizedBy: input.authorizedBy,
+    });
+  } else {
+    if (
+      input.currentHead === null ||
+      input.currentActive === null ||
+      input.receiptRows !== null ||
+      input.persistedAttestation !== null
+    )
+      throw new TypeError("rollback evidence shape is invalid");
+    plan = planRollback({
+      currentHead: input.currentHead,
+      defective: input.currentActive,
+      target: input.target,
+      switchedAt: input.switchedAt,
+      authorizedBy: input.authorizedBy,
+    });
+  }
+
+  const event = switchHistoryStep(plan);
+  const preflightFields = [
+    field("preflight_version", "text", SERVING_SWITCH_PREFLIGHT_VERSION),
+    field("action", "text", input.action),
+    field("environment", "text", proof.environment),
+    field(
+      "expected_prior_generation",
+      "integer",
+      String(event.expectedPriorGeneration),
+    ),
+    nullableCanonical(
+      "expected_prior_rollback_candidate_publication_id",
+      "identifier",
+      input.currentHead?.rollbackCandidatePublicationId ?? null,
+    ),
+    input.currentHead === null
+      ? field("expected_prior_switched_at", "null", "null")
+      : field(
+          "expected_prior_switched_at",
+          "timestamp",
+          input.currentHead.switchedAt,
+        ),
+    field("new_generation", "integer", String(event.newGeneration)),
+    nullableCanonical(
+      "from_publication_id",
+      "identifier",
+      event.fromPublicationId,
+    ),
+    nullableCanonical("from_closure_hash", "digest", event.fromClosureHash),
+    field("to_publication_id", "identifier", event.toPublicationId),
+    field("to_closure_hash", "digest", event.toClosureHash),
+    nullableCanonical("to_attestation_hash", "digest", attestationHash),
+    field("switched_at", "timestamp", input.switchedAt),
+    field(
+      "observed_at",
+      "timestamp",
+      timestampFromMs(proof.observedAtMs, "switch preflight observation time"),
+    ),
+    field("maximum_age_ms", "integer", String(proof.maximumAgeMs)),
+    field(
+      "valid_until",
+      "timestamp",
+      timestampFromMs(validUntilMs, "switch preflight validity deadline"),
+    ),
+    field("fts_build_version", "text", proof.ftsBuildVersion),
+    field(
+      "fts_source_document_count",
+      "integer",
+      String(proof.ftsSourceDocumentCount),
+    ),
+    field(
+      "fts_index_document_count",
+      "integer",
+      String(proof.ftsIndexDocumentCount),
+    ),
+    field("fts_source_inventory_hash", "digest", proof.ftsSourceInventoryHash),
+    field("fts_exact_parity", "boolean", String(proof.ftsExactParity)),
+    field("archive_bundle_hash", "digest", proof.archiveBundleHash),
+    field("archive_immutable", "boolean", String(proof.archiveImmutable)),
+    field("vector_namespace", "identifier", proof.vectorNamespace),
+    field(
+      "vector_document_count",
+      "integer",
+      String(proof.vectorDocumentCount),
+    ),
+    field(
+      "vector_verified_document_count",
+      "integer",
+      String(proof.vectorVerifiedDocumentCount),
+    ),
+    field("vector_inventory_hash", "digest", proof.vectorInventoryHash),
+    field(
+      "vector_visibility_probe_version",
+      "text",
+      proof.vectorVisibilityProbeVersion,
+    ),
+    field("vector_mutation_id", "text", proof.vectorMutationId),
+    field(
+      "vector_all_ids_present",
+      "boolean",
+      String(proof.vectorAllIdsPresent),
+    ),
+    field(
+      "vector_all_namespaces_match",
+      "boolean",
+      String(proof.vectorAllNamespacesMatch),
+    ),
+    field("vector_queryable", "boolean", String(proof.vectorQueryable)),
+    field("probe_set_version", "text", proof.probeSetVersion),
+    field("integrity_passed", "boolean", String(proof.integrityPassed)),
+    field("exact_search_passed", "boolean", String(proof.exactSearchPassed)),
+    field(
+      "semantic_search_passed",
+      "boolean",
+      String(proof.semanticSearchPassed),
+    ),
+    field(
+      "structured_filter_passed",
+      "boolean",
+      String(proof.structuredFilterPassed),
+    ),
+    field("neutrality_passed", "boolean", String(proof.neutralityPassed)),
+    field(
+      "version_isolation_passed",
+      "boolean",
+      String(proof.versionIsolationPassed),
+    ),
+  ] as const;
+  const preflightHash = await digest(
+    "publication-switch-preflight",
+    preflightFields,
+  );
+  const preflight: ServingSwitchPreflightRow = Object.freeze({
+    switch_id: event.switchId,
+    preflight_version: SERVING_SWITCH_PREFLIGHT_VERSION,
+    preflight_hash: preflightHash,
+    action: input.action,
+    environment: proof.environment,
+    expected_prior_generation: event.expectedPriorGeneration,
+    expected_prior_rollback_candidate_publication_id:
+      input.currentHead?.rollbackCandidatePublicationId ?? null,
+    expected_prior_switched_at_ms:
+      input.currentHead === null
+        ? null
+        : assertTimestamp(
+            input.currentHead.switchedAt,
+            "expected prior switch time",
+          ),
+    new_generation: event.newGeneration,
+    from_publication_id: event.fromPublicationId,
+    from_closure_hash: event.fromClosureHash,
+    to_publication_id: event.toPublicationId,
+    to_closure_hash: event.toClosureHash,
+    to_attestation_hash: attestationHash,
+    switched_at_ms: switchedAtMs,
+    observed_at_ms: proof.observedAtMs,
+    maximum_age_ms: proof.maximumAgeMs,
+    valid_until_ms: validUntilMs,
+    fts_build_version: proof.ftsBuildVersion,
+    fts_source_document_count: proof.ftsSourceDocumentCount,
+    fts_index_document_count: proof.ftsIndexDocumentCount,
+    fts_source_inventory_hash: proof.ftsSourceInventoryHash,
+    fts_exact_parity: 1,
+    archive_bundle_hash: proof.archiveBundleHash,
+    archive_immutable: 1,
+    vector_namespace: proof.vectorNamespace,
+    vector_document_count: proof.vectorDocumentCount,
+    vector_verified_document_count: proof.vectorVerifiedDocumentCount,
+    vector_inventory_hash: proof.vectorInventoryHash,
+    vector_visibility_probe_version: proof.vectorVisibilityProbeVersion,
+    vector_mutation_id: proof.vectorMutationId,
+    vector_all_ids_present: 1,
+    vector_all_namespaces_match: 1,
+    vector_queryable: 1,
+    probe_set_version: proof.probeSetVersion,
+    integrity_passed: 1,
+    exact_search_passed: 1,
+    semantic_search_passed: 1,
+    structured_filter_passed: 1,
+    neutrality_passed: 1,
+    version_isolation_passed: 1,
+  });
+  const eventHash = await digest("publication-switch-event", [
+    field("event_version", "text", SERVING_SWITCH_EVENT_VERSION),
+    field("switch_id", "text", event.switchId),
+    field("preflight_hash", "digest", preflightHash),
+    field("action", "text", event.action),
+    field(
+      "expected_prior_generation",
+      "integer",
+      String(event.expectedPriorGeneration),
+    ),
+    nullableCanonical(
+      "expected_prior_rollback_candidate_publication_id",
+      "identifier",
+      input.currentHead?.rollbackCandidatePublicationId ?? null,
+    ),
+    input.currentHead === null
+      ? field("expected_prior_switched_at", "null", "null")
+      : field(
+          "expected_prior_switched_at",
+          "timestamp",
+          input.currentHead.switchedAt,
+        ),
+    field("new_generation", "integer", String(event.newGeneration)),
+    nullableCanonical(
+      "from_publication_id",
+      "identifier",
+      event.fromPublicationId,
+    ),
+    nullableCanonical("from_closure_hash", "digest", event.fromClosureHash),
+    field("to_publication_id", "identifier", event.toPublicationId),
+    field("to_closure_hash", "digest", event.toClosureHash),
+    nullableCanonical("to_attestation_hash", "digest", attestationHash),
+    nullableCanonical(
+      "resulting_rollback_candidate_publication_id",
+      "identifier",
+      event.resultingRollbackCandidatePublicationId,
+    ),
+    field("switched_at", "timestamp", event.switchedAt),
+    field("authorized_by_kind", "text", event.authorizedBy.kind),
+    field("authorized_identity_id", "text", event.authorizedBy.identityId),
+  ]);
+  const history: ServingSwitchHistoryRow = Object.freeze({
+    switch_id: event.switchId,
+    event_version: SERVING_SWITCH_EVENT_VERSION,
+    event_hash: eventHash,
+    preflight_hash: preflightHash,
+    action: event.action,
+    expected_prior_generation: event.expectedPriorGeneration,
+    expected_prior_rollback_candidate_publication_id:
+      input.currentHead?.rollbackCandidatePublicationId ?? null,
+    expected_prior_switched_at_ms:
+      input.currentHead === null
+        ? null
+        : assertTimestamp(
+            input.currentHead.switchedAt,
+            "expected prior switch time",
+          ),
+    new_generation: event.newGeneration,
+    from_publication_id: event.fromPublicationId,
+    from_closure_hash: event.fromClosureHash,
+    to_publication_id: event.toPublicationId,
+    to_closure_hash: event.toClosureHash,
+    to_attestation_hash: attestationHash,
+    resulting_rollback_candidate_publication_id:
+      event.resultingRollbackCandidatePublicationId,
+    switched_at_ms: switchedAtMs,
+    authorized_by_kind: event.authorizedBy.kind,
+    authorized_identity_id: event.authorizedBy.identityId,
+  });
+  return Object.freeze({ plan, preflight, history });
+};
+
+export type ServingSwitchRetryDecision = Readonly<{
+  outcome:
+    | "execute"
+    | "idempotent_success"
+    | "stale"
+    | "conflict"
+    | "integrity_failure";
+}>;
+
+const headsEqual = (
+  left: StoredPublicationHead | null,
+  right: StoredPublicationHead | null,
+): boolean =>
+  left === null || right === null
+    ? left === right
+    : left.activePublicationId === right.activePublicationId &&
+      left.rollbackCandidatePublicationId ===
+        right.rollbackCandidatePublicationId &&
+      left.switchedAt === right.switchedAt &&
+      left.generation === right.generation;
+
+export const classifyServingSwitchRetry = (input: {
+  readonly expected: ServingSwitchProjection;
+  readonly currentHead: StoredPublicationHead | null;
+  readonly historyAtGeneration: ServingSwitchHistoryRow | null;
+  readonly targetState: PublicationState;
+  readonly formerState: PublicationState | null;
+}): ServingSwitchRetryDecision => {
+  if (input.currentHead !== null) validateHead(input.currentHead);
+  const cas = input.expected.plan.steps.find(
+    (
+      step,
+    ): step is Extract<HeadSwitchStep, { kind: "compare_and_swap_head" }> =>
+      step.kind === "compare_and_swap_head",
+  );
+  if (cas === undefined) throw new TypeError("switch plan lacks its head CAS");
+  if (input.historyAtGeneration === null) {
+    if (!headsEqual(input.currentHead, cas.expected))
+      return Object.freeze({ outcome: "stale" });
+    const expectedTargetState =
+      input.expected.history.action === "activate" ? "ready" : "superseded";
+    const expectedFormerState =
+      input.expected.history.from_publication_id === null ? null : "active";
+    if (
+      input.targetState !== expectedTargetState ||
+      input.formerState !== expectedFormerState
+    )
+      return Object.freeze({ outcome: "integrity_failure" });
+    return Object.freeze({ outcome: "execute" });
+  }
+
+  if (input.historyAtGeneration.switch_id !== input.expected.history.switch_id)
+    return Object.freeze({ outcome: "conflict" });
+  for (const key of Object.keys(
+    input.expected.history,
+  ) as (keyof ServingSwitchHistoryRow)[])
+    if (input.historyAtGeneration[key] !== input.expected.history[key])
+      return Object.freeze({ outcome: "conflict" });
+  const expectedFormerState =
+    input.expected.history.from_publication_id === null
+      ? null
+      : input.expected.history.action === "activate"
+        ? "superseded"
+        : "rolled_back";
+  if (
+    !headsEqual(input.currentHead, cas.next) ||
+    input.targetState !== "active" ||
+    input.formerState !== expectedFormerState
+  )
+    return Object.freeze({ outcome: "integrity_failure" });
+  return Object.freeze({ outcome: "idempotent_success" });
+};
+
 export type PublicationSelection =
   | Readonly<{
       outcome: "selected";
@@ -3018,7 +3590,12 @@ export const selectPublication = (input: {
   );
   if (
     selected === undefined ||
-    !["active", "superseded"].includes(selected.state)
+    !(
+      selected.state === "active" ||
+      selected.state === "superseded" ||
+      (selected.state === "rolled_back" &&
+        selected.publicationId === input.head.rollbackCandidatePublicationId)
+    )
   )
     return Object.freeze({
       outcome: "publication_expired",
@@ -3122,10 +3699,25 @@ export type BackupChunk = Readonly<{
   contentHash: Sha256;
 }>;
 export const SERVING_BACKUP_TABLES = [
+  "serving_schema_metadata",
   "publication",
   "publication_provider_slice",
+  "publication_provider_slice_metadata",
+  "publication_provider_attribution",
   "publication_resource",
   "publication_search_document",
+  "publication_vector_inventory",
+  "publication_inventory_chunk",
+  "publication_closure_seal",
+  "publication_readiness_receipt",
+  "publication_archive_receipt",
+  "publication_serving_receipt",
+  "publication_vector_receipt",
+  "publication_probe_receipt",
+  "publication_readiness_attestation",
+  "publication_switch_preflight",
+  "publication_switch_history",
+  "publication_head",
 ] as const;
 export type ServingBackupTable = (typeof SERVING_BACKUP_TABLES)[number];
 export type BackupTableSummary = Readonly<{
