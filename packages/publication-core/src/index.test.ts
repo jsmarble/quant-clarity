@@ -23,10 +23,14 @@ import {
   planActivation,
   planRollback,
   projectServingClosureSeal,
+  projectServingReadinessAttestation,
+  projectServingReadinessReceiptRows,
+  readServingReadinessReceipts,
   selectPublication,
   validateBackupManifest,
   validateManifestInput,
   verifyImmutableManifest,
+  verifyServingReadinessAttestationProjection,
   verifyServingClosureSealProjection,
   type ArtifactBinding,
   type BackupManifest,
@@ -41,6 +45,8 @@ import {
   type ServingProviderSliceClosureRow,
   type ServingPublicationClosureRow,
   type ServingResourceClosureRow,
+  type ServingReadinessReceiptRows,
+  type ServingReadinessAttestationProjection,
   type ServingSearchDocumentClosureRow,
   type ServingVectorClosureRow,
   type SwitchAuthorization,
@@ -80,6 +86,158 @@ const applyServingMigrations = (): DatabaseSync => {
     }
   }
   return database;
+};
+
+const insertReadinessReceiptRows = (
+  database: DatabaseSync,
+  rows: ServingReadinessReceiptRows,
+): void => {
+  for (const row of rows.bindings)
+    database
+      .prepare(
+        "INSERT INTO publication_readiness_receipt VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run(
+        row.publication_id,
+        row.kind,
+        row.receipt_version,
+        row.receipt_hash,
+        row.environment,
+        row.closure_hash,
+        row.bundle_hash,
+        row.schema_version,
+        row.build_commit,
+        row.observed_at_ms,
+      );
+  for (const row of rows.archives)
+    database
+      .prepare("INSERT INTO publication_archive_receipt VALUES (?, ?, ?, ?)")
+      .run(
+        row.publication_id,
+        row.kind,
+        row.retained_bundle_hash,
+        row.immutable,
+      );
+  for (const row of rows.servings)
+    database
+      .prepare(
+        "INSERT INTO publication_serving_receipt VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run(
+        row.publication_id,
+        row.kind,
+        row.enabled_provider_count,
+        row.enabled_provider_scope_hash,
+        row.provider_slice_count,
+        row.provider_slice_hash,
+        row.provider_attribution_count,
+        row.provider_attribution_hash,
+        row.resource_count,
+        row.exact_document_count,
+        row.resource_inventory_hash,
+        row.exact_search_inventory_hash,
+        row.fts_build_version,
+        row.fts_document_count,
+        row.fts_queryable,
+        row.foreign_keys_valid,
+        row.content_hashes_valid,
+        row.unavailable_provider_isolation_valid,
+      );
+  for (const row of rows.vectors)
+    database
+      .prepare(
+        "INSERT INTO publication_vector_receipt VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run(
+        row.publication_id,
+        row.kind,
+        row.vector_namespace,
+        row.document_count,
+        row.verified_document_count,
+        row.vector_inventory_hash,
+        row.visibility_probe_version,
+        row.mutation_id,
+        row.all_ids_present,
+        row.all_namespaces_match,
+        row.queryable,
+      );
+  for (const row of rows.probes)
+    database
+      .prepare(
+        "INSERT INTO publication_probe_receipt VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run(
+        row.publication_id,
+        row.kind,
+        row.probe_set_version,
+        row.integrity_passed,
+        row.evidence_coverage_passed,
+        row.exact_search_passed,
+        row.semantic_search_passed,
+        row.structured_filter_passed,
+        row.neutrality_passed,
+        row.version_isolation_passed,
+      );
+};
+
+const selectReadinessReceiptRows = (
+  database: DatabaseSync,
+  publicationId: string,
+): ServingReadinessReceiptRows => ({
+  bindings: database
+    .prepare(
+      "SELECT publication_id, kind, receipt_version, receipt_hash, environment, closure_hash, bundle_hash, schema_version, build_commit, observed_at_ms FROM publication_readiness_receipt WHERE publication_id = ? ORDER BY kind",
+    )
+    .all(publicationId) as unknown as ServingReadinessReceiptRows["bindings"],
+  archives: database
+    .prepare(
+      "SELECT publication_id, kind, retained_bundle_hash, immutable FROM publication_archive_receipt WHERE publication_id = ?",
+    )
+    .all(publicationId) as unknown as ServingReadinessReceiptRows["archives"],
+  servings: database
+    .prepare(
+      "SELECT publication_id, kind, enabled_provider_count, enabled_provider_scope_hash, provider_slice_count, provider_slice_hash, provider_attribution_count, provider_attribution_hash, resource_count, exact_document_count, resource_inventory_hash, exact_search_inventory_hash, fts_build_version, fts_document_count, fts_queryable, foreign_keys_valid, content_hashes_valid, unavailable_provider_isolation_valid FROM publication_serving_receipt WHERE publication_id = ?",
+    )
+    .all(publicationId) as unknown as ServingReadinessReceiptRows["servings"],
+  vectors: database
+    .prepare(
+      "SELECT publication_id, kind, vector_namespace, document_count, verified_document_count, vector_inventory_hash, visibility_probe_version, mutation_id, all_ids_present, all_namespaces_match, queryable FROM publication_vector_receipt WHERE publication_id = ?",
+    )
+    .all(publicationId) as unknown as ServingReadinessReceiptRows["vectors"],
+  probes: database
+    .prepare(
+      "SELECT publication_id, kind, probe_set_version, integrity_passed, evidence_coverage_passed, exact_search_passed, semantic_search_passed, structured_filter_passed, neutrality_passed, version_isolation_passed FROM publication_probe_receipt WHERE publication_id = ?",
+    )
+    .all(publicationId) as unknown as ServingReadinessReceiptRows["probes"],
+});
+
+const insertReadinessAttestation = (
+  database: DatabaseSync,
+  row: ServingReadinessAttestationProjection,
+): void => {
+  database
+    .prepare(
+      "INSERT INTO publication_readiness_attestation VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+    .run(
+      row.publication_id,
+      row.environment,
+      row.closure_hash,
+      row.bundle_hash,
+      row.evaluator_version,
+      row.ready_at_ms,
+      row.maximum_receipt_age_ms,
+      row.effective_valid_until_ms,
+      row.archive_observed_at_ms,
+      row.serving_observed_at_ms,
+      row.vector_observed_at_ms,
+      row.probes_observed_at_ms,
+      row.archive_receipt_hash,
+      row.serving_receipt_hash,
+      row.vector_receipt_hash,
+      row.probes_receipt_hash,
+      row.attestation_hash,
+    );
 };
 
 const manifestInput = (): PublicationManifestInput => ({
@@ -785,7 +943,199 @@ describe("immutable publication closure (PIPE-050, PIPE-051, BE-011)", () => {
           "UPDATE publication SET state = 'ready', ready_at_ms = ? WHERE publication_id = ?",
         )
         .run(Date.parse(NOW), publicationId),
-    ).toThrow(/readiness receipts are not persisted/u);
+    ).toThrow(/readiness lacks its exact attestation/u);
+    expect(
+      database
+        .prepare(
+          "SELECT count(*) AS count FROM publication_search_fts WHERE publication_search_fts MATCH 'model' AND publication_id = ?",
+        )
+        .get(publicationId),
+    ).toEqual({ count: 1 });
+
+    const observationTimes = [
+      "2026-08-01T12:01:00.000Z",
+      "2026-08-01T12:02:00.000Z",
+      "2026-08-01T12:03:00.000Z",
+      "2026-08-01T12:04:00.000Z",
+    ] as const;
+    const readinessEvidence: ReadinessReceipt[] = receipts(expected).map(
+      (receipt, index) => ({
+        ...receipt,
+        binding: { ...receipt.binding, environment: "local" },
+        observedAt: observationTimes[index]!,
+      }),
+    );
+    const projectedReceiptRows =
+      await projectServingReadinessReceiptRows(readinessEvidence);
+    expect(
+      [...projectedReceiptRows.bindings]
+        .sort((left, right) => left.kind.localeCompare(right.kind))
+        .map((row) => row.receipt_hash),
+    ).toEqual([
+      "sha256:52ba7f25da7e9d1db7e16ac7219861634e513731e6b7e5d0d0f5f8099cd2bb1e",
+      "sha256:89338af444e7415eb6f55b70d8c58262a7e593125f3221091bab1ac8d5963fba",
+      "sha256:2bd48c759e6b43f7c3e45dabab7e878eb1a987d77a91b9594da375b82f72aa63",
+      "sha256:043c8f18cdceb466d6aee7be5253731fcd8b76a6741ccc238d07dcdec32d5623",
+    ]);
+    await expect(
+      readServingReadinessReceipts({
+        ...projectedReceiptRows,
+        bindings: projectedReceiptRows.bindings.map((row, index) =>
+          index === 0 ? { ...row, receipt_hash: HASH_A } : row,
+        ),
+      }),
+    ).rejects.toThrow(/receipt hash does not match/u);
+    const readyAtMs = Date.parse("2026-08-01T12:05:00.000Z");
+    const preSealReceiptRows = await projectServingReadinessReceiptRows(
+      readinessEvidence.map((receipt) =>
+        receipt.kind === "archive"
+          ? { ...receipt, observedAt: "2026-08-01T11:59:59.999Z" }
+          : receipt,
+      ),
+    );
+    await expect(
+      projectServingReadinessAttestation({
+        closureRows: rows,
+        persistedSeal: seal,
+        receiptRows: preSealReceiptRows,
+        environment: "local",
+        readyAtMs,
+        maximumReceiptAgeMs: 10 * 60 * 1000,
+      }),
+    ).rejects.toThrow(/observation predates closure seal/u);
+    const attestationDecision = await projectServingReadinessAttestation({
+      closureRows: rows,
+      persistedSeal: seal,
+      receiptRows: projectedReceiptRows,
+      environment: "local",
+      readyAtMs,
+      maximumReceiptAgeMs: 10 * 60 * 1000,
+    });
+    expect(attestationDecision.decision).toBe("ready");
+    if (attestationDecision.decision !== "ready")
+      throw new Error("expected a ready attestation projection");
+    expect(attestationDecision.attestation.attestation_hash).toBe(
+      "sha256:4674c1d89196cd3595110011e860468d5688198b12e106424d7507f09718b399",
+    );
+    await expect(
+      verifyServingReadinessAttestationProjection(
+        {
+          closureRows: rows,
+          persistedSeal: seal,
+          receiptRows: projectedReceiptRows,
+          environment: "local",
+          readyAtMs,
+          maximumReceiptAgeMs: 10 * 60 * 1000,
+        },
+        {
+          ...attestationDecision.attestation,
+          attestation_hash: HASH_A,
+        },
+      ),
+    ).resolves.toContain(
+      "attestation_hash does not match persisted readiness evidence",
+    );
+    await expect(
+      projectServingReadinessAttestation({
+        closureRows: rows,
+        persistedSeal: seal,
+        receiptRows: projectedReceiptRows,
+        environment: "test" as unknown as "local",
+        readyAtMs,
+        maximumReceiptAgeMs: 10 * 60 * 1000,
+      }),
+    ).rejects.toThrow(/serving readiness environment is invalid/u);
+
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      insertReadinessReceiptRows(database, projectedReceiptRows);
+      const firstSearchDocument = expected.searchDocuments[0];
+      if (firstSearchDocument === undefined)
+        throw new Error("expected a searchable document");
+      database
+        .prepare(
+          "DELETE FROM publication_search_fts WHERE publication_id = ? AND document_id = ?",
+        )
+        .run(publicationId, firstSearchDocument.documentId);
+      expect(() => {
+        insertReadinessAttestation(database, attestationDecision.attestation);
+      }).toThrow(/exact search FTS does not match/u);
+    } finally {
+      database.exec("ROLLBACK");
+    }
+    expect(
+      database
+        .prepare(
+          "SELECT count(*) AS count FROM publication_readiness_receipt WHERE publication_id = ?",
+        )
+        .get(publicationId),
+    ).toEqual({ count: 0 });
+
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      insertReadinessReceiptRows(database, projectedReceiptRows);
+      const persistedRows = selectReadinessReceiptRows(database, publicationId);
+      await expect(
+        readServingReadinessReceipts(persistedRows),
+      ).resolves.toEqual(expect.arrayContaining(readinessEvidence));
+      const persistedDecision = await projectServingReadinessAttestation({
+        closureRows: rows,
+        persistedSeal: seal,
+        receiptRows: persistedRows,
+        environment: "local",
+        readyAtMs,
+        maximumReceiptAgeMs: 10 * 60 * 1000,
+      });
+      if (persistedDecision.decision !== "ready")
+        throw new Error(
+          "persisted readiness evidence was unexpectedly blocked",
+        );
+      expect(persistedDecision.attestation).toEqual(
+        attestationDecision.attestation,
+      );
+      insertReadinessAttestation(database, persistedDecision.attestation);
+      database
+        .prepare(
+          "UPDATE publication SET state = 'ready', ready_at_ms = ? WHERE publication_id = ?",
+        )
+        .run(readyAtMs, publicationId);
+      database.exec("COMMIT");
+    } catch (error) {
+      database.exec("ROLLBACK");
+      throw error;
+    }
+    const persistedAttestation = database
+      .prepare(
+        "SELECT publication_id, environment, closure_hash, bundle_hash, evaluator_version, ready_at_ms, maximum_receipt_age_ms, effective_valid_until_ms, archive_observed_at_ms, serving_observed_at_ms, vector_observed_at_ms, probes_observed_at_ms, archive_receipt_hash, serving_receipt_hash, vector_receipt_hash, probes_receipt_hash, attestation_hash FROM publication_readiness_attestation WHERE publication_id = ?",
+      )
+      .get(publicationId) as unknown as ServingReadinessAttestationProjection;
+    await expect(
+      verifyServingReadinessAttestationProjection(
+        {
+          closureRows: rows,
+          persistedSeal: seal,
+          receiptRows: selectReadinessReceiptRows(database, publicationId),
+          environment: "local",
+          readyAtMs,
+          maximumReceiptAgeMs: 10 * 60 * 1000,
+        },
+        persistedAttestation,
+      ),
+    ).resolves.toEqual([]);
+    expect(
+      database
+        .prepare(
+          "SELECT state, ready_at_ms FROM publication WHERE publication_id = ?",
+        )
+        .get(publicationId),
+    ).toEqual({ state: "ready", ready_at_ms: readyAtMs });
+    expect(() =>
+      database
+        .prepare(
+          "UPDATE publication_readiness_receipt SET receipt_hash = ? WHERE publication_id = ? AND kind = 'archive'",
+        )
+        .run(HASH_A, publicationId),
+    ).toThrow(/readiness receipt is immutable/u);
     expect(() =>
       database
         .prepare("INSERT INTO publication_head VALUES (1, ?, NULL, ?, 1)")
@@ -1063,6 +1413,9 @@ const receipts = (
       exactDocumentCount: manifest.searchDocuments.length,
       resourceInventoryHash: manifest.resourceInventoryHash,
       exactSearchInventoryHash: manifest.exactSearchInventoryHash,
+      ftsBuildVersion: "fts5-unicode61@1",
+      ftsDocumentCount: manifest.searchDocuments.length,
+      ftsQueryable: true,
       foreignKeysValid: true,
       contentHashesValid: true,
       unavailableProviderIsolationValid: true,
@@ -1073,7 +1426,12 @@ const receipts = (
       observedAt: "2026-08-01T11:32:00.000Z",
       namespace: manifest.publicationId,
       documentCount: manifest.vectors.length,
+      verifiedDocumentCount: manifest.vectors.length,
       vectorInventoryHash: manifest.vectorInventoryHash,
+      visibilityProbeVersion: "vector-visibility@1",
+      mutationId: "mutation-test-1",
+      allIdsPresent: true,
+      allNamespacesMatch: true,
       queryable: true,
     },
     {
@@ -1108,6 +1466,9 @@ describe("adapter-supplied readiness evidence (SRCH-007, PIPE-044, PIPE-050–PI
       readyAt: NOW,
       closureHash: manifest.closureHash,
     });
+    await expect(
+      projectServingReadinessReceiptRows(receipts(manifest)),
+    ).rejects.toThrow(/test-only environment/u);
   });
 
   it("blocks missing, duplicate, stale, or cross-environment receipts", async () => {
@@ -1148,11 +1509,22 @@ describe("adapter-supplied readiness evidence (SRCH-007, PIPE-044, PIPE-050–PI
           ...receipt,
           providerSliceCount: 0,
           providerAttributionHash: HASH_A,
+          ftsBuildVersion: "fts5-unknown@9",
           foreignKeysValid: false,
         };
-      if (receipt.kind === "vectors") return { ...receipt, queryable: false };
+      if (receipt.kind === "vectors")
+        return {
+          ...receipt,
+          visibilityProbeVersion: "vector-visibility@unknown",
+          allIdsPresent: false,
+          queryable: false,
+        };
       if (receipt.kind === "probes")
-        return { ...receipt, neutralityPassed: false };
+        return {
+          ...receipt,
+          probeSetVersion: "search-gold@unknown",
+          neutralityPassed: false,
+        };
       return receipt;
     });
     const result = await evaluateReadiness({

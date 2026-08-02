@@ -32,6 +32,11 @@ const PUBLICATION_ENVIRONMENTS = new Set<string>([
   "preview",
   "production",
 ]);
+const SERVING_PUBLICATION_ENVIRONMENTS = new Set<string>([
+  "local",
+  "preview",
+  "production",
+]);
 const CHUNK_KINDS = new Set<string>(["resources", "exact_search", "vectors"]);
 
 export const RESOURCE_TYPES = [
@@ -1493,6 +1498,10 @@ export interface ArtifactBinding {
   readonly buildCommit: string;
 }
 
+export const READINESS_FTS_BUILD_VERSION = "fts5-unicode61@1" as const;
+export const VECTOR_VISIBILITY_PROBE_VERSION = "vector-visibility@1" as const;
+export const READINESS_PROBE_SET_VERSION = "search-gold@1" as const;
+
 export type ArchiveReceipt = Readonly<{
   kind: "archive";
   binding: ArtifactBinding;
@@ -1514,6 +1523,9 @@ export type ServingReceipt = Readonly<{
   exactDocumentCount: number;
   resourceInventoryHash: Sha256;
   exactSearchInventoryHash: Sha256;
+  ftsBuildVersion: string;
+  ftsDocumentCount: number;
+  ftsQueryable: boolean;
   foreignKeysValid: boolean;
   contentHashesValid: boolean;
   unavailableProviderIsolationValid: boolean;
@@ -1524,7 +1536,12 @@ export type VectorReceipt = Readonly<{
   observedAt: string;
   namespace: PublicationId;
   documentCount: number;
+  verifiedDocumentCount: number;
   vectorInventoryHash: Sha256;
+  visibilityProbeVersion: string;
+  mutationId: string;
+  allIdsPresent: boolean;
+  allNamespacesMatch: boolean;
   queryable: boolean;
 }>;
 export type ProbeReceipt = Readonly<{
@@ -1542,6 +1559,102 @@ export type ProbeReceipt = Readonly<{
 }>;
 export type ReadinessReceipt =
   ArchiveReceipt | ServingReceipt | VectorReceipt | ProbeReceipt;
+
+export type ServingReadinessReceiptBindingRow = Readonly<{
+  publication_id: string;
+  kind: ReadinessReceipt["kind"];
+  receipt_version: string;
+  receipt_hash: string;
+  environment: string;
+  closure_hash: string;
+  bundle_hash: string;
+  schema_version: string;
+  build_commit: string;
+  observed_at_ms: number;
+}>;
+
+export type ServingArchiveReceiptRow = Readonly<{
+  publication_id: string;
+  kind: "archive";
+  retained_bundle_hash: string;
+  immutable: number;
+}>;
+
+export type ServingServingReceiptRow = Readonly<{
+  publication_id: string;
+  kind: "serving";
+  enabled_provider_count: number;
+  enabled_provider_scope_hash: string;
+  provider_slice_count: number;
+  provider_slice_hash: string;
+  provider_attribution_count: number;
+  provider_attribution_hash: string;
+  resource_count: number;
+  exact_document_count: number;
+  resource_inventory_hash: string;
+  exact_search_inventory_hash: string;
+  fts_build_version: string;
+  fts_document_count: number;
+  fts_queryable: number;
+  foreign_keys_valid: number;
+  content_hashes_valid: number;
+  unavailable_provider_isolation_valid: number;
+}>;
+
+export type ServingVectorReceiptRow = Readonly<{
+  publication_id: string;
+  kind: "vectors";
+  vector_namespace: string;
+  document_count: number;
+  verified_document_count: number;
+  vector_inventory_hash: string;
+  visibility_probe_version: string;
+  mutation_id: string;
+  all_ids_present: number;
+  all_namespaces_match: number;
+  queryable: number;
+}>;
+
+export type ServingProbeReceiptRow = Readonly<{
+  publication_id: string;
+  kind: "probes";
+  probe_set_version: string;
+  integrity_passed: number;
+  evidence_coverage_passed: number;
+  exact_search_passed: number;
+  semantic_search_passed: number;
+  structured_filter_passed: number;
+  neutrality_passed: number;
+  version_isolation_passed: number;
+}>;
+
+export type ServingReadinessReceiptRows = Readonly<{
+  bindings: readonly ServingReadinessReceiptBindingRow[];
+  archives: readonly ServingArchiveReceiptRow[];
+  servings: readonly ServingServingReceiptRow[];
+  vectors: readonly ServingVectorReceiptRow[];
+  probes: readonly ServingProbeReceiptRow[];
+}>;
+
+export type ServingReadinessAttestationProjection = Readonly<{
+  publication_id: string;
+  environment: string;
+  closure_hash: string;
+  bundle_hash: string;
+  evaluator_version: "1.0.0";
+  ready_at_ms: number;
+  maximum_receipt_age_ms: number;
+  effective_valid_until_ms: number;
+  archive_observed_at_ms: number;
+  serving_observed_at_ms: number;
+  vector_observed_at_ms: number;
+  probes_observed_at_ms: number;
+  archive_receipt_hash: string;
+  serving_receipt_hash: string;
+  vector_receipt_hash: string;
+  probes_receipt_hash: string;
+  attestation_hash: string;
+}>;
 
 export const READINESS_FAILURE_CODES = [
   "manifest_invalid",
@@ -1665,6 +1778,9 @@ const validateReceiptShape = (value: unknown): value is ReadinessReceipt => {
           "exactDocumentCount",
           "resourceInventoryHash",
           "exactSearchInventoryHash",
+          "ftsBuildVersion",
+          "ftsDocumentCount",
+          "ftsQueryable",
           "foreignKeysValid",
           "contentHashesValid",
           "unavailableProviderIsolationValid",
@@ -1684,6 +1800,12 @@ const validateReceiptShape = (value: unknown): value is ReadinessReceipt => {
         HASH.test(value.resourceInventoryHash) &&
         typeof value.exactSearchInventoryHash === "string" &&
         HASH.test(value.exactSearchInventoryHash) &&
+        typeof value.ftsBuildVersion === "string" &&
+        isAscii(value.ftsBuildVersion) &&
+        value.ftsBuildVersion.length > 0 &&
+        value.ftsBuildVersion.length <= 128 &&
+        isNonnegativeSafeInteger(value.ftsDocumentCount) &&
+        typeof value.ftsQueryable === "boolean" &&
         typeof value.foreignKeysValid === "boolean" &&
         typeof value.contentHashesValid === "boolean" &&
         typeof value.unavailableProviderIsolationValid === "boolean"
@@ -1696,14 +1818,30 @@ const validateReceiptShape = (value: unknown): value is ReadinessReceipt => {
           "observedAt",
           "namespace",
           "documentCount",
+          "verifiedDocumentCount",
           "vectorInventoryHash",
+          "visibilityProbeVersion",
+          "mutationId",
+          "allIdsPresent",
+          "allNamespacesMatch",
           "queryable",
         ]) &&
         typeof value.namespace === "string" &&
         PUBLICATION_ID.test(value.namespace) &&
         isNonnegativeSafeInteger(value.documentCount) &&
+        isNonnegativeSafeInteger(value.verifiedDocumentCount) &&
         typeof value.vectorInventoryHash === "string" &&
         HASH.test(value.vectorInventoryHash) &&
+        typeof value.visibilityProbeVersion === "string" &&
+        isAscii(value.visibilityProbeVersion) &&
+        value.visibilityProbeVersion.length > 0 &&
+        value.visibilityProbeVersion.length <= 128 &&
+        typeof value.mutationId === "string" &&
+        isAscii(value.mutationId) &&
+        value.mutationId.length > 0 &&
+        value.mutationId.length <= 128 &&
+        typeof value.allIdsPresent === "boolean" &&
+        typeof value.allNamespacesMatch === "boolean" &&
         typeof value.queryable === "boolean"
       );
     case "probes":
@@ -1738,6 +1876,463 @@ const validateReceiptShape = (value: unknown): value is ReadinessReceipt => {
     default:
       return false;
   }
+};
+
+const readinessReceiptHash = async (
+  receipt: ReadinessReceipt,
+): Promise<Sha256> => {
+  const common: CanonicalField[] = [
+    field("receipt_version", "text", "1.0.0"),
+    field("kind", "text", receipt.kind),
+    field("environment", "text", receipt.binding.environment),
+    field("publication_id", "identifier", receipt.binding.publicationId),
+    field("closure_hash", "digest", receipt.binding.closureHash),
+    field("bundle_hash", "digest", receipt.binding.bundleHash),
+    field("schema_version", "text", receipt.binding.schemaVersion),
+    field("build_commit", "text", receipt.binding.buildCommit),
+    field("observed_at", "timestamp", receipt.observedAt),
+  ];
+  const specific: CanonicalField[] = [];
+  switch (receipt.kind) {
+    case "archive":
+      specific.push(
+        field("retained_bundle_hash", "digest", receipt.retainedBundleHash),
+        field("immutable", "boolean", String(receipt.immutable)),
+      );
+      break;
+    case "serving":
+      specific.push(
+        field(
+          "enabled_provider_count",
+          "integer",
+          String(receipt.enabledProviderCount),
+        ),
+        field(
+          "enabled_provider_scope_hash",
+          "digest",
+          receipt.enabledProviderScopeHash,
+        ),
+        field(
+          "provider_slice_count",
+          "integer",
+          String(receipt.providerSliceCount),
+        ),
+        field("provider_slice_hash", "digest", receipt.providerSliceHash),
+        field(
+          "provider_attribution_count",
+          "integer",
+          String(receipt.providerAttributionCount),
+        ),
+        field(
+          "provider_attribution_hash",
+          "digest",
+          receipt.providerAttributionHash,
+        ),
+        field("resource_count", "integer", String(receipt.resourceCount)),
+        field(
+          "exact_document_count",
+          "integer",
+          String(receipt.exactDocumentCount),
+        ),
+        field(
+          "resource_inventory_hash",
+          "digest",
+          receipt.resourceInventoryHash,
+        ),
+        field(
+          "exact_search_inventory_hash",
+          "digest",
+          receipt.exactSearchInventoryHash,
+        ),
+        field("fts_build_version", "text", receipt.ftsBuildVersion),
+        field(
+          "fts_document_count",
+          "integer",
+          String(receipt.ftsDocumentCount),
+        ),
+        field("fts_queryable", "boolean", String(receipt.ftsQueryable)),
+        field(
+          "foreign_keys_valid",
+          "boolean",
+          String(receipt.foreignKeysValid),
+        ),
+        field(
+          "content_hashes_valid",
+          "boolean",
+          String(receipt.contentHashesValid),
+        ),
+        field(
+          "unavailable_provider_isolation_valid",
+          "boolean",
+          String(receipt.unavailableProviderIsolationValid),
+        ),
+      );
+      break;
+    case "vectors":
+      specific.push(
+        field("namespace", "identifier", receipt.namespace),
+        field("document_count", "integer", String(receipt.documentCount)),
+        field(
+          "verified_document_count",
+          "integer",
+          String(receipt.verifiedDocumentCount),
+        ),
+        field("vector_inventory_hash", "digest", receipt.vectorInventoryHash),
+        field(
+          "visibility_probe_version",
+          "text",
+          receipt.visibilityProbeVersion,
+        ),
+        field("mutation_id", "text", receipt.mutationId),
+        field("all_ids_present", "boolean", String(receipt.allIdsPresent)),
+        field(
+          "all_namespaces_match",
+          "boolean",
+          String(receipt.allNamespacesMatch),
+        ),
+        field("queryable", "boolean", String(receipt.queryable)),
+      );
+      break;
+    case "probes":
+      specific.push(
+        field("probe_set_version", "text", receipt.probeSetVersion),
+        field("integrity_passed", "boolean", String(receipt.integrityPassed)),
+        field(
+          "evidence_coverage_passed",
+          "boolean",
+          String(receipt.evidenceCoveragePassed),
+        ),
+        field(
+          "exact_search_passed",
+          "boolean",
+          String(receipt.exactSearchPassed),
+        ),
+        field(
+          "semantic_search_passed",
+          "boolean",
+          String(receipt.semanticSearchPassed),
+        ),
+        field(
+          "structured_filter_passed",
+          "boolean",
+          String(receipt.structuredFilterPassed),
+        ),
+        field("neutrality_passed", "boolean", String(receipt.neutralityPassed)),
+        field(
+          "version_isolation_passed",
+          "boolean",
+          String(receipt.versionIsolationPassed),
+        ),
+      );
+      break;
+  }
+  return digest("publication-readiness-receipt", [...common, ...specific]);
+};
+
+const receiptFlag = (value: number, label: string): boolean => {
+  if (value !== 0 && value !== 1)
+    throw new TypeError(`${label} must be a SQLite Boolean`);
+  return value === 1;
+};
+
+const timestampFromMs = (value: number, label: string): string => {
+  assertSafeInteger(value, 0, label);
+  const timestamp = new Date(value).toISOString();
+  assertTimestamp(timestamp, label);
+  return timestamp;
+};
+
+const requireSingleRow = <T>(rows: readonly T[], label: string): T => {
+  if (rows.length !== 1)
+    throw new TypeError(`${label} must contain exactly one row`);
+  const [row] = rows;
+  if (row === undefined)
+    throw new TypeError(`${label} must contain exactly one defined row`);
+  return row;
+};
+
+export const projectServingReadinessReceiptRows = async (
+  receipts: readonly ReadinessReceipt[],
+): Promise<ServingReadinessReceiptRows> => {
+  const expectedKinds = ["archive", "serving", "vectors", "probes"] as const;
+  for (const receipt of receipts as readonly unknown[])
+    if (!validateReceiptShape(receipt))
+      throw new TypeError("readiness receipt shape is invalid");
+  if (
+    receipts.some(
+      (receipt) =>
+        !SERVING_PUBLICATION_ENVIRONMENTS.has(receipt.binding.environment),
+    )
+  )
+    throw new TypeError(
+      "serving readiness receipts cannot use the test-only environment",
+    );
+  for (const kind of expectedKinds)
+    if (receipts.filter((receipt) => receipt.kind === kind).length !== 1)
+      throw new TypeError(`readiness receipt ${kind} must occur exactly once`);
+  if (receipts.length !== expectedKinds.length)
+    throw new TypeError("readiness receipt set contains extra rows");
+
+  const bindings: ServingReadinessReceiptBindingRow[] = [];
+  const archives: ServingArchiveReceiptRow[] = [];
+  const servings: ServingServingReceiptRow[] = [];
+  const vectors: ServingVectorReceiptRow[] = [];
+  const probes: ServingProbeReceiptRow[] = [];
+  for (const receipt of receipts) {
+    bindings.push(
+      Object.freeze({
+        publication_id: receipt.binding.publicationId,
+        kind: receipt.kind,
+        receipt_version: "1.0.0",
+        receipt_hash: await readinessReceiptHash(receipt),
+        environment: receipt.binding.environment,
+        closure_hash: receipt.binding.closureHash,
+        bundle_hash: receipt.binding.bundleHash,
+        schema_version: receipt.binding.schemaVersion,
+        build_commit: receipt.binding.buildCommit,
+        observed_at_ms: assertTimestamp(
+          receipt.observedAt,
+          "receipt observation time",
+        ),
+      }),
+    );
+    switch (receipt.kind) {
+      case "archive":
+        archives.push(
+          Object.freeze({
+            publication_id: receipt.binding.publicationId,
+            kind: "archive",
+            retained_bundle_hash: receipt.retainedBundleHash,
+            immutable: receipt.immutable ? 1 : 0,
+          }),
+        );
+        break;
+      case "serving":
+        servings.push(
+          Object.freeze({
+            publication_id: receipt.binding.publicationId,
+            kind: "serving",
+            enabled_provider_count: receipt.enabledProviderCount,
+            enabled_provider_scope_hash: receipt.enabledProviderScopeHash,
+            provider_slice_count: receipt.providerSliceCount,
+            provider_slice_hash: receipt.providerSliceHash,
+            provider_attribution_count: receipt.providerAttributionCount,
+            provider_attribution_hash: receipt.providerAttributionHash,
+            resource_count: receipt.resourceCount,
+            exact_document_count: receipt.exactDocumentCount,
+            resource_inventory_hash: receipt.resourceInventoryHash,
+            exact_search_inventory_hash: receipt.exactSearchInventoryHash,
+            fts_build_version: receipt.ftsBuildVersion,
+            fts_document_count: receipt.ftsDocumentCount,
+            fts_queryable: receipt.ftsQueryable ? 1 : 0,
+            foreign_keys_valid: receipt.foreignKeysValid ? 1 : 0,
+            content_hashes_valid: receipt.contentHashesValid ? 1 : 0,
+            unavailable_provider_isolation_valid:
+              receipt.unavailableProviderIsolationValid ? 1 : 0,
+          }),
+        );
+        break;
+      case "vectors":
+        vectors.push(
+          Object.freeze({
+            publication_id: receipt.binding.publicationId,
+            kind: "vectors",
+            vector_namespace: receipt.namespace,
+            document_count: receipt.documentCount,
+            verified_document_count: receipt.verifiedDocumentCount,
+            vector_inventory_hash: receipt.vectorInventoryHash,
+            visibility_probe_version: receipt.visibilityProbeVersion,
+            mutation_id: receipt.mutationId,
+            all_ids_present: receipt.allIdsPresent ? 1 : 0,
+            all_namespaces_match: receipt.allNamespacesMatch ? 1 : 0,
+            queryable: receipt.queryable ? 1 : 0,
+          }),
+        );
+        break;
+      case "probes":
+        probes.push(
+          Object.freeze({
+            publication_id: receipt.binding.publicationId,
+            kind: "probes",
+            probe_set_version: receipt.probeSetVersion,
+            integrity_passed: receipt.integrityPassed ? 1 : 0,
+            evidence_coverage_passed: receipt.evidenceCoveragePassed ? 1 : 0,
+            exact_search_passed: receipt.exactSearchPassed ? 1 : 0,
+            semantic_search_passed: receipt.semanticSearchPassed ? 1 : 0,
+            structured_filter_passed: receipt.structuredFilterPassed ? 1 : 0,
+            neutrality_passed: receipt.neutralityPassed ? 1 : 0,
+            version_isolation_passed: receipt.versionIsolationPassed ? 1 : 0,
+          }),
+        );
+        break;
+    }
+  }
+  return Object.freeze({
+    bindings: Object.freeze(bindings),
+    archives: Object.freeze(archives),
+    servings: Object.freeze(servings),
+    vectors: Object.freeze(vectors),
+    probes: Object.freeze(probes),
+  });
+};
+
+export const readServingReadinessReceipts = async (
+  rows: ServingReadinessReceiptRows,
+): Promise<readonly ReadinessReceipt[]> => {
+  if (rows.bindings.length !== 4)
+    throw new TypeError("persisted readiness bindings must contain four rows");
+  const detailByKind = {
+    archive: requireSingleRow(rows.archives, "archive receipt details"),
+    serving: requireSingleRow(rows.servings, "serving receipt details"),
+    vectors: requireSingleRow(rows.vectors, "vector receipt details"),
+    probes: requireSingleRow(rows.probes, "probe receipt details"),
+  } as const;
+  const receipts: ReadinessReceipt[] = [];
+  for (const bindingRow of rows.bindings) {
+    if (
+      bindingRow.receipt_version !== "1.0.0" ||
+      !HASH.test(bindingRow.receipt_hash) ||
+      !SERVING_PUBLICATION_ENVIRONMENTS.has(bindingRow.environment)
+    )
+      throw new TypeError("persisted readiness receipt identity is invalid");
+    const detail = detailByKind[bindingRow.kind];
+    if (detail.publication_id !== bindingRow.publication_id)
+      throw new TypeError("persisted readiness receipt details do not bind");
+    const binding: ArtifactBinding = Object.freeze({
+      environment: bindingRow.environment as PublicationEnvironment,
+      publicationId: bindingRow.publication_id as PublicationId,
+      closureHash: bindingRow.closure_hash as Sha256,
+      bundleHash: bindingRow.bundle_hash as Sha256,
+      schemaVersion: bindingRow.schema_version,
+      buildCommit: bindingRow.build_commit,
+    });
+    const observedAt = timestampFromMs(
+      bindingRow.observed_at_ms,
+      "persisted receipt observation time",
+    );
+    let candidate: unknown;
+    switch (bindingRow.kind) {
+      case "archive": {
+        const archive = detailByKind.archive;
+        candidate = {
+          kind: "archive",
+          binding,
+          observedAt,
+          retainedBundleHash: archive.retained_bundle_hash,
+          immutable: receiptFlag(archive.immutable, "archive immutable"),
+        };
+        break;
+      }
+      case "serving": {
+        const serving = detailByKind.serving;
+        candidate = {
+          kind: "serving",
+          binding,
+          observedAt,
+          enabledProviderCount: serving.enabled_provider_count,
+          enabledProviderScopeHash: serving.enabled_provider_scope_hash,
+          providerSliceCount: serving.provider_slice_count,
+          providerSliceHash: serving.provider_slice_hash,
+          providerAttributionCount: serving.provider_attribution_count,
+          providerAttributionHash: serving.provider_attribution_hash,
+          resourceCount: serving.resource_count,
+          exactDocumentCount: serving.exact_document_count,
+          resourceInventoryHash: serving.resource_inventory_hash,
+          exactSearchInventoryHash: serving.exact_search_inventory_hash,
+          ftsBuildVersion: serving.fts_build_version,
+          ftsDocumentCount: serving.fts_document_count,
+          ftsQueryable: receiptFlag(
+            serving.fts_queryable,
+            "serving FTS queryability",
+          ),
+          foreignKeysValid: receiptFlag(
+            serving.foreign_keys_valid,
+            "serving foreign-key validity",
+          ),
+          contentHashesValid: receiptFlag(
+            serving.content_hashes_valid,
+            "serving content-hash validity",
+          ),
+          unavailableProviderIsolationValid: receiptFlag(
+            serving.unavailable_provider_isolation_valid,
+            "serving unavailable-provider isolation",
+          ),
+        };
+        break;
+      }
+      case "vectors": {
+        const vectors = detailByKind.vectors;
+        candidate = {
+          kind: "vectors",
+          binding,
+          observedAt,
+          namespace: vectors.vector_namespace,
+          documentCount: vectors.document_count,
+          verifiedDocumentCount: vectors.verified_document_count,
+          vectorInventoryHash: vectors.vector_inventory_hash,
+          visibilityProbeVersion: vectors.visibility_probe_version,
+          mutationId: vectors.mutation_id,
+          allIdsPresent: receiptFlag(
+            vectors.all_ids_present,
+            "vector inventory presence",
+          ),
+          allNamespacesMatch: receiptFlag(
+            vectors.all_namespaces_match,
+            "vector namespace matching",
+          ),
+          queryable: receiptFlag(vectors.queryable, "vector queryability"),
+        };
+        break;
+      }
+      case "probes": {
+        const probes = detailByKind.probes;
+        candidate = {
+          kind: "probes",
+          binding,
+          observedAt,
+          probeSetVersion: probes.probe_set_version,
+          integrityPassed: receiptFlag(
+            probes.integrity_passed,
+            "integrity probe",
+          ),
+          evidenceCoveragePassed: receiptFlag(
+            probes.evidence_coverage_passed,
+            "evidence coverage probe",
+          ),
+          exactSearchPassed: receiptFlag(
+            probes.exact_search_passed,
+            "exact-search probe",
+          ),
+          semanticSearchPassed: receiptFlag(
+            probes.semantic_search_passed,
+            "semantic-search probe",
+          ),
+          structuredFilterPassed: receiptFlag(
+            probes.structured_filter_passed,
+            "structured-filter probe",
+          ),
+          neutralityPassed: receiptFlag(
+            probes.neutrality_passed,
+            "neutrality probe",
+          ),
+          versionIsolationPassed: receiptFlag(
+            probes.version_isolation_passed,
+            "version-isolation probe",
+          ),
+        };
+        break;
+      }
+    }
+    if (!validateReceiptShape(candidate))
+      throw new TypeError("persisted readiness receipt shape is invalid");
+    if ((await readinessReceiptHash(candidate)) !== bindingRow.receipt_hash)
+      throw new TypeError("persisted readiness receipt hash does not match");
+    receipts.push(Object.freeze(candidate));
+  }
+  for (const kind of ["archive", "serving", "vectors", "probes"] as const)
+    if (receipts.filter((receipt) => receipt.kind === kind).length !== 1)
+      throw new TypeError(`persisted readiness receipt ${kind} is not unique`);
+  return Object.freeze(receipts);
 };
 
 export const evaluateReadiness = async (input: {
@@ -1802,6 +2397,9 @@ export const evaluateReadiness = async (input: {
       serving.resourceInventoryHash !== input.manifest.resourceInventoryHash ||
       serving.exactSearchInventoryHash !==
         input.manifest.exactSearchInventoryHash ||
+      serving.ftsBuildVersion !== READINESS_FTS_BUILD_VERSION ||
+      serving.ftsDocumentCount !== input.manifest.searchDocuments.length ||
+      !serving.ftsQueryable ||
       !serving.foreignKeysValid ||
       !serving.contentHashesValid ||
       !serving.unavailableProviderIsolationValid)
@@ -1812,14 +2410,18 @@ export const evaluateReadiness = async (input: {
     vectors !== undefined &&
     (vectors.namespace !== input.manifest.publicationId ||
       vectors.documentCount !== input.manifest.vectors.length ||
+      vectors.verifiedDocumentCount !== input.manifest.vectors.length ||
       vectors.vectorInventoryHash !== input.manifest.vectorInventoryHash ||
+      vectors.visibilityProbeVersion !== VECTOR_VISIBILITY_PROBE_VERSION ||
+      !vectors.allIdsPresent ||
+      !vectors.allNamespacesMatch ||
       !vectors.queryable)
   )
     failures.add("vectors_invalid");
   const probes = selected.get("probes") as ProbeReceipt | undefined;
   if (
     probes !== undefined &&
-    (probes.probeSetVersion.length === 0 ||
+    (probes.probeSetVersion !== READINESS_PROBE_SET_VERSION ||
       !probes.integrityPassed ||
       !probes.evidenceCoveragePassed ||
       !probes.exactSearchPassed ||
@@ -1840,6 +2442,161 @@ export const evaluateReadiness = async (input: {
     readyAt: new Date(now).toISOString(),
     closureHash: input.manifest.closureHash,
   });
+};
+
+export type ServingReadinessAttestationDecision =
+  | Readonly<{
+      decision: "ready";
+      readyAt: string;
+      closureHash: Sha256;
+      attestation: ServingReadinessAttestationProjection;
+    }>
+  | Extract<ReadinessDecision, { decision: "blocked" }>;
+
+export interface ServingReadinessAttestationInput {
+  readonly closureRows: ServingClosureRows;
+  readonly persistedSeal: ServingClosureSealProjection;
+  readonly receiptRows: ServingReadinessReceiptRows;
+  readonly environment: Exclude<PublicationEnvironment, "test">;
+  readonly readyAtMs: number;
+  readonly maximumReceiptAgeMs: number;
+}
+
+export const projectServingReadinessAttestation = async (
+  input: ServingReadinessAttestationInput,
+): Promise<ServingReadinessAttestationDecision> => {
+  if (!SERVING_PUBLICATION_ENVIRONMENTS.has(input.environment))
+    throw new TypeError("serving readiness environment is invalid");
+  assertSafeInteger(input.readyAtMs, 0, "readiness time");
+  assertSafeInteger(
+    input.maximumReceiptAgeMs,
+    0,
+    "maximum readiness receipt age",
+  );
+  const readyAt = timestampFromMs(input.readyAtMs, "readiness time");
+  const closure = await projectServingClosureSeal(input.closureRows);
+  const sealErrors = await verifyServingClosureSealProjection(
+    input.closureRows,
+    input.persistedSeal,
+  );
+  const [firstSealError] = sealErrors;
+  if (firstSealError !== undefined)
+    throw new TypeError(`persisted closure seal is invalid: ${firstSealError}`);
+  const receipts = await readServingReadinessReceipts(input.receiptRows);
+  if (
+    receipts.some(
+      (receipt) =>
+        assertTimestamp(receipt.observedAt, "receipt observation time") <
+        input.closureRows.sealedAtMs,
+    )
+  )
+    throw new TypeError("readiness receipt observation predates closure seal");
+  const decision = await evaluateReadiness({
+    manifest: closure.manifest,
+    receipts,
+    environment: input.environment,
+    now: readyAt,
+    maximumReceiptAgeMs: input.maximumReceiptAgeMs,
+  });
+  if (decision.decision === "blocked") return decision;
+
+  const bindingByKind = new Map(
+    input.receiptRows.bindings.map((row) => [row.kind, row] as const),
+  );
+  const requireBinding = (
+    kind: ReadinessReceipt["kind"],
+  ): ServingReadinessReceiptBindingRow => {
+    const binding = bindingByKind.get(kind);
+    if (binding === undefined)
+      throw new TypeError(`persisted ${kind} receipt binding is missing`);
+    return binding;
+  };
+  const archive = requireBinding("archive");
+  const serving = requireBinding("serving");
+  const vectors = requireBinding("vectors");
+  const probes = requireBinding("probes");
+  const effectiveValidUntilMs =
+    Math.min(
+      archive.observed_at_ms,
+      serving.observed_at_ms,
+      vectors.observed_at_ms,
+      probes.observed_at_ms,
+    ) + input.maximumReceiptAgeMs;
+  assertSafeInteger(
+    effectiveValidUntilMs,
+    input.readyAtMs,
+    "readiness effective validity deadline",
+  );
+  const effectiveValidUntil = timestampFromMs(
+    effectiveValidUntilMs,
+    "readiness effective validity deadline",
+  );
+  const attestationHash = await digest("publication-readiness-attestation", [
+    field("evaluator_version", "text", "1.0.0"),
+    field("environment", "text", input.environment),
+    field("publication_id", "identifier", closure.manifest.publicationId),
+    field("closure_hash", "digest", closure.manifest.closureHash),
+    field("bundle_hash", "digest", closure.manifest.bundleHash),
+    field("ready_at", "timestamp", readyAt),
+    field(
+      "maximum_receipt_age_ms",
+      "integer",
+      String(input.maximumReceiptAgeMs),
+    ),
+    field("effective_valid_until", "timestamp", effectiveValidUntil),
+    field("archive_receipt_hash", "digest", archive.receipt_hash),
+    field("serving_receipt_hash", "digest", serving.receipt_hash),
+    field("vector_receipt_hash", "digest", vectors.receipt_hash),
+    field("probes_receipt_hash", "digest", probes.receipt_hash),
+  ]);
+  const attestation: ServingReadinessAttestationProjection = Object.freeze({
+    publication_id: closure.manifest.publicationId,
+    environment: input.environment,
+    closure_hash: closure.manifest.closureHash,
+    bundle_hash: closure.manifest.bundleHash,
+    evaluator_version: "1.0.0",
+    ready_at_ms: input.readyAtMs,
+    maximum_receipt_age_ms: input.maximumReceiptAgeMs,
+    effective_valid_until_ms: effectiveValidUntilMs,
+    archive_observed_at_ms: archive.observed_at_ms,
+    serving_observed_at_ms: serving.observed_at_ms,
+    vector_observed_at_ms: vectors.observed_at_ms,
+    probes_observed_at_ms: probes.observed_at_ms,
+    archive_receipt_hash: archive.receipt_hash,
+    serving_receipt_hash: serving.receipt_hash,
+    vector_receipt_hash: vectors.receipt_hash,
+    probes_receipt_hash: probes.receipt_hash,
+    attestation_hash: attestationHash,
+  });
+  return Object.freeze({
+    decision: "ready",
+    readyAt,
+    closureHash: closure.manifest.closureHash,
+    attestation,
+  });
+};
+
+export const verifyServingReadinessAttestationProjection = async (
+  input: ServingReadinessAttestationInput,
+  candidate: ServingReadinessAttestationProjection,
+): Promise<readonly string[]> => {
+  const decision = await projectServingReadinessAttestation(input);
+  if (decision.decision === "blocked")
+    return Object.freeze([
+      `readiness projection is blocked: ${decision.failureCodes.join(",")}`,
+    ]);
+  const expected = decision.attestation;
+  const errors: string[] = [];
+  for (const key of Object.keys(
+    expected,
+  ) as (keyof ServingReadinessAttestationProjection)[])
+    if (candidate[key] !== expected[key])
+      errors.push(`${key} does not match persisted readiness evidence`);
+  if (Object.keys(candidate).length !== Object.keys(expected).length)
+    errors.push(
+      "readiness attestation shape does not match persisted evidence",
+    );
+  return Object.freeze(errors);
 };
 
 export type PublicationState =
