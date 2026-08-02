@@ -435,7 +435,17 @@ const workerSafeBoundedUnicodeString = (
   maximumUnicodeScalars: number,
 ): unknown => {
   if (typeof value !== "string") return value;
-  const scalarLength = Array.from(value).length;
+  const scalars = Array.from(value);
+  if (
+    scalars.some((scalar) => {
+      const codePoint = scalar.codePointAt(0);
+      return (
+        codePoint !== undefined && codePoint >= 0xd800 && codePoint <= 0xdfff
+      );
+    })
+  )
+    return Object.freeze({ invalidUnicodeScalar: true });
+  const scalarLength = scalars.length;
   if (scalarLength > maximumUnicodeScalars || scalarLength === value.length)
     return value;
   return "x".repeat(scalarLength);
@@ -464,6 +474,17 @@ const workerSafeStringArrayFact = (
   const items = fact.value as unknown[];
   if (!items.every((item): item is string => typeof item === "string"))
     return value;
+  if (
+    items.some((item) =>
+      Array.from(item).some((scalar) => {
+        const codePoint = scalar.codePointAt(0);
+        return (
+          codePoint !== undefined && codePoint >= 0xd800 && codePoint <= 0xdfff
+        );
+      }),
+    )
+  )
+    return { ...fact, value: [null] };
   const scalarLengths = items.map((item) => Array.from(item).length);
   if (
     scalarLengths.some((length) => length > maximum) ||
@@ -640,6 +661,17 @@ export const checkProviderContract = (value: unknown): value is Provider => {
       if (displayFact.state === "known") {
         if (typeof displayFact.value !== "string") return false;
         if (displayFact.value.includes("\u0000")) return false;
+        if (
+          Array.from(displayFact.value).some((scalar) => {
+            const codePoint = scalar.codePointAt(0);
+            return (
+              codePoint !== undefined &&
+              codePoint >= 0xd800 &&
+              codePoint <= 0xdfff
+            );
+          })
+        )
+          return false;
         const scalarLength = Array.from(displayFact.value).length;
         if (scalarLength > PROVIDER_DISPLAY_NAME_MAX_UNICODE_SCALARS)
           return false;
@@ -711,6 +743,44 @@ export const OfferingSchema = Type.Object(
   },
   { $id: "Offering", additionalProperties: false },
 );
+
+export type Offering = Static<typeof OfferingSchema>;
+
+const workerSafeOfferingCandidate = (value: unknown): unknown => {
+  const offering = recordValue(value);
+  if (offering === null) return value;
+  return {
+    ...offering,
+    provider_model_id: workerSafeBoundedUnicodeString(
+      offering.provider_model_id,
+      256,
+    ),
+    display_name: workerSafeStringFact(offering.display_name, 256),
+    tier_key: workerSafeBoundedUnicodeString(offering.tier_key, 128),
+    endpoint_class: workerSafeBoundedUnicodeString(
+      offering.endpoint_class,
+      128,
+    ),
+    material_region_key: workerSafeBoundedUnicodeString(
+      offering.material_region_key,
+      128,
+    ),
+    supported_regions: workerSafeStringArrayFact(
+      offering.supported_regions,
+      128,
+    ),
+    status: workerSafeStringFact(offering.status, 128),
+    stale_reason:
+      offering.stale_reason === null
+        ? null
+        : workerSafeBoundedUnicodeString(offering.stale_reason, 200),
+    source_locator: workerSafeStringFact(offering.source_locator, 2048),
+  };
+};
+
+/** Complete Worker-safe Offering validation with JSON Schema scalar lengths. */
+export const checkOfferingContract = (value: unknown): value is Offering =>
+  checkContractSchema(OfferingSchema, workerSafeOfferingCandidate(value));
 
 const PriceRoleSchema = extensibleString(["input", "output", "cached_input"]);
 const PriceClassSchema = extensibleString([
