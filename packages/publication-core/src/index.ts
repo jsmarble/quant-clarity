@@ -45,6 +45,12 @@ export const MODEL_VARIANT_NAME_SEARCH_MAX_TOTAL_RESOURCE_BYTES =
 export const MODEL_VARIANT_NAME_SEARCH_MAX_NORMALIZED_NAME_UNICODE_SCALARS =
   MODEL_DISPLAY_NAME_MAX_UNICODE_SCALARS *
   EXACT_SEARCH_NORMALIZATION_MAX_UNICODE_SCALAR_EXPANSION;
+export const MODEL_VARIANT_NAME_SEARCH_STORAGE_VERSION =
+  "model-variant-name-utf8-blob@1" as const;
+export const MODEL_VARIANT_NAME_SEARCH_MAX_DISPLAY_NAME_UTF8_BYTES =
+  MODEL_DISPLAY_NAME_MAX_UNICODE_SCALARS * 4;
+export const MODEL_VARIANT_NAME_SEARCH_MAX_NORMALIZED_NAME_UTF8_BYTES =
+  MODEL_VARIANT_NAME_SEARCH_MAX_NORMALIZED_NAME_UNICODE_SCALARS * 4;
 
 export const assertModelVariantNameSearchResourceByteBudget = (
   resourceByteLengths: readonly number[],
@@ -1969,6 +1975,417 @@ export const projectModelVariantNameSearchProjection = async (
   });
   trustedModelVariantNameSearchProjections.add(projection);
   return Object.freeze(projection) as TrustedModelVariantNameSearchProjection;
+};
+
+/**
+ * Runtime-neutral persistence rows for ADR 0026's future D1 BLOB adapter.
+ * Number arrays are used deliberately: unlike typed-array views they can be
+ * detached and frozen at runtime before the future adapter converts them to
+ * its validated lowercase-hex transport representation.
+ */
+export type ModelVariantNameSearchStorageRowV1 = Readonly<{
+  publication_id: PublicationId;
+  resource_type: SearchResourceType;
+  resource_id: string;
+  projection_version: typeof MODEL_VARIANT_NAME_SEARCH_PROJECTION_VERSION;
+  display_name_utf8: readonly number[];
+  normalized_name_utf8: readonly number[];
+  resource_content_hash: Sha256;
+}>;
+
+export type ModelVariantNameSearchStagingPersistenceV1 = Readonly<{
+  publicationId: PublicationId;
+  closureHash: Sha256;
+  stagingRevision: number;
+  projectionVersion: typeof MODEL_VARIANT_NAME_SEARCH_PROJECTION_VERSION;
+  storageVersion: typeof MODEL_VARIANT_NAME_SEARCH_STORAGE_VERSION;
+  documentCount: number;
+  inventoryHash: Sha256;
+  rows: readonly ModelVariantNameSearchStorageRowV1[];
+}>;
+
+const modelVariantNameSearchStagingProjectionV1Brand: unique symbol = Symbol(
+  "ModelVariantNameSearchStagingProjectionV1",
+);
+
+export type ModelVariantNameSearchStagingProjectionV1 = Readonly<{
+  readonly [modelVariantNameSearchStagingProjectionV1Brand]: true;
+}>;
+
+interface ModelVariantNameSearchStagingBindingV1 {
+  readonly manifest: TrustedImmutablePublicationManifest;
+  readonly projection: TrustedModelVariantNameSearchProjection;
+  readonly persistence: ModelVariantNameSearchStagingPersistenceV1;
+}
+
+const trustedModelVariantNameSearchStagingProjectionsV1 = new WeakMap<
+  object,
+  ModelVariantNameSearchStagingBindingV1
+>();
+
+export const assertModelVariantNameSearchStagingProjectionV1: (
+  value: unknown,
+) => asserts value is ModelVariantNameSearchStagingProjectionV1 = (value) => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !(modelVariantNameSearchStagingProjectionV1Brand in value) ||
+    value[modelVariantNameSearchStagingProjectionV1Brand] !== true ||
+    !trustedModelVariantNameSearchStagingProjectionsV1.has(value)
+  )
+    throw new TypeError(
+      "model/variant name search staging projection v1 is not trusted",
+    );
+};
+
+const frozenUtf8Bytes = (value: string): readonly number[] => {
+  const encoded = utf8.encode(value);
+  const bytes = new Array<number>(encoded.byteLength);
+  for (let index = 0; index < encoded.byteLength; index += 1) {
+    const byte = encoded[index];
+    if (byte === undefined)
+      throw new TypeError("encoded model/variant name bytes are incomplete");
+    bytes[index] = byte;
+  }
+  return Object.freeze(bytes);
+};
+
+const modelVariantNameSearchStoragePersistenceV1 = (
+  projection: TrustedModelVariantNameSearchProjection,
+  stagingRevision: number,
+): ModelVariantNameSearchStagingPersistenceV1 => {
+  assertModelVariantNameSearchProjection(projection);
+  assertSafeInteger(
+    stagingRevision,
+    0,
+    "model/variant name search staging revision",
+  );
+  const rows = projection.documents.map((document) =>
+    Object.freeze({
+      publication_id: projection.publicationId,
+      resource_type: document.resourceType,
+      resource_id: document.resourceId,
+      projection_version: document.projectionVersion,
+      display_name_utf8: frozenUtf8Bytes(document.displayName),
+      normalized_name_utf8: frozenUtf8Bytes(document.normalizedName),
+      resource_content_hash: document.resourceContentHash,
+    }),
+  );
+  return Object.freeze({
+    publicationId: projection.publicationId,
+    closureHash: projection.closureHash,
+    stagingRevision,
+    projectionVersion: projection.projectionVersion,
+    storageVersion: MODEL_VARIANT_NAME_SEARCH_STORAGE_VERSION,
+    documentCount: projection.documentCount,
+    inventoryHash: projection.inventoryHash,
+    rows: Object.freeze(rows),
+  });
+};
+
+export const projectModelVariantNameSearchStagingV1 = async (input: {
+  readonly projection: TrustedModelVariantNameSearchProjection;
+  readonly closureRows: ServingClosureRows;
+}): Promise<ModelVariantNameSearchStagingProjectionV1> => {
+  assertModelVariantNameSearchProjection(input.projection);
+  const rows = structuredClone(input.closureRows);
+  const closure = await projectServingClosureSeal(rows);
+  if (
+    closure.manifest.publicationId !== input.projection.publicationId ||
+    closure.manifest.closureHash !== input.projection.closureHash
+  )
+    throw new TypeError(
+      "model/variant name search staging closure does not match projection",
+    );
+  const persistence = modelVariantNameSearchStoragePersistenceV1(
+    input.projection,
+    rows.stagingRevision,
+  );
+  const result = {};
+  Object.defineProperty(
+    result,
+    modelVariantNameSearchStagingProjectionV1Brand,
+    {
+      value: true,
+      enumerable: false,
+      configurable: false,
+      writable: false,
+    },
+  );
+  trustedModelVariantNameSearchStagingProjectionsV1.set(
+    result,
+    Object.freeze({
+      manifest: closure.manifest,
+      projection: input.projection,
+      persistence,
+    }),
+  );
+  return Object.freeze(result) as ModelVariantNameSearchStagingProjectionV1;
+};
+
+export const readModelVariantNameSearchStagingPersistenceV1 = (
+  value: ModelVariantNameSearchStagingProjectionV1,
+): ModelVariantNameSearchStagingPersistenceV1 => {
+  assertModelVariantNameSearchStagingProjectionV1(value);
+  const binding = trustedModelVariantNameSearchStagingProjectionsV1.get(value);
+  if (binding === undefined)
+    throw new TypeError(
+      "model/variant name search staging projection v1 is not trusted",
+    );
+  return binding.persistence;
+};
+
+export type ModelVariantNameSearchStorageObservationV1 = Readonly<{
+  storageVersion: typeof MODEL_VARIANT_NAME_SEARCH_STORAGE_VERSION;
+  rows: readonly ModelVariantNameSearchStorageRowV1[];
+}>;
+
+const modelVariantNameSearchArtifactProofV1Brand: unique symbol = Symbol(
+  "ModelVariantNameSearchArtifactProofV1",
+);
+
+export type ModelVariantNameSearchArtifactProofV1 = Readonly<{
+  model_variant_name_projection_version: typeof MODEL_VARIANT_NAME_SEARCH_PROJECTION_VERSION;
+  model_variant_name_document_count: number;
+  model_variant_name_inventory_hash: Sha256;
+  model_variant_name_storage_version: typeof MODEL_VARIANT_NAME_SEARCH_STORAGE_VERSION;
+  model_variant_name_storage_document_count: number;
+  model_variant_name_storage_exact_parity: true;
+  readonly [modelVariantNameSearchArtifactProofV1Brand]: true;
+}>;
+
+interface ModelVariantNameSearchArtifactProofBindingV1 {
+  readonly manifest: TrustedImmutablePublicationManifest;
+  readonly projection: TrustedModelVariantNameSearchProjection;
+}
+
+const trustedModelVariantNameSearchArtifactProofsV1 = new WeakMap<
+  object,
+  ModelVariantNameSearchArtifactProofBindingV1
+>();
+
+export const assertModelVariantNameSearchArtifactProofV1: (
+  value: unknown,
+) => asserts value is ModelVariantNameSearchArtifactProofV1 = (value) => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !(modelVariantNameSearchArtifactProofV1Brand in value) ||
+    value[modelVariantNameSearchArtifactProofV1Brand] !== true ||
+    !trustedModelVariantNameSearchArtifactProofsV1.has(value)
+  )
+    throw new TypeError(
+      "model/variant name search artifact proof v1 is not trusted",
+    );
+};
+
+const snapshotStorageBytes = (
+  value: unknown,
+  maximumBytes: number,
+  expectedBytes: number,
+  label: string,
+): readonly number[] => {
+  if (!Array.isArray(value)) throw new TypeError(`${label} is invalid`);
+  const byteLength = value.length;
+  if (byteLength === 0 || byteLength > maximumBytes)
+    throw new TypeError(`${label} is invalid`);
+  if (byteLength !== expectedBytes)
+    throw new TypeError(`${label} does not exactly match trusted storage`);
+  const bytes = new Array<number>(byteLength);
+  const encoded = new Uint8Array(byteLength);
+  for (let index = 0; index < byteLength; index += 1) {
+    const candidate: unknown = value[index];
+    if (
+      typeof candidate !== "number" ||
+      !Number.isSafeInteger(candidate) ||
+      candidate < 0 ||
+      candidate > 255
+    )
+      throw new TypeError(`${label} is invalid`);
+    bytes[index] = candidate;
+    encoded[index] = candidate;
+  }
+  const frozenBytes = Object.freeze(bytes);
+  try {
+    const decoded = new TextDecoder("utf-8", { fatal: true }).decode(encoded);
+    const reencoded = utf8.encode(decoded);
+    if (decoded.length === 0 || reencoded.byteLength !== frozenBytes.length)
+      throw new TypeError(`${label} is invalid`);
+    for (let index = 0; index < reencoded.byteLength; index += 1)
+      if (reencoded[index] !== frozenBytes[index])
+        throw new TypeError(`${label} is invalid`);
+  } catch {
+    throw new TypeError(`${label} is invalid`);
+  }
+  return frozenBytes;
+};
+
+const snapshotModelVariantNameSearchStorageRowV1 = (
+  value: unknown,
+  expected: ModelVariantNameSearchStorageRowV1,
+): ModelVariantNameSearchStorageRowV1 => {
+  const row = inputRecord(value, "model/variant name search storage row");
+  const publicationId: unknown = row.publication_id;
+  const resourceType: unknown = row.resource_type;
+  const resourceId: unknown = row.resource_id;
+  const projectionVersion: unknown = row.projection_version;
+  const displayNameUtf8: unknown = row.display_name_utf8;
+  const normalizedNameUtf8: unknown = row.normalized_name_utf8;
+  const resourceContentHash: unknown = row.resource_content_hash;
+  if (
+    !hasExactKeys(row, [
+      "publication_id",
+      "resource_type",
+      "resource_id",
+      "projection_version",
+      "display_name_utf8",
+      "normalized_name_utf8",
+      "resource_content_hash",
+    ]) ||
+    typeof publicationId !== "string" ||
+    !PUBLICATION_ID.test(publicationId) ||
+    (resourceType !== "model" && resourceType !== "variant") ||
+    typeof resourceId !== "string" ||
+    !new RegExp(
+      `^${resourceType === "model" ? "mdl_" : "var_"}${UUID_V4}$`,
+      "u",
+    ).test(resourceId) ||
+    projectionVersion !== MODEL_VARIANT_NAME_SEARCH_PROJECTION_VERSION ||
+    typeof resourceContentHash !== "string" ||
+    !HASH.test(resourceContentHash)
+  )
+    throw new TypeError("model/variant name search storage row is invalid");
+  const expectedProjectionVersion: unknown = expected.projection_version;
+  if (
+    publicationId !== expected.publication_id ||
+    resourceType !== expected.resource_type ||
+    resourceId !== expected.resource_id ||
+    projectionVersion !== expectedProjectionVersion ||
+    resourceContentHash !== expected.resource_content_hash
+  )
+    throw new TypeError(
+      "model/variant name search storage row does not exactly match trusted storage",
+    );
+  return Object.freeze({
+    publication_id: publicationId,
+    resource_type: resourceType,
+    resource_id: resourceId,
+    projection_version: projectionVersion,
+    display_name_utf8: snapshotStorageBytes(
+      displayNameUtf8,
+      MODEL_VARIANT_NAME_SEARCH_MAX_DISPLAY_NAME_UTF8_BYTES,
+      expected.display_name_utf8.length,
+      "model/variant display-name UTF-8 bytes",
+    ),
+    normalized_name_utf8: snapshotStorageBytes(
+      normalizedNameUtf8,
+      MODEL_VARIANT_NAME_SEARCH_MAX_NORMALIZED_NAME_UTF8_BYTES,
+      expected.normalized_name_utf8.length,
+      "model/variant normalized-name UTF-8 bytes",
+    ),
+    resource_content_hash: resourceContentHash,
+  });
+};
+
+const equalStorageBytes = (
+  left: readonly number[],
+  right: readonly number[],
+): boolean => {
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index += 1)
+    if (left[index] !== right[index]) return false;
+  return true;
+};
+
+const equalModelVariantNameSearchStorageRowsV1 = (
+  left: ModelVariantNameSearchStorageRowV1,
+  right: ModelVariantNameSearchStorageRowV1,
+): boolean =>
+  left.publication_id === right.publication_id &&
+  left.resource_type === right.resource_type &&
+  left.resource_id === right.resource_id &&
+  (left.projection_version as string) ===
+    (right.projection_version as string) &&
+  equalStorageBytes(left.display_name_utf8, right.display_name_utf8) &&
+  equalStorageBytes(left.normalized_name_utf8, right.normalized_name_utf8) &&
+  left.resource_content_hash === right.resource_content_hash;
+
+export const projectModelVariantNameSearchArtifactProofV1 = (input: {
+  readonly staging: ModelVariantNameSearchStagingProjectionV1;
+  readonly observation: ModelVariantNameSearchStorageObservationV1;
+}): ModelVariantNameSearchArtifactProofV1 => {
+  assertModelVariantNameSearchStagingProjectionV1(input.staging);
+  const binding = trustedModelVariantNameSearchStagingProjectionsV1.get(
+    input.staging,
+  );
+  if (binding === undefined)
+    throw new TypeError(
+      "model/variant name search staging projection v1 is not trusted",
+    );
+  const observation = inputRecord(
+    input.observation,
+    "model/variant name search storage observation",
+  );
+  const storageVersionInput: unknown = observation.storageVersion;
+  const observedRowsInput: unknown = observation.rows;
+  if (
+    !hasExactKeys(observation, ["rows", "storageVersion"]) ||
+    storageVersionInput !== MODEL_VARIANT_NAME_SEARCH_STORAGE_VERSION ||
+    !Array.isArray(observedRowsInput)
+  )
+    throw new TypeError(
+      "model/variant name search storage observation is invalid",
+    );
+  const observedRowCount = observedRowsInput.length;
+  if (observedRowCount > MODEL_VARIANT_NAME_SEARCH_MAX_RESOURCES)
+    throw new TypeError(
+      "model/variant name search storage observation is invalid",
+    );
+  const expected = binding.persistence;
+  if (
+    observedRowCount !== expected.documentCount ||
+    observedRowCount !== expected.rows.length
+  )
+    throw new TypeError(
+      "model/variant name search storage does not exactly match the trusted projection",
+    );
+  for (let index = 0; index < observedRowCount; index += 1) {
+    const expectedRow = expected.rows[index];
+    if (expectedRow === undefined)
+      throw new TypeError(
+        "model/variant name search storage does not exactly match the trusted projection",
+      );
+    const observedRow = snapshotModelVariantNameSearchStorageRowV1(
+      observedRowsInput[index],
+      expectedRow,
+    );
+    if (!equalModelVariantNameSearchStorageRowsV1(observedRow, expectedRow))
+      throw new TypeError(
+        "model/variant name search storage does not exactly match the trusted projection",
+      );
+  }
+  const proof = {
+    model_variant_name_projection_version: expected.projectionVersion,
+    model_variant_name_document_count: expected.documentCount,
+    model_variant_name_inventory_hash: expected.inventoryHash,
+    model_variant_name_storage_version: expected.storageVersion,
+    model_variant_name_storage_document_count: observedRowCount,
+    model_variant_name_storage_exact_parity: true as const,
+  };
+  Object.defineProperty(proof, modelVariantNameSearchArtifactProofV1Brand, {
+    value: true,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  trustedModelVariantNameSearchArtifactProofsV1.set(
+    proof,
+    Object.freeze({
+      manifest: binding.manifest,
+      projection: binding.projection,
+    }),
+  );
+  return Object.freeze(proof) as ModelVariantNameSearchArtifactProofV1;
 };
 
 export type ProviderSearchDocumentProjection = Readonly<{

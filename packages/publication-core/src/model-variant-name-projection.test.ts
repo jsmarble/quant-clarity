@@ -3,12 +3,17 @@ import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
 import {
+  MODEL_VARIANT_NAME_SEARCH_MAX_DISPLAY_NAME_UTF8_BYTES,
+  MODEL_VARIANT_NAME_SEARCH_MAX_NORMALIZED_NAME_UTF8_BYTES,
   MODEL_VARIANT_NAME_SEARCH_MAX_RESOURCES,
   MODEL_VARIANT_NAME_SEARCH_MAX_RESOURCE_BYTES,
   MODEL_VARIANT_NAME_SEARCH_MAX_TOTAL_RESOURCE_BYTES,
   MODEL_VARIANT_NAME_SEARCH_PROJECTION_VERSION,
+  MODEL_VARIANT_NAME_SEARCH_STORAGE_VERSION,
+  assertModelVariantNameSearchArtifactProofV1,
   assertModelVariantNameSearchProjection,
   assertModelVariantNameSearchResourceByteBudget,
+  assertModelVariantNameSearchStagingProjectionV1,
   buildImmutableManifestFromPersistedContent,
   canonicalizePublicationJson,
   derivePublicationVectorId,
@@ -17,11 +22,16 @@ import {
   hashPublicationSearchChunk,
   hashPublicationSearchDocumentContent,
   hashPublicationVectorChunk,
+  projectModelVariantNameSearchArtifactProofV1,
   projectModelVariantNameSearchProjection,
+  projectModelVariantNameSearchStagingV1,
+  readModelVariantNameSearchStagingPersistenceV1,
+  type ModelVariantNameSearchStorageRowV1,
   type ModelVariantNameSearchProjectionInput,
   type ModelVariantNameSearchDocumentProjection,
   type PersistedResourceDescriptor,
   type SearchResourceType,
+  type ServingClosureRows,
   type ServingResourceClosureRow,
 } from "./index.js";
 
@@ -318,13 +328,16 @@ function independentInventoryHash(
   return `sha256:${createHash("sha256").update(encoded).digest("hex")}`;
 }
 
+type ProjectionFixtureInput = ModelVariantNameSearchProjectionInput &
+  Readonly<{ closureRows: ServingClosureRows }>;
+
 async function projectionInput(
   source: readonly CanonicalResource[],
   options: Readonly<{
     providerAffiliate?: boolean;
     relatedContextVersion?: 1 | 2;
   }> = {},
-): Promise<ModelVariantNameSearchProjectionInput> {
+): Promise<ProjectionFixtureInput> {
   const searchableResources = await Promise.all(
     source.map(async (resource) => {
       const resourceJson = canonicalizePublicationJson(
@@ -522,6 +535,76 @@ async function projectionInput(
     chunks,
     bundleHash: `sha256:${"b".repeat(64)}`,
   });
+  const closureRows: ServingClosureRows = {
+    publication: {
+      publication_id: manifest.publicationId,
+      source_run_id: manifest.sourceRunId,
+      parent_publication_id: manifest.parentPublicationId,
+      generated_at_ms: Date.parse(manifest.generatedAt),
+      schema_version: manifest.versions.schema,
+      methodology_version: manifest.versions.methodology,
+      precision_normalization_version: manifest.versions.precisionNormalization,
+      precision_display_order_version: manifest.versions.precisionDisplayOrder,
+      price_policy_version: manifest.versions.pricePolicy,
+      source_policy_version: manifest.versions.sourcePolicy,
+      embedding_version: manifest.versions.embedding,
+      build_commit: manifest.versions.buildCommit,
+      closure_hash: manifest.closureHash,
+    },
+    providerSlices: manifest.providerSlices.map((slice) => ({
+      provider_id: slice.providerId,
+      provider_slice_id: slice.providerSliceId,
+      provider_run_id: slice.providerRunId,
+      adapter_version: slice.adapterVersion,
+      roster_version: slice.rosterVersion,
+      source_register_version: slice.sourceRegisterVersion,
+      carried_forward: slice.carriedForward ? 1 : 0,
+      freshness_state: slice.freshnessState,
+    })),
+    providerAttributions: manifest.providerAttributions.map((attribution) => ({
+      resource_type: attribution.resourceType,
+      resource_id: attribution.resourceId,
+      provider_id: attribution.providerId,
+    })),
+    resources: sortedResources.map((resource) => ({
+      resource_type: resource.resourceType,
+      resource_id: resource.resourceId,
+      resource_json: resource.resourceJson,
+      content_hash: resource.contentHash,
+    })),
+    searchDocuments: sortedDocuments.map((document) => ({
+      document_id: document.documentId,
+      resource_type: document.resourceType,
+      resource_id: document.resourceId,
+      normalized_name: document.normalizedName,
+      aliases_json: document.aliasesJson,
+      publisher_name: document.publisherName,
+      provider_model_ids_json: document.providerModelIdsJson,
+      document_text: document.documentText,
+      content_hash: document.contentHash,
+    })),
+    vectors: sortedVectors.map((vector) => ({
+      vector_namespace: manifest.publicationId,
+      vector_id: vector.vectorId,
+      resource_type: vector.resourceType,
+      resource_id: vector.resourceId,
+      search_document_content_hash: vector.searchDocumentContentHash,
+      embedding_input_hash: vector.embeddingInputHash,
+    })),
+    chunks: chunks.map((chunk) => ({
+      kind: chunk.kind,
+      ordinal: chunk.ordinal,
+      first_key: chunk.firstKey,
+      last_key: chunk.lastKey,
+      item_count: chunk.itemCount,
+      content_hash: chunk.contentHash,
+    })),
+    manifestContractVersion: "1.0.0",
+    enabledProviderScopeVersion: manifest.enabledProviderScopeVersion,
+    bundleHash: manifest.bundleHash,
+    stagingRevision: 1,
+    sealedAtMs: Date.parse(observedAt) + 60_000,
+  };
   return {
     manifest,
     resources: searchableResources.map(
@@ -532,6 +615,7 @@ async function projectionInput(
         content_hash: resource.contentHash,
       }),
     ),
+    closureRows,
   };
 }
 
@@ -890,5 +974,635 @@ describe("trusted model/variant canonical-name projection (SRCH-002, SRCH-006, S
         resources: input.resources,
       }),
     ).rejects.toThrow(/manifest is not trusted/u);
+  });
+});
+
+describe("model/variant canonical-name storage proof (ADR 0026, PIPE-050)", () => {
+  async function storageFixture() {
+    const input = await projectionInput([
+      source("variant", 2, variant(2, "Trailing🙂\u0000")),
+      source("model", 1, model(1, "\u0000A\u030A\t가\u0000Middle")),
+    ]);
+    const projection = await projectModelVariantNameSearchProjection(input);
+    const staging = await projectModelVariantNameSearchStagingV1({
+      projection,
+      closureRows: input.closureRows,
+    });
+    const persistence = readModelVariantNameSearchStagingPersistenceV1(staging);
+    return { input, projection, staging, persistence };
+  }
+
+  function detachedRows(rows: readonly ModelVariantNameSearchStorageRowV1[]) {
+    return rows.map((row) => ({
+      ...row,
+      display_name_utf8: [...row.display_name_utf8],
+      normalized_name_utf8: [...row.normalized_name_utf8],
+    }));
+  }
+
+  it("projects frozen detached UTF-8 BLOB-bind rows without a lossy string boundary", async () => {
+    const { projection, staging, persistence } = await storageFixture();
+
+    expect(() => {
+      assertModelVariantNameSearchStagingProjectionV1(staging);
+    }).not.toThrow();
+    expect(persistence).toMatchObject({
+      publicationId: projection.publicationId,
+      closureHash: projection.closureHash,
+      stagingRevision: 1,
+      projectionVersion: MODEL_VARIANT_NAME_SEARCH_PROJECTION_VERSION,
+      storageVersion: MODEL_VARIANT_NAME_SEARCH_STORAGE_VERSION,
+      documentCount: 2,
+      inventoryHash: projection.inventoryHash,
+    });
+    expect(persistence.rows).toHaveLength(2);
+    expect(persistence.rows[0]?.display_name_utf8).toEqual([
+      0, 65, 204, 138, 9, 225, 132, 128, 225, 133, 161, 0, 77, 105, 100, 100,
+      108, 101,
+    ]);
+    expect(persistence.rows[0]?.normalized_name_utf8).toEqual([
+      0, 195, 165, 32, 234, 176, 128, 0, 109, 105, 100, 100, 108, 101,
+    ]);
+    expect(persistence.rows[1]?.display_name_utf8.at(-1)).toBe(0);
+    expect(persistence.rows[1]?.normalized_name_utf8.at(-1)).toBe(0);
+    for (const [index, row] of persistence.rows.entries()) {
+      const document = projection.documents[index]!;
+      expect(row).toEqual({
+        publication_id: projection.publicationId,
+        resource_type: document.resourceType,
+        resource_id: document.resourceId,
+        projection_version: MODEL_VARIANT_NAME_SEARCH_PROJECTION_VERSION,
+        display_name_utf8: Array.from(
+          new TextEncoder().encode(document.displayName),
+        ),
+        normalized_name_utf8: Array.from(
+          new TextEncoder().encode(document.normalizedName),
+        ),
+        resource_content_hash: document.resourceContentHash,
+      });
+      expect(row.display_name_utf8).toContain(0);
+      expect(Object.keys(row)).not.toContain("display_name");
+      expect(Object.keys(row)).not.toContain("normalized_name");
+      expect(Object.isFrozen(row.display_name_utf8)).toBe(true);
+      expect(Object.isFrozen(row.normalized_name_utf8)).toBe(true);
+      expect(Object.isFrozen(row)).toBe(true);
+    }
+    expect(Object.isFrozen(persistence.rows)).toBe(true);
+    expect(Object.isFrozen(persistence)).toBe(true);
+  });
+
+  it("derives exact storage parity from caller-observed rows and snapshots them", async () => {
+    const { projection, staging, persistence } = await storageFixture();
+    const observedRows = detachedRows(persistence.rows);
+    const proof = projectModelVariantNameSearchArtifactProofV1({
+      staging,
+      observation: {
+        storageVersion: MODEL_VARIANT_NAME_SEARCH_STORAGE_VERSION,
+        rows: observedRows,
+      },
+    });
+
+    expect(() => {
+      assertModelVariantNameSearchArtifactProofV1(proof);
+    }).not.toThrow();
+    expect(proof).toEqual({
+      model_variant_name_projection_version:
+        MODEL_VARIANT_NAME_SEARCH_PROJECTION_VERSION,
+      model_variant_name_document_count: 2,
+      model_variant_name_inventory_hash: projection.inventoryHash,
+      model_variant_name_storage_version:
+        MODEL_VARIANT_NAME_SEARCH_STORAGE_VERSION,
+      model_variant_name_storage_document_count: 2,
+      model_variant_name_storage_exact_parity: true,
+    });
+    observedRows[0]!.display_name_utf8[0] = 120;
+    observedRows.splice(1);
+    expect(() => {
+      assertModelVariantNameSearchArtifactProofV1(proof);
+    }).not.toThrow();
+    expect(Object.isFrozen(proof)).toBe(true);
+  });
+
+  it("uses indexed snapshots without invoking caller map or iteration hooks", async () => {
+    const { staging, persistence } = await storageFixture();
+    const rows = detachedRows(persistence.rows);
+    const forbidden = () => {
+      throw new Error("caller iteration hook invoked");
+    };
+    for (const row of rows) {
+      Object.defineProperty(row, Symbol.iterator, { value: forbidden });
+      Object.defineProperty(row.display_name_utf8, "map", {
+        value: forbidden,
+      });
+      Object.defineProperty(row.display_name_utf8, Symbol.iterator, {
+        value: forbidden,
+      });
+      Object.defineProperty(row.normalized_name_utf8, "map", {
+        value: forbidden,
+      });
+      Object.defineProperty(row.normalized_name_utf8, Symbol.iterator, {
+        value: forbidden,
+      });
+    }
+    Object.defineProperty(rows, "map", { value: forbidden });
+    Object.defineProperty(rows, Symbol.iterator, { value: forbidden });
+
+    expect(() =>
+      projectModelVariantNameSearchArtifactProofV1({
+        staging,
+        observation: {
+          storageVersion: MODEL_VARIANT_NAME_SEARCH_STORAGE_VERSION,
+          rows,
+        },
+      }),
+    ).not.toThrow();
+  });
+
+  it("captures observation and byte-array getters and lengths exactly once", async () => {
+    const { staging, persistence } = await storageFixture();
+    const rows = detachedRows(persistence.rows);
+    let observedRowsReads = 0;
+    let observedRowsLengthReads = 0;
+    let byteLengthReads = 0;
+    const proxiedDisplayBytes = new Proxy(rows[0]!.display_name_utf8, {
+      get(target, property, receiver) {
+        if (property === "length") {
+          byteLengthReads += 1;
+          if (byteLengthReads > 1)
+            throw new Error("byte length read more than once");
+        }
+        return Reflect.get(target, property, receiver) as unknown;
+      },
+    });
+    rows[0] = { ...rows[0]!, display_name_utf8: proxiedDisplayBytes };
+    const proxiedRows = new Proxy(rows, {
+      get(target, property, receiver) {
+        if (property === "length") {
+          observedRowsLengthReads += 1;
+          if (observedRowsLengthReads > 1)
+            throw new Error("row count read more than once");
+        }
+        return Reflect.get(target, property, receiver) as unknown;
+      },
+    });
+    const observation = {} as Record<string, unknown>;
+    Object.defineProperties(observation, {
+      rows: {
+        enumerable: true,
+        get() {
+          observedRowsReads += 1;
+          if (observedRowsReads > 1)
+            throw new Error("observation rows read more than once");
+          return proxiedRows;
+        },
+      },
+      storageVersion: {
+        enumerable: true,
+        value: MODEL_VARIANT_NAME_SEARCH_STORAGE_VERSION,
+      },
+    });
+
+    expect(() =>
+      projectModelVariantNameSearchArtifactProofV1({
+        staging,
+        observation: observation as Parameters<
+          typeof projectModelVariantNameSearchArtifactProofV1
+        >[0]["observation"],
+      }),
+    ).not.toThrow();
+    expect(observedRowsReads).toBe(1);
+    expect(observedRowsLengthReads).toBe(1);
+    expect(byteLengthReads).toBe(1);
+  });
+
+  it("rejects wrong counts before row access and stops at the first mismatch", async () => {
+    const { staging, persistence } = await storageFixture();
+    const inaccessibleRows = new Array<unknown>(1);
+    Object.defineProperty(inaccessibleRows, 0, {
+      get() {
+        throw new Error("row getter must not run after count mismatch");
+      },
+    });
+    expect(() =>
+      projectModelVariantNameSearchArtifactProofV1({
+        staging,
+        observation: {
+          storageVersion: MODEL_VARIANT_NAME_SEARCH_STORAGE_VERSION,
+          rows: inaccessibleRows as readonly ModelVariantNameSearchStorageRowV1[],
+        },
+      }),
+    ).toThrow(/does not exactly match/u);
+
+    const rows = detachedRows(persistence.rows);
+    rows[0] = { ...rows[0]!, resource_id: id("mdl", 99) };
+    Object.defineProperty(rows, 1, {
+      get() {
+        throw new Error("later row getter must not run after mismatch");
+      },
+    });
+    expect(() =>
+      projectModelVariantNameSearchArtifactProofV1({
+        staging,
+        observation: {
+          storageVersion: MODEL_VARIANT_NAME_SEARCH_STORAGE_VERSION,
+          rows,
+        },
+      }),
+    ).toThrow(/does not exactly match/u);
+  });
+
+  it("keeps staging and artifact authority nominal and bound to the matching closure", async () => {
+    const { staging, persistence, projection } = await storageFixture();
+    expect(() => {
+      assertModelVariantNameSearchStagingProjectionV1({ ...staging });
+    }).toThrow(/not trusted/u);
+    expect(() => {
+      readModelVariantNameSearchStagingPersistenceV1({ ...staging });
+    }).toThrow(/not trusted/u);
+    const proof = projectModelVariantNameSearchArtifactProofV1({
+      staging,
+      observation: {
+        storageVersion: MODEL_VARIANT_NAME_SEARCH_STORAGE_VERSION,
+        rows: detachedRows(persistence.rows),
+      },
+    });
+    expect(() => {
+      assertModelVariantNameSearchArtifactProofV1({ ...proof });
+    }).toThrow(/not trusted/u);
+
+    const unrelated = await projectionInput([
+      source("model", 9, model(9, "Different closure")),
+    ]);
+    await expect(
+      projectModelVariantNameSearchStagingV1({
+        projection,
+        closureRows: unrelated.closureRows,
+      }),
+    ).rejects.toThrow(/does not match projection/u);
+    await expect(
+      projectModelVariantNameSearchStagingV1({
+        projection: { ...projection },
+        closureRows: unrelated.closureRows,
+      }),
+    ).rejects.toThrow(/not trusted/u);
+  });
+
+  it("snapshots caller-owned closure rows before asynchronous sealing", async () => {
+    const input = await projectionInput([
+      source("model", 1, model(1, "Closure Snapshot")),
+    ]);
+    const projection = await projectModelVariantNameSearchProjection(input);
+    const mutableClosureRows = structuredClone(input.closureRows);
+    const pending = projectModelVariantNameSearchStagingV1({
+      projection,
+      closureRows: mutableClosureRows,
+    });
+    Object.assign(mutableClosureRows.publication, {
+      closure_hash: `sha256:${"0".repeat(64)}`,
+    });
+    Object.assign(mutableClosureRows.resources[0]!, { resource_json: "{}" });
+
+    const staging = await pending;
+    expect(
+      readModelVariantNameSearchStagingPersistenceV1(staging),
+    ).toMatchObject({
+      closureHash: projection.closureHash,
+      stagingRevision: 1,
+    });
+  });
+
+  it("fails closed on altered, reordered, malformed, or non-canonical observations", async () => {
+    const { staging, persistence } = await storageFixture();
+    const rows = detachedRows(persistence.rows);
+    const first = rows[0]!;
+    const second = rows[1]!;
+    const malformedObservations: unknown[] = [
+      {
+        storageVersion: MODEL_VARIANT_NAME_SEARCH_STORAGE_VERSION,
+        rows: rows.slice(1),
+      },
+      {
+        storageVersion: MODEL_VARIANT_NAME_SEARCH_STORAGE_VERSION,
+        rows: [...rows, detachedRows([first])[0]!],
+      },
+      {
+        storageVersion: MODEL_VARIANT_NAME_SEARCH_STORAGE_VERSION,
+        rows: [second, first],
+      },
+      {
+        storageVersion: "model-variant-name-utf8-blob@2",
+        rows,
+      },
+      {
+        storageVersion: MODEL_VARIANT_NAME_SEARCH_STORAGE_VERSION,
+        rows: [{ ...first, publication_id: id("pub", 2) }, second],
+      },
+      {
+        storageVersion: MODEL_VARIANT_NAME_SEARCH_STORAGE_VERSION,
+        rows: [{ ...first, resource_type: "variant" }, second],
+      },
+      {
+        storageVersion: MODEL_VARIANT_NAME_SEARCH_STORAGE_VERSION,
+        rows: [{ ...first, resource_id: id("mdl", 99) }, second],
+      },
+      {
+        storageVersion: MODEL_VARIANT_NAME_SEARCH_STORAGE_VERSION,
+        rows: [
+          { ...first, projection_version: "model-variant-name@2" },
+          second,
+        ],
+      },
+      {
+        storageVersion: MODEL_VARIANT_NAME_SEARCH_STORAGE_VERSION,
+        rows: [
+          { ...first, resource_content_hash: `sha256:${"0".repeat(64)}` },
+          second,
+        ],
+      },
+      {
+        storageVersion: MODEL_VARIANT_NAME_SEARCH_STORAGE_VERSION,
+        rows: [{ ...first, display_name_utf8: [120] }, second],
+      },
+      {
+        storageVersion: MODEL_VARIANT_NAME_SEARCH_STORAGE_VERSION,
+        rows: [{ ...first, normalized_name_utf8: [120] }, second],
+      },
+      {
+        storageVersion: MODEL_VARIANT_NAME_SEARCH_STORAGE_VERSION,
+        rows: [{ ...first, display_name_utf8: [] }, second],
+      },
+      {
+        storageVersion: MODEL_VARIANT_NAME_SEARCH_STORAGE_VERSION,
+        rows: [{ ...first, display_name_utf8: [256] }, second],
+      },
+      {
+        storageVersion: MODEL_VARIANT_NAME_SEARCH_STORAGE_VERSION,
+        rows: [{ ...first, display_name_utf8: [1.5] }, second],
+      },
+      {
+        storageVersion: MODEL_VARIANT_NAME_SEARCH_STORAGE_VERSION,
+        rows: [{ ...first, display_name_utf8: [0xc3, 0x28] }, second],
+      },
+      {
+        storageVersion: MODEL_VARIANT_NAME_SEARCH_STORAGE_VERSION,
+        rows: [
+          {
+            ...first,
+            display_name_utf8: [
+              0xed,
+              0xa0,
+              0x80,
+              ...first.display_name_utf8.slice(3),
+            ],
+          },
+          second,
+        ],
+      },
+      {
+        storageVersion: MODEL_VARIANT_NAME_SEARCH_STORAGE_VERSION,
+        rows: [
+          {
+            ...first,
+            display_name_utf8: [
+              0xc0,
+              0x80,
+              ...first.display_name_utf8.slice(2),
+            ],
+          },
+          second,
+        ],
+      },
+      {
+        storageVersion: MODEL_VARIANT_NAME_SEARCH_STORAGE_VERSION,
+        rows: [{ ...first, normalized_name_utf8: [] }, second],
+      },
+      {
+        storageVersion: MODEL_VARIANT_NAME_SEARCH_STORAGE_VERSION,
+        rows: [{ ...first, display_name_utf8: null }, second],
+      },
+      {
+        storageVersion: MODEL_VARIANT_NAME_SEARCH_STORAGE_VERSION,
+        rows: [
+          {
+            ...first,
+            display_name_utf8: Uint8Array.from(first.display_name_utf8),
+          },
+          second,
+        ],
+      },
+      {
+        storageVersion: MODEL_VARIANT_NAME_SEARCH_STORAGE_VERSION,
+        rows: [{ ...first, unexpected: true }, second],
+      },
+      {
+        storageVersion: MODEL_VARIANT_NAME_SEARCH_STORAGE_VERSION,
+        rows,
+        exactParity: true,
+      },
+    ];
+
+    for (const observation of malformedObservations) {
+      expect(() =>
+        projectModelVariantNameSearchArtifactProofV1({
+          staging,
+          observation: observation as Parameters<
+            typeof projectModelVariantNameSearchArtifactProofV1
+          >[0]["observation"],
+        }),
+      ).toThrow(/storage|UTF-8/u);
+    }
+  });
+
+  it("enforces byte and row-count ceilings before accepting observations", async () => {
+    const { staging, persistence } = await storageFixture();
+    const rows = detachedRows(persistence.rows);
+    expect(() =>
+      projectModelVariantNameSearchArtifactProofV1({
+        staging,
+        observation: {
+          storageVersion: MODEL_VARIANT_NAME_SEARCH_STORAGE_VERSION,
+          rows: [
+            {
+              ...rows[0]!,
+              display_name_utf8: Array.from(
+                {
+                  length:
+                    MODEL_VARIANT_NAME_SEARCH_MAX_DISPLAY_NAME_UTF8_BYTES + 1,
+                },
+                () => 97,
+              ),
+            },
+            rows[1]!,
+          ],
+        },
+      }),
+    ).toThrow(/UTF-8 bytes is invalid/u);
+    expect(() =>
+      projectModelVariantNameSearchArtifactProofV1({
+        staging,
+        observation: {
+          storageVersion: MODEL_VARIANT_NAME_SEARCH_STORAGE_VERSION,
+          rows: [
+            {
+              ...rows[0]!,
+              normalized_name_utf8: Array.from(
+                {
+                  length:
+                    MODEL_VARIANT_NAME_SEARCH_MAX_NORMALIZED_NAME_UTF8_BYTES +
+                    1,
+                },
+                () => 97,
+              ),
+            },
+            rows[1]!,
+          ],
+        },
+      }),
+    ).toThrow(/UTF-8 bytes is invalid/u);
+    expect(() =>
+      projectModelVariantNameSearchArtifactProofV1({
+        staging,
+        observation: {
+          storageVersion: MODEL_VARIANT_NAME_SEARCH_STORAGE_VERSION,
+          rows: Array.from(
+            { length: MODEL_VARIANT_NAME_SEARCH_MAX_RESOURCES + 1 },
+            () => rows[0]!,
+          ),
+        },
+      }),
+    ).toThrow(/storage observation is invalid/u);
+  });
+
+  it("accepts the exact 800-byte display-name boundary without an off-by-one rejection", async () => {
+    const displayName = "🙂".repeat(200);
+    const input = await projectionInput([
+      source("model", 1, model(1, displayName)),
+    ]);
+    const projection = await projectModelVariantNameSearchProjection(input);
+    const staging = await projectModelVariantNameSearchStagingV1({
+      projection,
+      closureRows: input.closureRows,
+    });
+    const persistence = readModelVariantNameSearchStagingPersistenceV1(staging);
+
+    expect(MODEL_VARIANT_NAME_SEARCH_MAX_DISPLAY_NAME_UTF8_BYTES).toBe(800);
+    expect(persistence.rows[0]?.display_name_utf8).toHaveLength(800);
+    expect(() =>
+      projectModelVariantNameSearchArtifactProofV1({
+        staging,
+        observation: {
+          storageVersion: MODEL_VARIANT_NAME_SEARCH_STORAGE_VERSION,
+          rows: detachedRows(persistence.rows),
+        },
+      }),
+    ).not.toThrow();
+  });
+
+  it("preserves distinct model/variant rows when canonical names normalize to a collision", async () => {
+    const input = await projectionInput([
+      source("variant", 1, variant(1, "model_one")),
+      source("model", 1, model(1, "ＭＯＤＥＬ-One")),
+    ]);
+    const projection = await projectModelVariantNameSearchProjection(input);
+    const staging = await projectModelVariantNameSearchStagingV1({
+      projection,
+      closureRows: input.closureRows,
+    });
+    const persistence = readModelVariantNameSearchStagingPersistenceV1(staging);
+    const proof = projectModelVariantNameSearchArtifactProofV1({
+      staging,
+      observation: {
+        storageVersion: MODEL_VARIANT_NAME_SEARCH_STORAGE_VERSION,
+        rows: detachedRows(persistence.rows),
+      },
+    });
+
+    expect(persistence.rows).toHaveLength(2);
+    expect(persistence.rows[0]?.resource_type).toBe("model");
+    expect(persistence.rows[1]?.resource_type).toBe("variant");
+    expect(persistence.rows[0]?.normalized_name_utf8).toEqual(
+      persistence.rows[1]?.normalized_name_utf8,
+    );
+    expect(proof.model_variant_name_storage_document_count).toBe(2);
+    expect(proof.model_variant_name_storage_exact_parity).toBe(true);
+  });
+
+  it("keeps storage rows and proof fields neutral across unrelated provider context", async () => {
+    const resources = [
+      source("model", 1, model(1, "Neutral Model")),
+      source("variant", 1, variant(1, "Neutral Variant")),
+    ];
+    const firstInput = await projectionInput(resources, {
+      providerAffiliate: false,
+      relatedContextVersion: 1,
+    });
+    const secondInput = await projectionInput(resources, {
+      providerAffiliate: true,
+      relatedContextVersion: 2,
+    });
+    const firstProjection =
+      await projectModelVariantNameSearchProjection(firstInput);
+    const secondProjection =
+      await projectModelVariantNameSearchProjection(secondInput);
+    const firstStaging = await projectModelVariantNameSearchStagingV1({
+      projection: firstProjection,
+      closureRows: firstInput.closureRows,
+    });
+    const secondStaging = await projectModelVariantNameSearchStagingV1({
+      projection: secondProjection,
+      closureRows: secondInput.closureRows,
+    });
+    const firstPersistence =
+      readModelVariantNameSearchStagingPersistenceV1(firstStaging);
+    const secondPersistence =
+      readModelVariantNameSearchStagingPersistenceV1(secondStaging);
+    const firstProof = projectModelVariantNameSearchArtifactProofV1({
+      staging: firstStaging,
+      observation: {
+        storageVersion: MODEL_VARIANT_NAME_SEARCH_STORAGE_VERSION,
+        rows: detachedRows(firstPersistence.rows),
+      },
+    });
+    const secondProof = projectModelVariantNameSearchArtifactProofV1({
+      staging: secondStaging,
+      observation: {
+        storageVersion: MODEL_VARIANT_NAME_SEARCH_STORAGE_VERSION,
+        rows: detachedRows(secondPersistence.rows),
+      },
+    });
+
+    expect(secondPersistence.rows).toEqual(firstPersistence.rows);
+    expect(secondPersistence.inventoryHash).toBe(
+      firstPersistence.inventoryHash,
+    );
+    expect(secondPersistence.closureHash).not.toBe(
+      firstPersistence.closureHash,
+    );
+    expect(secondProof).toEqual(firstProof);
+  });
+
+  it("proves an empty complete projection without inventing storage rows", async () => {
+    const input = await projectionInput([
+      source("model", 1, model(1, null)),
+      source("variant", 1, variant(1, null)),
+    ]);
+    const projection = await projectModelVariantNameSearchProjection(input);
+    const staging = await projectModelVariantNameSearchStagingV1({
+      projection,
+      closureRows: input.closureRows,
+    });
+    const persistence = readModelVariantNameSearchStagingPersistenceV1(staging);
+    const proof = projectModelVariantNameSearchArtifactProofV1({
+      staging,
+      observation: {
+        storageVersion: MODEL_VARIANT_NAME_SEARCH_STORAGE_VERSION,
+        rows: [],
+      },
+    });
+
+    expect(persistence.rows).toEqual([]);
+    expect(proof.model_variant_name_document_count).toBe(0);
+    expect(proof.model_variant_name_storage_document_count).toBe(0);
+    expect(proof.model_variant_name_storage_exact_parity).toBe(true);
   });
 });
