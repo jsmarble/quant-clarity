@@ -3,8 +3,16 @@ import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
 import {
+  PROVIDER_SEARCH_FTS_BUILD_VERSION,
   PROVIDER_SEARCH_PROJECTION_VERSION,
+  READINESS_PROBE_SET_VERSION_V2,
+  assertProviderSearchArtifactProofV2,
   assertProviderSearchProjection,
+  assertReadinessReceiptProofV2,
+  assertServingReadinessCommitProjection,
+  assertServingReadinessProofV2,
+  assertServingSwitchProjection,
+  assertServingSwitchPreflightProofV2,
   buildImmutableManifest,
   buildImmutableManifestFromPersistedContent,
   canonicalizePublicationJson,
@@ -14,11 +22,22 @@ import {
   hashPublicationSearchChunk,
   hashPublicationSearchDocumentContent,
   hashPublicationVectorChunk,
+  projectProviderSearchArtifactProofV2,
   projectProviderSearchProjection,
+  projectReadinessReceiptProofV2,
+  projectServingReadinessProofV2,
+  projectServingSwitchPreflightProofV2,
+  type ArtifactBinding,
+  type ProviderSearchArtifactProofV2,
   type ProviderSearchDocumentProjection,
   type ProviderSearchProjectionInput,
+  type ReadinessReceipt,
+  type ServingReadinessAttestationProjectionV2,
   type ServingProviderSliceClosureRow,
+  type ServingReceipt,
   type ServingResourceClosureRow,
+  type ServingSwitchArtifactProofV2,
+  type ServingSwitchPreflightProofV2,
 } from "./index.js";
 
 const publicationId = id("pub", 1);
@@ -356,6 +375,384 @@ function tuple(
   );
 }
 
+type IndependentField = Readonly<{
+  name: string;
+  type: string;
+  value: string;
+}>;
+
+function independentTupleHash(
+  domain: string,
+  fields: readonly IndependentField[],
+): string {
+  return `sha256:${createHash("sha256").update(tuple(domain, fields)).digest("hex")}`;
+}
+
+function providerProofFields(
+  proof: ProviderSearchArtifactProofV2,
+): IndependentField[] {
+  return [
+    {
+      name: "provider_search_projection_version",
+      type: "text",
+      value: proof.provider_search_projection_version,
+    },
+    {
+      name: "provider_search_document_count",
+      type: "integer",
+      value: String(proof.provider_search_document_count),
+    },
+    {
+      name: "provider_search_inventory_hash",
+      type: "digest",
+      value: proof.provider_search_inventory_hash,
+    },
+    {
+      name: "provider_search_fts_build_version",
+      type: "text",
+      value: proof.provider_search_fts_build_version,
+    },
+    {
+      name: "provider_search_fts_document_count",
+      type: "integer",
+      value: String(proof.provider_search_fts_document_count),
+    },
+    {
+      name: "provider_search_fts_queryable",
+      type: "boolean",
+      value: String(proof.provider_search_fts_queryable),
+    },
+    {
+      name: "provider_search_exact_parity",
+      type: "boolean",
+      value: String(proof.provider_search_exact_parity),
+    },
+  ];
+}
+
+function independentServingReceiptHashV2(
+  receipt: ServingReceipt,
+  proof: ProviderSearchArtifactProofV2,
+): string {
+  return independentTupleHash("publication-readiness-receipt", [
+    { name: "receipt_version", type: "text", value: "2.0.0" },
+    { name: "kind", type: "text", value: "serving" },
+    {
+      name: "environment",
+      type: "text",
+      value: receipt.binding.environment,
+    },
+    {
+      name: "publication_id",
+      type: "identifier",
+      value: receipt.binding.publicationId,
+    },
+    {
+      name: "closure_hash",
+      type: "digest",
+      value: receipt.binding.closureHash,
+    },
+    {
+      name: "bundle_hash",
+      type: "digest",
+      value: receipt.binding.bundleHash,
+    },
+    {
+      name: "schema_version",
+      type: "text",
+      value: receipt.binding.schemaVersion,
+    },
+    {
+      name: "build_commit",
+      type: "text",
+      value: receipt.binding.buildCommit,
+    },
+    { name: "observed_at", type: "timestamp", value: receipt.observedAt },
+    {
+      name: "enabled_provider_count",
+      type: "integer",
+      value: String(receipt.enabledProviderCount),
+    },
+    {
+      name: "enabled_provider_scope_hash",
+      type: "digest",
+      value: receipt.enabledProviderScopeHash,
+    },
+    {
+      name: "provider_slice_count",
+      type: "integer",
+      value: String(receipt.providerSliceCount),
+    },
+    {
+      name: "provider_slice_hash",
+      type: "digest",
+      value: receipt.providerSliceHash,
+    },
+    {
+      name: "provider_attribution_count",
+      type: "integer",
+      value: String(receipt.providerAttributionCount),
+    },
+    {
+      name: "provider_attribution_hash",
+      type: "digest",
+      value: receipt.providerAttributionHash,
+    },
+    {
+      name: "resource_count",
+      type: "integer",
+      value: String(receipt.resourceCount),
+    },
+    {
+      name: "exact_document_count",
+      type: "integer",
+      value: String(receipt.exactDocumentCount),
+    },
+    {
+      name: "resource_inventory_hash",
+      type: "digest",
+      value: receipt.resourceInventoryHash,
+    },
+    {
+      name: "exact_search_inventory_hash",
+      type: "digest",
+      value: receipt.exactSearchInventoryHash,
+    },
+    {
+      name: "fts_build_version",
+      type: "text",
+      value: receipt.ftsBuildVersion,
+    },
+    {
+      name: "fts_document_count",
+      type: "integer",
+      value: String(receipt.ftsDocumentCount),
+    },
+    {
+      name: "fts_queryable",
+      type: "boolean",
+      value: String(receipt.ftsQueryable),
+    },
+    {
+      name: "foreign_keys_valid",
+      type: "boolean",
+      value: String(receipt.foreignKeysValid),
+    },
+    {
+      name: "content_hashes_valid",
+      type: "boolean",
+      value: String(receipt.contentHashesValid),
+    },
+    {
+      name: "unavailable_provider_isolation_valid",
+      type: "boolean",
+      value: String(receipt.unavailableProviderIsolationValid),
+    },
+    ...providerProofFields(proof),
+  ]);
+}
+
+function independentAttestationHashV2(
+  value: ServingReadinessAttestationProjectionV2,
+): string {
+  return independentTupleHash("publication-readiness-attestation", [
+    { name: "evaluator_version", type: "text", value: "2.0.0" },
+    { name: "environment", type: "text", value: value.environment },
+    {
+      name: "publication_id",
+      type: "identifier",
+      value: value.publication_id,
+    },
+    { name: "closure_hash", type: "digest", value: value.closure_hash },
+    { name: "bundle_hash", type: "digest", value: value.bundle_hash },
+    {
+      name: "ready_at",
+      type: "timestamp",
+      value: new Date(value.ready_at_ms).toISOString(),
+    },
+    {
+      name: "maximum_receipt_age_ms",
+      type: "integer",
+      value: String(value.maximum_receipt_age_ms),
+    },
+    {
+      name: "effective_valid_until",
+      type: "timestamp",
+      value: new Date(value.effective_valid_until_ms).toISOString(),
+    },
+    {
+      name: "archive_receipt_hash",
+      type: "digest",
+      value: value.archive_receipt_hash,
+    },
+    {
+      name: "serving_receipt_hash",
+      type: "digest",
+      value: value.serving_receipt_hash,
+    },
+    {
+      name: "vector_receipt_hash",
+      type: "digest",
+      value: value.vector_receipt_hash,
+    },
+    {
+      name: "probes_receipt_hash",
+      type: "digest",
+      value: value.probes_receipt_hash,
+    },
+  ]);
+}
+
+function nullableField(
+  name: string,
+  type: "digest" | "identifier",
+  value: string | null,
+): IndependentField {
+  return value === null
+    ? { name, type: "null", value: "null" }
+    : { name, type, value };
+}
+
+function independentPreflightHashV2(
+  value: ServingSwitchPreflightProofV2,
+): string {
+  return independentTupleHash("publication-switch-preflight", [
+    { name: "preflight_version", type: "text", value: "2.0.0" },
+    { name: "action", type: "text", value: value.action },
+    { name: "environment", type: "text", value: value.environment },
+    {
+      name: "expected_prior_generation",
+      type: "integer",
+      value: String(value.expected_prior_generation),
+    },
+    nullableField(
+      "expected_prior_rollback_candidate_publication_id",
+      "identifier",
+      value.expected_prior_rollback_candidate_publication_id,
+    ),
+    value.expected_prior_switched_at_ms === null
+      ? { name: "expected_prior_switched_at", type: "null", value: "null" }
+      : {
+          name: "expected_prior_switched_at",
+          type: "timestamp",
+          value: new Date(value.expected_prior_switched_at_ms).toISOString(),
+        },
+    {
+      name: "new_generation",
+      type: "integer",
+      value: String(value.new_generation),
+    },
+    nullableField(
+      "from_publication_id",
+      "identifier",
+      value.from_publication_id,
+    ),
+    nullableField("from_closure_hash", "digest", value.from_closure_hash),
+    {
+      name: "to_publication_id",
+      type: "identifier",
+      value: value.to_publication_id,
+    },
+    { name: "to_closure_hash", type: "digest", value: value.to_closure_hash },
+    nullableField("to_attestation_hash", "digest", value.to_attestation_hash),
+    {
+      name: "switched_at",
+      type: "timestamp",
+      value: new Date(value.switched_at_ms).toISOString(),
+    },
+    {
+      name: "observed_at",
+      type: "timestamp",
+      value: new Date(value.observed_at_ms).toISOString(),
+    },
+    {
+      name: "maximum_age_ms",
+      type: "integer",
+      value: String(value.maximum_age_ms),
+    },
+    {
+      name: "valid_until",
+      type: "timestamp",
+      value: new Date(value.valid_until_ms).toISOString(),
+    },
+    { name: "fts_build_version", type: "text", value: value.fts_build_version },
+    {
+      name: "fts_source_document_count",
+      type: "integer",
+      value: String(value.fts_source_document_count),
+    },
+    {
+      name: "fts_index_document_count",
+      type: "integer",
+      value: String(value.fts_index_document_count),
+    },
+    {
+      name: "fts_source_inventory_hash",
+      type: "digest",
+      value: value.fts_source_inventory_hash,
+    },
+    { name: "fts_exact_parity", type: "boolean", value: "true" },
+    {
+      name: "archive_bundle_hash",
+      type: "digest",
+      value: value.archive_bundle_hash,
+    },
+    { name: "archive_immutable", type: "boolean", value: "true" },
+    {
+      name: "vector_namespace",
+      type: "identifier",
+      value: value.vector_namespace,
+    },
+    {
+      name: "vector_document_count",
+      type: "integer",
+      value: String(value.vector_document_count),
+    },
+    {
+      name: "vector_verified_document_count",
+      type: "integer",
+      value: String(value.vector_verified_document_count),
+    },
+    {
+      name: "vector_inventory_hash",
+      type: "digest",
+      value: value.vector_inventory_hash,
+    },
+    {
+      name: "vector_visibility_probe_version",
+      type: "text",
+      value: value.vector_visibility_probe_version,
+    },
+    {
+      name: "vector_mutation_id",
+      type: "text",
+      value: value.vector_mutation_id,
+    },
+    { name: "vector_all_ids_present", type: "boolean", value: "true" },
+    { name: "vector_all_namespaces_match", type: "boolean", value: "true" },
+    { name: "vector_queryable", type: "boolean", value: "true" },
+    { name: "probe_set_version", type: "text", value: value.probe_set_version },
+    { name: "integrity_passed", type: "boolean", value: "true" },
+    { name: "exact_search_passed", type: "boolean", value: "true" },
+    { name: "semantic_search_passed", type: "boolean", value: "true" },
+    { name: "structured_filter_passed", type: "boolean", value: "true" },
+    { name: "neutrality_passed", type: "boolean", value: "true" },
+    { name: "version_isolation_passed", type: "boolean", value: "true" },
+    ...providerProofFields({
+      provider_search_projection_version:
+        value.provider_search_projection_version,
+      provider_search_document_count: value.provider_search_document_count,
+      provider_search_inventory_hash: value.provider_search_inventory_hash,
+      provider_search_fts_build_version:
+        value.provider_search_fts_build_version,
+      provider_search_fts_document_count:
+        value.provider_search_fts_document_count,
+      provider_search_fts_queryable: true,
+      provider_search_exact_parity: true,
+    } as ProviderSearchArtifactProofV2),
+  ]);
+}
+
 function independentInventoryHash(
   documents: readonly ProviderSearchDocumentProjection[],
 ): string {
@@ -387,6 +784,109 @@ function independentInventoryHash(
   return `sha256:${createHash("sha256")
     .update(Buffer.concat([root, ...rows]))
     .digest("hex")}`;
+}
+
+function readinessReceiptsV2(
+  manifest: ProviderSearchProjectionInput["manifest"],
+): ReadinessReceipt[] {
+  const binding: ArtifactBinding = {
+    environment: "local",
+    publicationId: manifest.publicationId,
+    closureHash: manifest.closureHash,
+    bundleHash: manifest.bundleHash,
+    schemaVersion: manifest.versions.schema,
+    buildCommit: manifest.versions.buildCommit,
+  };
+  return [
+    {
+      kind: "archive",
+      binding,
+      observedAt: "2026-08-02T00:30:00.000Z",
+      retainedBundleHash: manifest.bundleHash,
+      immutable: true,
+    },
+    {
+      kind: "serving",
+      binding,
+      observedAt: "2026-08-02T00:31:00.000Z",
+      enabledProviderCount: manifest.enabledProviderIds.length,
+      enabledProviderScopeHash: manifest.enabledProviderScopeHash,
+      providerSliceCount: manifest.providerSlices.length,
+      providerSliceHash: manifest.providerSliceHash,
+      providerAttributionCount: manifest.providerAttributions.length,
+      providerAttributionHash: manifest.providerAttributionHash,
+      resourceCount: manifest.resources.length,
+      exactDocumentCount: manifest.searchDocuments.length,
+      resourceInventoryHash: manifest.resourceInventoryHash,
+      exactSearchInventoryHash: manifest.exactSearchInventoryHash,
+      ftsBuildVersion: "fts5-unicode61@1",
+      ftsDocumentCount: manifest.searchDocuments.length,
+      ftsQueryable: true,
+      foreignKeysValid: true,
+      contentHashesValid: true,
+      unavailableProviderIsolationValid: true,
+    },
+    {
+      kind: "vectors",
+      binding,
+      observedAt: "2026-08-02T00:32:00.000Z",
+      namespace: manifest.publicationId,
+      documentCount: manifest.vectors.length,
+      verifiedDocumentCount: manifest.vectors.length,
+      vectorInventoryHash: manifest.vectorInventoryHash,
+      visibilityProbeVersion: "vector-visibility@1",
+      mutationId: "provider-v2-test-mutation",
+      allIdsPresent: true,
+      allNamespacesMatch: true,
+      queryable: true,
+    },
+    {
+      kind: "probes",
+      binding,
+      observedAt: "2026-08-02T00:33:00.000Z",
+      probeSetVersion: READINESS_PROBE_SET_VERSION_V2,
+      integrityPassed: true,
+      evidenceCoveragePassed: true,
+      exactSearchPassed: true,
+      semanticSearchPassed: true,
+      structuredFilterPassed: true,
+      neutralityPassed: true,
+      versionIsolationPassed: true,
+    },
+  ];
+}
+
+function switchArtifactProofV2(
+  manifest: ProviderSearchProjectionInput["manifest"],
+): ServingSwitchArtifactProofV2 {
+  return {
+    environment: "local",
+    observedAtMs: Date.parse("2026-08-02T00:34:00.000Z"),
+    maximumAgeMs: 60 * 60 * 1000,
+    ftsBuildVersion: "fts5-unicode61@1",
+    ftsSourceDocumentCount: manifest.searchDocuments.length,
+    ftsIndexDocumentCount: manifest.searchDocuments.length,
+    ftsSourceInventoryHash: manifest.exactSearchInventoryHash,
+    ftsExactParity: true,
+    archiveBundleHash: manifest.bundleHash,
+    archiveImmutable: true,
+    vectorNamespace: manifest.publicationId,
+    vectorDocumentCount: manifest.vectors.length,
+    vectorVerifiedDocumentCount: manifest.vectors.length,
+    vectorInventoryHash: manifest.vectorInventoryHash,
+    vectorVisibilityProbeVersion: "vector-visibility@1",
+    vectorMutationId: "provider-v2-switch-mutation",
+    vectorAllIdsPresent: true,
+    vectorAllNamespacesMatch: true,
+    vectorQueryable: true,
+    probeSetVersion: READINESS_PROBE_SET_VERSION_V2,
+    integrityPassed: true,
+    exactSearchPassed: true,
+    semanticSearchPassed: true,
+    structuredFilterPassed: true,
+    neutralityPassed: true,
+    versionIsolationPassed: true,
+  };
 }
 
 describe("trusted provider search projection (SRCH-002, SRCH-006, BE-011)", () => {
@@ -752,5 +1252,639 @@ describe("trusted provider search projection (SRCH-002, SRCH-006, BE-011)", () =
         await input([{ id: id("prv", 30), displayName: "—_( )" }]),
       ),
     ).rejects.toThrow("empty value");
+  });
+});
+
+describe("dormant provider-search v2 proofs (SRCH-002, SRCH-007, PIPE-050)", () => {
+  async function proofFixture() {
+    const source = await input([
+      { id: id("prv", 80), displayName: "Proof Provider" },
+    ]);
+    const projection = await projectProviderSearchProjection(source);
+    const providerProof = projectProviderSearchArtifactProofV2({
+      manifest: source.manifest,
+      projection,
+      fts: {
+        buildVersion: PROVIDER_SEARCH_FTS_BUILD_VERSION,
+        documentCount: projection.documentCount,
+        queryable: true,
+        exactParity: true,
+      },
+    });
+    const receiptProofs = await Promise.all(
+      readinessReceiptsV2(source.manifest).map((receipt) =>
+        projectReadinessReceiptProofV2({
+          receipt,
+          providerProof: receipt.kind === "serving" ? providerProof : null,
+        }),
+      ),
+    );
+    const readinessProof = await projectServingReadinessProofV2({
+      manifest: source.manifest,
+      receiptProofs,
+      environment: "local",
+      readyAtMs: Date.parse("2026-08-02T00:34:00.000Z"),
+      maximumReceiptAgeMs: 60 * 60 * 1000,
+    });
+    return { source, projection, providerProof, receiptProofs, readinessProof };
+  }
+
+  it("binds the exact seven-field serving suffix into v2 readiness", async () => {
+    const fixture = await proofFixture();
+    expect(() => {
+      assertProviderSearchArtifactProofV2(fixture.providerProof);
+      assertServingReadinessProofV2(fixture.readinessProof);
+    }).not.toThrow();
+    expect(fixture.providerProof).toEqual({
+      provider_search_projection_version: "provider-name@1",
+      provider_search_document_count: 1,
+      provider_search_inventory_hash: fixture.projection.inventoryHash,
+      provider_search_fts_build_version: "provider-name-fts5-unicode61@1",
+      provider_search_fts_document_count: 1,
+      provider_search_fts_queryable: true,
+      provider_search_exact_parity: true,
+    });
+    const serving = fixture.receiptProofs.find(
+      (proof) => proof.kind === "serving",
+    );
+    const servingReceipt = readinessReceiptsV2(fixture.source.manifest).find(
+      (receipt): receipt is ServingReceipt => receipt.kind === "serving",
+    );
+    if (servingReceipt === undefined)
+      throw new Error("fixture lacks its serving receipt");
+    expect(serving?.receipt_version).toBe("2.0.0");
+    expect(serving?.receipt_hash).toBe(
+      independentServingReceiptHashV2(servingReceipt, fixture.providerProof),
+    );
+    expect(serving?.receipt_hash).toBe(
+      "sha256:8370dc5eb781478bdc908a0ef4d875f05bff05ddf594aa557b7b36d30c048000",
+    );
+    expect(fixture.readinessProof.attestation).toMatchObject({
+      evaluator_version: "2.0.0",
+      serving_receipt_hash: serving?.receipt_hash,
+    });
+    expect(fixture.readinessProof.attestation.attestation_hash).toBe(
+      independentAttestationHashV2(fixture.readinessProof.attestation),
+    );
+    expect(fixture.readinessProof.attestation.attestation_hash).toBe(
+      "sha256:f1213cfa93b8950034f90b5ee3198e969fc22868e111d94b382e9a900956eb36",
+    );
+    expect(() => {
+      assertServingReadinessCommitProjection(fixture.readinessProof);
+    }).toThrow("not trusted");
+  });
+
+  it("projects activation and rollback preflight v2 without lifecycle authority", async () => {
+    const fixture = await proofFixture();
+    const switchedAtMs = Date.parse("2026-08-02T00:35:00.000Z");
+    const activation = await projectServingSwitchPreflightProofV2({
+      manifest: fixture.source.manifest,
+      providerProof: fixture.providerProof,
+      readinessProof: fixture.readinessProof,
+      context: {
+        switchId: "publication-switch|activate|1|provider-v2",
+        action: "activate",
+        expectedPriorGeneration: 0,
+        expectedPriorRollbackCandidatePublicationId: null,
+        expectedPriorSwitchedAtMs: null,
+        newGeneration: 1,
+        fromPublicationId: null,
+        fromClosureHash: null,
+        toPublicationId: fixture.source.manifest.publicationId,
+        toClosureHash: fixture.source.manifest.closureHash,
+        switchedAtMs,
+      },
+      artifactProof: switchArtifactProofV2(fixture.source.manifest),
+    });
+    expect(activation.preflight_hash).toBe(
+      independentPreflightHashV2(activation),
+    );
+    expect(activation.preflight_hash).toBe(
+      "sha256:3269db4e9686188b59865b34639c470ad8d11cd8bfd6dffbf3a9cfaa02d59ab4",
+    );
+    expect(activation.to_attestation_hash).toBe(
+      fixture.readinessProof.attestation.attestation_hash,
+    );
+    expect(() => {
+      assertServingSwitchPreflightProofV2(activation);
+    }).not.toThrow();
+    expect(() => {
+      assertServingSwitchPreflightProofV2({ ...activation });
+    }).toThrow("not trusted");
+    const reflectedActivation = { ...activation };
+    for (const symbol of Object.getOwnPropertySymbols(activation))
+      Object.defineProperty(
+        reflectedActivation,
+        symbol,
+        Object.getOwnPropertyDescriptor(activation, symbol)!,
+      );
+    expect(() => {
+      assertServingSwitchPreflightProofV2(reflectedActivation);
+    }).toThrow("not trusted");
+    expect(() => {
+      assertServingSwitchProjection(activation);
+    }).toThrow("not trusted");
+    const trustCases: readonly [object, (candidate: unknown) => void][] = [
+      [
+        fixture.providerProof,
+        (candidate) => {
+          assertProviderSearchArtifactProofV2(candidate);
+        },
+      ],
+      [
+        fixture.receiptProofs[0]!,
+        (candidate) => {
+          assertReadinessReceiptProofV2(candidate);
+        },
+      ],
+      [
+        fixture.readinessProof,
+        (candidate) => {
+          assertServingReadinessProofV2(candidate);
+        },
+      ],
+      [
+        activation,
+        (candidate) => {
+          assertServingSwitchPreflightProofV2(candidate);
+        },
+      ],
+    ];
+    for (const [trusted, assertTrusted] of trustCases) {
+      expect(() => {
+        assertTrusted({ ...trusted });
+      }).toThrow("not trusted");
+      expect(() => {
+        assertTrusted(Object.create(trusted) as unknown);
+      }).toThrow("not trusted");
+    }
+
+    const rollback = await projectServingSwitchPreflightProofV2({
+      manifest: fixture.source.manifest,
+      providerProof: fixture.providerProof,
+      readinessProof: null,
+      context: {
+        switchId: "publication-switch|rollback|2|provider-v2",
+        action: "rollback",
+        expectedPriorGeneration: 1,
+        expectedPriorRollbackCandidatePublicationId:
+          fixture.source.manifest.publicationId,
+        expectedPriorSwitchedAtMs: switchedAtMs,
+        newGeneration: 2,
+        fromPublicationId: id("pub", 81) as `pub_${string}`,
+        fromClosureHash: `sha256:${"8".repeat(64)}`,
+        toPublicationId: fixture.source.manifest.publicationId,
+        toClosureHash: fixture.source.manifest.closureHash,
+        switchedAtMs: switchedAtMs + 60_000,
+      },
+      artifactProof: {
+        ...switchArtifactProofV2(fixture.source.manifest),
+        observedAtMs: switchedAtMs + 30_000,
+      },
+    });
+    expect(rollback.preflight_hash).toBe(independentPreflightHashV2(rollback));
+    expect(rollback.preflight_hash).toBe(
+      "sha256:da3c2c3e764f101b3367129f1a642a56006dd0cf67267213513d30952869a36d",
+    );
+    expect(rollback.to_attestation_hash).toBeNull();
+    expect("plan" in rollback).toBe(false);
+    expect("history" in rollback).toBe(false);
+  });
+
+  it("rejects copied trust, cross-closure evidence, v1 probes, and proof drift", async () => {
+    const fixture = await proofFixture();
+    expect(() => {
+      assertProviderSearchArtifactProofV2({ ...fixture.providerProof });
+    }).toThrow("not trusted");
+    expect(() => {
+      assertServingReadinessProofV2({ ...fixture.readinessProof });
+    }).toThrow("not trusted");
+    expect(() => {
+      assertReadinessReceiptProofV2({ ...fixture.receiptProofs[0]! });
+    }).toThrow("not trusted");
+    expect(() =>
+      projectProviderSearchArtifactProofV2({
+        manifest: fixture.source.manifest,
+        projection: {
+          ...fixture.projection,
+          normalizationVersion: "exact-search-normalization@2",
+        } as unknown as typeof fixture.projection,
+        fts: {
+          buildVersion: PROVIDER_SEARCH_FTS_BUILD_VERSION,
+          documentCount: fixture.projection.documentCount,
+          queryable: true,
+          exactParity: true,
+        },
+      }),
+    ).toThrow("not trusted");
+    expect(() =>
+      projectProviderSearchArtifactProofV2({
+        manifest: fixture.source.manifest,
+        projection: fixture.projection,
+        fts: {
+          buildVersion: PROVIDER_SEARCH_FTS_BUILD_VERSION,
+          documentCount: fixture.projection.documentCount,
+          queryable: true,
+          exactParity: true,
+          ignored: "not closed",
+        } as Parameters<typeof projectProviderSearchArtifactProofV2>[0]["fts"],
+      }),
+    ).toThrow("shape is invalid");
+
+    for (const fts of [
+      {
+        buildVersion: "provider-name-fts5-unicode61@2",
+        documentCount: fixture.projection.documentCount,
+        queryable: true,
+        exactParity: true,
+      },
+      {
+        buildVersion: PROVIDER_SEARCH_FTS_BUILD_VERSION,
+        documentCount: fixture.projection.documentCount + 1,
+        queryable: true,
+        exactParity: true,
+      },
+      {
+        buildVersion: PROVIDER_SEARCH_FTS_BUILD_VERSION,
+        documentCount: fixture.projection.documentCount,
+        queryable: false,
+        exactParity: true,
+      },
+      {
+        buildVersion: PROVIDER_SEARCH_FTS_BUILD_VERSION,
+        documentCount: fixture.projection.documentCount,
+        queryable: true,
+        exactParity: false,
+      },
+    ])
+      expect(() =>
+        projectProviderSearchArtifactProofV2({
+          manifest: fixture.source.manifest,
+          projection: fixture.projection,
+          fts: fts as Parameters<
+            typeof projectProviderSearchArtifactProofV2
+          >[0]["fts"],
+        }),
+      ).toThrow("does not match");
+
+    const other = await input([
+      { id: id("prv", 82), displayName: "Other Provider" },
+    ]);
+    expect(() =>
+      projectProviderSearchArtifactProofV2({
+        manifest: other.manifest,
+        projection: fixture.projection,
+        fts: {
+          buildVersion: PROVIDER_SEARCH_FTS_BUILD_VERSION,
+          documentCount: fixture.projection.documentCount,
+          queryable: true,
+          exactParity: true,
+        },
+      }),
+    ).toThrow("does not match");
+
+    const probes = readinessReceiptsV2(fixture.source.manifest).find(
+      (receipt) => receipt.kind === "probes",
+    )!;
+    await expect(
+      projectReadinessReceiptProofV2({
+        receipt: { ...probes, probeSetVersion: "search-gold@1" },
+        providerProof: null,
+      }),
+    ).rejects.toThrow("probe set");
+    await expect(
+      projectServingSwitchPreflightProofV2({
+        manifest: fixture.source.manifest,
+        providerProof: fixture.providerProof,
+        readinessProof: null,
+        context: {
+          switchId: "publication-switch|activate|1|missing-attestation",
+          action: "activate",
+          expectedPriorGeneration: 0,
+          expectedPriorRollbackCandidatePublicationId: null,
+          expectedPriorSwitchedAtMs: null,
+          newGeneration: 1,
+          fromPublicationId: null,
+          fromClosureHash: null,
+          toPublicationId: fixture.source.manifest.publicationId,
+          toClosureHash: fixture.source.manifest.closureHash,
+          switchedAtMs: Date.parse("2026-08-02T00:35:00.000Z"),
+        },
+        artifactProof: switchArtifactProofV2(fixture.source.manifest),
+      }),
+    ).rejects.toThrow("not trusted");
+    await expect(
+      projectServingSwitchPreflightProofV2({
+        manifest: fixture.source.manifest,
+        providerProof: fixture.providerProof,
+        readinessProof: fixture.readinessProof,
+        context: {
+          switchId: "publication-switch|rollback|2|wrong-attestation",
+          action: "rollback",
+          expectedPriorGeneration: 1,
+          expectedPriorRollbackCandidatePublicationId:
+            fixture.source.manifest.publicationId,
+          expectedPriorSwitchedAtMs: Date.parse("2026-08-02T00:35:00.000Z"),
+          newGeneration: 2,
+          fromPublicationId: id("pub", 83) as `pub_${string}`,
+          fromClosureHash: `sha256:${"9".repeat(64)}`,
+          toPublicationId: fixture.source.manifest.publicationId,
+          toClosureHash: fixture.source.manifest.closureHash,
+          switchedAtMs: Date.parse("2026-08-02T00:36:00.000Z"),
+        },
+        artifactProof: switchArtifactProofV2(fixture.source.manifest),
+      }),
+    ).rejects.toThrow("carries readiness attestation");
+  });
+
+  it("fails closed on v2 receipt-set, freshness, probe, and timing faults", async () => {
+    const fixture = await proofFixture();
+    const mutableReadinessInput = {
+      manifest: fixture.source.manifest,
+      receiptProofs: fixture.receiptProofs,
+      environment: "local" as "local" | "preview" | "production",
+      readyAtMs: Date.parse("2026-08-02T00:34:00.000Z"),
+      maximumReceiptAgeMs: 60 * 60 * 1000,
+    };
+    const readinessPending = projectServingReadinessProofV2(
+      mutableReadinessInput,
+    );
+    mutableReadinessInput.environment = "preview";
+    mutableReadinessInput.readyAtMs += 1_000;
+    mutableReadinessInput.maximumReceiptAgeMs = 0;
+    await expect(readinessPending).resolves.toMatchObject({
+      attestation: {
+        environment: "local",
+        ready_at_ms: Date.parse("2026-08-02T00:34:00.000Z"),
+        maximum_receipt_age_ms: 60 * 60 * 1000,
+      },
+    });
+    await expect(
+      projectServingReadinessProofV2({
+        manifest: fixture.source.manifest,
+        receiptProofs: fixture.receiptProofs.slice(1),
+        environment: "local",
+        readyAtMs: Date.parse("2026-08-02T00:34:00.000Z"),
+        maximumReceiptAgeMs: 60 * 60 * 1000,
+      }),
+    ).rejects.toThrow("input is invalid");
+    await expect(
+      projectServingReadinessProofV2({
+        manifest: fixture.source.manifest,
+        receiptProofs: [
+          ...fixture.receiptProofs.slice(1),
+          fixture.receiptProofs.find((proof) => proof.kind === "serving")!,
+        ],
+        environment: "local",
+        readyAtMs: Date.parse("2026-08-02T00:34:00.000Z"),
+        maximumReceiptAgeMs: 60 * 60 * 1000,
+      }),
+    ).rejects.toThrow("incomplete");
+    await expect(
+      projectServingReadinessProofV2({
+        manifest: fixture.source.manifest,
+        receiptProofs: fixture.receiptProofs,
+        environment: "local",
+        readyAtMs: Date.parse("2026-08-02T03:34:00.000Z"),
+        maximumReceiptAgeMs: 60 * 60 * 1000,
+      }),
+    ).rejects.toThrow("receipt_stale");
+
+    const other = await input([
+      { id: id("prv", 84), displayName: "Different Closure" },
+    ]);
+    await expect(
+      projectServingReadinessProofV2({
+        manifest: other.manifest,
+        receiptProofs: fixture.receiptProofs,
+        environment: "local",
+        readyAtMs: Date.parse("2026-08-02T00:34:00.000Z"),
+        maximumReceiptAgeMs: 60 * 60 * 1000,
+      }),
+    ).rejects.toThrow("bindings do not match");
+
+    const mutableSwitchInput = {
+      manifest: fixture.source.manifest,
+      providerProof: fixture.providerProof,
+      readinessProof: fixture.readinessProof,
+      context: {
+        switchId: "publication-switch|activate|1|snapshot",
+        action: "activate" as const,
+        expectedPriorGeneration: 0,
+        expectedPriorRollbackCandidatePublicationId: null,
+        expectedPriorSwitchedAtMs: null,
+        newGeneration: 1,
+        fromPublicationId: null,
+        fromClosureHash: null,
+        toPublicationId: fixture.source.manifest.publicationId,
+        toClosureHash: fixture.source.manifest.closureHash,
+        switchedAtMs: Date.parse("2026-08-02T00:35:00.000Z"),
+      },
+      artifactProof: switchArtifactProofV2(fixture.source.manifest),
+    };
+    const switchPending =
+      projectServingSwitchPreflightProofV2(mutableSwitchInput);
+    mutableSwitchInput.manifest = other.manifest;
+    await expect(switchPending).resolves.toMatchObject({
+      to_publication_id: fixture.source.manifest.publicationId,
+      to_closure_hash: fixture.source.manifest.closureHash,
+    });
+
+    const falseProbeReceipts = readinessReceiptsV2(fixture.source.manifest).map(
+      (receipt) =>
+        receipt.kind === "probes"
+          ? {
+              ...receipt,
+              neutralityPassed: false,
+              versionIsolationPassed: false,
+            }
+          : receipt,
+    );
+    const falseProbeProofs = await Promise.all(
+      falseProbeReceipts.map((receipt) =>
+        projectReadinessReceiptProofV2({
+          receipt,
+          providerProof:
+            receipt.kind === "serving" ? fixture.providerProof : null,
+        }),
+      ),
+    );
+    await expect(
+      projectServingReadinessProofV2({
+        manifest: fixture.source.manifest,
+        receiptProofs: falseProbeProofs,
+        environment: "local",
+        readyAtMs: Date.parse("2026-08-02T00:34:00.000Z"),
+        maximumReceiptAgeMs: 60 * 60 * 1000,
+      }),
+    ).rejects.toThrow("probes_failed");
+
+    const archive = readinessReceiptsV2(fixture.source.manifest).find(
+      (receipt) => receipt.kind === "archive",
+    );
+    if (archive === undefined) throw new Error("fixture lacks archive receipt");
+    let observedAtReads = 0;
+    const changingArchive = { ...archive };
+    Object.defineProperty(changingArchive, "observedAt", {
+      enumerable: true,
+      get: () => {
+        observedAtReads += 1;
+        return observedAtReads === 1 ? archive.observedAt : "changed";
+      },
+    });
+    await expect(
+      projectReadinessReceiptProofV2({
+        receipt: changingArchive,
+        providerProof: null,
+      }),
+    ).resolves.toBeDefined();
+    expect(observedAtReads).toBe(1);
+
+    const servingReceipt = readinessReceiptsV2(fixture.source.manifest).find(
+      (receipt) => receipt.kind === "serving",
+    );
+    if (servingReceipt === undefined)
+      throw new Error("fixture lacks serving receipt");
+    const mutableReceiptInput = {
+      receipt: servingReceipt,
+      providerProof:
+        fixture.providerProof as ProviderSearchArtifactProofV2 | null,
+    };
+    const receiptPending = projectReadinessReceiptProofV2(mutableReceiptInput);
+    mutableReceiptInput.providerProof = null;
+    const snapshottedServingProof = await receiptPending;
+    await expect(
+      projectServingReadinessProofV2({
+        manifest: fixture.source.manifest,
+        receiptProofs: fixture.receiptProofs.map((proof) =>
+          proof.kind === "serving" ? snapshottedServingProof : proof,
+        ),
+        environment: "local",
+        readyAtMs: Date.parse("2026-08-02T00:34:00.000Z"),
+        maximumReceiptAgeMs: 60 * 60 * 1000,
+      }),
+    ).resolves.toBeDefined();
+
+    const beforeReadyArtifact = {
+      ...switchArtifactProofV2(fixture.source.manifest),
+      observedAtMs: Date.parse("2026-08-02T00:33:00.000Z"),
+    };
+    await expect(
+      projectServingSwitchPreflightProofV2({
+        manifest: fixture.source.manifest,
+        providerProof: fixture.providerProof,
+        readinessProof: fixture.readinessProof,
+        context: {
+          switchId: "publication-switch|activate|1|before-ready",
+          action: "activate",
+          expectedPriorGeneration: 0,
+          expectedPriorRollbackCandidatePublicationId: null,
+          expectedPriorSwitchedAtMs: null,
+          newGeneration: 1,
+          fromPublicationId: null,
+          fromClosureHash: null,
+          toPublicationId: fixture.source.manifest.publicationId,
+          toClosureHash: fixture.source.manifest.closureHash,
+          switchedAtMs: Date.parse("2026-08-02T00:33:30.000Z"),
+        },
+        artifactProof: beforeReadyArtifact,
+      }),
+    ).rejects.toThrow("attestation is invalid");
+    for (const [label, switchedAt, observedAt] of [
+      ["at-ready", "2026-08-02T00:34:00.000Z", "2026-08-02T00:34:00.000Z"],
+      ["at-deadline", "2026-08-02T01:30:00.000Z", "2026-08-02T01:29:00.000Z"],
+    ] as const)
+      await expect(
+        projectServingSwitchPreflightProofV2({
+          manifest: fixture.source.manifest,
+          providerProof: fixture.providerProof,
+          readinessProof: fixture.readinessProof,
+          context: {
+            switchId: `publication-switch|activate|1|${label}`,
+            action: "activate",
+            expectedPriorGeneration: 0,
+            expectedPriorRollbackCandidatePublicationId: null,
+            expectedPriorSwitchedAtMs: null,
+            newGeneration: 1,
+            fromPublicationId: null,
+            fromClosureHash: null,
+            toPublicationId: fixture.source.manifest.publicationId,
+            toClosureHash: fixture.source.manifest.closureHash,
+            switchedAtMs: Date.parse(switchedAt),
+          },
+          artifactProof: {
+            ...switchArtifactProofV2(fixture.source.manifest),
+            observedAtMs: Date.parse(observedAt),
+          },
+        }),
+      ).resolves.toBeDefined();
+    await expect(
+      projectServingSwitchPreflightProofV2({
+        manifest: fixture.source.manifest,
+        providerProof: fixture.providerProof,
+        readinessProof: fixture.readinessProof,
+        context: {
+          switchId: "publication-switch|activate|1|expired",
+          action: "activate",
+          expectedPriorGeneration: 0,
+          expectedPriorRollbackCandidatePublicationId: null,
+          expectedPriorSwitchedAtMs: null,
+          newGeneration: 1,
+          fromPublicationId: null,
+          fromClosureHash: null,
+          toPublicationId: fixture.source.manifest.publicationId,
+          toClosureHash: fixture.source.manifest.closureHash,
+          switchedAtMs: Date.parse("2026-08-02T02:35:00.000Z"),
+        },
+        artifactProof: {
+          ...switchArtifactProofV2(fixture.source.manifest),
+          observedAtMs: Date.parse("2026-08-02T02:34:00.000Z"),
+        },
+      }),
+    ).rejects.toThrow("attestation is invalid");
+  });
+
+  it("accepts an honestly empty provider inventory without a sentinel row", async () => {
+    const source = await input([
+      {
+        id: id("prv", 90),
+        displayName: null,
+        freshness: "unavailable",
+      },
+    ]);
+    const projection = await projectProviderSearchProjection(source);
+    const providerProof = projectProviderSearchArtifactProofV2({
+      manifest: source.manifest,
+      projection,
+      fts: {
+        buildVersion: PROVIDER_SEARCH_FTS_BUILD_VERSION,
+        documentCount: 0,
+        queryable: true,
+        exactParity: true,
+      },
+    });
+    expect(providerProof).toMatchObject({
+      provider_search_document_count: 0,
+      provider_search_fts_document_count: 0,
+      provider_search_inventory_hash:
+        "sha256:15b3de8d9c92735a8d5379c3f5dfee54ed5e47026c57f0ad4f41acd497cb89e3",
+    });
+    const receiptProofs = await Promise.all(
+      readinessReceiptsV2(source.manifest).map((receipt) =>
+        projectReadinessReceiptProofV2({
+          receipt,
+          providerProof: receipt.kind === "serving" ? providerProof : null,
+        }),
+      ),
+    );
+    await expect(
+      projectServingReadinessProofV2({
+        manifest: source.manifest,
+        receiptProofs,
+        environment: "local",
+        readyAtMs: Date.parse("2026-08-02T00:34:00.000Z"),
+        maximumReceiptAgeMs: 60 * 60 * 1000,
+      }),
+    ).resolves.toBeDefined();
   });
 });
