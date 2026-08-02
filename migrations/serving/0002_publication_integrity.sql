@@ -29,9 +29,10 @@ BEFORE UPDATE OF state, ready_at_ms, activated_at_ms, failure_codes_json ON publ
 BEGIN
   SELECT CASE WHEN NOT (
     (OLD.state = 'building' AND NEW.state IN ('ready', 'failed')) OR
-    (OLD.state = 'ready' AND NEW.state IN ('active', 'failed')) OR
+    (OLD.state = 'ready' AND NEW.state = 'active') OR
     (OLD.state = 'active' AND NEW.state IN ('superseded', 'rolled_back')) OR
     (OLD.state = 'superseded' AND NEW.state IN ('active', 'rolled_back')) OR
+    (OLD.state = 'rolled_back' AND NEW.state = 'active') OR
     (OLD.state = NEW.state)
   ) THEN RAISE(ABORT, 'invalid publication state transition') END;
   SELECT CASE WHEN NEW.state = 'ready' AND (
@@ -77,7 +78,7 @@ BEGIN SELECT RAISE(ABORT, 'activation timestamp may change only on activation tr
 CREATE TRIGGER publication_failure_codes_guard
 BEFORE UPDATE OF failure_codes_json ON publication
 WHEN NEW.failure_codes_json <> OLD.failure_codes_json AND NOT (
-  OLD.state IN ('building', 'ready') AND NEW.state = 'failed'
+  OLD.state = 'building' AND NEW.state = 'failed'
 )
 BEGIN SELECT RAISE(ABORT, 'failure codes may change only on failure transition'); END;
 
@@ -146,7 +147,9 @@ END;
 CREATE TRIGGER publication_head_state_update
 BEFORE UPDATE ON publication_head
 BEGIN
-  SELECT CASE WHEN NEW.generation <= OLD.generation THEN RAISE(ABORT, 'publication head generation must increase') END;
+  SELECT CASE WHEN NEW.generation <> OLD.generation + 1 THEN RAISE(ABORT, 'publication head generation must increase by exactly one') END;
+  SELECT CASE WHEN NEW.switched_at_ms <= OLD.switched_at_ms THEN RAISE(ABORT, 'publication head switch time must strictly increase') END;
+  SELECT CASE WHEN NEW.rollback_candidate_publication_id IS NOT OLD.active_publication_id THEN RAISE(ABORT, 'publication rollback candidate must equal former active publication') END;
   SELECT CASE WHEN NOT EXISTS (
     SELECT 1 FROM publication WHERE publication_id = NEW.active_publication_id AND state = 'active'
   ) THEN RAISE(ABORT, 'publication head must select an active publication') END;

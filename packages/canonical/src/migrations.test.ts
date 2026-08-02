@@ -11,6 +11,8 @@ import { canonicalPrice } from "./index.js";
 
 const HASH = `sha256:${"a".repeat(64)}`;
 const OTHER_HASH = `sha256:${"b".repeat(64)}`;
+const VECTOR_ID = "c".repeat(64);
+const OTHER_VECTOR_ID = "d".repeat(64);
 
 function id(prefix: string, sequence: number): string {
   return `${prefix}_${sequence.toString(16).padStart(8, "0")}-0000-4000-8000-000000000001`;
@@ -914,14 +916,16 @@ describe("serving publication migrations (PIPE-050–PIPE-056)", () => {
     database: DatabaseSync,
     publicationId: string,
     counts = { resources: 1, exactDocuments: 1, vectorDocuments: 1 },
+    parentPublicationId: string | null = null,
   ): void {
     database
       .prepare(
-        "INSERT INTO publication VALUES (?, 'building', '1.0.0', '1.0.0', 'precision@1', 'display@1', 'price@1', 'source@1', 'embedding@1', 'commit', ?, NULL, 1, NULL, NULL, ?, ?, ?, ?, 'vector@1', ?, '[]', 1)",
+        "INSERT INTO publication VALUES (?, 'building', '1.0.0', '1.0.0', 'precision@1', 'display@1', 'price@1', 'source@1', 'embedding@1', 'commit', ?, ?, 1, NULL, NULL, ?, ?, ?, ?, 'vector@1', ?, '[]', 1)",
       )
       .run(
         publicationId,
         id("run", 200),
+        parentPublicationId,
         counts.resources,
         counts.exactDocuments,
         counts.vectorDocuments,
@@ -944,6 +948,13 @@ describe("serving publication migrations (PIPE-050–PIPE-056)", () => {
           .run(publicationId),
       "publication closure counts are incomplete",
     );
+    expectConstraint(() =>
+      database
+        .prepare(
+          "INSERT INTO publication_provider_slice VALUES (?, ?, ?, ?, 0, 'stale')",
+        )
+        .run(id("prn", 203), publicationId, id("prv", 204), id("pvr", 205)),
+    );
     database
       .prepare(
         "INSERT INTO publication_provider_slice VALUES (?, ?, ?, ?, 0, 'fresh')",
@@ -956,14 +967,23 @@ describe("serving publication migrations (PIPE-050–PIPE-056)", () => {
       .run(publicationId, modelId, HASH);
     database
       .prepare(
-        "INSERT INTO publication_search_document VALUES (?, 'doc-1', 'model', ?, 'example', '[]', 'Publisher', '[]', 'example model', ?)",
+        "INSERT INTO publication_search_document VALUES (?, ?, 'model', ?, 'example', '[]', 'Publisher', '[]', 'example model', ?)",
       )
-      .run(publicationId, modelId, HASH);
+      .run(publicationId, VECTOR_ID, modelId, HASH);
     database
       .prepare(
         "UPDATE publication SET state = 'ready', ready_at_ms = 2 WHERE publication_id = ?",
       )
       .run(publicationId);
+    expectConstraint(
+      () =>
+        database
+          .prepare(
+            "UPDATE publication SET state = 'failed' WHERE publication_id = ?",
+          )
+          .run(publicationId),
+      "invalid publication state transition",
+    );
     expectConstraint(
       () =>
         database
@@ -1004,6 +1024,163 @@ describe("serving publication migrations (PIPE-050–PIPE-056)", () => {
           .run(publicationId),
       "publication resource cannot be deleted",
     );
+
+    const nextPublicationId = id("pub", 206);
+    const nextModelId = id("mdl", 207);
+    insertBuildingPublication(
+      database,
+      nextPublicationId,
+      { resources: 1, exactDocuments: 1, vectorDocuments: 1 },
+      publicationId,
+    );
+    database
+      .prepare(
+        "INSERT INTO publication_provider_slice VALUES (?, ?, ?, ?, 0, 'fresh')",
+      )
+      .run(id("prn", 208), nextPublicationId, id("prv", 209), id("pvr", 210));
+    database
+      .prepare(
+        "INSERT INTO publication_resource VALUES (?, 'model', ?, '{}', ?)",
+      )
+      .run(nextPublicationId, nextModelId, HASH);
+    database
+      .prepare(
+        "INSERT INTO publication_search_document VALUES (?, ?, 'model', ?, 'next', '[]', 'Publisher', '[]', 'next model', ?)",
+      )
+      .run(nextPublicationId, OTHER_VECTOR_ID, nextModelId, HASH);
+    database
+      .prepare(
+        "UPDATE publication SET state = 'ready', ready_at_ms = 4 WHERE publication_id = ?",
+      )
+      .run(nextPublicationId);
+    database
+      .prepare(
+        "UPDATE publication SET state = 'active', activated_at_ms = 5 WHERE publication_id = ?",
+      )
+      .run(nextPublicationId);
+
+    expectConstraint(
+      () =>
+        database
+          .prepare(
+            "UPDATE publication_head SET active_publication_id = ?, rollback_candidate_publication_id = ?, switched_at_ms = 6, generation = 3 WHERE singleton = 1",
+          )
+          .run(nextPublicationId, publicationId),
+      "publication head generation must increase by exactly one",
+    );
+    expectConstraint(
+      () =>
+        database
+          .prepare(
+            "UPDATE publication_head SET active_publication_id = ?, rollback_candidate_publication_id = ?, switched_at_ms = 3, generation = 2 WHERE singleton = 1",
+          )
+          .run(nextPublicationId, publicationId),
+      "publication head switch time must strictly increase",
+    );
+    expectConstraint(
+      () =>
+        database
+          .prepare(
+            "UPDATE publication_head SET active_publication_id = ?, rollback_candidate_publication_id = NULL, switched_at_ms = 6, generation = 2 WHERE singleton = 1",
+          )
+          .run(nextPublicationId),
+      "publication rollback candidate must equal former active publication",
+    );
+
+    database.exec("BEGIN");
+    database
+      .prepare(
+        "UPDATE publication_head SET active_publication_id = ?, rollback_candidate_publication_id = ?, switched_at_ms = 6, generation = 2 WHERE singleton = 1",
+      )
+      .run(nextPublicationId, publicationId);
+    database
+      .prepare(
+        "UPDATE publication SET state = 'superseded' WHERE publication_id = ?",
+      )
+      .run(publicationId);
+    database.exec("COMMIT");
+    expect(
+      database.prepare("SELECT * FROM publication_head").get(),
+    ).toMatchObject({
+      active_publication_id: nextPublicationId,
+      rollback_candidate_publication_id: publicationId,
+      switched_at_ms: 6,
+      generation: 2,
+    });
+    expect(
+      database
+        .prepare(
+          "SELECT head.active_publication_id, publication.publication_id AS vector_namespace, publication.closure_hash AS manifest_hash, publication.activated_at_ms AS published_at_ms FROM publication_head AS head JOIN publication ON publication.publication_id = head.active_publication_id WHERE head.singleton = 1",
+        )
+        .get(),
+    ).toEqual({
+      active_publication_id: nextPublicationId,
+      vector_namespace: nextPublicationId,
+      manifest_hash: OTHER_HASH,
+      published_at_ms: 5,
+    });
+
+    database.exec("BEGIN");
+    database
+      .prepare(
+        "UPDATE publication SET state = 'active' WHERE publication_id = ?",
+      )
+      .run(publicationId);
+    database
+      .prepare(
+        "UPDATE publication_head SET active_publication_id = ?, rollback_candidate_publication_id = ?, switched_at_ms = 7, generation = 3 WHERE singleton = 1",
+      )
+      .run(publicationId, nextPublicationId);
+    database
+      .prepare(
+        "UPDATE publication SET state = 'rolled_back' WHERE publication_id = ?",
+      )
+      .run(nextPublicationId);
+    database.exec("COMMIT");
+
+    database.exec("BEGIN");
+    database
+      .prepare(
+        "UPDATE publication SET state = 'active' WHERE publication_id = ?",
+      )
+      .run(nextPublicationId);
+    database
+      .prepare(
+        "UPDATE publication_head SET active_publication_id = ?, rollback_candidate_publication_id = ?, switched_at_ms = 8, generation = 4 WHERE singleton = 1",
+      )
+      .run(nextPublicationId, publicationId);
+    database
+      .prepare(
+        "UPDATE publication SET state = 'rolled_back' WHERE publication_id = ?",
+      )
+      .run(publicationId);
+    database.exec("COMMIT");
+    expect(
+      database
+        .prepare(
+          "SELECT publication_id, state, closure_hash FROM publication ORDER BY publication_id",
+        )
+        .all(),
+    ).toEqual([
+      {
+        publication_id: publicationId,
+        state: "rolled_back",
+        closure_hash: OTHER_HASH,
+      },
+      {
+        publication_id: nextPublicationId,
+        state: "active",
+        closure_hash: OTHER_HASH,
+      },
+    ]);
+    expect(
+      database.prepare("SELECT * FROM publication_head").get(),
+    ).toMatchObject({
+      active_publication_id: nextPublicationId,
+      rollback_candidate_publication_id: publicationId,
+      switched_at_ms: 8,
+      generation: 4,
+    });
   });
 
   it("rejects resource type mismatches and post-readiness staging", () => {
@@ -1025,17 +1202,29 @@ describe("serving publication migrations (PIPE-050–PIPE-056)", () => {
         "INSERT INTO publication_resource VALUES (?, 'model', ?, '{}', ?)",
       )
       .run(publicationId, modelId, HASH);
+    for (const invalidDocumentId of [
+      "f".repeat(63),
+      "F".repeat(64),
+      "g".repeat(64),
+    ])
+      expectConstraint(() =>
+        database
+          .prepare(
+            "INSERT INTO publication_search_document VALUES (?, ?, 'model', ?, 'one', '[]', '', '[]', 'one', ?)",
+          )
+          .run(publicationId, invalidDocumentId, modelId, HASH),
+      );
     database
       .prepare(
-        "INSERT INTO publication_search_document VALUES (?, 'doc-1', 'model', ?, 'one', '[]', '', '[]', 'one', ?)",
+        "INSERT INTO publication_search_document VALUES (?, ?, 'model', ?, 'one', '[]', '', '[]', 'one', ?)",
       )
-      .run(publicationId, modelId, HASH);
+      .run(publicationId, VECTOR_ID, modelId, HASH);
     expectConstraint(() =>
       database
         .prepare(
-          "INSERT INTO publication_search_document VALUES (?, 'doc-2', 'model', ?, 'two', '[]', '', '[]', 'two', ?)",
+          "INSERT INTO publication_search_document VALUES (?, ?, 'model', ?, 'two', '[]', '', '[]', 'two', ?)",
         )
-        .run(publicationId, modelId, OTHER_HASH),
+        .run(publicationId, OTHER_VECTOR_ID, modelId, OTHER_HASH),
     );
   });
 
@@ -1060,9 +1249,9 @@ describe("serving publication migrations (PIPE-050–PIPE-056)", () => {
         .run(publicationId, modelId, HASH);
     database
       .prepare(
-        "INSERT INTO publication_search_document VALUES (?, 'only-one', 'model', ?, 'one', '[]', '', '[]', 'one', ?)",
+        "INSERT INTO publication_search_document VALUES (?, ?, 'model', ?, 'one', '[]', '', '[]', 'one', ?)",
       )
-      .run(publicationId, id("mdl", 224), HASH);
+      .run(publicationId, VECTOR_ID, id("mdl", 224), HASH);
     expectConstraint(
       () =>
         database

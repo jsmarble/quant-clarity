@@ -1,4 +1,5 @@
 import { Type, type Static, type TSchema } from "@sinclair/typebox";
+import { publicationVectorId } from "@quant-clarity/domain/publication-consistency";
 
 const UUID_V4 =
   "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
@@ -1348,14 +1349,41 @@ export const AdapterBatchSchema = Type.Object(
 const PublicationCommonFields = {
   publication_id: publicationId(),
   schema_version: Type.String({ pattern: SEMVER }),
+  methodology_version: Type.String({ minLength: 1, maxLength: 64 }),
+  precision_normalization_version: Type.String({
+    minLength: 1,
+    maxLength: 64,
+  }),
+  precision_display_order_version: Type.String({
+    minLength: 1,
+    maxLength: 64,
+  }),
+  price_policy_version: Type.String({ minLength: 1, maxLength: 64 }),
+  source_policy_version: Type.String({ minLength: 1, maxLength: 64 }),
+  embedding_version: Type.String({ minLength: 1, maxLength: 128 }),
+  build_commit: Type.String({ minLength: 1, maxLength: 128 }),
   generated_at: timestamp(),
   source_run_id: prefixedId("run"),
   parent_publication_id: Type.Union([publicationId(), Type.Null()]),
+  enabled_provider_scope_version: Type.String({
+    minLength: 1,
+    maxLength: 128,
+    pattern: "^[\\x20-\\x7e]+$",
+  }),
+  enabled_provider_ids: Type.Array(prefixedId("prv"), {
+    minItems: 1,
+    maxItems: 1_000,
+    uniqueItems: true,
+  }),
   provider_slices: Type.Array(
     Type.Object(
       {
         provider_id: prefixedId("prv"),
+        provider_slice_id: Type.Union([prefixedId("prn"), Type.Null()]),
         provider_run_id: prefixedId("pvr"),
+        adapter_version: Type.String({ minLength: 1, maxLength: 128 }),
+        roster_version: Type.String({ minLength: 1, maxLength: 128 }),
+        source_register_version: Type.String({ minLength: 1, maxLength: 128 }),
         carried_forward: Type.Boolean(),
         freshness_state: Type.Union([
           Type.Literal("fresh"),
@@ -1366,6 +1394,43 @@ const PublicationCommonFields = {
       { additionalProperties: false },
     ),
     { maxItems: 1_000 },
+  ),
+  provider_attributions: Type.Array(
+    Type.Union([
+      Type.Object(
+        {
+          resource_type: Type.Literal("provider"),
+          resource_id: prefixedId("prv"),
+          provider_id: prefixedId("prv"),
+        },
+        { additionalProperties: false },
+      ),
+      Type.Object(
+        {
+          resource_type: Type.Literal("offering"),
+          resource_id: prefixedId("off"),
+          provider_id: prefixedId("prv"),
+        },
+        { additionalProperties: false },
+      ),
+      Type.Object(
+        {
+          resource_type: Type.Literal("price"),
+          resource_id: prefixedId("pcs"),
+          provider_id: prefixedId("prv"),
+        },
+        { additionalProperties: false },
+      ),
+      Type.Object(
+        {
+          resource_type: Type.Literal("precision_observation"),
+          resource_id: prefixedId("prc"),
+          provider_id: prefixedId("prv"),
+        },
+        { additionalProperties: false },
+      ),
+    ]),
+    { maxItems: 1_000_000 },
   ),
   resources: Type.Array(
     Type.Object(
@@ -1399,10 +1464,27 @@ const PublicationCommonFields = {
 function PublicationSearchIndexSchema(queryable: boolean) {
   return Type.Object(
     {
+      vector_namespace: publicationId(),
       exact_document_count: Type.Integer({ minimum: 0 }),
       vector_document_count: Type.Integer({ minimum: 0 }),
       exact_index_hash: hash(),
       vector_index_version: Type.String({ minLength: 1, maxLength: 128 }),
+      vectors: Type.Array(
+        Type.Object(
+          {
+            vector_id: Type.String({ pattern: "^[0-9a-f]{64}$" }),
+            resource_type: Type.Union([
+              Type.Literal("model"),
+              Type.Literal("variant"),
+            ]),
+            resource_id: Type.Union([prefixedId("mdl"), prefixedId("var")]),
+            search_document_content_hash: hash(),
+            embedding_input_hash: hash(),
+          },
+          { additionalProperties: false },
+        ),
+        { maxItems: 1_000_000 },
+      ),
       queryable: Type.Literal(queryable),
     },
     { additionalProperties: false },
@@ -1452,6 +1534,9 @@ export const PublicationManifestSchema = Type.Union(
 export const PublicationHeadSchema = Type.Object(
   {
     active_publication_id: publicationId(),
+    vector_namespace: publicationId(),
+    manifest_hash: hash(),
+    published_at: timestamp(),
     rollback_candidate_publication_id: Type.Union([
       publicationId(),
       Type.Null(),
@@ -1888,7 +1973,15 @@ const PUBLICATION_RESOURCE_PREFIX = {
   evidence_summary: "evd_",
 } as const;
 
-export function validatePublicationManifestSemantics(
+const PROVIDER_ATTRIBUTABLE_RESOURCE_TYPES = new Set([
+  "provider",
+  "offering",
+  "price",
+  "precision_observation",
+]);
+
+/** Synchronous cross-field checks; exact ADR 0013 vector identity is async. */
+export function validatePublicationManifestStructuralSemantics(
   manifest: PublicationManifest,
 ): string[] {
   const errors: string[] = [];
@@ -1897,7 +1990,27 @@ export function validatePublicationManifestSemantics(
     if (providers.has(slice.provider_id))
       errors.push(`duplicate provider slice: ${slice.provider_id}`);
     providers.add(slice.provider_id);
+    if (
+      (slice.freshness_state === "unavailable") !==
+      (slice.provider_slice_id === null)
+    )
+      errors.push(
+        `provider slice identity and freshness disagree: ${slice.provider_id}`,
+      );
+    if (
+      (slice.carried_forward && slice.freshness_state === "unavailable") ||
+      (!slice.carried_forward && slice.freshness_state === "stale")
+    )
+      errors.push(
+        `provider slice carry-forward and freshness disagree: ${slice.provider_id}`,
+      );
   }
+  const enabledProviderIds = [...manifest.enabled_provider_ids].sort();
+  const providerSliceIds = manifest.provider_slices
+    .map((slice) => slice.provider_id)
+    .sort();
+  if (JSON.stringify(enabledProviderIds) !== JSON.stringify(providerSliceIds))
+    errors.push("provider slices do not exactly cover enabled provider scope");
   const resources = new Set<string>();
   for (const resource of manifest.resources) {
     const identity = `${resource.resource_type}:${resource.resource_id}`;
@@ -1911,6 +2024,41 @@ export function validatePublicationManifestSemantics(
     if (!resource.resource_id.startsWith(prefix))
       errors.push(`${identity}: resource type and ID prefix disagree`);
   }
+  const attributionResources = new Set<string>();
+  const unavailableProviders = new Set(
+    manifest.provider_slices
+      .filter((slice) => slice.freshness_state === "unavailable")
+      .map((slice) => slice.provider_id),
+  );
+  for (const attribution of manifest.provider_attributions) {
+    const identity = `${attribution.resource_type}:${attribution.resource_id}`;
+    if (attributionResources.has(identity))
+      errors.push(`duplicate provider attribution: ${identity}`);
+    attributionResources.add(identity);
+    if (!manifest.enabled_provider_ids.includes(attribution.provider_id))
+      errors.push(`provider attribution is outside enabled scope: ${identity}`);
+    if (unavailableProviders.has(attribution.provider_id))
+      errors.push(
+        `unavailable provider owns attributed public resource: ${identity}`,
+      );
+    if (
+      attribution.resource_type === "provider" &&
+      attribution.resource_id !== attribution.provider_id
+    )
+      errors.push(`provider attribution identity disagrees: ${identity}`);
+  }
+  const attributableResources = manifest.resources
+    .filter((resource) =>
+      PROVIDER_ATTRIBUTABLE_RESOURCE_TYPES.has(resource.resource_type),
+    )
+    .map((resource) => `${resource.resource_type}:${resource.resource_id}`)
+    .sort();
+  const attributedResources = [...attributionResources].sort();
+  if (
+    JSON.stringify(attributableResources) !==
+    JSON.stringify(attributedResources)
+  )
+    errors.push("provider attribution inventory does not close over resources");
   if (manifest.parent_publication_id === manifest.publication_id)
     errors.push("publication cannot be its own parent");
   if (manifest.ready_at !== null) {
@@ -1926,12 +2074,49 @@ export function validatePublicationManifestSemantics(
       resource.resource_type === "model" ||
       resource.resource_type === "variant",
   ).length;
+  if (manifest.search_index.vector_namespace !== manifest.publication_id)
+    errors.push("vector namespace does not match publication");
+  const vectorIds = new Set<string>();
+  const vectorResources = new Set<string>();
+  for (const vector of manifest.search_index.vectors) {
+    const identity = `${vector.resource_type}:${vector.resource_id}`;
+    if (vectorIds.has(vector.vector_id))
+      errors.push(`duplicate publication vector: ${vector.vector_id}`);
+    vectorIds.add(vector.vector_id);
+    if (vectorResources.has(identity))
+      errors.push(`duplicate publication vector resource: ${identity}`);
+    vectorResources.add(identity);
+    if (!resources.has(identity))
+      errors.push(
+        `publication vector references unknown resource: ${identity}`,
+      );
+    const expectedPrefix = vector.resource_type === "model" ? "mdl_" : "var_";
+    if (!vector.resource_id.startsWith(expectedPrefix))
+      errors.push(`${identity}: vector resource type and ID prefix disagree`);
+  }
+  if (
+    manifest.search_index.vectors.length !==
+    manifest.search_index.vector_document_count
+  )
+    errors.push("vector inventory count does not match search index");
   if (manifest.search_index.queryable) {
     if (
       manifest.search_index.exact_document_count !== searchableResources ||
       manifest.search_index.vector_document_count !== searchableResources
     )
       errors.push("search index counts do not match model/variant closure");
+    for (const resource of manifest.resources) {
+      if (
+        (resource.resource_type === "model" ||
+          resource.resource_type === "variant") &&
+        !vectorResources.has(
+          `${resource.resource_type}:${resource.resource_id}`,
+        )
+      )
+        errors.push(
+          `searchable resource lacks publication vector: ${resource.resource_type}:${resource.resource_id}`,
+        );
+    }
   } else if (
     manifest.search_index.exact_document_count !== 0 ||
     manifest.search_index.vector_document_count !== 0
@@ -1950,14 +2135,45 @@ export function validatePublicationManifestSemantics(
   return errors;
 }
 
-export function validatePublicationActivation(
+export const derivePublicationVectorId = publicationVectorId;
+
+/** Authoritative manifest semantics, including exact ADR 0013 vector IDs. */
+export async function validatePublicationManifestSemantics(
+  manifest: PublicationManifest,
+): Promise<string[]> {
+  const errors = validatePublicationManifestStructuralSemantics(manifest);
+  const vectorIdentityErrors = await Promise.all(
+    manifest.search_index.vectors.map(async (vector) => {
+      const expected = await derivePublicationVectorId(
+        manifest.publication_id,
+        vector.resource_type,
+        vector.resource_id,
+      );
+      return vector.vector_id === expected
+        ? null
+        : `publication vector ID does not match ADR 0013 identity: ${vector.resource_type}:${vector.resource_id}`;
+    }),
+  );
+  errors.push(
+    ...vectorIdentityErrors.filter((error): error is string => error !== null),
+  );
+  return errors;
+}
+
+export async function validatePublicationActivation(
   manifest: PublicationManifest,
   head: PublicationHead,
-): string[] {
-  const errors = validatePublicationManifestSemantics(manifest);
+): Promise<string[]> {
+  const errors = await validatePublicationManifestSemantics(manifest);
   if (manifest.state !== "active") errors.push("publication is not active");
   if (head.active_publication_id !== manifest.publication_id)
     errors.push("publication head does not select manifest");
+  if (head.vector_namespace !== manifest.publication_id)
+    errors.push("publication head namespace does not select manifest");
+  if (head.manifest_hash !== manifest.closure_hash)
+    errors.push("publication head hash does not match manifest closure");
+  if (manifest.activated_at !== head.published_at)
+    errors.push("publication head time does not match manifest activation");
   if (head.rollback_candidate_publication_id === head.active_publication_id)
     errors.push("rollback candidate equals active publication");
   if (

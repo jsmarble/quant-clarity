@@ -66,13 +66,15 @@ Exit evidence: restart/retry/idempotency/failure-isolation tests pass; `GATE-sou
 
 ## Phase 4 — atomic publication, backup, and search
 
+Status: in progress. A runtime-neutral publication kernel now provides locally testable immutable-closure hashing, provider-slice/search/vector inventory, readiness, activation/rollback, switch-history, backup-manifest, and no-pruning decisions under [ADR 0015](../decisions/0015-publication-closure-and-lifecycle.md). It performs no I/O. Serving-D1/FTS migrations, transactional switch history, Cloudflare Vectorize visibility, populated-cache chaos, writer-drained backup, isolated restore, physical pruning, preview resources, and all composite gates remain pending.
+
 1. Build immutable serving projections and FTS documents from one validated provider slice.
 2. Create exactly one Vectorize vector per model/explicit variant and implement D1 eligibility, bounded semantic batches, deterministic merge, degradation, and provider-count neutrality.
 3. Implement candidate readiness probes and the single transactional publication-head switch; API and SSR caches resolve the head before selecting publication-keyed entries.
 4. Implement pointer rollback, hot generation retention, canonical writer-drained consistent backup, logical serving export, FTS/Vectorize reconstruction, integrity manifests, and isolated restore.
 5. Exercise failure injection at every publication phase and with populated multi-PoP caches.
 
-Exit evidence: `GATE-publication-chaos`, `GATE-search-acceptance`, and `GATE-restore-and-rebuild` pass for the vertical slice.
+Exit evidence: local decision evidence is recorded in [`phase-4-local-kernel.md`](phase-4-local-kernel.md). `GATE-publication-chaos`, `GATE-search-acceptance`, and `GATE-restore-and-rebuild` still must pass for the deployed vertical slice before Phase 4 exits.
 
 ## Phase 5 — public API and bounded edge
 

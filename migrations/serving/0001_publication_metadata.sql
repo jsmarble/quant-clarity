@@ -50,6 +50,10 @@ CREATE TABLE publication_provider_slice (
   provider_run_id TEXT NOT NULL CHECK (length(provider_run_id) = 40 AND substr(provider_run_id, 1, 4) = 'pvr_'),
   carried_forward INTEGER NOT NULL CHECK (carried_forward IN (0, 1)),
   freshness_state TEXT NOT NULL CHECK (freshness_state IN ('fresh', 'stale', 'unavailable')),
+  CHECK (
+    (carried_forward = 1 AND freshness_state IN ('fresh', 'stale')) OR
+    (carried_forward = 0 AND freshness_state IN ('fresh', 'unavailable'))
+  ),
   UNIQUE (publication_id, provider_id)
 );
 
@@ -64,7 +68,7 @@ CREATE TABLE publication_resource (
 
 CREATE TABLE publication_search_document (
   publication_id TEXT NOT NULL REFERENCES publication(publication_id) ON DELETE RESTRICT,
-  document_id TEXT NOT NULL CHECK (document_id <> ''),
+  document_id TEXT NOT NULL CHECK (length(document_id) = 64 AND document_id = lower(document_id) AND document_id NOT GLOB '*[^0-9a-f]*'),
   resource_type TEXT NOT NULL CHECK (resource_type IN ('model', 'variant')),
   resource_id TEXT NOT NULL CHECK (length(resource_id) = 40),
   normalized_name TEXT NOT NULL CHECK (normalized_name <> ''),
