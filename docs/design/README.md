@@ -6,6 +6,8 @@ This directory contains implementation decisions derived from the approved produ
 
 [`system-design.md`](system-design.md) is the approved design baseline. Product-owner approval and the zero-visitor-data amendment were recorded on 2026-08-01; implementation evidence remains separate.
 
+The current model/variant exact-name follow-up is split by [ADR 0026](../decisions/0026-blob-model-variant-exact-search-cutover.md). [Phase 5G-A1](phase-5g-a1-model-variant-durable-proof-core.md) implements only the runtime-neutral storage-row, revision-bound staging, and dormant artifact-proof core; the atomic D1/v3 cutover and query integration remain later boundaries.
+
 ## Design rules
 
 - Trace each component and consequential behavior to PRD requirement IDs.
