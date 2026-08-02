@@ -7,7 +7,7 @@ import {
   hashPublicationSearchDocumentContent,
   hashPublicationVectorChunk,
   projectServingClosureSeal,
-  projectServingReadinessAttestation,
+  projectServingReadinessCommit,
   projectServingReadinessReceiptRows,
   projectServingSwitch,
   type ImmutablePublicationManifest,
@@ -15,6 +15,7 @@ import {
   type ReadinessReceipt,
   type ServingClosureRows,
   type ServingReadinessAttestationProjection,
+  type ServingReadinessCommitProjection,
   type ServingReadinessReceiptRows,
   type ServingSwitchArtifactProof,
   type ServingSwitchProjection,
@@ -32,6 +33,7 @@ export type ReadyPublicationFixture = Readonly<{
   seal: Awaited<ReturnType<typeof projectServingClosureSeal>>["seal"];
   receipts: ServingReadinessReceiptRows;
   attestation: ServingReadinessAttestationProjection;
+  readinessCommit: ServingReadinessCommitProjection;
   record: PublicationRecord;
   proof: ServingSwitchArtifactProof;
 }>;
@@ -289,7 +291,7 @@ export const createReadyPublicationFixture = async (
   ];
   const receipts = await projectServingReadinessReceiptRows(evidence);
   const readyAtMs = generatedAtMs + 6 * 60_000;
-  const decision = await projectServingReadinessAttestation({
+  const decision = await projectServingReadinessCommit({
     closureRows: rows,
     persistedSeal: seal,
     receiptRows: receipts,
@@ -341,7 +343,8 @@ export const createReadyPublicationFixture = async (
     manifest,
     seal,
     receipts,
-    attestation: decision.attestation,
+    attestation: decision.projection.attestation,
+    readinessCommit: decision.projection,
     record,
     proof,
   };
