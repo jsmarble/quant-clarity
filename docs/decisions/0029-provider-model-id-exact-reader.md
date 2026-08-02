@@ -5,6 +5,7 @@
 - Decision owners: Staff engineer, product-semantics lead, search lead, API lead
 - Related requirements: `DATA-001`, `DATA-004`, `DATA-020`, `DATA-021`, `DATA-025`, `DATA-066`, `DATA-067`, `RULE-004`, `RULE-017`, `FE-010`, `FE-011`, `FE-013`, `FE-015`, `FE-016`, `FE-023`, `FE-025`, `FE-026`, `SRCH-002`, `SRCH-004`, `SRCH-006`, `SRCH-008`–`SRCH-010`, `API-003`, `API-007`, `API-009`, `API-010`, `API-013`, `BE-003`, `BE-008`, `BE-011`, `SEC-001`, `SEC-007`, `PRIV-006`, `PRIV-007`, `PRIV-011`, `QA-004`–`QA-006`, `QA-013`
 - Extends: ADRs 0016, 0021, and 0026–0028
+- Partially superseded by: ADR 0030 replaces normalized-target-display ordering only for the composed exact-search operation; this ADR's standalone B1 reader and all other decisions remain accepted
 
 ## Context
 

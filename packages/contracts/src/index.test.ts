@@ -495,6 +495,7 @@ describe("canonical public contracts (DATA-040–DATA-061, API-002–API-006)", 
       "disabled",
       "eligibility_limit",
       "temporarily_unavailable",
+      "not_applicable",
     ]) {
       expect(checkSearchCollectionContract(collection(knownValue))).toBe(true);
       expect(checkSearchCollectionContract(collection(knownValue, false))).toBe(
@@ -554,6 +555,7 @@ describe("canonical public contracts (DATA-040–DATA-061, API-002–API-006)", 
       "disabled",
       "eligibility_limit",
       "temporarily_unavailable",
+      "not_applicable",
     ]) {
       const leakedSemanticResult = collection(fallbackState);
       leakedSemanticResult.data[0]!.match_kind = "semantic";

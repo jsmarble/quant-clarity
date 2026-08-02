@@ -508,6 +508,7 @@ const knownDegradationValues = [
   "disabled",
   "eligibility_limit",
   "temporarily_unavailable",
+  "not_applicable",
 ];
 if (
   !isObject(authoritativeDegradation) ||

@@ -47131,9 +47131,10 @@
                         "none",
                         "disabled",
                         "eligibility_limit",
-                        "temporarily_unavailable"
+                        "temporarily_unavailable",
+                        "not_applicable"
                       ],
-                      "description": "Known values: none means the applicable semantic plan completed; disabled means applicable semantic work was intentionally not attempted; eligibility_limit means complete eligibility exceeded the bounded plan and no incomplete subset was queried; temporarily_unavailable means a semantic dependency failed and partial semantic candidates were discarded. This required non-null open string has no default. On a result this is a compatibility mirror that must exactly equal the authoritative collection metadata value."
+                      "description": "Known values: none means the applicable semantic plan completed; disabled means applicable semantic work was intentionally not attempted; eligibility_limit means complete eligibility exceeded the bounded plan and no incomplete subset was queried; temporarily_unavailable means a semantic dependency failed and partial semantic candidates were discarded; not_applicable means the requested resource scope has no semantic corpus. This required non-null open string has no default. On a result this is a compatibility mirror that must exactly equal the authoritative collection metadata value."
                     }
                   }
                 },
@@ -47266,9 +47267,10 @@
                         "none",
                         "disabled",
                         "eligibility_limit",
-                        "temporarily_unavailable"
+                        "temporarily_unavailable",
+                        "not_applicable"
                       ],
-                      "description": "Known values: none means the applicable semantic plan completed; disabled means applicable semantic work was intentionally not attempted; eligibility_limit means complete eligibility exceeded the bounded plan and no incomplete subset was queried; temporarily_unavailable means a semantic dependency failed and partial semantic candidates were discarded. This required non-null open string has no default. On a result this is a compatibility mirror that must exactly equal the authoritative collection metadata value."
+                      "description": "Known values: none means the applicable semantic plan completed; disabled means applicable semantic work was intentionally not attempted; eligibility_limit means complete eligibility exceeded the bounded plan and no incomplete subset was queried; temporarily_unavailable means a semantic dependency failed and partial semantic candidates were discarded; not_applicable means the requested resource scope has no semantic corpus. This required non-null open string has no default. On a result this is a compatibility mirror that must exactly equal the authoritative collection metadata value."
                     }
                   }
                 },
@@ -47401,9 +47403,10 @@
                         "none",
                         "disabled",
                         "eligibility_limit",
-                        "temporarily_unavailable"
+                        "temporarily_unavailable",
+                        "not_applicable"
                       ],
-                      "description": "Known values: none means the applicable semantic plan completed; disabled means applicable semantic work was intentionally not attempted; eligibility_limit means complete eligibility exceeded the bounded plan and no incomplete subset was queried; temporarily_unavailable means a semantic dependency failed and partial semantic candidates were discarded. This required non-null open string has no default. On a result this is a compatibility mirror that must exactly equal the authoritative collection metadata value."
+                      "description": "Known values: none means the applicable semantic plan completed; disabled means applicable semantic work was intentionally not attempted; eligibility_limit means complete eligibility exceeded the bounded plan and no incomplete subset was queried; temporarily_unavailable means a semantic dependency failed and partial semantic candidates were discarded; not_applicable means the requested resource scope has no semantic corpus. This required non-null open string has no default. On a result this is a compatibility mirror that must exactly equal the authoritative collection metadata value."
                     }
                   }
                 }
@@ -47457,9 +47460,10 @@
                   "none",
                   "disabled",
                   "eligibility_limit",
-                  "temporarily_unavailable"
+                  "temporarily_unavailable",
+                  "not_applicable"
                 ],
-                "description": "Known values: none means the applicable semantic plan completed; disabled means applicable semantic work was intentionally not attempted; eligibility_limit means complete eligibility exceeded the bounded plan and no incomplete subset was queried; temporarily_unavailable means a semantic dependency failed and partial semantic candidates were discarded. This required non-null open string has no default. This collection metadata field is authoritative for every result, including an empty collection. Known fallback states contain no semantic match_kind results."
+                "description": "Known values: none means the applicable semantic plan completed; disabled means applicable semantic work was intentionally not attempted; eligibility_limit means complete eligibility exceeded the bounded plan and no incomplete subset was queried; temporarily_unavailable means a semantic dependency failed and partial semantic candidates were discarded; not_applicable means the requested resource scope has no semantic corpus. This required non-null open string has no default. This collection metadata field is authoritative for every result, including an empty collection. Known fallback states contain no semantic match_kind results."
               },
               "resource": {
                 "const": "search",

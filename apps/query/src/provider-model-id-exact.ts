@@ -94,6 +94,7 @@ WITH eligible_publication AS (
    AND name.resource_type = document.target_resource_type
    AND name.resource_id = document.target_resource_id
   WHERE document.raw_provider_model_id_utf8 = ?2
+    AND (?11 = 0 OR name.normalized_name_utf8 <> ?3)
     AND (?4 IS NULL OR document.provider_id = ?4)
     AND (?5 IS NULL OR document.target_resource_type = ?5)
     AND json_extract(offering.resource_json, '$.status.state') = 'known'
@@ -143,6 +144,7 @@ WITH eligible_publication AS (
    AND name.resource_type = document.target_resource_type
    AND name.resource_id = document.target_resource_id
   WHERE length(?3) > 0
+    AND (?11 = 0 OR name.normalized_name_utf8 <> ?3)
     AND document.normalized_provider_model_id_utf8 = ?3
     AND document.raw_provider_model_id_utf8 <> ?2
     AND (?4 IS NULL OR document.provider_id = ?4)
@@ -162,11 +164,25 @@ WITH eligible_publication AS (
   SELECT * FROM deduplicated
   WHERE target_ordinal = 1
     AND (
-      match_mode > ?6
-      OR (match_mode = ?6 AND normalized_name_utf8 > ?7)
-      OR (match_mode = ?6 AND normalized_name_utf8 = ?7 AND target_resource_id > ?8)
+      (
+        ?12 = 0
+        AND (
+          match_mode > ?6
+          OR (match_mode = ?6 AND normalized_name_utf8 > ?7)
+          OR (match_mode = ?6 AND normalized_name_utf8 = ?7 AND target_resource_id > ?8)
+        )
+      )
+      OR (
+        ?12 = 1
+        AND (
+          match_mode > ?6
+          OR (match_mode = ?6 AND target_resource_id > ?8)
+        )
+      )
     )
-  ORDER BY match_mode ASC, normalized_name_utf8 ASC, target_resource_id ASC
+  ORDER BY match_mode ASC,
+    CASE WHEN ?12 = 0 THEN normalized_name_utf8 ELSE X'' END ASC,
+    target_resource_id ASC
   LIMIT ?9
 )
 SELECT
@@ -176,6 +192,7 @@ SELECT
   NULL AS projection_version, NULL AS offering_content_hash,
   NULL AS target_content_hash, NULL AS name_projection_version,
   NULL AS name_resource_content_hash, NULL AS normalized_name_utf8,
+  NULL AS ordering_name_utf8,
   NULL AS display_name_bytes_match, NULL AS offering_resource_content_hash,
   NULL AS target_resource_content_hash,
   NULL AS raw_provider_model_id_bytes_match,
@@ -189,12 +206,15 @@ SELECT
   candidate.projection_version, candidate.offering_content_hash,
   candidate.target_content_hash, candidate.name_projection_version,
   candidate.name_resource_content_hash, candidate.normalized_name_utf8,
+  CASE WHEN ?12 = 0 THEN candidate.normalized_name_utf8 ELSE X'' END,
   candidate.display_name_bytes_match, candidate.offering_resource_content_hash,
   candidate.target_resource_content_hash,
   candidate.raw_provider_model_id_bytes_match,
   candidate.offering_json_bytes, candidate.offering_json
 FROM candidate_page AS candidate
-ORDER BY row_ordinal ASC, match_mode ASC, normalized_name_utf8 ASC, target_resource_id ASC
+ORDER BY row_ordinal ASC, match_mode ASC,
+  ordering_name_utf8 ASC,
+  target_resource_id ASC
 `;
 
 /** Canonical targets are fetched separately to stay below D1's row-size cap. */
@@ -255,6 +275,17 @@ export type ProviderModelIdExactInput = Readonly<{
   limit: number;
 }>;
 
+export type MergedProviderModelIdExactContinuation = Readonly<{
+  matchMode: "raw" | "normalized";
+  resourceId: string;
+}>;
+
+export type MergedProviderModelIdExactInput = Readonly<
+  Omit<ProviderModelIdExactInput, "continuation"> & {
+    continuation: MergedProviderModelIdExactContinuation | null;
+  }
+>;
+
 export type ProviderModelIdExactDatabase = Pick<D1DatabaseSession, "prepare">;
 
 type KnownDisplayName = Readonly<
@@ -277,6 +308,13 @@ export type ProviderModelIdExactPage = Readonly<{
   results: readonly ProviderModelIdExactResult[];
   matchModes: readonly ("raw" | "normalized")[];
   nextContinuation: ProviderModelIdExactContinuation | null;
+}>;
+
+export type MergedProviderModelIdExactPage = Readonly<{
+  publicationId: string;
+  results: readonly ProviderModelIdExactResult[];
+  matchModes: readonly ("raw" | "normalized")[];
+  nextContinuation: MergedProviderModelIdExactContinuation | null;
 }>;
 
 export type ProviderModelIdExactErrorCode =
@@ -316,6 +354,7 @@ const candidateKeys = [
   "name_projection_version",
   "name_resource_content_hash",
   "normalized_name_utf8",
+  "ordering_name_utf8",
   "display_name_bytes_match",
   "offering_content_hash",
   "offering_id",
@@ -442,7 +481,10 @@ const snapshotD1Blob = (
   }
 };
 
-const validateInput = (value: unknown): ValidatedInput => {
+const validateInput = (
+  value: unknown,
+  stableIdOrdering: boolean,
+): ValidatedInput => {
   const input = snapshot(value);
   if (
     input === null ||
@@ -495,18 +537,21 @@ const validateInput = (value: unknown): ValidatedInput => {
     const continuation = snapshot(input.continuation);
     if (
       continuation === null ||
-      !exactKeys(continuation, [
-        "matchMode",
-        "normalizedTargetDisplayName",
-        "resourceId",
-      ]) ||
+      !exactKeys(
+        continuation,
+        stableIdOrdering
+          ? ["matchMode", "resourceId"]
+          : ["matchMode", "normalizedTargetDisplayName", "resourceId"],
+      ) ||
       (continuation.matchMode !== "raw" &&
         continuation.matchMode !== "normalized") ||
-      typeof continuation.normalizedTargetDisplayName !== "string" ||
-      invalidUnicode(continuation.normalizedTargetDisplayName) ||
-      utf8.encode(continuation.normalizedTargetDisplayName).byteLength < 1 ||
-      utf8.encode(continuation.normalizedTargetDisplayName).byteLength >
-        MODEL_VARIANT_NAME_SEARCH_MAX_NORMALIZED_NAME_UTF8_BYTES ||
+      (!stableIdOrdering &&
+        (typeof continuation.normalizedTargetDisplayName !== "string" ||
+          invalidUnicode(continuation.normalizedTargetDisplayName) ||
+          utf8.encode(continuation.normalizedTargetDisplayName).byteLength <
+            1 ||
+          utf8.encode(continuation.normalizedTargetDisplayName).byteLength >
+            MODEL_VARIANT_NAME_SEARCH_MAX_NORMALIZED_NAME_UTF8_BYTES)) ||
       !targetIdValid(
         input.recordType ??
           (String(continuation.resourceId).startsWith("mdl_")
@@ -516,18 +561,22 @@ const validateInput = (value: unknown): ValidatedInput => {
       )
     )
       return invalid();
-    let renormalized: string;
-    try {
-      renormalized = normalizeExactSearchName(
-        continuation.normalizedTargetDisplayName,
-      );
-    } catch {
-      return invalid();
+    if (!stableIdOrdering) {
+      let renormalized: string;
+      try {
+        renormalized = normalizeExactSearchName(
+          continuation.normalizedTargetDisplayName as string,
+        );
+      } catch {
+        return invalid();
+      }
+      if (renormalized !== continuation.normalizedTargetDisplayName)
+        return invalid();
     }
-    if (renormalized !== continuation.normalizedTargetDisplayName)
-      return invalid();
     afterMatchMode = continuation.matchMode === "raw" ? 0 : 1;
-    afterNormalizedName = continuation.normalizedTargetDisplayName;
+    afterNormalizedName = stableIdOrdering
+      ? ""
+      : (continuation.normalizedTargetDisplayName as string);
     afterResourceId = continuation.resourceId;
   }
   return {
@@ -635,6 +684,7 @@ type Candidate = Readonly<{
   name_projection_version: typeof MODEL_VARIANT_NAME_SEARCH_PROJECTION_VERSION;
   name_resource_content_hash: string;
   normalized_name_utf8: ArrayBuffer;
+  ordering_name_utf8: ArrayBuffer;
   display_name_bytes_match: 1;
   offering_resource_content_hash: string;
   target_resource_content_hash: string;
@@ -647,6 +697,10 @@ const candidate = (value: unknown): Candidate | null => {
   const row = snapshot(value);
   const normalizedName = snapshotD1Blob(
     row?.normalized_name_utf8,
+    MODEL_VARIANT_NAME_SEARCH_MAX_NORMALIZED_NAME_UTF8_BYTES,
+  );
+  const orderingName = snapshotD1Blob(
+    row?.ordering_name_utf8,
     MODEL_VARIANT_NAME_SEARCH_MAX_NORMALIZED_NAME_UTF8_BYTES,
   );
   if (
@@ -672,6 +726,7 @@ const candidate = (value: unknown): Candidate | null => {
     !SHA256.test(row.target_content_hash) ||
     normalizedName === null ||
     normalizedName.byteLength < 1 ||
+    orderingName === null ||
     row.display_name_bytes_match !== 1 ||
     typeof row.offering_resource_content_hash !== "string" ||
     !SHA256.test(row.offering_resource_content_hash) ||
@@ -687,6 +742,7 @@ const candidate = (value: unknown): Candidate | null => {
   return {
     ...row,
     normalized_name_utf8: normalizedName,
+    ordering_name_utf8: orderingName,
   } as unknown as Candidate;
 };
 
@@ -755,11 +811,13 @@ const compareUtf8Bytes = (left: ArrayBuffer, right: ArrayBuffer): number => {
   return leftView.byteLength < rightView.byteLength ? -1 : 1;
 };
 
-export const readProviderModelIdExactPage = async (
+const readProviderModelIdExactPageInternal = async (
   database: ProviderModelIdExactDatabase,
-  input: ProviderModelIdExactInput,
+  input: ProviderModelIdExactInput | MergedProviderModelIdExactInput,
+  excludeCanonicalExactMatch: boolean,
+  stableIdOrdering: boolean,
 ): Promise<ProviderModelIdExactPage> => {
-  const valid = validateInput(input);
+  const valid = validateInput(input, stableIdOrdering);
   let candidateValues: unknown[];
   try {
     const result: unknown = await database
@@ -775,6 +833,8 @@ export const readProviderModelIdExactPage = async (
         valid.afterResourceId,
         valid.limit + 1,
         PROVIDER_MODEL_ID_EXACT_MAX_RESOURCE_BYTES,
+        excludeCanonicalExactMatch ? 1 : 0,
+        stableIdOrdering ? 1 : 0,
       )
       .all();
     candidateValues = rows(result, valid.limit + 2);
@@ -814,16 +874,24 @@ export const readProviderModelIdExactPage = async (
       utf8.encode(row.offering_json).byteLength !== row.offering_json_bytes
     )
       throw new ProviderModelIdExactError("integrity_failure");
+    if (
+      stableIdOrdering
+        ? row.ordering_name_utf8.byteLength !== 0
+        : compareUtf8Bytes(row.ordering_name_utf8, row.normalized_name_utf8) !==
+          0
+    )
+      throw new ProviderModelIdExactError("integrity_failure");
     decodeNormalized(row.normalized_name_utf8);
-    const normalizedComparison = compareUtf8Bytes(
-      row.normalized_name_utf8,
-      prior[1],
-    );
+    const normalizedComparison = stableIdOrdering
+      ? 0
+      : compareUtf8Bytes(row.normalized_name_utf8, prior[1]);
     if (
       row.match_mode < prior[0] ||
       (row.match_mode === prior[0] &&
-        (normalizedComparison < 0 ||
-          (normalizedComparison === 0 && row.target_resource_id <= prior[2])))
+        (stableIdOrdering
+          ? row.target_resource_id <= prior[2]
+          : normalizedComparison < 0 ||
+            (normalizedComparison === 0 && row.target_resource_id <= prior[2])))
     )
       throw new ProviderModelIdExactError("integrity_failure");
     prior = [row.match_mode, row.normalized_name_utf8, row.target_resource_id];
@@ -1043,5 +1111,42 @@ export const readProviderModelIdExactPage = async (
             resourceId: last.resourceId,
           })
         : null,
+  });
+};
+
+/**
+ * Standalone tier reader. Canonical-name overlap is intentionally retained so
+ * this independently testable seam reports the complete provider-model-ID
+ * tier. The merged exact-search reader applies its cross-tier exclusion before
+ * LIMIT through the separate function below.
+ */
+export const readProviderModelIdExactPage = (
+  database: ProviderModelIdExactDatabase,
+  input: ProviderModelIdExactInput,
+): Promise<ProviderModelIdExactPage> =>
+  readProviderModelIdExactPageInternal(database, input, false, false);
+
+/** Composite-only tier read with canonical exact-name overlap removed in SQL. */
+export const readMergedProviderModelIdExactPage = async (
+  database: ProviderModelIdExactDatabase,
+  input: MergedProviderModelIdExactInput,
+): Promise<MergedProviderModelIdExactPage> => {
+  const page = await readProviderModelIdExactPageInternal(
+    database,
+    input,
+    true,
+    true,
+  );
+  return Object.freeze({
+    publicationId: page.publicationId,
+    results: page.results,
+    matchModes: page.matchModes,
+    nextContinuation:
+      page.nextContinuation === null
+        ? null
+        : Object.freeze({
+            matchMode: page.nextContinuation.matchMode,
+            resourceId: page.nextContinuation.resourceId,
+          }),
   });
 };

@@ -2,10 +2,12 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 
 import {
   readModelVariantExactNameTierV1,
+  readMergedExactSearchV1,
   readProviderModelIdExactTierV1,
   readProviderExactNameTierV1,
   resolvePublicationV1,
   type ReadModelVariantExactNameTierV1Outcome,
+  type ReadMergedExactSearchV1Outcome,
   type ReadProviderModelIdExactTierV1Outcome,
   type ReadProviderExactNameTierV1Outcome,
   type ResolvePublicationV1Outcome,
@@ -68,6 +70,16 @@ export class CatalogQueryService extends WorkerEntrypoint<CatalogQueryEnv> {
     input: unknown,
   ): Promise<ReadProviderModelIdExactTierV1Outcome> {
     return readProviderModelIdExactTierV1(
+      this.env.SERVING_DB,
+      this.env.DEPLOYMENT_ENVIRONMENT,
+      input,
+    );
+  }
+
+  readMergedExactSearchV1(
+    input: unknown,
+  ): Promise<ReadMergedExactSearchV1Outcome> {
+    return readMergedExactSearchV1(
       this.env.SERVING_DB,
       this.env.DEPLOYMENT_ENVIRONMENT,
       input,
