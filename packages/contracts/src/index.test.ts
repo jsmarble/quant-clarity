@@ -18,6 +18,8 @@ import {
   ModelFamilySchema,
   PriceSchema,
   PrecisionFormatSchema,
+  PROVIDER_DISPLAY_NAME_MAX_UNICODE_SCALARS,
+  ProviderSchema,
   type PublicationManifest,
   type PublicationHead,
   PublicationHeadSchema,
@@ -137,6 +139,41 @@ describe("canonical public contracts (DATA-040–DATA-061, API-002–API-006)", 
     value,
     observed_at: "2026-08-01T00:00:00.000Z",
     evidence_ids: [`evd_${UUID}`],
+  });
+
+  it("counts provider display-name maxLength in Unicode scalars", () => {
+    const validate = standaloneValidator(ProviderSchema);
+    const provider = {
+      provider_id: `prv_${UUID}`,
+      slug: knownFact("astral-provider"),
+      display_name: knownFact(
+        "\u{1f642}".repeat(PROVIDER_DISPLAY_NAME_MAX_UNICODE_SCALARS),
+      ),
+      official_site: knownFact("https://provider.example"),
+      status: knownFact("active"),
+      active_offering_count: {
+        value: 0,
+        observed_at: "2026-08-01T00:00:00.000Z",
+        derivation_version: "provider-count@1",
+      },
+      precision_coverage: {
+        known_count: 0,
+        unknown_count: 0,
+        known_proportion_decimal: "0",
+        derivation_version: "precision-coverage@1",
+      },
+      last_successful_refresh: knownFact("2026-08-01T00:00:00.000Z"),
+      affiliate_relationship_present: false,
+    };
+    expect(PROVIDER_DISPLAY_NAME_MAX_UNICODE_SCALARS).toBe(200);
+    expect(validate(provider)).toBe(true);
+    expect(
+      validate({
+        ...provider,
+        display_name: knownFact("\u{1f642}".repeat(201)),
+      }),
+    ).toBe(false);
+    expect(validate({ ...provider, display_name: knownFact("") })).toBe(false);
   });
 
   it("requires evidence for public identity names and slugs", () => {

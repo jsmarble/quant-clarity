@@ -1,25 +1,44 @@
 import {
   buildImmutableManifestFromPersistedContent,
+  canonicalizePublicationJson,
   derivePublicationVectorId,
   hashPublicationResourceChunk,
   hashPublicationResourceContent,
   hashPublicationSearchChunk,
   hashPublicationSearchDocumentContent,
   hashPublicationVectorChunk,
+  projectProviderSearchArtifactProofV2,
+  projectProviderSearchProjection,
+  projectProviderSearchStagingV2,
+  projectReadinessReceiptProofV2,
   projectServingClosureSeal,
   projectServingReadinessCommit,
+  projectServingReadinessCommitV2,
+  projectServingReadinessProofV2,
   projectServingReadinessReceiptRows,
   projectServingSwitch,
-  type ImmutablePublicationManifest,
+  projectServingSwitchPreflightProofV2,
+  projectServingSwitchV2,
+  readProviderSearchStagingPersistenceV2,
+  readServingReadinessCommitPersistenceV2,
+  reconstructServingReadinessProofV2FromPersistence,
+  type ProviderSearchStagingProjectionV2,
+  type ProviderSearchArtifactProofV2,
   type PublicationRecord,
   type ReadinessReceipt,
   type ServingClosureRows,
   type ServingReadinessAttestationProjection,
   type ServingReadinessCommitProjection,
+  type ServingReadinessCommitProjectionV2,
+  type ServingReadinessProofV2,
   type ServingReadinessReceiptRows,
   type ServingSwitchArtifactProof,
+  type ServingSwitchArtifactProofV2,
   type ServingSwitchProjection,
+  type ServingSwitchProjectionV2,
   type StoredPublicationHead,
+  type TrustedImmutablePublicationManifest,
+  type TrustedProviderSearchProjection,
 } from "@quant-clarity/publication-core";
 
 const HASH_C = `sha256:${"c".repeat(64)}` as const;
@@ -29,13 +48,19 @@ const MAXIMUM_AGE_MS = 60 * 60 * 1000;
 
 export type ReadyPublicationFixture = Readonly<{
   rows: ServingClosureRows;
-  manifest: ImmutablePublicationManifest;
+  manifest: TrustedImmutablePublicationManifest;
   seal: Awaited<ReturnType<typeof projectServingClosureSeal>>["seal"];
   receipts: ServingReadinessReceiptRows;
   attestation: ServingReadinessAttestationProjection;
   readinessCommit: ServingReadinessCommitProjection;
+  providerProjection: TrustedProviderSearchProjection;
+  providerStaging: ProviderSearchStagingProjectionV2;
+  providerProofV2: ProviderSearchArtifactProofV2;
+  readinessProofV2: ServingReadinessProofV2;
+  readinessCommitV2: ServingReadinessCommitProjectionV2;
   record: PublicationRecord;
   proof: ServingSwitchArtifactProof;
+  proofV2: ServingSwitchArtifactProofV2;
 }>;
 
 const iso = (value: number): string => new Date(value).toISOString();
@@ -43,6 +68,7 @@ const iso = (value: number): string => new Date(value).toISOString();
 export const createReadyPublicationFixture = async (
   publicationId: `pub_${string}`,
   generatedAtMs: number,
+  options: Readonly<{ providerDisplayName?: string }> = {},
 ): Promise<ReadyPublicationFixture> => {
   const providerId = `prv_${UUID_PROVIDER}`;
   const modelId = `mdl_${UUID_MODEL}`;
@@ -58,10 +84,68 @@ export const createReadyPublicationFixture = async (
     resourceId: modelId,
     resourceJson: `{"name":"Model ${publicationId.slice(4, 8)}"}`,
   };
+  const evidenceId = "evd_cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+  const observedAt = iso(generatedAtMs);
+  const providerResourceBase = {
+    resourceType: "provider" as const,
+    resourceId: providerId,
+    resourceJson: canonicalizePublicationJson(
+      JSON.stringify({
+        active_offering_count: {
+          derivation_version: "provider-count@1",
+          observed_at: observedAt,
+          value: 1,
+        },
+        affiliate_relationship_present: false,
+        display_name: {
+          evidence_ids: [evidenceId],
+          observed_at: observedAt,
+          state: "known",
+          value: options.providerDisplayName ?? "Fixture Provider",
+        },
+        last_successful_refresh: {
+          evidence_ids: [evidenceId],
+          observed_at: observedAt,
+          state: "known",
+          value: observedAt,
+        },
+        official_site: {
+          evidence_ids: [evidenceId],
+          observed_at: observedAt,
+          state: "known",
+          value: "https://provider.example",
+        },
+        precision_coverage: {
+          derivation_version: "precision-coverage@1",
+          known_count: 0,
+          known_proportion_decimal: "0",
+          unknown_count: 1,
+        },
+        provider_id: providerId,
+        slug: {
+          evidence_ids: [evidenceId],
+          observed_at: observedAt,
+          state: "known",
+          value: "fixture-provider",
+        },
+        status: {
+          evidence_ids: [evidenceId],
+          observed_at: observedAt,
+          state: "known",
+          value: "active",
+        },
+      }),
+      "object",
+    ),
+  };
   const resources = [
     {
       ...resourceBase,
       contentHash: await hashPublicationResourceContent(resourceBase),
+    },
+    {
+      ...providerResourceBase,
+      contentHash: await hashPublicationResourceContent(providerResourceBase),
     },
   ];
   const documentBase = {
@@ -93,8 +177,8 @@ export const createReadyPublicationFixture = async (
       kind: "resources" as const,
       ordinal: 0,
       firstKey: `model:${modelId}`,
-      lastKey: `model:${modelId}`,
-      itemCount: 1,
+      lastKey: `provider:${providerId}`,
+      itemCount: resources.length,
       contentHash: await hashPublicationResourceChunk(resources),
     },
     {
@@ -145,7 +229,13 @@ export const createReadyPublicationFixture = async (
     enabledProviderScopeVersion: "fixture@1",
     enabledProviderIds: [providerId],
     providerSlices,
-    providerAttributions: [],
+    providerAttributions: [
+      {
+        resourceType: "provider",
+        resourceId: providerId,
+        providerId,
+      },
+    ],
     resources,
     searchDocuments,
     vectors,
@@ -179,7 +269,13 @@ export const createReadyPublicationFixture = async (
       carried_forward: 0,
       freshness_state: slice.freshnessState,
     })),
-    providerAttributions: [],
+    providerAttributions: [
+      {
+        resource_type: "provider",
+        resource_id: providerId,
+        provider_id: providerId,
+      },
+    ],
     resources: resources.map((resource) => ({
       resource_type: resource.resourceType,
       resource_id: resource.resourceId,
@@ -216,7 +312,7 @@ export const createReadyPublicationFixture = async (
     manifestContractVersion: "1.0.0",
     enabledProviderScopeVersion: "fixture@1",
     bundleHash: manifest.bundleHash,
-    stagingRevision: 8,
+    stagingRevision: 10,
     sealedAtMs,
   };
   const { seal } = await projectServingClosureSeal(rows);
@@ -301,6 +397,55 @@ export const createReadyPublicationFixture = async (
   });
   if (decision.decision !== "ready")
     throw new Error("fixture readiness was unexpectedly blocked");
+  const providerProjection = await projectProviderSearchProjection({
+    manifest,
+    providerResources: rows.resources.filter(
+      (resource) => resource.resource_type === "provider",
+    ),
+  });
+  const providerStaging = await projectProviderSearchStagingV2({
+    projection: providerProjection,
+    closureRows: rows,
+  });
+  const providerPersistence =
+    readProviderSearchStagingPersistenceV2(providerStaging);
+  const providerProof = projectProviderSearchArtifactProofV2({
+    manifest,
+    projection: providerProjection,
+    fts: {
+      buildVersion: "provider-name-fts5-unicode61@1",
+      documentCount: providerProjection.documentCount,
+      queryable: true,
+      exactParity: true,
+    },
+  });
+  const evidenceV2 = evidence.map((receipt): ReadinessReceipt =>
+    receipt.kind === "probes"
+      ? { ...receipt, probeSetVersion: "search-gold@2" }
+      : receipt,
+  );
+  const receiptProofsV2 = await Promise.all(
+    evidenceV2.map((receipt) =>
+      projectReadinessReceiptProofV2({
+        receipt,
+        providerProof: receipt.kind === "serving" ? providerProof : null,
+      }),
+    ),
+  );
+  const readinessProofV2 = await projectServingReadinessProofV2({
+    manifest,
+    receiptProofs: receiptProofsV2,
+    environment: "local",
+    readyAtMs,
+    maximumReceiptAgeMs: MAXIMUM_AGE_MS,
+  });
+  const readinessCommitV2 = await projectServingReadinessCommitV2({
+    proof: readinessProofV2,
+    closureRows: rows,
+    persistedSeal: seal,
+    persistedProviderSearchDocuments: providerPersistence.documents,
+    persistedProviderSearchFtsRows: providerPersistence.ftsRows,
+  });
   const record: PublicationRecord = {
     publicationId: manifest.publicationId,
     closureHash: manifest.closureHash,
@@ -338,6 +483,10 @@ export const createReadyPublicationFixture = async (
     neutralityPassed: true,
     versionIsolationPassed: true,
   };
+  const proofV2: ServingSwitchArtifactProofV2 = {
+    ...proof,
+    probeSetVersion: "search-gold@2",
+  };
   return {
     rows,
     manifest,
@@ -345,8 +494,14 @@ export const createReadyPublicationFixture = async (
     receipts,
     attestation: decision.projection.attestation,
     readinessCommit: decision.projection,
+    providerProjection,
+    providerStaging,
+    providerProofV2: providerProof,
+    readinessProofV2,
+    readinessCommitV2,
     record,
     proof,
+    proofV2,
   };
 };
 
@@ -369,6 +524,70 @@ export const createActivationProjection = (
     persistedAttestation: fixture.attestation,
     artifactProof: { ...fixture.proof, observedAtMs: switchedAtMs - 1_000 },
   });
+
+export const createActivationProjectionV2 = async (
+  fixture: ReadyPublicationFixture,
+  switchedAtMs: number,
+  currentHead: StoredPublicationHead | null = null,
+  currentActive: PublicationRecord | null = null,
+): Promise<ServingSwitchProjectionV2> => {
+  const readiness = readServingReadinessCommitPersistenceV2(
+    fixture.readinessCommitV2,
+  );
+  const generation = (currentHead?.generation ?? 0) + 1;
+  const reconstructedReadiness =
+    await reconstructServingReadinessProofV2FromPersistence({
+      manifest: fixture.manifest,
+      providerProjection: fixture.providerProjection,
+      providerFts: {
+        buildVersion: "provider-name-fts5-unicode61@1",
+        documentCount: fixture.providerProjection.documentCount,
+        queryable: true,
+        exactParity: true,
+      },
+      providerSearchDocuments: readiness.providerSearch.documents,
+      providerSearchFtsRows: readiness.providerSearch.ftsRows,
+      receiptRows: readiness.receiptRows,
+      attestation: readiness.attestation,
+    });
+  const preflight = await projectServingSwitchPreflightProofV2({
+    manifest: fixture.manifest,
+    providerProof: fixture.providerProofV2,
+    readinessProof: reconstructedReadiness,
+    context: {
+      switchId: `publication-switch|activate|${String(generation)}|${fixture.record.publicationId}|${fixture.record.closureHash}`,
+      action: "activate",
+      expectedPriorGeneration: currentHead?.generation ?? 0,
+      expectedPriorRollbackCandidatePublicationId:
+        currentHead?.rollbackCandidatePublicationId ?? null,
+      expectedPriorSwitchedAtMs:
+        currentHead === null ? null : Date.parse(currentHead.switchedAt),
+      newGeneration: generation,
+      fromPublicationId: currentActive?.publicationId ?? null,
+      fromClosureHash: currentActive?.closureHash ?? null,
+      toPublicationId: fixture.record.publicationId,
+      toClosureHash: fixture.record.closureHash,
+      switchedAtMs,
+    },
+    artifactProof: { ...fixture.proofV2, observedAtMs: switchedAtMs - 1_000 },
+  });
+  const providerPersistence = readProviderSearchStagingPersistenceV2(
+    fixture.providerStaging,
+  );
+  return projectServingSwitchV2({
+    preflight,
+    target: fixture.record,
+    currentHead,
+    currentActive,
+    authorizedBy: { kind: "pipeline", identityId: "pipeline.fixture" },
+    closureRows: fixture.rows,
+    persistedSeal: fixture.seal,
+    persistedProviderSearchDocuments: providerPersistence.documents,
+    persistedProviderSearchFtsRows: providerPersistence.ftsRows,
+    persistedReceiptRows: readiness.receiptRows,
+    persistedAttestation: readiness.attestation,
+  });
+};
 
 export const createRollbackProjection = (
   target: ReadyPublicationFixture,
@@ -395,3 +614,58 @@ export const createRollbackProjection = (
     persistedAttestation: null,
     artifactProof: { ...target.proof, observedAtMs: switchedAtMs - 1_000 },
   });
+
+export const createRollbackProjectionV2 = async (
+  target: ReadyPublicationFixture,
+  targetFirstActivatedAt: string,
+  currentHead: StoredPublicationHead,
+  currentActive: PublicationRecord,
+  switchedAtMs: number,
+): Promise<ServingSwitchProjectionV2> => {
+  const provider = readProviderSearchStagingPersistenceV2(
+    target.providerStaging,
+  );
+  const targetRecord: PublicationRecord = {
+    ...target.record,
+    state: "superseded",
+    firstActivatedAt: targetFirstActivatedAt,
+    lastHeadReferencedAt: currentHead.switchedAt,
+  };
+  const generation = currentHead.generation + 1;
+  const preflight = await projectServingSwitchPreflightProofV2({
+    manifest: target.manifest,
+    providerProof: target.providerProofV2,
+    readinessProof: null,
+    context: {
+      switchId: `publication-switch|rollback|${String(generation)}|${target.record.publicationId}|${target.record.closureHash}`,
+      action: "rollback",
+      expectedPriorGeneration: currentHead.generation,
+      expectedPriorRollbackCandidatePublicationId:
+        currentHead.rollbackCandidatePublicationId,
+      expectedPriorSwitchedAtMs: Date.parse(currentHead.switchedAt),
+      newGeneration: generation,
+      fromPublicationId: currentActive.publicationId,
+      fromClosureHash: currentActive.closureHash,
+      toPublicationId: target.record.publicationId,
+      toClosureHash: target.record.closureHash,
+      switchedAtMs,
+    },
+    artifactProof: {
+      ...target.proofV2,
+      observedAtMs: switchedAtMs - 1_000,
+    },
+  });
+  return projectServingSwitchV2({
+    preflight,
+    target: targetRecord,
+    currentHead,
+    currentActive,
+    authorizedBy: { kind: "operator", identityId: "operator.fixture" },
+    closureRows: target.rows,
+    persistedSeal: target.seal,
+    persistedProviderSearchDocuments: provider.documents,
+    persistedProviderSearchFtsRows: provider.ftsRows,
+    persistedReceiptRows: null,
+    persistedAttestation: null,
+  });
+};

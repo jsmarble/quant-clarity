@@ -21,3 +21,5 @@ After any thrown or malformed batch result, the adapter opens a new primary-anch
 ## Nonclaims
 
 This slice provides no configured preview or production D1 resource, real R2 immutability or Vectorize visibility proof, protected writer identity or Workflow composition, remote D1 race evidence, provider-name exact-search projection, query/API reader, cache behavior, backup/restore, pruning, multi-PoP chaos, provisioning, deployment, provider publication, or release evidence. Synthetic Miniflare evidence cannot establish remote behavior. Related traceability rows remain `Planned`.
+
+[Phase 4G](phase-4g-provider-search-schema-writers.md) keeps this schema-1.4 adapter unchanged for historical tests and adds a distinct schema-1.5 provider-aware readiness adapter plus revision-bound pre-seal staging. It does not broaden either nominal type across schema versions.

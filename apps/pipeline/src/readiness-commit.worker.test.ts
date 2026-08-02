@@ -92,6 +92,18 @@ const seedSealedPublication = async (
         ],
       ),
     ),
+    ...rows.providerAttributions.map((row) =>
+      statement(
+        database,
+        "INSERT INTO publication_provider_attribution VALUES (?, ?, ?, ?)",
+        [
+          manifest.publicationId,
+          row.resource_type,
+          row.resource_id,
+          row.provider_id,
+        ],
+      ),
+    ),
     ...rows.searchDocuments.map((row) =>
       statement(
         database,
@@ -277,7 +289,12 @@ const expectCleanBuilding = async (
 };
 
 beforeAll(async () => {
-  await applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS);
+  await applyD1Migrations(
+    env.SERVING_DB,
+    env.TEST_MIGRATIONS.filter(
+      (migration) => migration.name <= "0006_exact_generation_activation.sql",
+    ),
+  );
 });
 
 describe("atomic readiness commit in workerd (SRCH-007, PIPE-044, PIPE-050–PIPE-053, QA-006)", () => {

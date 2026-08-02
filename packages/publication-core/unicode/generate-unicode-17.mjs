@@ -306,6 +306,10 @@ const flattenMappings = (entries, valueKey) => {
 };
 
 const nfkcMappings = flattenMappings(nfkcCasefoldRanges, "mapping");
+const nfkcCasefoldMaximumExpansion = Math.max(
+  1,
+  ...nfkcCasefoldRanges.map(({ mapping }) => mapping.length),
+);
 const decompositionEntries = [...canonicalDecompositions]
   .sort(([left], [right]) => left - right)
   .map(([codePoint, mapping]) => ({ codePoint, mapping }));
@@ -353,6 +357,7 @@ export const UNICODE_DATA_SHA256 =
 export const UNICODE_LICENSE_SHA256 =
   "${manifest.license.sha256}";
 export const UNICODE_NORMALIZATION_VECTOR_COUNT = ${normalizationVectorCount};
+export const UNICODE_NFKC_CASEFOLD_MAX_UNICODE_SCALAR_EXPANSION = ${nfkcCasefoldMaximumExpansion};
 
 ${typedArray(
   "NFKC_CASEFOLD_RANGE_STARTS",

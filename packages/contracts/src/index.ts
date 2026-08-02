@@ -160,6 +160,7 @@ export function FactSchema<T extends TSchema>(value: T, schemaId: string) {
 
 const StringFact = (id: string, maxLength = 512) =>
   FactSchema(Type.String({ maxLength }), id);
+export const PROVIDER_DISPLAY_NAME_MAX_UNICODE_SCALARS = 200;
 const DateFact = (id: string) => FactSchema(timestamp(), id);
 const StringArrayFact = (id: string) =>
   FactSchema(
@@ -367,7 +368,13 @@ export const ProviderSchema = Type.Object(
   {
     provider_id: prefixedId("prv"),
     slug: FactSchema(slug(), "ProviderSlugFact"),
-    display_name: StringFact("ProviderDisplayNameFact", 200),
+    display_name: FactSchema(
+      Type.String({
+        minLength: 1,
+        maxLength: PROVIDER_DISPLAY_NAME_MAX_UNICODE_SCALARS,
+      }),
+      "ProviderDisplayNameFact",
+    ),
     official_site: StringFact("ProviderOfficialSiteFact", 2048),
     status: StringFact("ProviderStatusFact", 64),
     active_offering_count: DerivedCountSchema,

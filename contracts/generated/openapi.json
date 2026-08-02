@@ -41269,6 +41269,7 @@
                           "type": "string"
                         },
                         "value": {
+                          "minLength": 1,
                           "maxLength": 200,
                           "type": "string"
                         },
@@ -41908,6 +41909,7 @@
                         "type": "string"
                       },
                       "value": {
+                        "minLength": 1,
                         "maxLength": 200,
                         "type": "string"
                       },

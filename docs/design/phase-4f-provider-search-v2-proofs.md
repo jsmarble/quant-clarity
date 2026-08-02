@@ -1,6 +1,6 @@
 # Phase 4F: dormant provider-search v2 proofs
 
-- Status: local proof primitives implemented; migration, persistence, writers, query, and deployment pending
+- Status: local proof primitives implemented; durable schema/writers continue in Phase 4G; query and deployment pending
 - Decision: [ADR 0021](../decisions/0021-canonical-provider-exact-search.md)
 - Requirements: `SRCH-002`, `SRCH-007`, `PIPE-050`, `PIPE-051`, `PIPE-053`, `BE-011`
 
@@ -20,7 +20,7 @@ The tests preserve every v1 fixed vector and independently encode the v2 serving
 
 ## Version distinction
 
-`ArtifactBinding.schemaVersion` and `publication.versions.schema` identify the canonical publication contract already covered by the closure. They are not the D1 `serving_schema_metadata` migration level. This slice does not require or claim a schema-1.5 database. Migration 0007 must separately require serving schema `1.4.0` and advance it atomically to `1.5.0` with the only adapters allowed to consume these v2 proofs.
+`ArtifactBinding.schemaVersion` and `publication.versions.schema` identify the canonical publication contract already covered by the closure. They are not the D1 `serving_schema_metadata` migration level. This proof-only slice did not require or claim a schema-1.5 database. [Phase 4G](phase-4g-provider-search-schema-writers.md) subsequently implements migration 0007's exact `1.4.0` to `1.5.0` boundary and the only adapters allowed to consume the v2 proof family.
 
 ## Nonclaims and next boundary
 
@@ -28,4 +28,4 @@ No v2 proof can transition a publication, create or replace a head, create switc
 
 Before a D1 writer is implemented, the kernel must wrap these primitives in complete nominal `ServingReadinessCommitProjectionV2` and `ServingSwitchProjectionV2` (or equivalent) values. Those values must expose only trusted typed persistence rows and bind the readiness transition or lifecycle/head/history plan; adapters must reject the bare proof primitives and must never accept the original caller receipts/context beside them.
 
-The next slice must land those complete nominal projections, migration 0007, and the readiness/switch writer cutover together. It must add the provider projection and FTS schema, persist and reread these exact v2 proofs, retain the switch-event `1.0.0` shape through its bound preflight hash, reject legacy populated state, prove `PIPE-052`/`QA-006` transactional failure behavior, and preserve the last known-good head before any query path is added.
+[Phase 4G](phase-4g-provider-search-schema-writers.md) lands those complete nominal projections, migration 0007, pre-seal staging path, and readiness/switch writer cutover as one boundary. It adds the provider projection and FTS schema, reconstructs the v2 readiness proof from persisted rows, retains the switch-event `1.0.0` shape through its bound preflight hash, rejects legacy populated state, exercises transactional failure behavior in SQLite and workerd, and preserves the last known-good head. Provider exact-name query and API integration remain separate later slices.
