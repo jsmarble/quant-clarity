@@ -45,11 +45,8 @@ WITH eligible_publication AS (
         AND publication.state = 'active'
       )
       OR (
-        publication.state = 'superseded'
-      )
-      OR (
         head.rollback_candidate_publication_id = publication.publication_id
-        AND publication.state = 'rolled_back'
+        AND publication.state IN ('superseded', 'rolled_back')
       )
     )
 ), candidate_page AS (
@@ -117,6 +114,8 @@ export type ProviderExactNameInput = Readonly<{
   afterProviderId?: string | null;
   limit?: number;
 }>;
+
+export type ProviderExactNameDatabase = Pick<D1DatabaseSession, "prepare">;
 
 export type ProviderExactNameResult = Readonly<{
   tier: 3;
@@ -373,7 +372,7 @@ const rehydrate = async (
 };
 
 export const readProviderExactNamePage = async (
-  database: D1Database,
+  database: ProviderExactNameDatabase,
   input: ProviderExactNameInput,
 ): Promise<ProviderExactNamePage> => {
   const validated = validateInput(input);
