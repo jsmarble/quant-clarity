@@ -55,3 +55,4 @@ Accepted ADRs describe implementation choices; they do not amend product require
 - [ADR 0017](0017-provider-disposition-persistence.md) — provider dispositions, carried-forward lineage, and non-empty readiness
 - [ADR 0018](0018-sealed-serving-closure-persistence.md) — sealed serving-closure persistence and fail-closed readiness ordering
 - [ADR 0019](0019-seal-bound-readiness-ledger.md) — seal-bound readiness receipts, exact-search FTS, and closed switching order
+- [ADR 0020](0020-exact-generation-publication-switching.md) — fresh switch preflights, exact-generation head changes, and append-only history
