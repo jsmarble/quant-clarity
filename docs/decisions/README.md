@@ -53,3 +53,4 @@ Accepted ADRs describe implementation choices; they do not amend product require
 - [ADR 0015](0015-publication-closure-and-lifecycle.md) — immutable publication closure, lifecycle, search inventory, and deferred pruning
 - [ADR 0016](0016-bounded-local-api-read-protocol.md) — bounded local API decisions, cursors, service envelopes, conditional reads, and cache origin
 - [ADR 0017](0017-provider-disposition-persistence.md) — provider dispositions, carried-forward lineage, and non-empty readiness
+- [ADR 0018](0018-sealed-serving-closure-persistence.md) — sealed serving-closure persistence and fail-closed readiness ordering

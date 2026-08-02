@@ -104,6 +104,18 @@ export type SearchDocumentDescriptor = Readonly<{
   contentHash: Sha256;
 }>;
 
+export type PersistedResourceDescriptor = ResourceDescriptor &
+  Readonly<{ resourceJson: string }>;
+
+export type PersistedSearchDocumentDescriptor = SearchDocumentDescriptor &
+  Readonly<{
+    normalizedName: string;
+    aliasesJson: string;
+    publisherName: string;
+    providerModelIdsJson: string;
+    documentText: string;
+  }>;
+
 export type VectorDescriptor = Readonly<{
   resourceType: SearchResourceType;
   resourceId: string;
@@ -317,6 +329,162 @@ export const hashCanonicalTuple = async (
 ): Promise<Sha256> => {
   return digest(domain, fields);
 };
+
+const canonicalJsonValue = (value: unknown, depth = 0): string => {
+  if (depth > 64) throw new RangeError("publication JSON is too deeply nested");
+  if (value === null) return "null";
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (typeof value === "string") return JSON.stringify(value);
+  if (typeof value === "number") {
+    if (!Number.isSafeInteger(value))
+      throw new TypeError("publication JSON numbers must be safe integers");
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value))
+    return `[${value
+      .map((item) => canonicalJsonValue(item, depth + 1))
+      .join(",")}]`;
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const keys = Object.keys(record);
+    if (keys.some((key) => !/^[\x20-\x7e]+$/u.test(key)))
+      throw new TypeError("publication JSON keys must be printable ASCII");
+    return `{${keys
+      .sort(compareAscii)
+      .map(
+        (key) =>
+          `${JSON.stringify(key)}:${canonicalJsonValue(record[key], depth + 1)}`,
+      )
+      .join(",")}}`;
+  }
+  throw new TypeError("publication JSON contains an unsupported value");
+};
+
+export const canonicalizePublicationJson = (
+  text: string,
+  expectedContainer?: "array" | "object",
+): string => {
+  if (utf8.encode(text).length > 1_000_000)
+    throw new RangeError("publication JSON exceeds the byte limit");
+  let value: unknown;
+  try {
+    value = JSON.parse(text) as unknown;
+  } catch {
+    throw new TypeError("publication JSON is invalid");
+  }
+  if (
+    (expectedContainer === "array" && !Array.isArray(value)) ||
+    (expectedContainer === "object" &&
+      (typeof value !== "object" || value === null || Array.isArray(value)))
+  )
+    throw new TypeError(`publication JSON must be an ${expectedContainer}`);
+  const canonical = canonicalJsonValue(value);
+  if (canonical !== text)
+    throw new TypeError("persisted publication JSON must be canonical");
+  return canonical;
+};
+
+export const hashPublicationResourceContent = async (
+  resource: Pick<
+    PersistedResourceDescriptor,
+    "resourceType" | "resourceId" | "resourceJson"
+  >,
+): Promise<Sha256> => {
+  const canonicalJson = canonicalizePublicationJson(
+    resource.resourceJson,
+    "object",
+  );
+  if (canonicalJson !== resource.resourceJson)
+    throw new TypeError("persisted resource JSON must be canonical");
+  return digest("publication-resource-content", [
+    field("resource_type", "text", resource.resourceType),
+    field("resource_id", "identifier", resource.resourceId),
+    field("resource_json", "text", canonicalJson),
+  ]);
+};
+
+export const hashPublicationSearchDocumentContent = async (
+  document: Pick<
+    PersistedSearchDocumentDescriptor,
+    | "resourceType"
+    | "resourceId"
+    | "documentId"
+    | "normalizedName"
+    | "aliasesJson"
+    | "publisherName"
+    | "providerModelIdsJson"
+    | "documentText"
+  >,
+): Promise<Sha256> => {
+  const canonicalAliases = canonicalizePublicationJson(
+    document.aliasesJson,
+    "array",
+  );
+  const canonicalProviderModelIds = canonicalizePublicationJson(
+    document.providerModelIdsJson,
+    "array",
+  );
+  if (
+    canonicalAliases !== document.aliasesJson ||
+    canonicalProviderModelIds !== document.providerModelIdsJson
+  )
+    throw new TypeError("persisted search JSON must be canonical");
+  return digest("publication-search-document-content", [
+    field("resource_type", "text", document.resourceType),
+    field("resource_id", "identifier", document.resourceId),
+    field("document_id", "identifier", document.documentId),
+    field("normalized_name", "text", document.normalizedName),
+    field("aliases_json", "text", canonicalAliases),
+    field("publisher_name", "text", document.publisherName),
+    field("provider_model_ids_json", "text", canonicalProviderModelIds),
+    field("document_text", "text", document.documentText),
+  ]);
+};
+
+export const hashPublicationResourceChunk = async (
+  resources: readonly ResourceDescriptor[],
+): Promise<Sha256> =>
+  hashRecords(
+    "publication-resources-chunk",
+    resources.map((resource) => [
+      field("resource_type", "text", resource.resourceType),
+      field("resource_id", "identifier", resource.resourceId),
+      field("content_hash", "digest", resource.contentHash),
+    ]),
+  );
+
+export const hashPublicationSearchChunk = async (
+  documents: readonly SearchDocumentDescriptor[],
+): Promise<Sha256> =>
+  hashRecords(
+    "publication-exact_search-chunk",
+    documents.map((document) => [
+      field("resource_type", "text", document.resourceType),
+      field("resource_id", "identifier", document.resourceId),
+      field("document_id", "identifier", document.documentId),
+      field("content_hash", "digest", document.contentHash),
+    ]),
+  );
+
+export const hashPublicationVectorChunk = async (
+  publicationId: PublicationId,
+  vectors: readonly VectorDescriptor[],
+): Promise<Sha256> =>
+  hashRecords(
+    "publication-vectors-chunk",
+    vectors.map((vector) => [
+      field("vector_namespace", "identifier", publicationId),
+      field("resource_type", "text", vector.resourceType),
+      field("resource_id", "identifier", vector.resourceId),
+      field("vector_id", "identifier", vector.vectorId),
+      field(
+        "search_document_content_hash",
+        "digest",
+        vector.searchDocumentContentHash,
+      ),
+      field("embedding_input_hash", "digest", vector.embeddingInputHash),
+    ]),
+  );
 
 const hashRecords = async (
   domain: string,
@@ -869,6 +1037,429 @@ export const buildImmutableManifest = async (
     chunkRootHash: roots.chunkRootHash,
     closureHash,
   });
+};
+
+export type PersistedPublicationManifestInput = Omit<
+  PublicationManifestInput,
+  "resources" | "searchDocuments"
+> &
+  Readonly<{
+    resources: readonly PersistedResourceDescriptor[];
+    searchDocuments: readonly PersistedSearchDocumentDescriptor[];
+  }>;
+
+export interface ServingPublicationClosureRow {
+  readonly publication_id: string;
+  readonly source_run_id: string;
+  readonly parent_publication_id: string | null;
+  readonly generated_at_ms: number;
+  readonly schema_version: string;
+  readonly methodology_version: string;
+  readonly precision_normalization_version: string;
+  readonly precision_display_order_version: string;
+  readonly price_policy_version: string;
+  readonly source_policy_version: string;
+  readonly embedding_version: string;
+  readonly build_commit: string;
+  readonly closure_hash: string;
+}
+
+export interface ServingProviderSliceClosureRow {
+  readonly provider_id: string;
+  readonly provider_slice_id: string | null;
+  readonly provider_run_id: string;
+  readonly adapter_version: string;
+  readonly roster_version: string;
+  readonly source_register_version: string;
+  readonly carried_forward: number;
+  readonly freshness_state: string;
+}
+
+export interface ServingProviderAttributionClosureRow {
+  readonly resource_type: string;
+  readonly resource_id: string;
+  readonly provider_id: string;
+}
+
+export interface ServingResourceClosureRow {
+  readonly resource_type: string;
+  readonly resource_id: string;
+  readonly resource_json: string;
+  readonly content_hash: string;
+}
+
+export interface ServingSearchDocumentClosureRow {
+  readonly document_id: string;
+  readonly resource_type: string;
+  readonly resource_id: string;
+  readonly normalized_name: string;
+  readonly aliases_json: string;
+  readonly publisher_name: string;
+  readonly provider_model_ids_json: string;
+  readonly document_text: string;
+  readonly content_hash: string;
+}
+
+export interface ServingVectorClosureRow {
+  readonly vector_namespace: string;
+  readonly vector_id: string;
+  readonly resource_type: string;
+  readonly resource_id: string;
+  readonly search_document_content_hash: string;
+  readonly embedding_input_hash: string;
+}
+
+export interface ServingChunkClosureRow {
+  readonly kind: string;
+  readonly ordinal: number;
+  readonly first_key: string;
+  readonly last_key: string;
+  readonly item_count: number;
+  readonly content_hash: string;
+}
+
+export interface ServingClosureRows {
+  readonly publication: ServingPublicationClosureRow;
+  readonly providerSlices: readonly ServingProviderSliceClosureRow[];
+  readonly providerAttributions: readonly ServingProviderAttributionClosureRow[];
+  readonly resources: readonly ServingResourceClosureRow[];
+  readonly searchDocuments: readonly ServingSearchDocumentClosureRow[];
+  readonly vectors: readonly ServingVectorClosureRow[];
+  readonly chunks: readonly ServingChunkClosureRow[];
+  readonly manifestContractVersion: "1.0.0";
+  readonly enabledProviderScopeVersion: string;
+  readonly bundleHash: Sha256;
+  readonly stagingRevision: number;
+  readonly sealedAtMs: number;
+}
+
+export interface ServingClosureSealProjection {
+  readonly publication_id: PublicationId;
+  readonly staging_revision: number;
+  readonly manifest_contract_version: "1.0.0";
+  readonly hash_domain: "publication-closure";
+  readonly hash_encoding_version: "1";
+  readonly enabled_provider_scope_version: string;
+  readonly enabled_provider_count: number;
+  readonly provider_slice_count: number;
+  readonly provider_attribution_count: number;
+  readonly resource_count: number;
+  readonly exact_document_count: number;
+  readonly vector_document_count: number;
+  readonly chunk_count: number;
+  readonly bundle_hash: Sha256;
+  readonly enabled_provider_scope_hash: Sha256;
+  readonly provider_slice_hash: Sha256;
+  readonly provider_attribution_hash: Sha256;
+  readonly resource_inventory_hash: Sha256;
+  readonly exact_search_inventory_hash: Sha256;
+  readonly vector_inventory_hash: Sha256;
+  readonly chunk_root_hash: Sha256;
+  readonly closure_hash: Sha256;
+  readonly sealed_at_ms: number;
+}
+
+/**
+ * Controlled-writer boundary for a serving closure. Content digests are
+ * recomputed from persisted bytes before they can participate in the seal.
+ */
+export const buildImmutableManifestFromPersistedContent = async (
+  input: PersistedPublicationManifestInput,
+): Promise<ImmutablePublicationManifest> => {
+  const resources = await Promise.all(
+    input.resources.map(async (resource): Promise<ResourceDescriptor> => {
+      const contentHash = await hashPublicationResourceContent(resource);
+      if (contentHash !== resource.contentHash)
+        throw new TypeError("persisted resource content hash does not match");
+      return {
+        resourceType: resource.resourceType,
+        resourceId: resource.resourceId,
+        contentHash,
+      };
+    }),
+  );
+  const searchDocuments = await Promise.all(
+    input.searchDocuments.map(
+      async (document): Promise<SearchDocumentDescriptor> => {
+        const contentHash =
+          await hashPublicationSearchDocumentContent(document);
+        if (contentHash !== document.contentHash)
+          throw new TypeError(
+            "persisted search document content hash does not match",
+          );
+        return {
+          resourceType: document.resourceType,
+          resourceId: document.resourceId,
+          documentId: document.documentId,
+          contentHash,
+        };
+      },
+    ),
+  );
+  return buildImmutableManifest({
+    ...input,
+    resources,
+    searchDocuments,
+  });
+};
+
+const closedString = <T extends string>(
+  value: string,
+  allowed: readonly T[],
+  label: string,
+): T => {
+  if (!allowed.includes(value as T)) throw new TypeError(`${label} is invalid`);
+  return value as T;
+};
+
+const sha256 = (value: string, label: string): Sha256 => {
+  if (!HASH.test(value)) throw new TypeError(`${label} is invalid`);
+  return value as Sha256;
+};
+
+type ChunkSourceRecord = Readonly<{
+  key: string;
+  fields: readonly CanonicalField[];
+}>;
+
+const projectVerifiedChunks = async (
+  rows: ServingClosureRows,
+): Promise<readonly ChunkDescriptor[]> => {
+  const sources: Readonly<Record<ChunkKind, readonly ChunkSourceRecord[]>> = {
+    resources: rows.resources
+      .map((row) => ({
+        key: `${row.resource_type}:${row.resource_id}`,
+        fields: [
+          field("resource_type", "text", row.resource_type),
+          field("resource_id", "identifier", row.resource_id),
+          field("content_hash", "digest", row.content_hash),
+        ],
+      }))
+      .sort((left, right) => compareAscii(left.key, right.key)),
+    exact_search: rows.searchDocuments
+      .map((row) => ({
+        key: `${row.resource_type}:${row.resource_id}`,
+        fields: [
+          field("resource_type", "text", row.resource_type),
+          field("resource_id", "identifier", row.resource_id),
+          field("document_id", "identifier", row.document_id),
+          field("content_hash", "digest", row.content_hash),
+        ],
+      }))
+      .sort((left, right) => compareAscii(left.key, right.key)),
+    vectors: rows.vectors
+      .map((row) => ({
+        key: `${row.resource_type}:${row.resource_id}`,
+        fields: [
+          field("vector_namespace", "identifier", row.vector_namespace),
+          field("resource_type", "text", row.resource_type),
+          field("resource_id", "identifier", row.resource_id),
+          field("vector_id", "identifier", row.vector_id),
+          field(
+            "search_document_content_hash",
+            "digest",
+            row.search_document_content_hash,
+          ),
+          field("embedding_input_hash", "digest", row.embedding_input_hash),
+        ],
+      }))
+      .sort((left, right) => compareAscii(left.key, right.key)),
+  };
+  const projected: ChunkDescriptor[] = [];
+  for (const kind of ["resources", "exact_search", "vectors"] as const) {
+    const chunks = rows.chunks
+      .filter((row) => row.kind === kind)
+      .sort((left, right) => left.ordinal - right.ordinal);
+    let offset = 0;
+    for (const [ordinal, chunk] of chunks.entries()) {
+      if (chunk.ordinal !== ordinal)
+        throw new TypeError("persisted chunk ordinals are not contiguous");
+      assertSafeInteger(chunk.item_count, 1, "persisted chunk item count");
+      const records = sources[kind].slice(offset, offset + chunk.item_count);
+      if (
+        records.length !== chunk.item_count ||
+        records[0]?.key !== chunk.first_key ||
+        records.at(-1)?.key !== chunk.last_key
+      )
+        throw new TypeError("persisted chunk range does not match inventory");
+      const contentHash = await hashRecords(
+        `publication-${kind}-chunk`,
+        records.map((record) => record.fields),
+      );
+      if (contentHash !== chunk.content_hash)
+        throw new TypeError("persisted chunk content hash does not match");
+      projected.push({
+        kind,
+        ordinal,
+        firstKey: chunk.first_key,
+        lastKey: chunk.last_key,
+        itemCount: chunk.item_count,
+        contentHash,
+      });
+      offset += chunk.item_count;
+    }
+    if (offset !== sources[kind].length)
+      throw new TypeError("persisted chunks do not cover inventory");
+  }
+  return Object.freeze(projected);
+};
+
+/** Exact Phase 4C serving-row projection used by the controlled seal writer. */
+export const projectServingClosureSeal = async (
+  rows: ServingClosureRows,
+): Promise<
+  Readonly<{
+    manifest: ImmutablePublicationManifest;
+    seal: ServingClosureSealProjection;
+  }>
+> => {
+  const publication = rows.publication;
+  assertSafeInteger(rows.stagingRevision, 0, "staging revision");
+  assertSafeInteger(rows.sealedAtMs, 0, "seal time");
+  assertSafeInteger(publication.generated_at_ms, 0, "generated time");
+  if (rows.sealedAtMs < publication.generated_at_ms)
+    throw new TypeError("seal time precedes publication generation");
+  const publicationId = publication.publication_id as PublicationId;
+  const chunks = await projectVerifiedChunks(rows);
+  const manifest = await buildImmutableManifestFromPersistedContent({
+    contractVersion: rows.manifestContractVersion,
+    publicationId,
+    sourceRunId: publication.source_run_id,
+    parentPublicationId:
+      publication.parent_publication_id as PublicationId | null,
+    generatedAt: new Date(publication.generated_at_ms).toISOString(),
+    versions: {
+      schema: publication.schema_version,
+      methodology: publication.methodology_version,
+      precisionNormalization: publication.precision_normalization_version,
+      precisionDisplayOrder: publication.precision_display_order_version,
+      pricePolicy: publication.price_policy_version,
+      sourcePolicy: publication.source_policy_version,
+      embedding: publication.embedding_version,
+      buildCommit: publication.build_commit,
+    },
+    enabledProviderScopeVersion: rows.enabledProviderScopeVersion,
+    enabledProviderIds: rows.providerSlices.map((row) => row.provider_id),
+    providerSlices: rows.providerSlices.map((row) => {
+      if (row.carried_forward !== 0 && row.carried_forward !== 1)
+        throw new TypeError("persisted carried-forward value is invalid");
+      return {
+        providerId: row.provider_id,
+        providerSliceId: row.provider_slice_id,
+        providerRunId: row.provider_run_id,
+        adapterVersion: row.adapter_version,
+        rosterVersion: row.roster_version,
+        sourceRegisterVersion: row.source_register_version,
+        carriedForward: row.carried_forward === 1,
+        freshnessState: closedString(
+          row.freshness_state,
+          ["fresh", "stale", "unavailable"] as const,
+          "persisted provider freshness",
+        ),
+      };
+    }),
+    providerAttributions: rows.providerAttributions.map((row) => ({
+      resourceType: closedString(
+        row.resource_type,
+        ["provider", "offering", "price", "precision_observation"] as const,
+        "persisted provider attribution type",
+      ),
+      resourceId: row.resource_id,
+      providerId: row.provider_id,
+    })),
+    resources: rows.resources.map((row) => ({
+      resourceType: closedString(
+        row.resource_type,
+        RESOURCE_TYPES,
+        "persisted resource type",
+      ),
+      resourceId: row.resource_id,
+      resourceJson: row.resource_json,
+      contentHash: sha256(row.content_hash, "persisted resource hash"),
+    })),
+    searchDocuments: rows.searchDocuments.map((row) => ({
+      resourceType: closedString(
+        row.resource_type,
+        ["model", "variant"] as const,
+        "persisted search resource type",
+      ),
+      resourceId: row.resource_id,
+      documentId: row.document_id,
+      normalizedName: row.normalized_name,
+      aliasesJson: row.aliases_json,
+      publisherName: row.publisher_name,
+      providerModelIdsJson: row.provider_model_ids_json,
+      documentText: row.document_text,
+      contentHash: sha256(row.content_hash, "persisted search hash"),
+    })),
+    vectors: rows.vectors.map((row) => {
+      if (row.vector_namespace !== publication.publication_id)
+        throw new TypeError("persisted vector namespace is invalid");
+      return {
+        resourceType: closedString(
+          row.resource_type,
+          ["model", "variant"] as const,
+          "persisted vector resource type",
+        ),
+        resourceId: row.resource_id,
+        vectorId: row.vector_id,
+        searchDocumentContentHash: sha256(
+          row.search_document_content_hash,
+          "persisted vector search hash",
+        ),
+        embeddingInputHash: sha256(
+          row.embedding_input_hash,
+          "persisted embedding input hash",
+        ),
+      };
+    }),
+    chunks,
+    bundleHash: rows.bundleHash,
+  });
+  if (manifest.closureHash !== publication.closure_hash)
+    throw new TypeError("persisted publication closure hash does not match");
+  const seal: ServingClosureSealProjection = Object.freeze({
+    publication_id: manifest.publicationId,
+    staging_revision: rows.stagingRevision,
+    manifest_contract_version: rows.manifestContractVersion,
+    hash_domain: "publication-closure",
+    hash_encoding_version: "1",
+    enabled_provider_scope_version: rows.enabledProviderScopeVersion,
+    enabled_provider_count: manifest.enabledProviderIds.length,
+    provider_slice_count: manifest.providerSlices.length,
+    provider_attribution_count: manifest.providerAttributions.length,
+    resource_count: manifest.resources.length,
+    exact_document_count: manifest.searchDocuments.length,
+    vector_document_count: manifest.vectors.length,
+    chunk_count: manifest.chunks.length,
+    bundle_hash: manifest.bundleHash,
+    enabled_provider_scope_hash: manifest.enabledProviderScopeHash,
+    provider_slice_hash: manifest.providerSliceHash,
+    provider_attribution_hash: manifest.providerAttributionHash,
+    resource_inventory_hash: manifest.resourceInventoryHash,
+    exact_search_inventory_hash: manifest.exactSearchInventoryHash,
+    vector_inventory_hash: manifest.vectorInventoryHash,
+    chunk_root_hash: manifest.chunkRootHash,
+    closure_hash: manifest.closureHash,
+    sealed_at_ms: rows.sealedAtMs,
+  });
+  return Object.freeze({ manifest, seal });
+};
+
+export const verifyServingClosureSealProjection = async (
+  rows: ServingClosureRows,
+  candidate: ServingClosureSealProjection,
+): Promise<readonly string[]> => {
+  const expected = (await projectServingClosureSeal(rows)).seal;
+  const errors: string[] = [];
+  for (const key of Object.keys(
+    expected,
+  ) as (keyof ServingClosureSealProjection)[])
+    if (candidate[key] !== expected[key])
+      errors.push(`${key} does not match persisted closure`);
+  if (Object.keys(candidate).length !== Object.keys(expected).length)
+    errors.push("seal projection shape does not match persisted closure");
+  return Object.freeze(errors);
 };
 
 export const verifyImmutableManifest = async (
