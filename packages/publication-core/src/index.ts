@@ -1197,6 +1197,111 @@ export const validateManifestInput = (
   return Object.freeze(errors);
 };
 
+// ADR 0021 dormant v2 proof primitives. Existing schema-1.4 adapters accept
+// neither nominal type; migration 0007 must add durable wiring atomically.
+export const READINESS_RECEIPT_VERSION_V2 = "2.0.0" as const;
+export const READINESS_EVALUATOR_VERSION_V2 = "2.0.0" as const;
+export const READINESS_PROBE_SET_VERSION_V2 = "search-gold@2" as const;
+export const PROVIDER_SEARCH_FTS_BUILD_VERSION =
+  "provider-name-fts5-unicode61@1" as const;
+export const SERVING_SWITCH_PREFLIGHT_VERSION_V2 = "2.0.0" as const;
+
+export interface ProviderSearchFtsObservationV2 {
+  readonly buildVersion: typeof PROVIDER_SEARCH_FTS_BUILD_VERSION;
+  readonly documentCount: number;
+  readonly queryable: boolean;
+  readonly exactParity: boolean;
+}
+
+const providerSearchArtifactProofV2Brand: unique symbol = Symbol(
+  "ProviderSearchArtifactProofV2",
+);
+
+export type ProviderSearchArtifactProofV2 = Readonly<{
+  provider_search_projection_version: typeof PROVIDER_SEARCH_PROJECTION_VERSION;
+  provider_search_document_count: number;
+  provider_search_inventory_hash: Sha256;
+  provider_search_fts_build_version: typeof PROVIDER_SEARCH_FTS_BUILD_VERSION;
+  provider_search_fts_document_count: number;
+  provider_search_fts_queryable: true;
+  provider_search_exact_parity: true;
+  readonly [providerSearchArtifactProofV2Brand]: true;
+}>;
+
+const trustedProviderSearchArtifactProofsV2 = new WeakMap<
+  object,
+  TrustedImmutablePublicationManifest
+>();
+
+export const assertProviderSearchArtifactProofV2: (
+  value: unknown,
+) => asserts value is ProviderSearchArtifactProofV2 = (value) => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !(providerSearchArtifactProofV2Brand in value) ||
+    value[providerSearchArtifactProofV2Brand] !== true ||
+    !trustedProviderSearchArtifactProofsV2.has(value)
+  )
+    throw new TypeError("provider search artifact proof v2 is not trusted");
+};
+
+export const projectProviderSearchArtifactProofV2 = (input: {
+  readonly manifest: TrustedImmutablePublicationManifest;
+  readonly projection: TrustedProviderSearchProjection;
+  readonly fts: ProviderSearchFtsObservationV2;
+}): ProviderSearchArtifactProofV2 => {
+  assertImmutablePublicationManifest(input.manifest);
+  assertProviderSearchProjection(input.projection);
+  const ftsRecord = inputRecord(input.fts, "provider search FTS observation");
+  if (
+    !hasExactKeys(ftsRecord, [
+      "buildVersion",
+      "documentCount",
+      "queryable",
+      "exactParity",
+    ])
+  )
+    throw new TypeError("provider search FTS observation shape is invalid");
+  const fts = {
+    buildVersion: ftsRecord.buildVersion,
+    documentCount: ftsRecord.documentCount,
+    queryable: ftsRecord.queryable,
+    exactParity: ftsRecord.exactParity,
+  };
+  if (
+    input.projection.publicationId !== input.manifest.publicationId ||
+    input.projection.closureHash !== input.manifest.closureHash ||
+    input.projection.documentCount !== input.projection.documents.length ||
+    !HASH.test(input.projection.inventoryHash) ||
+    fts.buildVersion !== PROVIDER_SEARCH_FTS_BUILD_VERSION ||
+    !isNonnegativeSafeInteger(fts.documentCount) ||
+    fts.documentCount !== input.projection.documentCount ||
+    fts.queryable !== true ||
+    fts.exactParity !== true
+  )
+    throw new TypeError(
+      "provider search artifact proof does not match the trusted projection",
+    );
+  const proof = {
+    provider_search_projection_version: input.projection.projectionVersion,
+    provider_search_document_count: input.projection.documentCount,
+    provider_search_inventory_hash: input.projection.inventoryHash,
+    provider_search_fts_build_version: PROVIDER_SEARCH_FTS_BUILD_VERSION,
+    provider_search_fts_document_count: input.projection.documentCount,
+    provider_search_fts_queryable: true as const,
+    provider_search_exact_parity: true as const,
+  };
+  Object.defineProperty(proof, providerSearchArtifactProofV2Brand, {
+    value: true,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  trustedProviderSearchArtifactProofsV2.set(proof, input.manifest);
+  return Object.freeze(proof) as ProviderSearchArtifactProofV2;
+};
+
 const manifestRoots = async (input: PublicationManifestInput) => {
   const enabledProviderIds = [...input.enabledProviderIds].sort(compareAscii);
   const providerSlices = [...input.providerSlices].sort((left, right) =>
@@ -2560,9 +2665,11 @@ const validateReceiptShape = (value: unknown): value is ReadinessReceipt => {
 
 const readinessReceiptHash = async (
   receipt: ReadinessReceipt,
+  receiptVersion = "1.0.0",
+  servingSuffix: readonly CanonicalField[] = [],
 ): Promise<Sha256> => {
   const common: CanonicalField[] = [
-    field("receipt_version", "text", "1.0.0"),
+    field("receipt_version", "text", receiptVersion),
     field("kind", "text", receipt.kind),
     field("environment", "text", receipt.binding.environment),
     field("publication_id", "identifier", receipt.binding.publicationId),
@@ -2706,7 +2813,11 @@ const readinessReceiptHash = async (
       );
       break;
   }
-  return digest("publication-readiness-receipt", [...common, ...specific]);
+  return digest("publication-readiness-receipt", [
+    ...common,
+    ...specific,
+    ...(receipt.kind === "serving" ? servingSuffix : []),
+  ]);
 };
 
 const receiptFlag = (value: number, label: string): boolean => {
@@ -4900,4 +5011,931 @@ export const validateBackupManifest = async (
     errors.push("backup root hash inputs are invalid");
   }
   return Object.freeze(errors);
+};
+
+const providerSearchProofFieldsV2 = (
+  proof: ProviderSearchArtifactProofV2,
+): readonly CanonicalField[] => [
+  field(
+    "provider_search_projection_version",
+    "text",
+    proof.provider_search_projection_version,
+  ),
+  field(
+    "provider_search_document_count",
+    "integer",
+    String(proof.provider_search_document_count),
+  ),
+  field(
+    "provider_search_inventory_hash",
+    "digest",
+    proof.provider_search_inventory_hash,
+  ),
+  field(
+    "provider_search_fts_build_version",
+    "text",
+    proof.provider_search_fts_build_version,
+  ),
+  field(
+    "provider_search_fts_document_count",
+    "integer",
+    String(proof.provider_search_fts_document_count),
+  ),
+  field(
+    "provider_search_fts_queryable",
+    "boolean",
+    String(proof.provider_search_fts_queryable),
+  ),
+  field(
+    "provider_search_exact_parity",
+    "boolean",
+    String(proof.provider_search_exact_parity),
+  ),
+];
+
+const readinessReceiptProofV2Brand: unique symbol = Symbol(
+  "ReadinessReceiptProofV2",
+);
+
+export type ReadinessReceiptProofV2 = Readonly<{
+  kind: ReadinessReceipt["kind"];
+  receipt_version: typeof READINESS_RECEIPT_VERSION_V2;
+  receipt_hash: Sha256;
+  publication_id: PublicationId;
+  environment: Exclude<PublicationEnvironment, "test">;
+  closure_hash: Sha256;
+  bundle_hash: Sha256;
+  observed_at_ms: number;
+  readonly [readinessReceiptProofV2Brand]: true;
+}>;
+
+interface ReadinessReceiptProofV2Binding {
+  readonly receipt: ReadinessReceipt;
+  readonly providerProof: ProviderSearchArtifactProofV2 | null;
+}
+
+const trustedReadinessReceiptProofsV2 = new WeakMap<
+  object,
+  ReadinessReceiptProofV2Binding
+>();
+
+export const assertReadinessReceiptProofV2: (
+  value: unknown,
+) => asserts value is ReadinessReceiptProofV2 = (value) => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !(readinessReceiptProofV2Brand in value) ||
+    value[readinessReceiptProofV2Brand] !== true ||
+    !trustedReadinessReceiptProofsV2.has(value)
+  )
+    throw new TypeError("readiness receipt proof v2 is not trusted");
+};
+
+const snapshotReadinessReceipt = (value: unknown): ReadinessReceipt => {
+  const receipt = inputRecord(value, "readiness receipt v2");
+  const kind = receipt.kind;
+  if (
+    kind !== "archive" &&
+    kind !== "serving" &&
+    kind !== "vectors" &&
+    kind !== "probes"
+  )
+    throw new TypeError("readiness receipt v2 kind is invalid");
+  const keysByKind = {
+    archive: [
+      "kind",
+      "binding",
+      "observedAt",
+      "retainedBundleHash",
+      "immutable",
+    ],
+    serving: [
+      "kind",
+      "binding",
+      "observedAt",
+      "enabledProviderCount",
+      "enabledProviderScopeHash",
+      "providerSliceCount",
+      "providerSliceHash",
+      "providerAttributionCount",
+      "providerAttributionHash",
+      "resourceCount",
+      "exactDocumentCount",
+      "resourceInventoryHash",
+      "exactSearchInventoryHash",
+      "ftsBuildVersion",
+      "ftsDocumentCount",
+      "ftsQueryable",
+      "foreignKeysValid",
+      "contentHashesValid",
+      "unavailableProviderIsolationValid",
+    ],
+    vectors: [
+      "kind",
+      "binding",
+      "observedAt",
+      "namespace",
+      "documentCount",
+      "verifiedDocumentCount",
+      "vectorInventoryHash",
+      "visibilityProbeVersion",
+      "mutationId",
+      "allIdsPresent",
+      "allNamespacesMatch",
+      "queryable",
+    ],
+    probes: [
+      "kind",
+      "binding",
+      "observedAt",
+      "probeSetVersion",
+      "integrityPassed",
+      "evidenceCoveragePassed",
+      "exactSearchPassed",
+      "semanticSearchPassed",
+      "structuredFilterPassed",
+      "neutralityPassed",
+      "versionIsolationPassed",
+    ],
+  } as const;
+  if (!hasExactKeys(receipt, keysByKind[kind]))
+    throw new TypeError("readiness receipt v2 shape is invalid");
+  const rawBinding = inputRecord(
+    receipt.binding,
+    "readiness receipt v2 binding",
+  );
+  if (
+    !hasExactKeys(rawBinding, [
+      "environment",
+      "publicationId",
+      "closureHash",
+      "bundleHash",
+      "schemaVersion",
+      "buildCommit",
+    ])
+  )
+    throw new TypeError("readiness receipt v2 binding shape is invalid");
+  const binding = Object.freeze({
+    environment: rawBinding.environment,
+    publicationId: rawBinding.publicationId,
+    closureHash: rawBinding.closureHash,
+    bundleHash: rawBinding.bundleHash,
+    schemaVersion: rawBinding.schemaVersion,
+    buildCommit: rawBinding.buildCommit,
+  }) as ArtifactBinding;
+  const common = {
+    kind,
+    binding,
+    observedAt: receipt.observedAt,
+  } as const;
+  let snapshot: ReadinessReceipt;
+  switch (kind) {
+    case "archive":
+      snapshot = Object.freeze({
+        ...common,
+        kind,
+        retainedBundleHash: receipt.retainedBundleHash,
+        immutable: receipt.immutable,
+      }) as ArchiveReceipt;
+      break;
+    case "serving":
+      snapshot = Object.freeze({
+        ...common,
+        kind,
+        enabledProviderCount: receipt.enabledProviderCount,
+        enabledProviderScopeHash: receipt.enabledProviderScopeHash,
+        providerSliceCount: receipt.providerSliceCount,
+        providerSliceHash: receipt.providerSliceHash,
+        providerAttributionCount: receipt.providerAttributionCount,
+        providerAttributionHash: receipt.providerAttributionHash,
+        resourceCount: receipt.resourceCount,
+        exactDocumentCount: receipt.exactDocumentCount,
+        resourceInventoryHash: receipt.resourceInventoryHash,
+        exactSearchInventoryHash: receipt.exactSearchInventoryHash,
+        ftsBuildVersion: receipt.ftsBuildVersion,
+        ftsDocumentCount: receipt.ftsDocumentCount,
+        ftsQueryable: receipt.ftsQueryable,
+        foreignKeysValid: receipt.foreignKeysValid,
+        contentHashesValid: receipt.contentHashesValid,
+        unavailableProviderIsolationValid:
+          receipt.unavailableProviderIsolationValid,
+      }) as ServingReceipt;
+      break;
+    case "vectors":
+      snapshot = Object.freeze({
+        ...common,
+        kind,
+        namespace: receipt.namespace,
+        documentCount: receipt.documentCount,
+        verifiedDocumentCount: receipt.verifiedDocumentCount,
+        vectorInventoryHash: receipt.vectorInventoryHash,
+        visibilityProbeVersion: receipt.visibilityProbeVersion,
+        mutationId: receipt.mutationId,
+        allIdsPresent: receipt.allIdsPresent,
+        allNamespacesMatch: receipt.allNamespacesMatch,
+        queryable: receipt.queryable,
+      }) as VectorReceipt;
+      break;
+    case "probes":
+      snapshot = Object.freeze({
+        ...common,
+        kind,
+        probeSetVersion: receipt.probeSetVersion,
+        integrityPassed: receipt.integrityPassed,
+        evidenceCoveragePassed: receipt.evidenceCoveragePassed,
+        exactSearchPassed: receipt.exactSearchPassed,
+        semanticSearchPassed: receipt.semanticSearchPassed,
+        structuredFilterPassed: receipt.structuredFilterPassed,
+        neutralityPassed: receipt.neutralityPassed,
+        versionIsolationPassed: receipt.versionIsolationPassed,
+      }) as ProbeReceipt;
+      break;
+  }
+  if (!validateReceiptShape(snapshot))
+    throw new TypeError("readiness receipt v2 shape is invalid");
+  return snapshot;
+};
+
+export const projectReadinessReceiptProofV2 = async (input: {
+  readonly receipt: ReadinessReceipt;
+  readonly providerProof: ProviderSearchArtifactProofV2 | null;
+}): Promise<ReadinessReceiptProofV2> => {
+  const providerProof = input.providerProof;
+  const receipt = snapshotReadinessReceipt(input.receipt);
+  if (!SERVING_PUBLICATION_ENVIRONMENTS.has(receipt.binding.environment))
+    throw new TypeError("readiness receipt v2 environment is invalid");
+  let providerFields: readonly CanonicalField[] = [];
+  if (receipt.kind === "serving") {
+    assertProviderSearchArtifactProofV2(providerProof);
+    const manifest = trustedProviderSearchArtifactProofsV2.get(providerProof);
+    if (manifest === undefined)
+      throw new TypeError("provider search artifact proof v2 is not trusted");
+    if (
+      receipt.binding.publicationId !== manifest.publicationId ||
+      receipt.binding.closureHash !== manifest.closureHash ||
+      receipt.enabledProviderCount !== manifest.enabledProviderIds.length ||
+      receipt.providerSliceCount !== manifest.providerSlices.length ||
+      receipt.providerAttributionCount !==
+        manifest.providerAttributions.length ||
+      receipt.resourceCount !== manifest.resources.length ||
+      receipt.exactDocumentCount !== manifest.searchDocuments.length ||
+      receipt.resourceInventoryHash !== manifest.resourceInventoryHash ||
+      receipt.exactSearchInventoryHash !== manifest.exactSearchInventoryHash
+    )
+      throw new TypeError(
+        "serving receipt v2 does not bind the trusted publication",
+      );
+    providerFields = providerSearchProofFieldsV2(providerProof);
+  } else if (providerProof !== null) {
+    throw new TypeError("non-serving receipt v2 carries provider proof");
+  }
+  if (
+    receipt.kind === "probes" &&
+    receipt.probeSetVersion !== READINESS_PROBE_SET_VERSION_V2
+  )
+    throw new TypeError("readiness receipt v2 probe set is invalid");
+  const receiptHash = await readinessReceiptHash(
+    receipt,
+    READINESS_RECEIPT_VERSION_V2,
+    providerFields,
+  );
+  const proof = {
+    kind: receipt.kind,
+    receipt_version: READINESS_RECEIPT_VERSION_V2,
+    receipt_hash: receiptHash,
+    publication_id: receipt.binding.publicationId,
+    environment: receipt.binding.environment as Exclude<
+      PublicationEnvironment,
+      "test"
+    >,
+    closure_hash: receipt.binding.closureHash,
+    bundle_hash: receipt.binding.bundleHash,
+    observed_at_ms: assertTimestamp(
+      receipt.observedAt,
+      "readiness receipt v2 observation time",
+    ),
+  };
+  Object.defineProperty(proof, readinessReceiptProofV2Brand, {
+    value: true,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  trustedReadinessReceiptProofsV2.set(
+    proof,
+    Object.freeze({
+      receipt,
+      providerProof,
+    }),
+  );
+  return Object.freeze(proof) as ReadinessReceiptProofV2;
+};
+
+export type ServingReadinessAttestationProjectionV2 = Readonly<{
+  publication_id: PublicationId;
+  environment: Exclude<PublicationEnvironment, "test">;
+  closure_hash: Sha256;
+  bundle_hash: Sha256;
+  evaluator_version: typeof READINESS_EVALUATOR_VERSION_V2;
+  ready_at_ms: number;
+  maximum_receipt_age_ms: number;
+  effective_valid_until_ms: number;
+  archive_observed_at_ms: number;
+  serving_observed_at_ms: number;
+  vector_observed_at_ms: number;
+  probes_observed_at_ms: number;
+  archive_receipt_hash: Sha256;
+  serving_receipt_hash: Sha256;
+  vector_receipt_hash: Sha256;
+  probes_receipt_hash: Sha256;
+  attestation_hash: Sha256;
+}>;
+
+const servingReadinessProofV2Brand: unique symbol = Symbol(
+  "ServingReadinessProofV2",
+);
+const trustedServingReadinessProofsV2 = new WeakSet<object>();
+
+export type ServingReadinessProofV2 = Readonly<{
+  receipts: readonly ReadinessReceiptProofV2[];
+  attestation: ServingReadinessAttestationProjectionV2;
+  readonly [servingReadinessProofV2Brand]: true;
+}>;
+
+export const assertServingReadinessProofV2: (
+  value: unknown,
+) => asserts value is ServingReadinessProofV2 = (value) => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !(servingReadinessProofV2Brand in value) ||
+    value[servingReadinessProofV2Brand] !== true ||
+    !trustedServingReadinessProofsV2.has(value)
+  )
+    throw new TypeError("serving readiness proof v2 is not trusted");
+};
+
+export const projectServingReadinessProofV2 = async (input: {
+  readonly manifest: TrustedImmutablePublicationManifest;
+  readonly receiptProofs: readonly ReadinessReceiptProofV2[];
+  readonly environment: Exclude<PublicationEnvironment, "test">;
+  readonly readyAtMs: number;
+  readonly maximumReceiptAgeMs: number;
+}): Promise<ServingReadinessProofV2> => {
+  const manifest = input.manifest;
+  const candidateReceiptProofs = input.receiptProofs;
+  const environment = input.environment;
+  const readyAtMs = input.readyAtMs;
+  const maximumReceiptAgeMs = input.maximumReceiptAgeMs;
+  assertImmutablePublicationManifest(manifest);
+  if (
+    !Array.isArray(candidateReceiptProofs) ||
+    candidateReceiptProofs.length !== 4 ||
+    !SERVING_PUBLICATION_ENVIRONMENTS.has(environment)
+  )
+    throw new TypeError("serving readiness proof v2 input is invalid");
+  const receiptProofs: ReadinessReceiptProofV2[] = [];
+  for (const candidate of candidateReceiptProofs as readonly unknown[]) {
+    assertReadinessReceiptProofV2(candidate);
+    receiptProofs.push(candidate);
+  }
+  const byKind = new Map(
+    receiptProofs.map((proof) => [proof.kind, proof] as const),
+  );
+  if (byKind.size !== 4)
+    throw new TypeError("serving readiness proof v2 receipt set is incomplete");
+  const requireProof = (
+    kind: ReadinessReceipt["kind"],
+  ): ReadinessReceiptProofV2 => {
+    const proof = byKind.get(kind);
+    if (proof === undefined)
+      throw new TypeError(`readiness receipt v2 ${kind} is missing`);
+    return proof;
+  };
+  const archive = requireProof("archive");
+  const serving = requireProof("serving");
+  const vectors = requireProof("vectors");
+  const probes = requireProof("probes");
+  if (
+    receiptProofs.some(
+      (proof) =>
+        proof.publication_id !== manifest.publicationId ||
+        proof.closure_hash !== manifest.closureHash ||
+        proof.bundle_hash !== manifest.bundleHash ||
+        proof.environment !== environment,
+    )
+  )
+    throw new TypeError("readiness receipt v2 bindings do not match");
+  const servingBinding = trustedReadinessReceiptProofsV2.get(serving);
+  if (servingBinding === undefined)
+    throw new TypeError("serving readiness receipt proof v2 is not trusted");
+  if (servingBinding.providerProof === null)
+    throw new TypeError("serving readiness proof v2 lacks provider evidence");
+  const providerManifest = trustedProviderSearchArtifactProofsV2.get(
+    servingBinding.providerProof,
+  );
+  if (
+    providerManifest?.publicationId !== manifest.publicationId ||
+    providerManifest.closureHash !== manifest.closureHash
+  )
+    throw new TypeError("serving readiness proof v2 uses another manifest");
+  const receipts = receiptProofs.map((proof) => {
+    const binding = trustedReadinessReceiptProofsV2.get(proof);
+    if (binding === undefined)
+      throw new TypeError("readiness receipt proof v2 is not trusted");
+    return binding.receipt;
+  });
+  const evaluationReceipts = receipts.map((receipt): ReadinessReceipt =>
+    receipt.kind === "probes"
+      ? { ...receipt, probeSetVersion: READINESS_PROBE_SET_VERSION }
+      : receipt,
+  );
+  const readyAt = timestampFromMs(readyAtMs, "readiness v2 time");
+  const decision = await evaluateReadiness({
+    manifest,
+    receipts: evaluationReceipts,
+    environment,
+    now: readyAt,
+    maximumReceiptAgeMs,
+  });
+  if (decision.decision === "blocked")
+    throw new TypeError(
+      `serving readiness proof v2 is blocked: ${decision.failureCodes.join(",")}`,
+    );
+  const effectiveValidUntilMs =
+    Math.min(
+      archive.observed_at_ms,
+      serving.observed_at_ms,
+      vectors.observed_at_ms,
+      probes.observed_at_ms,
+    ) + maximumReceiptAgeMs;
+  assertSafeInteger(
+    effectiveValidUntilMs,
+    readyAtMs,
+    "readiness v2 effective validity deadline",
+  );
+  const effectiveValidUntil = timestampFromMs(
+    effectiveValidUntilMs,
+    "readiness v2 effective validity deadline",
+  );
+  const attestationHash = await digest("publication-readiness-attestation", [
+    field("evaluator_version", "text", READINESS_EVALUATOR_VERSION_V2),
+    field("environment", "text", environment),
+    field("publication_id", "identifier", manifest.publicationId),
+    field("closure_hash", "digest", manifest.closureHash),
+    field("bundle_hash", "digest", manifest.bundleHash),
+    field("ready_at", "timestamp", readyAt),
+    field("maximum_receipt_age_ms", "integer", String(maximumReceiptAgeMs)),
+    field("effective_valid_until", "timestamp", effectiveValidUntil),
+    field("archive_receipt_hash", "digest", archive.receipt_hash),
+    field("serving_receipt_hash", "digest", serving.receipt_hash),
+    field("vector_receipt_hash", "digest", vectors.receipt_hash),
+    field("probes_receipt_hash", "digest", probes.receipt_hash),
+  ]);
+  const attestation = Object.freeze({
+    publication_id: manifest.publicationId,
+    environment,
+    closure_hash: manifest.closureHash,
+    bundle_hash: manifest.bundleHash,
+    evaluator_version: READINESS_EVALUATOR_VERSION_V2,
+    ready_at_ms: readyAtMs,
+    maximum_receipt_age_ms: maximumReceiptAgeMs,
+    effective_valid_until_ms: effectiveValidUntilMs,
+    archive_observed_at_ms: archive.observed_at_ms,
+    serving_observed_at_ms: serving.observed_at_ms,
+    vector_observed_at_ms: vectors.observed_at_ms,
+    probes_observed_at_ms: probes.observed_at_ms,
+    archive_receipt_hash: archive.receipt_hash,
+    serving_receipt_hash: serving.receipt_hash,
+    vector_receipt_hash: vectors.receipt_hash,
+    probes_receipt_hash: probes.receipt_hash,
+    attestation_hash: attestationHash,
+  } satisfies ServingReadinessAttestationProjectionV2);
+  const result = {
+    receipts: Object.freeze(receiptProofs),
+    attestation,
+  };
+  Object.defineProperty(result, servingReadinessProofV2Brand, {
+    value: true,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  trustedServingReadinessProofsV2.add(result);
+  return Object.freeze(result) as ServingReadinessProofV2;
+};
+
+export type ServingSwitchArtifactProofV2 = Omit<
+  ServingSwitchArtifactProof,
+  "probeSetVersion"
+> &
+  Readonly<{ probeSetVersion: typeof READINESS_PROBE_SET_VERSION_V2 }>;
+
+export interface ServingSwitchPreflightContextV2 {
+  readonly switchId: string;
+  readonly action: "activate" | "rollback";
+  readonly expectedPriorGeneration: number;
+  readonly expectedPriorRollbackCandidatePublicationId: PublicationId | null;
+  readonly expectedPriorSwitchedAtMs: number | null;
+  readonly newGeneration: number;
+  readonly fromPublicationId: PublicationId | null;
+  readonly fromClosureHash: Sha256 | null;
+  readonly toPublicationId: PublicationId;
+  readonly toClosureHash: Sha256;
+  readonly switchedAtMs: number;
+}
+
+const servingSwitchPreflightProofV2Brand: unique symbol = Symbol(
+  "ServingSwitchPreflightProofV2",
+);
+const trustedServingSwitchPreflightProofsV2 = new WeakSet<object>();
+
+export type ServingSwitchPreflightProofV2 = Readonly<
+  Omit<
+    ServingSwitchPreflightRow,
+    "preflight_version" | "preflight_hash" | "probe_set_version"
+  > & {
+    preflight_version: typeof SERVING_SWITCH_PREFLIGHT_VERSION_V2;
+    preflight_hash: Sha256;
+    probe_set_version: typeof READINESS_PROBE_SET_VERSION_V2;
+    provider_search_projection_version: typeof PROVIDER_SEARCH_PROJECTION_VERSION;
+    provider_search_document_count: number;
+    provider_search_inventory_hash: Sha256;
+    provider_search_fts_build_version: typeof PROVIDER_SEARCH_FTS_BUILD_VERSION;
+    provider_search_fts_document_count: number;
+    provider_search_fts_queryable: 1;
+    provider_search_exact_parity: 1;
+    readonly [servingSwitchPreflightProofV2Brand]: true;
+  }
+>;
+
+export const assertServingSwitchPreflightProofV2: (
+  value: unknown,
+) => asserts value is ServingSwitchPreflightProofV2 = (value) => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !(servingSwitchPreflightProofV2Brand in value) ||
+    value[servingSwitchPreflightProofV2Brand] !== true ||
+    !trustedServingSwitchPreflightProofsV2.has(value)
+  )
+    throw new TypeError("serving switch preflight proof v2 is not trusted");
+};
+
+const switchArtifactProofKeysV2 = [
+  "environment",
+  "observedAtMs",
+  "maximumAgeMs",
+  "ftsBuildVersion",
+  "ftsSourceDocumentCount",
+  "ftsIndexDocumentCount",
+  "ftsSourceInventoryHash",
+  "ftsExactParity",
+  "archiveBundleHash",
+  "archiveImmutable",
+  "vectorNamespace",
+  "vectorDocumentCount",
+  "vectorVerifiedDocumentCount",
+  "vectorInventoryHash",
+  "vectorVisibilityProbeVersion",
+  "vectorMutationId",
+  "vectorAllIdsPresent",
+  "vectorAllNamespacesMatch",
+  "vectorQueryable",
+  "probeSetVersion",
+  "integrityPassed",
+  "exactSearchPassed",
+  "semanticSearchPassed",
+  "structuredFilterPassed",
+  "neutralityPassed",
+  "versionIsolationPassed",
+] as const;
+
+export const projectServingSwitchPreflightProofV2 = async (input: {
+  readonly manifest: TrustedImmutablePublicationManifest;
+  readonly providerProof: ProviderSearchArtifactProofV2;
+  readonly readinessProof: ServingReadinessProofV2 | null;
+  readonly context: ServingSwitchPreflightContextV2;
+  readonly artifactProof: ServingSwitchArtifactProofV2;
+}): Promise<ServingSwitchPreflightProofV2> => {
+  const manifest = input.manifest;
+  const providerProof = input.providerProof;
+  const readinessProof = input.readinessProof;
+  const candidateContext = input.context;
+  const candidateArtifactProof = input.artifactProof;
+  assertImmutablePublicationManifest(manifest);
+  assertProviderSearchArtifactProofV2(providerProof);
+  const providerManifest =
+    trustedProviderSearchArtifactProofsV2.get(providerProof);
+  if (
+    providerManifest?.publicationId !== manifest.publicationId ||
+    providerManifest.closureHash !== manifest.closureHash
+  )
+    throw new TypeError("switch preflight v2 uses another provider manifest");
+  const proofRecord = inputRecord(
+    candidateArtifactProof,
+    "switch artifact proof v2",
+  );
+  if (!hasExactKeys(proofRecord, switchArtifactProofKeysV2))
+    throw new TypeError("switch artifact proof v2 shape is invalid");
+  const proof = {
+    environment: proofRecord.environment,
+    observedAtMs: proofRecord.observedAtMs,
+    maximumAgeMs: proofRecord.maximumAgeMs,
+    ftsBuildVersion: proofRecord.ftsBuildVersion,
+    ftsSourceDocumentCount: proofRecord.ftsSourceDocumentCount,
+    ftsIndexDocumentCount: proofRecord.ftsIndexDocumentCount,
+    ftsSourceInventoryHash: proofRecord.ftsSourceInventoryHash,
+    ftsExactParity: proofRecord.ftsExactParity,
+    archiveBundleHash: proofRecord.archiveBundleHash,
+    archiveImmutable: proofRecord.archiveImmutable,
+    vectorNamespace: proofRecord.vectorNamespace,
+    vectorDocumentCount: proofRecord.vectorDocumentCount,
+    vectorVerifiedDocumentCount: proofRecord.vectorVerifiedDocumentCount,
+    vectorInventoryHash: proofRecord.vectorInventoryHash,
+    vectorVisibilityProbeVersion: proofRecord.vectorVisibilityProbeVersion,
+    vectorMutationId: proofRecord.vectorMutationId,
+    vectorAllIdsPresent: proofRecord.vectorAllIdsPresent,
+    vectorAllNamespacesMatch: proofRecord.vectorAllNamespacesMatch,
+    vectorQueryable: proofRecord.vectorQueryable,
+    probeSetVersion: proofRecord.probeSetVersion,
+    integrityPassed: proofRecord.integrityPassed,
+    exactSearchPassed: proofRecord.exactSearchPassed,
+    semanticSearchPassed: proofRecord.semanticSearchPassed,
+    structuredFilterPassed: proofRecord.structuredFilterPassed,
+    neutralityPassed: proofRecord.neutralityPassed,
+    versionIsolationPassed: proofRecord.versionIsolationPassed,
+  };
+  const contextRecord = inputRecord(candidateContext, "switch context v2");
+  if (
+    !hasExactKeys(contextRecord, [
+      "switchId",
+      "action",
+      "expectedPriorGeneration",
+      "expectedPriorRollbackCandidatePublicationId",
+      "expectedPriorSwitchedAtMs",
+      "newGeneration",
+      "fromPublicationId",
+      "fromClosureHash",
+      "toPublicationId",
+      "toClosureHash",
+      "switchedAtMs",
+    ])
+  )
+    throw new TypeError("switch context v2 shape is invalid");
+  const context = {
+    switchId: contextRecord.switchId,
+    action: contextRecord.action,
+    expectedPriorGeneration: contextRecord.expectedPriorGeneration,
+    expectedPriorRollbackCandidatePublicationId:
+      contextRecord.expectedPriorRollbackCandidatePublicationId,
+    expectedPriorSwitchedAtMs: contextRecord.expectedPriorSwitchedAtMs,
+    newGeneration: contextRecord.newGeneration,
+    fromPublicationId: contextRecord.fromPublicationId,
+    fromClosureHash: contextRecord.fromClosureHash,
+    toPublicationId: contextRecord.toPublicationId,
+    toClosureHash: contextRecord.toClosureHash,
+    switchedAtMs: contextRecord.switchedAtMs,
+  };
+  if (
+    typeof context.switchId !== "string" ||
+    !isAscii(context.switchId) ||
+    context.switchId.length === 0 ||
+    context.switchId.length > 256 ||
+    (context.action !== "activate" && context.action !== "rollback") ||
+    !isNonnegativeSafeInteger(context.expectedPriorGeneration) ||
+    !isNonnegativeSafeInteger(context.newGeneration) ||
+    context.newGeneration !== context.expectedPriorGeneration + 1 ||
+    context.toPublicationId !== manifest.publicationId ||
+    context.toClosureHash !== manifest.closureHash ||
+    (context.fromPublicationId === null) !==
+      (context.fromClosureHash === null) ||
+    (context.expectedPriorRollbackCandidatePublicationId !== null &&
+      (typeof context.expectedPriorRollbackCandidatePublicationId !==
+        "string" ||
+        !PUBLICATION_ID.test(
+          context.expectedPriorRollbackCandidatePublicationId,
+        ))) ||
+    (context.fromPublicationId !== null &&
+      (typeof context.fromPublicationId !== "string" ||
+        !PUBLICATION_ID.test(context.fromPublicationId))) ||
+    (context.fromClosureHash !== null &&
+      (typeof context.fromClosureHash !== "string" ||
+        !HASH.test(context.fromClosureHash)))
+  )
+    throw new TypeError("switch context v2 is invalid");
+  assertSafeInteger(context.switchedAtMs as number, 0, "switch v2 time");
+  assertSafeInteger(proof.observedAtMs as number, 0, "switch v2 observation");
+  assertSafeInteger(proof.maximumAgeMs as number, 0, "switch v2 maximum age");
+  const switchedAtMs = context.switchedAtMs as number;
+  const observedAtMs = proof.observedAtMs as number;
+  const maximumAgeMs = proof.maximumAgeMs as number;
+  if (observedAtMs > switchedAtMs)
+    throw new TypeError("switch v2 observation follows switch time");
+  const validUntilMs = observedAtMs + maximumAgeMs;
+  assertSafeInteger(validUntilMs, switchedAtMs, "switch v2 validity deadline");
+  if (
+    typeof proof.environment !== "string" ||
+    !SERVING_PUBLICATION_ENVIRONMENTS.has(proof.environment) ||
+    proof.ftsBuildVersion !== READINESS_FTS_BUILD_VERSION ||
+    proof.ftsSourceDocumentCount !== manifest.searchDocuments.length ||
+    proof.ftsIndexDocumentCount !== manifest.searchDocuments.length ||
+    proof.ftsSourceInventoryHash !== manifest.exactSearchInventoryHash ||
+    proof.ftsExactParity !== true ||
+    proof.archiveBundleHash !== manifest.bundleHash ||
+    proof.archiveImmutable !== true ||
+    proof.vectorNamespace !== manifest.publicationId ||
+    proof.vectorDocumentCount !== manifest.vectors.length ||
+    proof.vectorVerifiedDocumentCount !== manifest.vectors.length ||
+    proof.vectorInventoryHash !== manifest.vectorInventoryHash ||
+    proof.vectorVisibilityProbeVersion !== VECTOR_VISIBILITY_PROBE_VERSION ||
+    typeof proof.vectorMutationId !== "string" ||
+    !isAscii(proof.vectorMutationId) ||
+    proof.vectorMutationId.length === 0 ||
+    proof.vectorMutationId.length > 128 ||
+    proof.vectorAllIdsPresent !== true ||
+    proof.vectorAllNamespacesMatch !== true ||
+    proof.vectorQueryable !== true ||
+    proof.probeSetVersion !== READINESS_PROBE_SET_VERSION_V2 ||
+    proof.integrityPassed !== true ||
+    proof.exactSearchPassed !== true ||
+    proof.semanticSearchPassed !== true ||
+    proof.structuredFilterPassed !== true ||
+    proof.neutralityPassed !== true ||
+    proof.versionIsolationPassed !== true
+  )
+    throw new TypeError("switch preflight v2 does not prove serving artifacts");
+  let attestationHash: Sha256 | null = null;
+  if (context.action === "activate") {
+    assertServingReadinessProofV2(readinessProof);
+    const attestation = readinessProof.attestation;
+    if (
+      attestation.publication_id !== manifest.publicationId ||
+      attestation.closure_hash !== manifest.closureHash ||
+      attestation.environment !== proof.environment ||
+      switchedAtMs < attestation.ready_at_ms ||
+      switchedAtMs > attestation.effective_valid_until_ms
+    )
+      throw new TypeError("switch activation v2 attestation is invalid");
+    attestationHash = attestation.attestation_hash;
+  } else if (readinessProof !== null) {
+    throw new TypeError("switch rollback v2 carries readiness attestation");
+  }
+  const expectedPriorSwitchedAt =
+    context.expectedPriorSwitchedAtMs === null
+      ? null
+      : timestampFromMs(
+          context.expectedPriorSwitchedAtMs as number,
+          "expected prior switch v2 time",
+        );
+  const switchedAt = timestampFromMs(switchedAtMs, "switch v2 time");
+  const observedAt = timestampFromMs(observedAtMs, "switch v2 observation");
+  const validUntil = timestampFromMs(validUntilMs, "switch v2 validity");
+  const preflightHash = await digest("publication-switch-preflight", [
+    field("preflight_version", "text", SERVING_SWITCH_PREFLIGHT_VERSION_V2),
+    field("action", "text", context.action),
+    field("environment", "text", proof.environment),
+    field(
+      "expected_prior_generation",
+      "integer",
+      String(context.expectedPriorGeneration),
+    ),
+    nullableCanonical(
+      "expected_prior_rollback_candidate_publication_id",
+      "identifier",
+      context.expectedPriorRollbackCandidatePublicationId,
+    ),
+    expectedPriorSwitchedAt === null
+      ? field("expected_prior_switched_at", "null", "null")
+      : field(
+          "expected_prior_switched_at",
+          "timestamp",
+          expectedPriorSwitchedAt,
+        ),
+    field("new_generation", "integer", String(context.newGeneration)),
+    nullableCanonical(
+      "from_publication_id",
+      "identifier",
+      context.fromPublicationId,
+    ),
+    nullableCanonical("from_closure_hash", "digest", context.fromClosureHash),
+    field("to_publication_id", "identifier", manifest.publicationId),
+    field("to_closure_hash", "digest", manifest.closureHash),
+    nullableCanonical("to_attestation_hash", "digest", attestationHash),
+    field("switched_at", "timestamp", switchedAt),
+    field("observed_at", "timestamp", observedAt),
+    field("maximum_age_ms", "integer", String(maximumAgeMs)),
+    field("valid_until", "timestamp", validUntil),
+    field("fts_build_version", "text", proof.ftsBuildVersion),
+    field(
+      "fts_source_document_count",
+      "integer",
+      String(proof.ftsSourceDocumentCount),
+    ),
+    field(
+      "fts_index_document_count",
+      "integer",
+      String(proof.ftsIndexDocumentCount),
+    ),
+    field("fts_source_inventory_hash", "digest", proof.ftsSourceInventoryHash),
+    field("fts_exact_parity", "boolean", "true"),
+    field("archive_bundle_hash", "digest", proof.archiveBundleHash),
+    field("archive_immutable", "boolean", "true"),
+    field("vector_namespace", "identifier", proof.vectorNamespace),
+    field(
+      "vector_document_count",
+      "integer",
+      String(proof.vectorDocumentCount),
+    ),
+    field(
+      "vector_verified_document_count",
+      "integer",
+      String(proof.vectorVerifiedDocumentCount),
+    ),
+    field("vector_inventory_hash", "digest", proof.vectorInventoryHash),
+    field(
+      "vector_visibility_probe_version",
+      "text",
+      proof.vectorVisibilityProbeVersion,
+    ),
+    field("vector_mutation_id", "text", proof.vectorMutationId),
+    field("vector_all_ids_present", "boolean", "true"),
+    field("vector_all_namespaces_match", "boolean", "true"),
+    field("vector_queryable", "boolean", "true"),
+    field("probe_set_version", "text", READINESS_PROBE_SET_VERSION_V2),
+    field("integrity_passed", "boolean", "true"),
+    field("exact_search_passed", "boolean", "true"),
+    field("semantic_search_passed", "boolean", "true"),
+    field("structured_filter_passed", "boolean", "true"),
+    field("neutrality_passed", "boolean", "true"),
+    field("version_isolation_passed", "boolean", "true"),
+    ...providerSearchProofFieldsV2(providerProof),
+  ]);
+  const result = {
+    switch_id: context.switchId,
+    preflight_version: SERVING_SWITCH_PREFLIGHT_VERSION_V2,
+    preflight_hash: preflightHash,
+    action: context.action,
+    environment: proof.environment as Exclude<PublicationEnvironment, "test">,
+    expected_prior_generation: context.expectedPriorGeneration,
+    expected_prior_rollback_candidate_publication_id:
+      context.expectedPriorRollbackCandidatePublicationId as PublicationId | null,
+    expected_prior_switched_at_ms: context.expectedPriorSwitchedAtMs as
+      number | null,
+    new_generation: context.newGeneration,
+    from_publication_id: context.fromPublicationId as PublicationId | null,
+    from_closure_hash: context.fromClosureHash as Sha256 | null,
+    to_publication_id: manifest.publicationId,
+    to_closure_hash: manifest.closureHash,
+    to_attestation_hash: attestationHash,
+    switched_at_ms: switchedAtMs,
+    observed_at_ms: observedAtMs,
+    maximum_age_ms: maximumAgeMs,
+    valid_until_ms: validUntilMs,
+    fts_build_version: proof.ftsBuildVersion as string,
+    fts_source_document_count: proof.ftsSourceDocumentCount,
+    fts_index_document_count: proof.ftsIndexDocumentCount,
+    fts_source_inventory_hash: proof.ftsSourceInventoryHash,
+    fts_exact_parity: 1 as const,
+    archive_bundle_hash: proof.archiveBundleHash,
+    archive_immutable: 1 as const,
+    vector_namespace: proof.vectorNamespace,
+    vector_document_count: proof.vectorDocumentCount,
+    vector_verified_document_count: proof.vectorVerifiedDocumentCount,
+    vector_inventory_hash: proof.vectorInventoryHash,
+    vector_visibility_probe_version:
+      proof.vectorVisibilityProbeVersion as string,
+    vector_mutation_id: proof.vectorMutationId,
+    vector_all_ids_present: 1 as const,
+    vector_all_namespaces_match: 1 as const,
+    vector_queryable: 1 as const,
+    probe_set_version: READINESS_PROBE_SET_VERSION_V2,
+    integrity_passed: 1 as const,
+    exact_search_passed: 1 as const,
+    semantic_search_passed: 1 as const,
+    structured_filter_passed: 1 as const,
+    neutrality_passed: 1 as const,
+    version_isolation_passed: 1 as const,
+    provider_search_projection_version:
+      providerProof.provider_search_projection_version,
+    provider_search_document_count:
+      providerProof.provider_search_document_count,
+    provider_search_inventory_hash:
+      providerProof.provider_search_inventory_hash,
+    provider_search_fts_build_version:
+      providerProof.provider_search_fts_build_version,
+    provider_search_fts_document_count:
+      providerProof.provider_search_fts_document_count,
+    provider_search_fts_queryable: 1 as const,
+    provider_search_exact_parity: 1 as const,
+  };
+  Object.defineProperty(result, servingSwitchPreflightProofV2Brand, {
+    value: true,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  trustedServingSwitchPreflightProofsV2.add(result);
+  return Object.freeze(result) as ServingSwitchPreflightProofV2;
 };
