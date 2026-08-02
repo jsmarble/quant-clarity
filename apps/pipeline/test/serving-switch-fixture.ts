@@ -68,7 +68,10 @@ const iso = (value: number): string => new Date(value).toISOString();
 export const createReadyPublicationFixture = async (
   publicationId: `pub_${string}`,
   generatedAtMs: number,
-  options: Readonly<{ providerDisplayName?: string }> = {},
+  options: Readonly<{
+    providerDisplayName?: string;
+    providerStatus?: string;
+  }> = {},
 ): Promise<ReadyPublicationFixture> => {
   const providerId = `prv_${UUID_PROVIDER}`;
   const modelId = `mdl_${UUID_MODEL}`;
@@ -132,7 +135,7 @@ export const createReadyPublicationFixture = async (
           evidence_ids: [evidenceId],
           observed_at: observedAt,
           state: "known",
-          value: "active",
+          value: options.providerStatus ?? "active",
         },
       }),
       "object",

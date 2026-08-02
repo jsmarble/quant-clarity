@@ -80,6 +80,8 @@ Exit evidence: local decision evidence is recorded in [`phase-4-local-kernel.md`
 
 Phase 5A first implements the pure, storage-free decision boundary in [ADR 0016](../decisions/0016-bounded-local-api-read-protocol.md): bounded validation before limiter effects, versioned authenticated cursors, closed live-only service envelopes, publication-aware conditional responses, fixed trusted cache origin, injected ceilings, and exact/structured search with public semantic processing disabled. Its scope and non-claims are recorded in [`phase-5a-local-api-kernel.md`](phase-5a-local-api-kernel.md). This local work does not advance any traceability row beyond `Planned` or replace the runtime steps below.
 
+Phase 5B adds the first internal serving-D1 reader: a fixed SELECT-only, bounded, canonical-rehydrating provider exact-name operation over already selected ADR 0013 hot publications. Its local/runtime evidence and remaining public-integration, hot-inventory, NUL/storage, and release gaps are recorded in [`phase-5b-provider-exact-name-reader.md`](phase-5b-provider-exact-name-reader.md). Traceability remains `Planned`.
+
 1. Implement the non-routable SELECT-only query Worker and storage-free public API Worker with typed service-binding operations.
 2. Implement every collection/detail route, `Fact<T>` provenance, metadata/next-refresh, exact decimals, filters/sorts, authenticated cursors, CORS, ETags, publication pinning, stable errors, and OpenAPI examples.
 3. Enforce method/query/filter/cursor/result/response/CPU/subrequest/semantic-call bounds and rate-limit every request before head/cache resolution.

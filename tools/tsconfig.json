@@ -11,7 +11,8 @@
     "./**/*.ts",
     "../vitest.config.ts",
     "../vitest.worker.config.ts",
-    "../vitest.pipeline.worker.config.ts"
+    "../vitest.pipeline.worker.config.ts",
+    "../vitest.query.worker.config.ts"
   ],
   "references": [{ "path": "../packages/contracts" }]
 }
