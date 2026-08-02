@@ -129,12 +129,14 @@ The earlier condition wins. A run still in progress does not count as missed unt
 | Table | Purpose | Key constraints |
 |---|---|---|
 | `publication` | Immutable manifest metadata | `publication_id` primary key; state `building`, `ready`, `active`, `superseded`, `rolled_back`, or `failed` |
-| `publication_provider_slice` | Exact provider run or prior publication slice used | Unique provider per publication; carried-forward flag and freshness state required |
+| `publication_provider_slice` | Exact provider run and selected-content disposition, or explicit unavailable disposition | Primary key `(publication_id, provider_id)`; unavailable requires null slice/non-carried state; selected content requires `prn_`; carried reuse preserves provider/run lineage under ADR 0017 |
 | `publication_resource` | Versioned JSON projection for each public resource | Unique `(publication_id, resource_type, resource_id)`; content hash required |
 | `publication_search_document` | Reconstructible exact/keyword document source | Unique `(publication_id, document_id)`; canonical resource ID required |
 | `publication_head` | Singleton active and rollback-candidate pointers | One row, changed only in a D1 transactional batch after readiness |
 
 Snapshot construction fails if any known public field lacks a selected claim, evidence summary, and timestamp; any reference is orphaned; any offering identity tuple collides; any roster item lacks a terminal outcome; or model-card projection contains forbidden provider data beyond the provider count.
+
+Readiness also fails when every provider is unavailable or the candidate contains no public resource. The last known-good head remains authoritative; an intentionally empty first public publication is not defined by the approved product requirements.
 
 The public FTS5 index is reconstructible, not a backup source. Portable backup exports contain ordinary base tables and `publication_search_document` rows. Restore creates a fresh D1 database, imports base tables, creates FTS virtual tables, repopulates them deterministically, and then rebuilds Vectorize. An export path never depends on D1's unsupported export of a database that contains virtual tables.
 
