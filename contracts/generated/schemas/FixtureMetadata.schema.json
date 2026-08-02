@@ -1,0 +1,131 @@
+{
+  "$id": "FixtureMetadata",
+  "additionalProperties": false,
+  "type": "object",
+  "required": [
+    "fixture_kind",
+    "provider_id",
+    "source_types",
+    "lawful_capture_method",
+    "observed_at",
+    "redaction_notes",
+    "retention_permission",
+    "publication_permission",
+    "parser_version",
+    "source_policy_version",
+    "content_hash",
+    "contains_authenticated_content",
+    "approval_reference"
+  ],
+  "properties": {
+    "fixture_kind": {
+      "anyOf": [
+        {
+          "const": "redacted_source",
+          "type": "string"
+        },
+        {
+          "const": "synthetic_non_publishable",
+          "type": "string"
+        }
+      ]
+    },
+    "provider_id": {
+      "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "source_types": {
+      "minItems": 1,
+      "maxItems": 8,
+      "uniqueItems": true,
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "const": "provider_api",
+            "type": "string"
+          },
+          {
+            "const": "authenticated_catalog",
+            "type": "string"
+          },
+          {
+            "const": "public_static_page",
+            "type": "string"
+          },
+          {
+            "const": "public_rendered_page",
+            "type": "string"
+          },
+          {
+            "const": "publisher_checkpoint_repository",
+            "type": "string"
+          }
+        ]
+      }
+    },
+    "lawful_capture_method": {
+      "minLength": 1,
+      "maxLength": 1000,
+      "type": "string"
+    },
+    "observed_at": {
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
+      "type": "string"
+    },
+    "redaction_notes": {
+      "minLength": 1,
+      "maxLength": 2000,
+      "type": "string"
+    },
+    "retention_permission": {
+      "anyOf": [
+        {
+          "const": "synthetic_only",
+          "type": "string"
+        },
+        {
+          "const": "approved_minimized_excerpt",
+          "type": "string"
+        },
+        {
+          "const": "pending",
+          "type": "string"
+        }
+      ]
+    },
+    "publication_permission": {
+      "type": "boolean"
+    },
+    "parser_version": {
+      "minLength": 1,
+      "maxLength": 128,
+      "type": "string"
+    },
+    "source_policy_version": {
+      "minLength": 1,
+      "maxLength": 128,
+      "type": "string"
+    },
+    "content_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "contains_authenticated_content": {
+      "type": "boolean"
+    },
+    "approval_reference": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "maxLength": 512,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  }
+}

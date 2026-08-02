@@ -29,7 +29,7 @@ Exit evidence: approved design state is internally consistent, `git diff --check
 
 ## Phase 1 — reproducible foundation and machine contracts
 
-Status: in progress. The pinned workspace, strict checks, generated contract skeleton, privacy/docs checks, CI, Worker dry-run surfaces, and guarded Astro frontend shell exist; full canonical persistence, provider adapters, and publication pipeline remain incomplete.
+Status: complete on 2026-08-01. PR #1 established the pinned workspace, strict checks, generated contracts, privacy/docs checks, CI, Worker dry-run surfaces, and guarded frontend shell. The Phase 2 branch preserves those gates.
 
 1. Pin Node/npm, create the npm-workspace layout from ADR 0001, install only approved production/development dependencies, and commit one lockfile.
 2. Establish strict TypeScript, formatting/linting, deterministic test configuration, dependency/license/secret scanning, and Wrangler 4 JSONC/type generation.
@@ -40,6 +40,8 @@ Status: in progress. The pinned workspace, strict checks, generated contract ske
 Exit evidence: reproducible clean build, generated-contract diff is empty, preview/production inventory isolation is machine-checked, and `GATE-api-contract` has an executable skeleton without claiming conformance yet.
 
 ## Phase 2 — canonical core and first lawful fixture
+
+Status: in progress. Canonical and serving D1 migrations, constraint/property tests, adapter roster/fixture contracts, a production-disabled Fireworks adapter, synthetic non-publishable fixture, pending source register, and publication-pin ADR 0013 exist locally. Real provider acquisition and Phase 2 exit remain blocked on authorized source-register approval.
 
 1. Implement stable IDs, resource registry/type triggers, organizations/publishers, models/variants/checkpoints/parameters, providers/offerings, typed claim scopes, observations/evidence, claims/conflicts, precision components, exact-decimal prices, schedules/runs, policies, and publication metadata.
 2. Add D1 migrations plus schema/constraint/property tests for identity, typed applicability, precedence, supersession, null/unknown behavior, decimal ordering, staleness, and neutrality.

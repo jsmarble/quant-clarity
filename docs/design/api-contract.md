@@ -10,7 +10,8 @@
 ## Protocol
 
 - JSON uses UTF-8 and `application/json`; OpenAPI is JSON and YAML. GET and HEAD are resource methods, OPTIONS provides non-credentialed CORS, and every mutation method returns `405` with `Allow`.
-- Every data response includes `X-QuantClarity-Publication`. Data responses include `ETag`; active-version responses include `Vary` only on validated representation dimensions. Public responses do not expose a retained request-correlation identifier.
+- Every data `GET` and `HEAD` accepts the optional `X-QuantClarity-Publication` request header and every data response includes the selected value. Without the header or an authenticated cursor, the API resolves the active publication. A cursor implicitly pins its publication and must agree with the header when both are present. Data responses include `ETag`; responses vary on the validated publication header and representation dimensions only. Public responses do not expose a retained request-correlation identifier.
+- A malformed pin is rejected. An expired, unavailable, unknown, or never-public pin returns the same generic `409 publication_expired` with the current publication header and no candidate-state detail. CORS allows the fixed request header and exposes the response header.
 - Clients must ignore additive fields and tolerate unknown enum values. A removed field or changed meaning requires `/v2` or at least six months of published deprecation.
 - Unknown scalar facts are `null`; state-bearing fields use documented extensible enums. Zero is numeric string `"0"`, never null. Collections are always arrays.
 - Decimal amounts are strings; timestamps are RFC 3339 UTC; IDs and slugs are strings.
@@ -153,7 +154,7 @@ Validation and route-cost rate limiting run first. The edge Worker then asks the
 publication_id + resource_type + validated_stable_resource_id + representation
 ```
 
-The public active URL is only a resolver; it is never copied into the cache object identity. The candidate pointer switch therefore creates a new cache namespace without relying on purge. Old HTML or JSON may still be served only when its request is explicitly pinned to that old publication. Free-text search, collections, filters, sorts, cursors, and every request containing a query string are `private, no-store` and never enter the application Cache API.
+The public active URL is only a resolver; it is never copied into the cache object identity. The candidate pointer switch therefore creates a new cache namespace without relying on purge. Old HTML or JSON may still be served only when its request is explicitly pinned to that old publication. Free-text search, collections, filters, sorts, cursors, and every request containing a query string are `private, no-store` and never enter the application Cache API. The internal Cache API key is a synthesized same-origin, non-routable reserved path containing only cache-format version, validated publication ID, resource type, validated canonical stable resource ID, and representation. It never contains the raw URL, slug, query, cursor, request headers, or source-address material.
 
 Astro SSR resolves one publication ID at request start, passes it to every API read, and embeds it as `data-publication-id` and page metadata. Client requests from that page pin to the embedded ID. If that publication has aged beyond hot retention, the API returns `409 publication_expired` with the current publication so the client can reload rather than mix versions. SSR HTML cache keys contain the publication ID; stale-while-revalidate never crosses a publication key. Chaos tests populate multiple PoPs, switch and roll back the pointer, and assert every rendered page/API sequence stays entirely on one version.
 
@@ -161,27 +162,19 @@ Suggested cache directives:
 
 | Response | Browser/CDN policy |
 |---|---|
-| Immutable version-pinned detail | `public, max-age=60, s-maxage=86400, immutable` where URL/edge key includes version |
 | Active path-only detail | browser `max-age=0, must-revalidate`; internal CDN cache by publication plus stable resource ID for 5 minutes |
 | Collections, lists, filters, sorts, cursors, any query string | `private, no-store` |
 | Metadata head | `no-store` to browsers; edge microcache at most 5 seconds only if the whole request remains pinned to the resolved value |
 | Search | `private, no-store` to prevent verbatim query persistence |
 | Errors/429 | `no-store` |
 
-Implementation gap recorded 2026-08-01: the approved public route table does
-not yet define a client-supplied publication-pin path or header. A
-`publication_id` query parameter is not adopted because every query-string
-response must remain `private, no-store`. The frontend's signed internal
-envelope can carry its server-resolved publication without exposing a new
-public parameter, but public-client pinning, immutable version-pinned public
-detail URLs, and the corresponding `409 publication_expired` request trigger
-require a follow-up API ADR before implementation. Until then, contracts must
-not invent a pin parameter or claim immutable public-detail caching; active
-detail and every query response use the conservative documented policies.
+ADR 0013 selects the optional `X-QuantClarity-Publication` header rather than a query parameter or duplicate publication-prefixed route tree. Public immutable versioned URLs remain deferred; safe application caching uses only the synthesized internal key above. The validated header value is public canonical state and is not visitor identity or telemetry.
+
+The query service resolves the active or requested hot publication through one D1 Session and returns its opaque bookmark with the head result. If the API misses its publication-qualified cache entry, its typed data call resumes from that bookmark so another replica cannot be older than the head already observed. The bookmark remains inside the live API-to-query call chain and is never returned, logged, traced, metered, alerted, cached, or stored. A single head-joined query is an allowed equivalent.
 
 ## Frontend-to-API internal request
 
-The frontend Worker rate-limits and validates the original public request at its own ingress, then uses a service binding and an unrouted audience host. Its internal fetch signs a canonical envelope containing version, audience, environment, method, path, canonical query hash, issued-at, and expiry (30 seconds), but no source address or actor key. The API rejects internal fields on public-route requests, wrong audience/environment, clock skew/expiry, or signature mismatch. Secrets are environment-scoped, rotatable with overlapping current/next keys, and never logged. An identical captured envelope may replay only the same non-mutating read inside the short validity window; this bounded residual risk is accepted instead of adding state to the public edge. Tests cover cross-route, cross-environment, exact replay-window behavior, query alteration, expiry, and key rotation.
+The frontend Worker rate-limits and validates the original public request at its own ingress, then uses a service binding and an unrouted audience host. Its internal fetch signs a canonical envelope containing version, audience, environment, method, path, canonical query hash, optional validated publication pin, issued-at, and expiry (30 seconds), but no source address or actor key. The API rejects internal fields on public-route requests, wrong audience/environment, clock skew/expiry, pin alteration, or signature mismatch. Secrets are environment-scoped, rotatable with overlapping current/next keys, and never logged. An identical captured envelope may replay only the same non-mutating read inside the short validity window; this bounded residual risk is accepted instead of adding state to the public edge. Tests cover cross-route, cross-environment, exact replay-window behavior, query or pin alteration, expiry, and key rotation.
 
 ## Errors and status codes
 

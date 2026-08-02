@@ -1,4 +1,5 @@
 import type { ErrorEnvelope } from "@quant-clarity/contracts";
+import { parsePublicationPin } from "@quant-clarity/domain/publication-consistency";
 import { sourcePrefixes } from "@quant-clarity/domain/source-address";
 
 type Env = CloudflareEnv & { RATE_LIMIT_HMAC_KEY: string };
@@ -21,6 +22,7 @@ function json(
   const headers = new Headers({
     ...SECURITY_HEADERS,
     "Access-Control-Allow-Origin": "*",
+    "Access-Control-Expose-Headers": "X-QuantClarity-Publication",
     "Cache-Control": "private, no-store",
   });
   new Headers(extraHeaders).forEach((value, key) => {
@@ -148,9 +150,11 @@ export async function handleRequest(
       status: 204,
       headers: {
         ...SECURITY_HEADERS,
-        "Access-Control-Allow-Headers": "Content-Type, If-None-Match",
+        "Access-Control-Allow-Headers":
+          "Content-Type, If-None-Match, X-QuantClarity-Publication",
         "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
         "Access-Control-Allow-Origin": "*",
+        "Access-Control-Expose-Headers": "X-QuantClarity-Publication",
         "Access-Control-Max-Age": "600",
         "Cache-Control": "private, no-store",
       },
@@ -176,6 +180,16 @@ export async function handleRequest(
       "This route does not accept query parameters.",
       400,
     );
+
+  try {
+    parsePublicationPin(request.headers.get("X-QuantClarity-Publication"));
+  } catch {
+    return error(
+      "invalid_parameter",
+      "X-QuantClarity-Publication must be an exact publication ID.",
+      400,
+    );
+  }
 
   let response: Response;
   if (url.pathname === "/v1/metadata") {

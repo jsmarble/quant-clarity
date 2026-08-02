@@ -8,6 +8,7 @@ test-results
 .astro
 results.sarif
 contracts/generated
+migrations/**/*.sql
 **/worker-configuration.d.ts
 AGENTS.md
 README.md

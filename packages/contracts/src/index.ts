@@ -1045,7 +1045,11 @@ const AdapterSourceSchema = Type.Object(
     source_id: Type.String({ pattern: "^[a-z][a-z0-9_-]{0,63}$" }),
     scheme: Type.Literal("https"),
     host: Type.String({ pattern: DNS_HOST, maxLength: 253 }),
-    path_template: Type.String({ pattern: "^/", maxLength: 1024 }),
+    path_template: Type.String({ pattern: "^/(?!/)", maxLength: 1024 }),
+    safe_locator_template: Type.String({
+      pattern: "^/(?!/)",
+      maxLength: 1024,
+    }),
     parameters: Type.Array(AdapterParameterSchema, {
       maxItems: 64,
     }),
@@ -1054,6 +1058,19 @@ const AdapterSourceSchema = Type.Object(
       Type.Literal("none"),
       Type.Literal("api_key"),
       Type.Literal("bearer"),
+    ]),
+    credential_handle: Type.Union([
+      Type.String({ pattern: "^[A-Z][A-Z0-9_]{0,127}$" }),
+      Type.Null(),
+    ]),
+    credential_injection: Type.Union([
+      Type.Literal("authorization_bearer"),
+      Type.Literal("header"),
+      Type.Null(),
+    ]),
+    credential_header: Type.Union([
+      Type.String({ minLength: 1, maxLength: 64 }),
+      Type.Null(),
     ]),
     allowed_headers: Type.Array(Type.String({ maxLength: 64 }), {
       maxItems: 16,
@@ -1069,7 +1086,7 @@ const AdapterSourceSchema = Type.Object(
     compressed_byte_limit: Type.Integer({ minimum: 1 }),
     uncompressed_byte_limit: Type.Integer({ minimum: 1 }),
     timeout_ms: Type.Integer({ minimum: 1 }),
-    redirect_limit: Type.Integer({ minimum: 0, maximum: 5 }),
+    redirect_limit: Type.Integer({ minimum: 0, maximum: 3 }),
     redirect_hosts: Type.Array(
       Type.String({ pattern: DNS_HOST, maxLength: 253 }),
       {
@@ -1145,6 +1162,11 @@ export const AdapterManifestSchema = Type.Object(
     ),
     compliance_review: Type.Object(
       {
+        register_path: Type.String({
+          pattern: "^docs/compliance/sources/[a-z0-9-]+\\.md$",
+          maxLength: 256,
+        }),
+        register_hash: hash(),
         reviewer_role: Type.String({ minLength: 1, maxLength: 128 }),
         reviewed_at: timestamp(),
         terms_version: Type.String({ minLength: 1, maxLength: 128 }),
@@ -1159,6 +1181,64 @@ export const AdapterManifestSchema = Type.Object(
     ),
   },
   { $id: "AdapterManifest", additionalProperties: false },
+);
+
+export const AdapterRosterSchema = Type.Object(
+  {
+    fixture_kind: Type.Union([
+      Type.Literal("redacted_source"),
+      Type.Literal("synthetic_non_publishable"),
+    ]),
+    provider_id: prefixedId("prv"),
+    roster_version: Type.String({ minLength: 1, maxLength: 128 }),
+    items: Type.Array(
+      Type.Object(
+        {
+          roster_item_id: Type.String({ minLength: 1, maxLength: 256 }),
+          provider_model_id: Type.String({ minLength: 1, maxLength: 512 }),
+          tier_key: Type.String({ maxLength: 128 }),
+          endpoint_class: Type.String({ minLength: 1, maxLength: 128 }),
+          material_region_key: Type.String({ maxLength: 128 }),
+        },
+        { additionalProperties: false },
+      ),
+      { minItems: 1, maxItems: 100_000 },
+    ),
+  },
+  { $id: "AdapterRoster", additionalProperties: false },
+);
+
+export const FixtureMetadataSchema = Type.Object(
+  {
+    fixture_kind: Type.Union([
+      Type.Literal("redacted_source"),
+      Type.Literal("synthetic_non_publishable"),
+    ]),
+    provider_id: prefixedId("prv"),
+    source_types: Type.Array(SourceTypeSchema, {
+      minItems: 1,
+      maxItems: 8,
+      uniqueItems: true,
+    }),
+    lawful_capture_method: Type.String({ minLength: 1, maxLength: 1000 }),
+    observed_at: timestamp(),
+    redaction_notes: Type.String({ minLength: 1, maxLength: 2000 }),
+    retention_permission: Type.Union([
+      Type.Literal("synthetic_only"),
+      Type.Literal("approved_minimized_excerpt"),
+      Type.Literal("pending"),
+    ]),
+    publication_permission: Type.Boolean(),
+    parser_version: Type.String({ minLength: 1, maxLength: 128 }),
+    source_policy_version: Type.String({ minLength: 1, maxLength: 128 }),
+    content_hash: hash(),
+    contains_authenticated_content: Type.Boolean(),
+    approval_reference: Type.Union([
+      Type.String({ minLength: 1, maxLength: 512 }),
+      Type.Null(),
+    ]),
+  },
+  { $id: "FixtureMetadata", additionalProperties: false },
 );
 
 const CandidateEntitySchema = Type.Object(
@@ -1406,9 +1486,11 @@ export const ErrorEnvelopeSchema = Type.Object(
 
 export type AdapterBatch = Static<typeof AdapterBatchSchema>;
 export type AdapterManifest = Static<typeof AdapterManifestSchema>;
+export type AdapterRoster = Static<typeof AdapterRosterSchema>;
 export type DatasetMetadata = Static<typeof DatasetMetadataSchema>;
 export type ErrorEnvelope = Static<typeof ErrorEnvelopeSchema>;
 export type FactState = Static<typeof FactStateSchema>;
+export type FixtureMetadata = Static<typeof FixtureMetadataSchema>;
 export type IdPrefix = Static<typeof IdPrefixSchema>;
 export type PublicationManifest = Static<typeof PublicationManifestSchema>;
 export type PublicationHead = Static<typeof PublicationHeadSchema>;
@@ -1424,6 +1506,11 @@ export function validateAdapterManifestSemantics(
 ): string[] {
   const errors: string[] = [];
   const sourceIds = new Set<string>();
+  const credentialHandles = new Set(
+    manifest.credential_handles.map((credential) => credential.binding_name),
+  );
+  if (credentialHandles.size !== manifest.credential_handles.length)
+    errors.push("duplicate credential handle declaration");
   const productionEnabled =
     manifest.enabled_environments.includes("production");
   const browserSources = manifest.sources.filter(
@@ -1449,6 +1536,19 @@ export function validateAdapterManifestSemantics(
       /\{[a-z][a-z0-9_]*\}/gu,
       "",
     );
+    if (
+      source.path_template.startsWith("//") ||
+      /[\\?#@]/u.test(source.path_template) ||
+      /%(?:2e|2f|5c)/iu.test(source.path_template) ||
+      /(?:^|\/)\.{1,2}(?:\/|$)/u.test(source.path_template)
+    )
+      errors.push(`${source.source_id}: unsafe path template`);
+    if (
+      /[{}\\?#@]/u.test(source.safe_locator_template) ||
+      /%(?:2e|2f|5c)/iu.test(source.safe_locator_template) ||
+      /(?:^|\/)\.{1,2}(?:\/|$)/u.test(source.safe_locator_template)
+    )
+      errors.push(`${source.source_id}: unsafe safe-locator template`);
     const declaredPathParameters = source.parameters
       .filter((parameter) => parameter.location === "path")
       .map((parameter) => parameter.name);
@@ -1502,13 +1602,42 @@ export function validateAdapterManifestSemantics(
     )
       errors.push(`${source.source_id}: source is not production-cleared`);
 
-    if (
-      source.authentication_class !== "none" &&
-      manifest.credential_handles.length === 0
-    )
-      errors.push(
-        `${source.source_id}: authenticated source has no credential handle`,
-      );
+    if (source.authentication_class === "none") {
+      if (
+        source.credential_handle !== null ||
+        source.credential_injection !== null ||
+        source.credential_header !== null
+      )
+        errors.push(
+          `${source.source_id}: unauthenticated source declares credential injection`,
+        );
+    } else {
+      if (
+        source.credential_handle === null ||
+        !credentialHandles.has(source.credential_handle)
+      )
+        errors.push(
+          `${source.source_id}: authenticated source lacks an exact credential handle`,
+        );
+      if (
+        source.authentication_class === "bearer" &&
+        (source.credential_injection !== "authorization_bearer" ||
+          source.credential_header !== "Authorization" ||
+          !source.allowed_headers.includes("Authorization"))
+      )
+        errors.push(
+          `${source.source_id}: bearer source must use the Authorization header`,
+        );
+      if (
+        source.authentication_class === "api_key" &&
+        (source.credential_injection !== "header" ||
+          source.credential_header === null ||
+          !source.allowed_headers.includes(source.credential_header))
+      )
+        errors.push(
+          `${source.source_id}: API key source lacks an allowlisted injection header`,
+        );
+    }
   }
 
   if (browserSources.length > 0 && manifest.budgets.browser_sessions === 0)
@@ -1533,10 +1662,13 @@ export function validateAdapterManifestSemantics(
       errors.push(
         "production requires affirmative compliance review decisions",
       );
-    if (
-      options.asOf !== undefined &&
-      Date.parse(review.next_review_at) <= Date.parse(options.asOf)
-    )
+    const asOfTime =
+      options.asOf === undefined ? Number.NaN : Date.parse(options.asOf);
+    if (!Number.isFinite(asOfTime))
+      errors.push(
+        "production compliance validation requires a valid asOf time",
+      );
+    else if (Date.parse(review.next_review_at) <= asOfTime)
       errors.push("production compliance review is expired");
   }
 
@@ -1578,7 +1710,7 @@ export function validateAdapterBatchSemantics(
       if (source.source_type !== observation.source_type)
         errors.push(`${observation.observation_id}: source_type mismatch`);
       const locatorMatch =
-        /^https:\/\/([a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?)(?:\/|$)/u.exec(
+        /^https:\/\/([a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?)(\/[^?#]*)$/u.exec(
           observation.safe_locator,
         );
       if (locatorMatch === null) {
@@ -1587,7 +1719,15 @@ export function validateAdapterBatchSemantics(
         const allowedHosts = new Set([source.host, ...source.redirect_hosts]);
         if (!allowedHosts.has(locatorMatch[1] ?? ""))
           errors.push(`${observation.observation_id}: unsafe source locator`);
+        if ((locatorMatch[2] ?? "") !== source.safe_locator_template)
+          errors.push(
+            `${observation.observation_id}: source locator does not match its redacted template`,
+          );
       }
+      if (/[?#]/u.test(observation.safe_locator))
+        errors.push(
+          `${observation.observation_id}: source locator must not retain query or fragment data`,
+        );
     }
     if (observation.source_policy_version !== manifest.source_policy_version)
       errors.push(`${observation.observation_id}: source policy mismatch`);
@@ -1613,6 +1753,23 @@ export function validateAdapterBatchSemantics(
   if (candidateCount > manifest.budgets.items_per_run)
     errors.push("candidate count exceeds item budget");
 
+  const offeringScopeKeys = new Map<string, string>();
+  type OfferingScope = Extract<
+    Static<typeof ClaimScopeSchema>,
+    { applicability: unknown }
+  >;
+  const isOfferingScope = (
+    scope: Static<typeof ClaimScopeSchema>,
+  ): scope is OfferingScope => "applicability" in scope;
+  const offeringScopeKey = (scope: OfferingScope): string =>
+    JSON.stringify([
+      scope.applicability.provider_id,
+      scope.applicability.provider_model_id,
+      scope.applicability.tier_key,
+      scope.applicability.endpoint_class,
+      scope.applicability.material_region_key,
+    ]);
+
   for (const [groupIndex, candidates] of candidateGroups.entries()) {
     const candidateIds = new Set<string>();
     for (const candidate of candidates) {
@@ -1631,11 +1788,45 @@ export function validateAdapterBatchSemantics(
           errors.push(`${candidate.candidate_id}: source policy mismatch`);
         if (
           (groupIndex === 5 || groupIndex === 6 || groupIndex === 7) &&
-          fact.scope.scope_kind !== "offering"
+          !isOfferingScope(fact.scope)
         )
           errors.push(
             `${candidate.candidate_id}: price/precision fact lacks exact offering scope`,
           );
+        if (groupIndex === 4) {
+          if (
+            !isOfferingScope(fact.scope) ||
+            fact.scope.subject_resource_id !== candidate.candidate_id
+          ) {
+            errors.push(
+              `${candidate.candidate_id}: offering fact lacks its exact offering scope`,
+            );
+          } else {
+            const key = offeringScopeKey(fact.scope);
+            const existing = offeringScopeKeys.get(candidate.candidate_id);
+            if (existing !== undefined && existing !== key)
+              errors.push(
+                `${candidate.candidate_id}: offering facts disagree on applicability`,
+              );
+            offeringScopeKeys.set(candidate.candidate_id, key);
+          }
+        }
+        if (
+          (groupIndex === 5 || groupIndex === 6 || groupIndex === 7) &&
+          isOfferingScope(fact.scope)
+        ) {
+          const expected = offeringScopeKeys.get(
+            fact.scope.subject_resource_id,
+          );
+          if (
+            expected === undefined ||
+            expected !== offeringScopeKey(fact.scope) ||
+            fact.scope.applicability.provider_id !== batch.provider_id
+          )
+            errors.push(
+              `${candidate.candidate_id}: price/precision scope does not match a candidate offering`,
+            );
+        }
       }
     }
   }
@@ -1671,6 +1862,13 @@ export function validateAdapterBatchSemantics(
     )
       errors.push(
         `${outcome.roster_item_id}: published outcome lacks candidate`,
+      );
+    if (
+      outcome.candidate_offering_id !== null &&
+      !offeringScopeKeys.has(outcome.candidate_offering_id)
+    )
+      errors.push(
+        `${outcome.roster_item_id}: outcome candidate does not exist in offering candidates`,
       );
   }
   for (const rosterItemId of expectedRoster)
@@ -1773,6 +1971,7 @@ export function validatePublicationActivation(
 export const GENERATED_SCHEMAS = {
   AdapterBatch: AdapterBatchSchema,
   AdapterManifest: AdapterManifestSchema,
+  AdapterRoster: AdapterRosterSchema,
   ApiMeta: ApiMetaSchema,
   ApiPage: ApiPageSchema,
   CandidateFact: CandidateFactSchema,
@@ -1785,6 +1984,7 @@ export const GENERATED_SCHEMAS = {
   EvidenceSummaryDetail: EvidenceSummaryDetailSchema,
   ErrorEnvelope: ErrorEnvelopeSchema,
   FactState: FactStateSchema,
+  FixtureMetadata: FixtureMetadataSchema,
   IdPrefix: IdPrefixSchema,
   Model: ModelSchema,
   ModelCollection: ModelCollectionSchema,

@@ -1,0 +1,77 @@
+{
+  "catalog": {
+    "models": [
+      {
+        "name": "accounts/fireworks/models/example-8b",
+        "displayName": "Synthetic Example 8B",
+        "state": "READY",
+        "supportsServerless": true,
+        "baseModelDetails": {
+          "parameterCount": "8000000000",
+          "checkpointFormat": "CHECKPOINT_FORMAT_HUGGINGFACE",
+          "defaultPrecision": "PRECISION_FP8"
+        }
+      }
+    ],
+    "nextPageToken": ""
+  },
+  "pricing": {
+    "rows": [
+      {
+        "providerModelId": "accounts/fireworks/models/example-8b",
+        "tier": "standard",
+        "currency": "USD",
+        "unit": "per_million_tokens",
+        "input": "0.20",
+        "cachedInput": "0.10",
+        "output": "0.20"
+      }
+    ]
+  },
+  "case_matrix": [
+    {
+      "case_id": "normal",
+      "expected": "published_candidate_with_unknowns"
+    },
+    {
+      "case_id": "pagination",
+      "expected": "bounded_two_page_parse"
+    },
+    {
+      "case_id": "missing_cached_price",
+      "expected": "quarantined"
+    },
+    {
+      "case_id": "unknown_precision",
+      "expected": "published_candidate_with_unknowns"
+    },
+    {
+      "case_id": "schema_drift",
+      "expected": "quarantined"
+    },
+    {
+      "case_id": "retrieval_failure",
+      "expected": "phase3_pipeline_pending"
+    },
+    {
+      "case_id": "malicious_oversized_text",
+      "expected": "quarantined"
+    },
+    {
+      "case_id": "equal_authority_conflict",
+      "expected": "current_claim_selector_pending"
+    },
+    {
+      "case_id": "price_roles",
+      "expected": "three_separate_decimal_claims"
+    },
+    {
+      "case_id": "precision_formats",
+      "expected": "bf16_fp16_nvfp4_mxfp4_remain_distinct"
+    },
+    {
+      "case_id": "base_default_precision",
+      "expected": "offering_precision_unknown"
+    }
+  ]
+}

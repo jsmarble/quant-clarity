@@ -41,6 +41,7 @@ const apiSchemaNames = [
   "ProviderDetail",
   "OfferingCollection",
   "OfferingDetail",
+  "PublicationId",
   "PriceCollection",
   "PriceDetail",
   "PrecisionObservationCollection",
@@ -65,11 +66,32 @@ const cacheControlExample: Record<CachePolicy, string> = {
   metadata: "no-store",
 };
 
+const publicationPinParameter = {
+  name: "X-QuantClarity-Publication",
+  in: "header",
+  required: false,
+  description:
+    "Optional exact publication snapshot. A cursor, when present, must encode the same publication.",
+  schema: { $ref: "#/components/schemas/PublicationId" },
+} as const;
+
+function withPublicationPin(parameters: readonly JsonObject[] = []) {
+  return [publicationPinParameter, ...parameters];
+}
+
 function responseHeaders(cachePolicy: CachePolicy) {
   return {
     "Access-Control-Allow-Origin": {
       description: "Public non-credentialed read access.",
       schema: { type: "string", const: "*" },
+    },
+    "Access-Control-Expose-Headers": {
+      description:
+        "Response headers readable by non-credentialed browser clients.",
+      schema: {
+        type: "string",
+        const: "X-QuantClarity-Publication",
+      },
     },
     "Cache-Control": {
       description: "Visitor-safe cache policy for this representation class.",
@@ -77,7 +99,7 @@ function responseHeaders(cachePolicy: CachePolicy) {
     },
     "X-QuantClarity-Publication": {
       description: "Publication ID used for this response.",
-      schema: { type: "string" },
+      schema: { $ref: "#/components/schemas/PublicationId" },
     },
     ETag: {
       description: "Opaque validation tag for the publication representation.",
@@ -166,7 +188,7 @@ function protocolOperations(
     head: {
       operationId: `${operationId}Head`,
       summary: `${summary} headers`,
-      parameters,
+      parameters: withPublicationPin(parameters),
       responses: {
         "200": {
           description:
@@ -174,7 +196,7 @@ function protocolOperations(
           headers: {
             ...responseHeaders(cachePolicy),
             "X-QuantClarity-Publication": {
-              schema: { type: "string" },
+              schema: { $ref: "#/components/schemas/PublicationId" },
             },
             ETag: { schema: { type: "string" } },
           },
@@ -197,6 +219,18 @@ function protocolOperations(
             },
             "Access-Control-Allow-Methods": {
               schema: { type: "string", const: "GET, HEAD, OPTIONS" },
+            },
+            "Access-Control-Allow-Headers": {
+              schema: {
+                type: "string",
+                const: "X-QuantClarity-Publication",
+              },
+            },
+            "Access-Control-Expose-Headers": {
+              schema: {
+                type: "string",
+                const: "X-QuantClarity-Publication",
+              },
             },
             "Cache-Control": {
               schema: { type: "string", const: "private, no-store" },
@@ -311,7 +345,7 @@ function collectionOperation(
     get: {
       operationId,
       summary,
-      parameters,
+      parameters: withPublicationPin(parameters),
       responses: {
         "200": jsonResponse(summary, responseSchema, "collection"),
         ...commonErrors,
@@ -332,7 +366,7 @@ function detailOperation(
     get: {
       operationId,
       summary,
-      parameters: [
+      parameters: withPublicationPin([
         {
           name: parameterName,
           in: "path",
@@ -340,7 +374,7 @@ function detailOperation(
           description,
           schema: { type: "string", minLength: 1, maxLength: 256 },
         },
-      ],
+      ]),
       responses: {
         "200": jsonResponse(summary, responseSchema, "active-detail"),
         "404": errorResponse(
@@ -387,6 +421,7 @@ const openapi = {
       get: {
         summary: "Get active dataset metadata",
         operationId: "getMetadata",
+        parameters: withPublicationPin(),
         responses: {
           "200": jsonResponse(
             "Active dataset metadata",
@@ -584,6 +619,7 @@ const openapi = {
       get: {
         operationId: "getOpenApi",
         summary: "Get the OpenAPI contract",
+        parameters: withPublicationPin(),
         responses: {
           "200": {
             description: "This OpenAPI document",

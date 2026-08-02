@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   assertNonNegativeDecimal,
   compareExactDecimal,
+  decimalSortKey,
   isStale,
   normalizePrecision,
   sourcePrefixes,
@@ -12,11 +13,41 @@ describe("precision normalization (QA-001, QA-010)", () => {
   it("keeps BF16 and FP16 distinct", () => {
     expect(normalizePrecision("bfloat16")).toBe("BF16");
     expect(normalizePrecision("float16")).toBe("FP16");
+    expect(normalizePrecision("nvfp4")).toBe("NVFP4");
+    expect(normalizePrecision("mxfp4")).toBe("MXFP4");
   });
 
   it("keeps missing precision unknown and unfamiliar labels other", () => {
     expect(normalizePrecision(undefined)).toBe("UNKNOWN");
     expect(normalizePrecision("provider-special")).toBe("OTHER");
+  });
+
+  it("preserves the required precision vocabulary without collapsing formats", () => {
+    expect(
+      [
+        "BF16",
+        "FP16",
+        "FP8",
+        "FP6",
+        "FP4",
+        "NVFP4",
+        "MXFP4",
+        "INT8",
+        "INT4",
+        "mixed",
+      ].map((value) => normalizePrecision(value)),
+    ).toEqual([
+      "BF16",
+      "FP16",
+      "FP8",
+      "FP6",
+      "FP4",
+      "NVFP4",
+      "MXFP4",
+      "INT8",
+      "INT4",
+      "MIXED",
+    ]);
   });
 });
 
@@ -39,6 +70,16 @@ describe("exact decimals (API-006, QA-001)", () => {
       "0.0000000000000000001",
     ])
       expect(() => assertNonNegativeDecimal(invalid)).toThrow(RangeError);
+  });
+
+  it("creates fixed-width same-currency sort keys without float conversion", () => {
+    expect(decimalSortKey("0.2")).toBe(
+      "000000000000000000000000.200000000000000000",
+    );
+    expect(decimalSortKey("10.000000000000000001")).toBe(
+      "000000000000000000000010.000000000000000001",
+    );
+    expect(decimalSortKey("2") < decimalSortKey("10")).toBe(true);
   });
 });
 

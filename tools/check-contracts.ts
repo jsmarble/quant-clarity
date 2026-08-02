@@ -81,20 +81,79 @@ for (const [pathName, pathItem] of Object.entries(paths)) {
       );
   for (const [method, operation] of Object.entries(pathItem)) {
     if (!isObject(operation) || !isObject(operation.responses)) continue;
-    if (method === "options" && Array.isArray(operation.parameters)) {
-      for (const parameter of operation.parameters)
-        if (isObject(parameter) && parameter.in !== "path")
-          errors.push(`OPTIONS ${pathName} exposes a non-path parameter`);
+    if (method === "options") {
+      if (Array.isArray(operation.parameters)) {
+        for (const parameter of operation.parameters)
+          if (isObject(parameter) && parameter.in !== "path")
+            errors.push(`OPTIONS ${pathName} exposes a non-path parameter`);
+      }
+      const preflight = operation.responses["204"];
+      const preflightHeaders = isObject(preflight)
+        ? preflight.headers
+        : undefined;
+      for (const requiredHeader of [
+        "Access-Control-Allow-Headers",
+        "Access-Control-Expose-Headers",
+      ])
+        if (
+          !isObject(preflightHeaders) ||
+          !(requiredHeader in preflightHeaders)
+        )
+          errors.push(`OPTIONS ${pathName} 204 lacks ${requiredHeader}`);
     }
-    if (method === "get") {
+    if (method === "get" || method === "head") {
+      const parameters: readonly unknown[] = Array.isArray(operation.parameters)
+        ? operation.parameters
+        : [];
+      const publicationPins = parameters.filter(
+        (parameter) =>
+          isObject(parameter) &&
+          parameter.name === "X-QuantClarity-Publication",
+      );
+      if (publicationPins.length !== 1)
+        errors.push(
+          `${method.toUpperCase()} ${pathName} must expose exactly one publication-pin header`,
+        );
+      else {
+        const publicationPin = publicationPins[0];
+        const schema = isObject(publicationPin)
+          ? publicationPin.schema
+          : undefined;
+        if (
+          !isObject(publicationPin) ||
+          publicationPin.in !== "header" ||
+          publicationPin.required !== false ||
+          !isObject(schema) ||
+          schema.$ref !== "#/components/schemas/PublicationId"
+        )
+          errors.push(
+            `${method.toUpperCase()} ${pathName} has an invalid publication-pin header`,
+          );
+      }
+      if (
+        parameters.some(
+          (parameter) =>
+            isObject(parameter) &&
+            parameter.in === "query" &&
+            parameter.name === "publication_id",
+        )
+      )
+        errors.push(
+          `${method.toUpperCase()} ${pathName} invents a public publication pin query parameter`,
+        );
+
       const success = operation.responses["200"];
       if (isObject(success) && isObject(success.headers)) {
         for (const requiredHeader of [
           "Access-Control-Allow-Origin",
+          "Access-Control-Expose-Headers",
           "Cache-Control",
+          "X-QuantClarity-Publication",
         ])
           if (!(requiredHeader in success.headers))
-            errors.push(`GET ${pathName} 200 lacks ${requiredHeader}`);
+            errors.push(
+              `${method.toUpperCase()} ${pathName} 200 lacks ${requiredHeader}`,
+            );
         const cacheControl = success.headers["Cache-Control"];
         const cacheControlSchema = isObject(cacheControl)
           ? cacheControl.schema
@@ -107,19 +166,18 @@ for (const [pathName, pathItem] of Object.entries(paths)) {
           operation.parameters.some(
             (parameter) => isObject(parameter) && parameter.in === "query",
           );
-        if (hasQueryParameters && cacheControlExample !== "private, no-store")
+        if (
+          method === "get" &&
+          hasQueryParameters &&
+          cacheControlExample !== "private, no-store"
+        )
           errors.push(
             `GET ${pathName} has query parameters without private, no-store`,
           );
-      } else errors.push(`GET ${pathName} 200 lacks response headers`);
-      if (
-        Array.isArray(operation.parameters) &&
-        operation.parameters.some(
-          (parameter) =>
-            isObject(parameter) && parameter.name === "publication_id",
-        )
-      )
-        errors.push(`GET ${pathName} invents a public publication pin`);
+      } else
+        errors.push(
+          `${method.toUpperCase()} ${pathName} 200 lacks response headers`,
+        );
     }
     for (const [status, response] of Object.entries(operation.responses)) {
       if (!isObject(response) || !isObject(response.content)) continue;

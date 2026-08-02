@@ -8,6 +8,8 @@ export const KNOWN_PRECISION_FORMATS = [
   "FP8",
   "FP6",
   "FP4",
+  "NVFP4",
+  "MXFP4",
   "INT8",
   "INT4",
   "MIXED",
@@ -27,6 +29,8 @@ const PRECISION_ALIASES: Readonly<Record<string, PrecisionFormat>> = {
   FLOAT8: "FP8",
   FP6: "FP6",
   FP4: "FP4",
+  NVFP4: "NVFP4",
+  MXFP4: "MXFP4",
   INT8: "INT8",
   INTEGER8: "INT8",
   INT4: "INT4",
@@ -47,6 +51,12 @@ export function compareExactDecimal(left: string, right: string): number {
   return new Decimal(assertNonNegativeDecimal(left)).comparedTo(
     new Decimal(assertNonNegativeDecimal(right)),
   );
+}
+
+export function decimalSortKey(value: string): string {
+  const normalized = assertNonNegativeDecimal(value);
+  const [integer = "0", fractional = ""] = normalized.split(".");
+  return `${integer.padStart(24, "0")}.${fractional.padEnd(18, "0")}`;
 }
 
 export function assertNonNegativeDecimal(value: string): string {

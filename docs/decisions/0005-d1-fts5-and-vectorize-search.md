@@ -59,3 +59,7 @@ Official references:
 - Measure mutation-to-query visibility and enforce a bounded publication timeout/quarantine path.
 - Simulate Workers AI and Vectorize failure and confirm exact/structured discovery remains available.
 - Rebuild all search data from one immutable publication bundle and compare candidate IDs and filters.
+
+## Addendum: publication-qualified vector identity
+
+ADR 0013 resolves the vector-identity detail left implicit here. The publication ID is the Vectorize namespace, while the index-wide vector ID is the SHA-256 of a versioned publication/resource tuple and maps back to the stable canonical model or variant through serving D1. Stable canonical IDs are not reused directly as vector IDs across namespaces. This addendum changes no retrieval, neutrality, or canonical-evidence rule in this ADR.
