@@ -6,10 +6,18 @@ import { parse, type ParseError } from "jsonc-parser";
 import {
   findBrowserContentViolations,
   findContentViolations,
+  findControlledPipelineContentViolations,
   findGeneratedArtifactViolations,
   validateGeneratedFrontendConfig,
   validatePublicWorkerConfig,
 } from "./privacy-policy.js";
+
+const controlledPipelineFiles = [
+  "apps/pipeline/src/model-variant-name-search-staging.ts",
+  "apps/pipeline/src/readiness-commit-v3.ts",
+  "apps/pipeline/src/serving-restore-rebuild-v3.ts",
+  "apps/pipeline/src/serving-switch.ts",
+];
 
 const configuredRoots = ["apps/api", "apps/query", "apps/web"];
 const publicRoots: string[] = [];
@@ -58,6 +66,17 @@ async function files(
 }
 
 const violations: string[] = [];
+for (const candidate of controlledPipelineFiles) {
+  const path = resolve(candidate);
+  const exists = await stat(path).then(
+    () => true,
+    () => false,
+  );
+  if (!exists) continue;
+  const contents = await readFile(path, "utf8");
+  for (const label of findControlledPipelineContentViolations(contents))
+    violations.push(`${candidate}: ${label}`);
+}
 for (const root of publicRoots) {
   for (const path of await files(root)) {
     if (

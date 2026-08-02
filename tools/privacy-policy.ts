@@ -29,6 +29,19 @@ const browserOnlyContent = [
   ["browser Cache API", /\bcaches\s*\.\s*open\b/u],
 ] as const;
 
+const controlledPipelineContent = [
+  ["request object", /\b(?:Request|URL|Headers)\b/u],
+  [
+    "visitor identifier",
+    /\b(?:clientIp|ipAddress|userAgent|visitorId|requestId|correlationId|referrer)\b/iu,
+  ],
+  [
+    "request telemetry",
+    /\b(?:analytics|beacon|metrics|telemetry|traceparent|tracing)\b/iu,
+  ],
+  ["error payload interpolation", /(?:new\s+Error|super)\s*\(\s*`[^`]*\$\{/u],
+] as const;
+
 const generatedArtifactContent = forbiddenContent.filter(
   ([label]) =>
     ![
@@ -69,6 +82,15 @@ export function findContentViolations(contents: string): string[] {
 
 export function findBrowserContentViolations(contents: string): string[] {
   return labelsFor(contents, browserOnlyContent);
+}
+
+export function findControlledPipelineContentViolations(
+  contents: string,
+): string[] {
+  return [
+    ...findContentViolations(contents),
+    ...labelsFor(contents, controlledPipelineContent),
+  ];
 }
 
 export function findGeneratedArtifactViolations(contents: string): string[] {

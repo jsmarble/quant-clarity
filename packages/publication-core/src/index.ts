@@ -47,6 +47,8 @@ export const MODEL_VARIANT_NAME_SEARCH_MAX_NORMALIZED_NAME_UNICODE_SCALARS =
   EXACT_SEARCH_NORMALIZATION_MAX_UNICODE_SCALAR_EXPANSION;
 export const MODEL_VARIANT_NAME_SEARCH_STORAGE_VERSION =
   "model-variant-name-utf8-blob@1" as const;
+export const MODEL_VARIANT_NAME_SEARCH_EXACT_INDEX_NAME =
+  "publication_model_variant_name_exact_idx" as const;
 export const MODEL_VARIANT_NAME_SEARCH_MAX_DISPLAY_NAME_UTF8_BYTES =
   MODEL_DISPLAY_NAME_MAX_UNICODE_SCALARS * 4;
 export const MODEL_VARIANT_NAME_SEARCH_MAX_NORMALIZED_NAME_UTF8_BYTES =
@@ -1241,6 +1243,10 @@ export const READINESS_PROBE_SET_VERSION_V2 = "search-gold@2" as const;
 export const PROVIDER_SEARCH_FTS_BUILD_VERSION =
   "provider-name-fts5-unicode61@1" as const;
 export const SERVING_SWITCH_PREFLIGHT_VERSION_V2 = "2.0.0" as const;
+export const READINESS_RECEIPT_VERSION_V3 = "3.0.0" as const;
+export const READINESS_EVALUATOR_VERSION_V3 = "3.0.0" as const;
+export const READINESS_PROBE_SET_VERSION_V3 = "search-gold@3" as const;
+export const SERVING_SWITCH_PREFLIGHT_VERSION_V3 = "3.0.0" as const;
 
 export interface ProviderSearchFtsObservationV2 {
   readonly buildVersion: typeof PROVIDER_SEARCH_FTS_BUILD_VERSION;
@@ -2386,6 +2392,239 @@ export const projectModelVariantNameSearchArtifactProofV1 = (input: {
     }),
   );
   return Object.freeze(proof) as ModelVariantNameSearchArtifactProofV1;
+};
+
+export type ModelVariantNameSearchQueryabilityPlanV3 = Readonly<{
+  indexName: typeof MODEL_VARIANT_NAME_SEARCH_EXACT_INDEX_NAME;
+  matchNormalizedNameUtf8: readonly number[];
+  matchResourceIds: readonly string[];
+  missNormalizedNameUtf8: readonly number[];
+  missResourceIds: readonly string[];
+}>;
+
+export type ModelVariantNameSearchQueryabilityObservationV3 = Readonly<{
+  indexName: typeof MODEL_VARIANT_NAME_SEARCH_EXACT_INDEX_NAME;
+  matchNormalizedNameUtf8: readonly number[];
+  matchResourceIds: readonly string[];
+  missNormalizedNameUtf8: readonly number[];
+  missResourceIds: readonly string[];
+}>;
+
+const modelVariantNameSearchQueryableArtifactProofV3Brand: unique symbol =
+  Symbol("ModelVariantNameSearchQueryableArtifactProofV3");
+
+export type ModelVariantNameSearchQueryableArtifactProofV3 = Readonly<{
+  model_variant_name_projection_version: typeof MODEL_VARIANT_NAME_SEARCH_PROJECTION_VERSION;
+  model_variant_name_document_count: number;
+  model_variant_name_inventory_hash: Sha256;
+  model_variant_name_storage_version: typeof MODEL_VARIANT_NAME_SEARCH_STORAGE_VERSION;
+  model_variant_name_storage_document_count: number;
+  model_variant_name_storage_queryable: true;
+  model_variant_name_storage_exact_parity: true;
+  readonly [modelVariantNameSearchQueryableArtifactProofV3Brand]: true;
+}>;
+
+interface ModelVariantNameSearchQueryableArtifactProofBindingV3 {
+  readonly manifest: TrustedImmutablePublicationManifest;
+  readonly projection: TrustedModelVariantNameSearchProjection;
+  readonly storageProof: ModelVariantNameSearchArtifactProofV1;
+  readonly queryabilityPlan: ModelVariantNameSearchQueryabilityPlanV3;
+}
+
+const trustedModelVariantNameSearchQueryableArtifactProofsV3 = new WeakMap<
+  object,
+  ModelVariantNameSearchQueryableArtifactProofBindingV3
+>();
+
+export const assertModelVariantNameSearchQueryableArtifactProofV3: (
+  value: unknown,
+) => asserts value is ModelVariantNameSearchQueryableArtifactProofV3 = (
+  value,
+) => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !(modelVariantNameSearchQueryableArtifactProofV3Brand in value) ||
+    value[modelVariantNameSearchQueryableArtifactProofV3Brand] !== true ||
+    !trustedModelVariantNameSearchQueryableArtifactProofsV3.has(value)
+  )
+    throw new TypeError(
+      "model/variant name search queryable artifact proof v3 is not trusted",
+    );
+};
+
+const storageByteKey = (bytes: readonly number[]): string =>
+  JSON.stringify(bytes);
+
+export const projectModelVariantNameSearchQueryabilityPlanV3 = (
+  storageProof: ModelVariantNameSearchArtifactProofV1,
+): ModelVariantNameSearchQueryabilityPlanV3 => {
+  assertModelVariantNameSearchArtifactProofV1(storageProof);
+  const binding =
+    trustedModelVariantNameSearchArtifactProofsV1.get(storageProof);
+  if (binding === undefined)
+    throw new TypeError(
+      "model/variant name search artifact proof v1 is not trusted",
+    );
+  const documents = binding.projection.documents;
+  const normalizedBytes = documents.map((document) =>
+    frozenUtf8Bytes(document.normalizedName),
+  );
+  const firstNormalized = normalizedBytes[0];
+  const matchNormalizedNameUtf8 = firstNormalized ?? Object.freeze([]);
+  const matchKey = storageByteKey(matchNormalizedNameUtf8);
+  const matchResourceIds = documents
+    .filter(
+      (_, index) => storageByteKey(normalizedBytes[index] ?? []) === matchKey,
+    )
+    .map((document) => document.resourceId)
+    .sort(compareAscii);
+  return Object.freeze({
+    indexName: MODEL_VARIANT_NAME_SEARCH_EXACT_INDEX_NAME,
+    matchNormalizedNameUtf8,
+    matchResourceIds: Object.freeze(matchResourceIds),
+    missNormalizedNameUtf8: Object.freeze([]),
+    missResourceIds: Object.freeze([]),
+  });
+};
+
+const snapshotQueryabilityBytes = (
+  value: unknown,
+  expected: readonly number[],
+  label: string,
+): readonly number[] => {
+  if (!Array.isArray(value)) throw new TypeError(`${label} is invalid`);
+  const byteLength = value.length;
+  if (byteLength !== expected.length)
+    throw new TypeError(`${label} does not exactly match the trusted probe`);
+  if (byteLength === 0) return Object.freeze([]);
+  return snapshotStorageBytes(
+    value,
+    MODEL_VARIANT_NAME_SEARCH_MAX_NORMALIZED_NAME_UTF8_BYTES,
+    expected.length,
+    label,
+  );
+};
+
+const snapshotQueryabilityResourceIds = (
+  value: unknown,
+  expected: readonly string[],
+  label: string,
+): readonly string[] => {
+  if (!Array.isArray(value)) throw new TypeError(`${label} is invalid`);
+  const count = value.length;
+  if (count !== expected.length)
+    throw new TypeError(`${label} does not exactly match the trusted probe`);
+  const result = new Array<string>(count);
+  for (let index = 0; index < count; index += 1) {
+    const candidate: unknown = value[index];
+    if (typeof candidate !== "string" || candidate !== expected[index])
+      throw new TypeError(`${label} does not exactly match the trusted probe`);
+    result[index] = candidate;
+  }
+  return Object.freeze(result);
+};
+
+export const projectModelVariantNameSearchQueryableArtifactProofV3 = (input: {
+  readonly storageProof: ModelVariantNameSearchArtifactProofV1;
+  readonly queryability: ModelVariantNameSearchQueryabilityObservationV3;
+}): ModelVariantNameSearchQueryableArtifactProofV3 => {
+  const storageProofInput: unknown = input.storageProof;
+  const queryabilityInput: unknown = input.queryability;
+  assertModelVariantNameSearchArtifactProofV1(storageProofInput);
+  const storageProof = storageProofInput;
+  const binding =
+    trustedModelVariantNameSearchArtifactProofsV1.get(storageProof);
+  if (binding === undefined)
+    throw new TypeError(
+      "model/variant name search artifact proof v1 is not trusted",
+    );
+  const expected =
+    projectModelVariantNameSearchQueryabilityPlanV3(storageProof);
+  const observation = inputRecord(
+    queryabilityInput,
+    "model/variant name search queryability observation v3",
+  );
+  const indexName: unknown = observation.indexName;
+  const matchNormalizedNameUtf8: unknown = observation.matchNormalizedNameUtf8;
+  const matchResourceIds: unknown = observation.matchResourceIds;
+  const missNormalizedNameUtf8: unknown = observation.missNormalizedNameUtf8;
+  const missResourceIds: unknown = observation.missResourceIds;
+  if (
+    !hasExactKeys(observation, [
+      "indexName",
+      "matchNormalizedNameUtf8",
+      "matchResourceIds",
+      "missNormalizedNameUtf8",
+      "missResourceIds",
+    ]) ||
+    indexName !== MODEL_VARIANT_NAME_SEARCH_EXACT_INDEX_NAME
+  )
+    throw new TypeError(
+      "model/variant name search queryability observation v3 is invalid",
+    );
+  const matchBytes = snapshotQueryabilityBytes(
+    matchNormalizedNameUtf8,
+    expected.matchNormalizedNameUtf8,
+    "model/variant name search indexed-match bytes",
+  );
+  const missBytes = snapshotQueryabilityBytes(
+    missNormalizedNameUtf8,
+    expected.missNormalizedNameUtf8,
+    "model/variant name search indexed-miss bytes",
+  );
+  if (
+    !equalStorageBytes(matchBytes, expected.matchNormalizedNameUtf8) ||
+    !equalStorageBytes(missBytes, expected.missNormalizedNameUtf8)
+  )
+    throw new TypeError(
+      "model/variant name search queryability bytes do not match the trusted probe",
+    );
+  snapshotQueryabilityResourceIds(
+    matchResourceIds,
+    expected.matchResourceIds,
+    "model/variant name search indexed-match resource IDs",
+  );
+  snapshotQueryabilityResourceIds(
+    missResourceIds,
+    expected.missResourceIds,
+    "model/variant name search indexed-miss resource IDs",
+  );
+  const proof = {
+    model_variant_name_projection_version:
+      storageProof.model_variant_name_projection_version,
+    model_variant_name_document_count:
+      storageProof.model_variant_name_document_count,
+    model_variant_name_inventory_hash:
+      storageProof.model_variant_name_inventory_hash,
+    model_variant_name_storage_version:
+      storageProof.model_variant_name_storage_version,
+    model_variant_name_storage_document_count:
+      storageProof.model_variant_name_storage_document_count,
+    model_variant_name_storage_queryable: true as const,
+    model_variant_name_storage_exact_parity:
+      storageProof.model_variant_name_storage_exact_parity,
+  };
+  Object.defineProperty(
+    proof,
+    modelVariantNameSearchQueryableArtifactProofV3Brand,
+    {
+      value: true,
+      enumerable: false,
+      configurable: false,
+      writable: false,
+    },
+  );
+  trustedModelVariantNameSearchQueryableArtifactProofsV3.set(
+    proof,
+    Object.freeze({
+      manifest: binding.manifest,
+      projection: binding.projection,
+      storageProof,
+      queryabilityPlan: expected,
+    }),
+  );
+  return Object.freeze(proof) as ModelVariantNameSearchQueryableArtifactProofV3;
 };
 
 export type ProviderSearchDocumentProjection = Readonly<{
@@ -7708,6 +7947,1798 @@ export const classifyServingSwitchRetryV2 = (input: {
   );
   if (cas === undefined)
     throw new TypeError("switch v2 plan lacks its head CAS");
+  if (input.historyAtGeneration === null) {
+    if (input.preflightAtGeneration !== null)
+      return Object.freeze({
+        outcome: rowsExactlyEqual(
+          input.preflightAtGeneration,
+          expected.preflight,
+        )
+          ? "integrity_failure"
+          : "conflict",
+      });
+    if (!headsEqual(input.currentHead, cas.expected))
+      return Object.freeze({ outcome: "stale" });
+    const expectedTarget =
+      expected.history.action === "activate" ? "ready" : "superseded";
+    const expectedFormer =
+      expected.history.from_publication_id === null ? null : "active";
+    if (
+      input.targetState !== expectedTarget ||
+      input.formerState !== expectedFormer
+    )
+      return Object.freeze({ outcome: "integrity_failure" });
+    return Object.freeze({ outcome: "execute" });
+  }
+  if (!rowsExactlyEqual(input.historyAtGeneration, expected.history))
+    return Object.freeze({ outcome: "conflict" });
+  if (input.preflightAtGeneration === null)
+    return Object.freeze({ outcome: "integrity_failure" });
+  if (!rowsExactlyEqual(input.preflightAtGeneration, expected.preflight))
+    return Object.freeze({ outcome: "conflict" });
+  const expectedFormer =
+    expected.history.from_publication_id === null
+      ? null
+      : expected.history.action === "activate"
+        ? "superseded"
+        : "rolled_back";
+  if (
+    !headsEqual(input.currentHead, cas.next) ||
+    input.targetState !== "active" ||
+    input.formerState !== expectedFormer
+  )
+    return Object.freeze({ outcome: "integrity_failure" });
+  return Object.freeze({ outcome: "idempotent_success" });
+};
+
+// ADR 0026 Phase 5G-A2 integrity proofs. V3 deliberately composes the
+// independently nominal provider and model/variant search proofs. The seven
+// model fields are an append-only canonical suffix after the seven provider
+// fields in both the serving receipt and switch preflight hashes.
+export const modelVariantNameSearchProofFieldsV3 = (
+  proof: ModelVariantNameSearchQueryableArtifactProofV3,
+): readonly CanonicalField[] => {
+  assertModelVariantNameSearchQueryableArtifactProofV3(proof);
+  return Object.freeze([
+    field(
+      "model_variant_name_projection_version",
+      "text",
+      proof.model_variant_name_projection_version,
+    ),
+    field(
+      "model_variant_name_document_count",
+      "integer",
+      String(proof.model_variant_name_document_count),
+    ),
+    field(
+      "model_variant_name_inventory_hash",
+      "digest",
+      proof.model_variant_name_inventory_hash,
+    ),
+    field(
+      "model_variant_name_storage_version",
+      "text",
+      proof.model_variant_name_storage_version,
+    ),
+    field(
+      "model_variant_name_storage_document_count",
+      "integer",
+      String(proof.model_variant_name_storage_document_count),
+    ),
+    field(
+      "model_variant_name_storage_queryable",
+      "boolean",
+      String(proof.model_variant_name_storage_queryable),
+    ),
+    field(
+      "model_variant_name_storage_exact_parity",
+      "boolean",
+      String(proof.model_variant_name_storage_exact_parity),
+    ),
+  ]);
+};
+
+const readinessReceiptProofV3Brand: unique symbol = Symbol(
+  "ReadinessReceiptProofV3",
+);
+
+export type ReadinessReceiptProofV3 = Readonly<{
+  kind: ReadinessReceipt["kind"];
+  receipt_version: typeof READINESS_RECEIPT_VERSION_V3;
+  receipt_hash: Sha256;
+  publication_id: PublicationId;
+  environment: Exclude<PublicationEnvironment, "test">;
+  closure_hash: Sha256;
+  bundle_hash: Sha256;
+  observed_at_ms: number;
+  readonly [readinessReceiptProofV3Brand]: true;
+}>;
+
+interface ReadinessReceiptProofV3Binding {
+  readonly receipt: ReadinessReceipt;
+  readonly providerProof: ProviderSearchArtifactProofV2 | null;
+  readonly modelVariantNameProof: ModelVariantNameSearchQueryableArtifactProofV3 | null;
+}
+
+const trustedReadinessReceiptProofsV3 = new WeakMap<
+  object,
+  ReadinessReceiptProofV3Binding
+>();
+
+export const assertReadinessReceiptProofV3: (
+  value: unknown,
+) => asserts value is ReadinessReceiptProofV3 = (value) => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !(readinessReceiptProofV3Brand in value) ||
+    value[readinessReceiptProofV3Brand] !== true ||
+    !trustedReadinessReceiptProofsV3.has(value)
+  )
+    throw new TypeError("readiness receipt proof v3 is not trusted");
+};
+
+export const projectReadinessReceiptProofV3 = async (input: {
+  readonly receipt: ReadinessReceipt;
+  readonly providerProof: ProviderSearchArtifactProofV2 | null;
+  readonly modelVariantNameProof: ModelVariantNameSearchQueryableArtifactProofV3 | null;
+}): Promise<ReadinessReceiptProofV3> => {
+  const receipt = snapshotReadinessReceipt(input.receipt);
+  const providerProof = input.providerProof;
+  const modelVariantNameProof = input.modelVariantNameProof;
+  if (!SERVING_PUBLICATION_ENVIRONMENTS.has(receipt.binding.environment))
+    throw new TypeError("readiness receipt v3 environment is invalid");
+  let servingFields: readonly CanonicalField[] = [];
+  if (receipt.kind === "serving") {
+    assertProviderSearchArtifactProofV2(providerProof);
+    assertModelVariantNameSearchQueryableArtifactProofV3(modelVariantNameProof);
+    const providerManifest =
+      trustedProviderSearchArtifactProofsV2.get(providerProof)?.manifest;
+    const modelManifest =
+      trustedModelVariantNameSearchQueryableArtifactProofsV3.get(
+        modelVariantNameProof,
+      )?.manifest;
+    if (providerManifest === undefined || modelManifest === undefined)
+      throw new TypeError(
+        "serving receipt v3 does not bind the trusted publication",
+      );
+    if (
+      providerManifest.publicationId !== modelManifest.publicationId ||
+      providerManifest.closureHash !== modelManifest.closureHash ||
+      receipt.binding.publicationId !== providerManifest.publicationId ||
+      receipt.binding.closureHash !== providerManifest.closureHash ||
+      receipt.enabledProviderCount !==
+        providerManifest.enabledProviderIds.length ||
+      receipt.providerSliceCount !== providerManifest.providerSlices.length ||
+      receipt.providerAttributionCount !==
+        providerManifest.providerAttributions.length ||
+      receipt.resourceCount !== providerManifest.resources.length ||
+      receipt.exactDocumentCount !== providerManifest.searchDocuments.length ||
+      receipt.resourceInventoryHash !==
+        providerManifest.resourceInventoryHash ||
+      receipt.exactSearchInventoryHash !==
+        providerManifest.exactSearchInventoryHash
+    )
+      throw new TypeError(
+        "serving receipt v3 does not bind the trusted publication",
+      );
+    servingFields = Object.freeze([
+      ...providerSearchProofFieldsV2(providerProof),
+      ...modelVariantNameSearchProofFieldsV3(modelVariantNameProof),
+    ]);
+  } else if (providerProof !== null || modelVariantNameProof !== null) {
+    throw new TypeError("non-serving receipt v3 carries search proof");
+  }
+  if (
+    receipt.kind === "probes" &&
+    receipt.probeSetVersion !== READINESS_PROBE_SET_VERSION_V3
+  )
+    throw new TypeError("readiness receipt v3 probe set is invalid");
+  const proof = {
+    kind: receipt.kind,
+    receipt_version: READINESS_RECEIPT_VERSION_V3,
+    receipt_hash: await readinessReceiptHash(
+      receipt,
+      READINESS_RECEIPT_VERSION_V3,
+      servingFields,
+    ),
+    publication_id: receipt.binding.publicationId,
+    environment: receipt.binding.environment as Exclude<
+      PublicationEnvironment,
+      "test"
+    >,
+    closure_hash: receipt.binding.closureHash,
+    bundle_hash: receipt.binding.bundleHash,
+    observed_at_ms: assertTimestamp(
+      receipt.observedAt,
+      "readiness receipt v3 observation time",
+    ),
+  };
+  Object.defineProperty(proof, readinessReceiptProofV3Brand, {
+    value: true,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  trustedReadinessReceiptProofsV3.set(
+    proof,
+    Object.freeze({ receipt, providerProof, modelVariantNameProof }),
+  );
+  return Object.freeze(proof) as ReadinessReceiptProofV3;
+};
+
+export type ServingReadinessAttestationProjectionV3 = Readonly<{
+  publication_id: PublicationId;
+  environment: Exclude<PublicationEnvironment, "test">;
+  closure_hash: Sha256;
+  bundle_hash: Sha256;
+  evaluator_version: typeof READINESS_EVALUATOR_VERSION_V3;
+  ready_at_ms: number;
+  maximum_receipt_age_ms: number;
+  effective_valid_until_ms: number;
+  archive_observed_at_ms: number;
+  serving_observed_at_ms: number;
+  vector_observed_at_ms: number;
+  probes_observed_at_ms: number;
+  archive_receipt_hash: Sha256;
+  serving_receipt_hash: Sha256;
+  vector_receipt_hash: Sha256;
+  probes_receipt_hash: Sha256;
+  attestation_hash: Sha256;
+}>;
+
+const servingReadinessProofV3Brand: unique symbol = Symbol(
+  "ServingReadinessProofV3",
+);
+const trustedServingReadinessProofsV3 = new WeakSet<object>();
+
+export type ServingReadinessProofV3 = Readonly<{
+  receipts: readonly ReadinessReceiptProofV3[];
+  attestation: ServingReadinessAttestationProjectionV3;
+  readonly [servingReadinessProofV3Brand]: true;
+}>;
+
+export const assertServingReadinessProofV3: (
+  value: unknown,
+) => asserts value is ServingReadinessProofV3 = (value) => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !(servingReadinessProofV3Brand in value) ||
+    value[servingReadinessProofV3Brand] !== true ||
+    !trustedServingReadinessProofsV3.has(value)
+  )
+    throw new TypeError("serving readiness proof v3 is not trusted");
+};
+
+export const projectServingReadinessProofV3 = async (input: {
+  readonly manifest: TrustedImmutablePublicationManifest;
+  readonly receiptProofs: readonly ReadinessReceiptProofV3[];
+  readonly environment: Exclude<PublicationEnvironment, "test">;
+  readonly readyAtMs: number;
+  readonly maximumReceiptAgeMs: number;
+}): Promise<ServingReadinessProofV3> => {
+  const manifest = input.manifest;
+  const receiptProofsInput = input.receiptProofs;
+  const environment = input.environment;
+  const readyAtMs = input.readyAtMs;
+  const maximumReceiptAgeMs = input.maximumReceiptAgeMs;
+  assertImmutablePublicationManifest(manifest);
+  if (
+    !Array.isArray(receiptProofsInput) ||
+    receiptProofsInput.length !== 4 ||
+    !SERVING_PUBLICATION_ENVIRONMENTS.has(environment)
+  )
+    throw new TypeError("serving readiness proof v3 input is invalid");
+  const receiptProofs: ReadinessReceiptProofV3[] = [];
+  for (const candidate of receiptProofsInput as readonly unknown[]) {
+    assertReadinessReceiptProofV3(candidate);
+    receiptProofs.push(candidate);
+  }
+  const byKind = new Map(
+    receiptProofs.map((proof) => [proof.kind, proof] as const),
+  );
+  if (byKind.size !== 4)
+    throw new TypeError("serving readiness proof v3 receipt set is incomplete");
+  const requireProof = (
+    kind: ReadinessReceipt["kind"],
+  ): ReadinessReceiptProofV3 => {
+    const proof = byKind.get(kind);
+    if (proof === undefined)
+      throw new TypeError(`readiness receipt v3 ${kind} is missing`);
+    return proof;
+  };
+  const archive = requireProof("archive");
+  const serving = requireProof("serving");
+  const vectors = requireProof("vectors");
+  const probes = requireProof("probes");
+  if (
+    receiptProofs.some(
+      (proof) =>
+        proof.publication_id !== manifest.publicationId ||
+        proof.closure_hash !== manifest.closureHash ||
+        proof.bundle_hash !== manifest.bundleHash ||
+        proof.environment !== environment,
+    )
+  )
+    throw new TypeError("readiness receipt v3 bindings do not match");
+  const servingBinding = trustedReadinessReceiptProofsV3.get(serving);
+  if (servingBinding === undefined)
+    throw new TypeError("serving readiness proof v3 lacks search evidence");
+  if (
+    servingBinding.providerProof === null ||
+    servingBinding.modelVariantNameProof === null
+  )
+    throw new TypeError("serving readiness proof v3 lacks search evidence");
+  const providerManifest = trustedProviderSearchArtifactProofsV2.get(
+    servingBinding.providerProof,
+  )?.manifest;
+  const modelManifest =
+    trustedModelVariantNameSearchQueryableArtifactProofsV3.get(
+      servingBinding.modelVariantNameProof,
+    )?.manifest;
+  if (
+    providerManifest?.publicationId !== manifest.publicationId ||
+    providerManifest.closureHash !== manifest.closureHash ||
+    modelManifest?.publicationId !== manifest.publicationId ||
+    modelManifest.closureHash !== manifest.closureHash
+  )
+    throw new TypeError("serving readiness proof v3 uses another manifest");
+  const receipts = receiptProofs.map((proof) => {
+    const binding = trustedReadinessReceiptProofsV3.get(proof);
+    if (binding === undefined)
+      throw new TypeError("readiness receipt proof v3 is not trusted");
+    return binding.receipt;
+  });
+  const evaluationReceipts = receipts.map((receipt): ReadinessReceipt =>
+    receipt.kind === "probes"
+      ? { ...receipt, probeSetVersion: READINESS_PROBE_SET_VERSION }
+      : receipt,
+  );
+  const readyAt = timestampFromMs(readyAtMs, "readiness v3 time");
+  const decision = await evaluateReadiness({
+    manifest,
+    receipts: evaluationReceipts,
+    environment,
+    now: readyAt,
+    maximumReceiptAgeMs,
+  });
+  if (decision.decision === "blocked")
+    throw new TypeError(
+      `serving readiness proof v3 is blocked: ${decision.failureCodes.join(",")}`,
+    );
+  const effectiveValidUntilMs =
+    Math.min(
+      archive.observed_at_ms,
+      serving.observed_at_ms,
+      vectors.observed_at_ms,
+      probes.observed_at_ms,
+    ) + maximumReceiptAgeMs;
+  assertSafeInteger(
+    effectiveValidUntilMs,
+    readyAtMs,
+    "readiness v3 effective validity deadline",
+  );
+  const effectiveValidUntil = timestampFromMs(
+    effectiveValidUntilMs,
+    "readiness v3 effective validity deadline",
+  );
+  const attestationHash = await digest("publication-readiness-attestation", [
+    field("evaluator_version", "text", READINESS_EVALUATOR_VERSION_V3),
+    field("environment", "text", environment),
+    field("publication_id", "identifier", manifest.publicationId),
+    field("closure_hash", "digest", manifest.closureHash),
+    field("bundle_hash", "digest", manifest.bundleHash),
+    field("ready_at", "timestamp", readyAt),
+    field("maximum_receipt_age_ms", "integer", String(maximumReceiptAgeMs)),
+    field("effective_valid_until", "timestamp", effectiveValidUntil),
+    field("archive_receipt_hash", "digest", archive.receipt_hash),
+    field("serving_receipt_hash", "digest", serving.receipt_hash),
+    field("vector_receipt_hash", "digest", vectors.receipt_hash),
+    field("probes_receipt_hash", "digest", probes.receipt_hash),
+  ]);
+  const attestation = Object.freeze({
+    publication_id: manifest.publicationId,
+    environment,
+    closure_hash: manifest.closureHash,
+    bundle_hash: manifest.bundleHash,
+    evaluator_version: READINESS_EVALUATOR_VERSION_V3,
+    ready_at_ms: readyAtMs,
+    maximum_receipt_age_ms: maximumReceiptAgeMs,
+    effective_valid_until_ms: effectiveValidUntilMs,
+    archive_observed_at_ms: archive.observed_at_ms,
+    serving_observed_at_ms: serving.observed_at_ms,
+    vector_observed_at_ms: vectors.observed_at_ms,
+    probes_observed_at_ms: probes.observed_at_ms,
+    archive_receipt_hash: archive.receipt_hash,
+    serving_receipt_hash: serving.receipt_hash,
+    vector_receipt_hash: vectors.receipt_hash,
+    probes_receipt_hash: probes.receipt_hash,
+    attestation_hash: attestationHash,
+  } satisfies ServingReadinessAttestationProjectionV3);
+  const result = {
+    receipts: Object.freeze(receiptProofs),
+    attestation,
+  };
+  Object.defineProperty(result, servingReadinessProofV3Brand, {
+    value: true,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  trustedServingReadinessProofsV3.add(result);
+  return Object.freeze(result) as ServingReadinessProofV3;
+};
+
+export type ServingSwitchArtifactProofV3 = Omit<
+  ServingSwitchArtifactProof,
+  "probeSetVersion"
+> &
+  Readonly<{ probeSetVersion: typeof READINESS_PROBE_SET_VERSION_V3 }>;
+
+export type ServingSwitchPreflightContextV3 = ServingSwitchPreflightContextV2;
+
+const servingSwitchPreflightProofV3Brand: unique symbol = Symbol(
+  "ServingSwitchPreflightProofV3",
+);
+interface ServingSwitchPreflightProofBindingV3 {
+  readonly manifest: TrustedImmutablePublicationManifest;
+  readonly readinessProof: ServingReadinessProofV3 | null;
+  readonly providerProof: ProviderSearchArtifactProofV2;
+  readonly modelVariantNameProof: ModelVariantNameSearchQueryableArtifactProofV3;
+}
+const trustedServingSwitchPreflightProofsV3 = new WeakMap<
+  object,
+  ServingSwitchPreflightProofBindingV3
+>();
+
+export type ServingSwitchPreflightProofV3 = Readonly<
+  Omit<
+    ServingSwitchPreflightRow,
+    "preflight_version" | "preflight_hash" | "probe_set_version"
+  > & {
+    preflight_version: typeof SERVING_SWITCH_PREFLIGHT_VERSION_V3;
+    preflight_hash: Sha256;
+    probe_set_version: typeof READINESS_PROBE_SET_VERSION_V3;
+    provider_search_projection_version: typeof PROVIDER_SEARCH_PROJECTION_VERSION;
+    provider_search_document_count: number;
+    provider_search_inventory_hash: Sha256;
+    provider_search_fts_build_version: typeof PROVIDER_SEARCH_FTS_BUILD_VERSION;
+    provider_search_fts_document_count: number;
+    provider_search_fts_queryable: 1;
+    provider_search_exact_parity: 1;
+    model_variant_name_projection_version: typeof MODEL_VARIANT_NAME_SEARCH_PROJECTION_VERSION;
+    model_variant_name_document_count: number;
+    model_variant_name_inventory_hash: Sha256;
+    model_variant_name_storage_version: typeof MODEL_VARIANT_NAME_SEARCH_STORAGE_VERSION;
+    model_variant_name_storage_document_count: number;
+    model_variant_name_storage_queryable: 1;
+    model_variant_name_storage_exact_parity: 1;
+    readonly [servingSwitchPreflightProofV3Brand]: true;
+  }
+>;
+
+export const assertServingSwitchPreflightProofV3: (
+  value: unknown,
+) => asserts value is ServingSwitchPreflightProofV3 = (value) => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !(servingSwitchPreflightProofV3Brand in value) ||
+    value[servingSwitchPreflightProofV3Brand] !== true ||
+    !trustedServingSwitchPreflightProofsV3.has(value)
+  )
+    throw new TypeError("serving switch preflight proof v3 is not trusted");
+};
+
+export const projectServingSwitchPreflightProofV3 = async (input: {
+  readonly manifest: TrustedImmutablePublicationManifest;
+  readonly providerProof: ProviderSearchArtifactProofV2;
+  readonly modelVariantNameProof: ModelVariantNameSearchQueryableArtifactProofV3;
+  readonly readinessProof: ServingReadinessProofV3 | null;
+  readonly context: ServingSwitchPreflightContextV3;
+  readonly artifactProof: ServingSwitchArtifactProofV3;
+}): Promise<ServingSwitchPreflightProofV3> => {
+  const manifest = input.manifest;
+  const providerProof = input.providerProof;
+  const modelVariantNameProof = input.modelVariantNameProof;
+  const readinessProof = input.readinessProof;
+  const contextInput = input.context;
+  const artifactProofInput = input.artifactProof;
+  assertImmutablePublicationManifest(manifest);
+  assertProviderSearchArtifactProofV2(providerProof);
+  assertModelVariantNameSearchQueryableArtifactProofV3(modelVariantNameProof);
+  const providerManifest =
+    trustedProviderSearchArtifactProofsV2.get(providerProof)?.manifest;
+  const modelManifest =
+    trustedModelVariantNameSearchQueryableArtifactProofsV3.get(
+      modelVariantNameProof,
+    )?.manifest;
+  if (
+    providerManifest?.publicationId !== manifest.publicationId ||
+    providerManifest.closureHash !== manifest.closureHash ||
+    modelManifest?.publicationId !== manifest.publicationId ||
+    modelManifest.closureHash !== manifest.closureHash
+  )
+    throw new TypeError("switch preflight v3 uses another search manifest");
+  const proofRecord = inputRecord(
+    artifactProofInput,
+    "switch artifact proof v3",
+  );
+  if (!hasExactKeys(proofRecord, switchArtifactProofKeysV2))
+    throw new TypeError("switch artifact proof v3 shape is invalid");
+  const proof = {
+    environment: proofRecord.environment,
+    observedAtMs: proofRecord.observedAtMs,
+    maximumAgeMs: proofRecord.maximumAgeMs,
+    ftsBuildVersion: proofRecord.ftsBuildVersion,
+    ftsSourceDocumentCount: proofRecord.ftsSourceDocumentCount,
+    ftsIndexDocumentCount: proofRecord.ftsIndexDocumentCount,
+    ftsSourceInventoryHash: proofRecord.ftsSourceInventoryHash,
+    ftsExactParity: proofRecord.ftsExactParity,
+    archiveBundleHash: proofRecord.archiveBundleHash,
+    archiveImmutable: proofRecord.archiveImmutable,
+    vectorNamespace: proofRecord.vectorNamespace,
+    vectorDocumentCount: proofRecord.vectorDocumentCount,
+    vectorVerifiedDocumentCount: proofRecord.vectorVerifiedDocumentCount,
+    vectorInventoryHash: proofRecord.vectorInventoryHash,
+    vectorVisibilityProbeVersion: proofRecord.vectorVisibilityProbeVersion,
+    vectorMutationId: proofRecord.vectorMutationId,
+    vectorAllIdsPresent: proofRecord.vectorAllIdsPresent,
+    vectorAllNamespacesMatch: proofRecord.vectorAllNamespacesMatch,
+    vectorQueryable: proofRecord.vectorQueryable,
+    probeSetVersion: proofRecord.probeSetVersion,
+    integrityPassed: proofRecord.integrityPassed,
+    exactSearchPassed: proofRecord.exactSearchPassed,
+    semanticSearchPassed: proofRecord.semanticSearchPassed,
+    structuredFilterPassed: proofRecord.structuredFilterPassed,
+    neutralityPassed: proofRecord.neutralityPassed,
+    versionIsolationPassed: proofRecord.versionIsolationPassed,
+  };
+  const contextRecord = inputRecord(contextInput, "switch context v3");
+  if (
+    !hasExactKeys(contextRecord, [
+      "switchId",
+      "action",
+      "expectedPriorGeneration",
+      "expectedPriorRollbackCandidatePublicationId",
+      "expectedPriorSwitchedAtMs",
+      "newGeneration",
+      "fromPublicationId",
+      "fromClosureHash",
+      "toPublicationId",
+      "toClosureHash",
+      "switchedAtMs",
+    ])
+  )
+    throw new TypeError("switch context v3 shape is invalid");
+  const context = {
+    switchId: contextRecord.switchId,
+    action: contextRecord.action,
+    expectedPriorGeneration: contextRecord.expectedPriorGeneration,
+    expectedPriorRollbackCandidatePublicationId:
+      contextRecord.expectedPriorRollbackCandidatePublicationId,
+    expectedPriorSwitchedAtMs: contextRecord.expectedPriorSwitchedAtMs,
+    newGeneration: contextRecord.newGeneration,
+    fromPublicationId: contextRecord.fromPublicationId,
+    fromClosureHash: contextRecord.fromClosureHash,
+    toPublicationId: contextRecord.toPublicationId,
+    toClosureHash: contextRecord.toClosureHash,
+    switchedAtMs: contextRecord.switchedAtMs,
+  };
+  if (
+    typeof context.switchId !== "string" ||
+    !isAscii(context.switchId) ||
+    context.switchId.length === 0 ||
+    context.switchId.length > 256 ||
+    (context.action !== "activate" && context.action !== "rollback") ||
+    !isNonnegativeSafeInteger(context.expectedPriorGeneration) ||
+    !isNonnegativeSafeInteger(context.newGeneration) ||
+    context.newGeneration !== context.expectedPriorGeneration + 1 ||
+    context.toPublicationId !== manifest.publicationId ||
+    context.toClosureHash !== manifest.closureHash ||
+    (context.fromPublicationId === null) !==
+      (context.fromClosureHash === null) ||
+    (context.expectedPriorRollbackCandidatePublicationId !== null &&
+      (typeof context.expectedPriorRollbackCandidatePublicationId !==
+        "string" ||
+        !PUBLICATION_ID.test(
+          context.expectedPriorRollbackCandidatePublicationId,
+        ))) ||
+    (context.fromPublicationId !== null &&
+      (typeof context.fromPublicationId !== "string" ||
+        !PUBLICATION_ID.test(context.fromPublicationId))) ||
+    (context.fromClosureHash !== null &&
+      (typeof context.fromClosureHash !== "string" ||
+        !HASH.test(context.fromClosureHash)))
+  )
+    throw new TypeError("switch context v3 is invalid");
+  assertSafeInteger(context.switchedAtMs as number, 0, "switch v3 time");
+  assertSafeInteger(proof.observedAtMs as number, 0, "switch v3 observation");
+  assertSafeInteger(proof.maximumAgeMs as number, 0, "switch v3 maximum age");
+  const switchedAtMs = context.switchedAtMs as number;
+  const observedAtMs = proof.observedAtMs as number;
+  const maximumAgeMs = proof.maximumAgeMs as number;
+  if (observedAtMs > switchedAtMs)
+    throw new TypeError("switch v3 observation follows switch time");
+  const validUntilMs = observedAtMs + maximumAgeMs;
+  assertSafeInteger(validUntilMs, switchedAtMs, "switch v3 validity deadline");
+  if (
+    typeof proof.environment !== "string" ||
+    !SERVING_PUBLICATION_ENVIRONMENTS.has(proof.environment) ||
+    proof.ftsBuildVersion !== READINESS_FTS_BUILD_VERSION ||
+    proof.ftsSourceDocumentCount !== manifest.searchDocuments.length ||
+    proof.ftsIndexDocumentCount !== manifest.searchDocuments.length ||
+    proof.ftsSourceInventoryHash !== manifest.exactSearchInventoryHash ||
+    proof.ftsExactParity !== true ||
+    proof.archiveBundleHash !== manifest.bundleHash ||
+    proof.archiveImmutable !== true ||
+    proof.vectorNamespace !== manifest.publicationId ||
+    proof.vectorDocumentCount !== manifest.vectors.length ||
+    proof.vectorVerifiedDocumentCount !== manifest.vectors.length ||
+    proof.vectorInventoryHash !== manifest.vectorInventoryHash ||
+    proof.vectorVisibilityProbeVersion !== VECTOR_VISIBILITY_PROBE_VERSION ||
+    typeof proof.vectorMutationId !== "string" ||
+    !isAscii(proof.vectorMutationId) ||
+    proof.vectorMutationId.length === 0 ||
+    proof.vectorMutationId.length > 128 ||
+    proof.vectorAllIdsPresent !== true ||
+    proof.vectorAllNamespacesMatch !== true ||
+    proof.vectorQueryable !== true ||
+    proof.probeSetVersion !== READINESS_PROBE_SET_VERSION_V3 ||
+    proof.integrityPassed !== true ||
+    proof.exactSearchPassed !== true ||
+    proof.semanticSearchPassed !== true ||
+    proof.structuredFilterPassed !== true ||
+    proof.neutralityPassed !== true ||
+    proof.versionIsolationPassed !== true
+  )
+    throw new TypeError("switch preflight v3 does not prove serving artifacts");
+  let attestationHash: Sha256 | null = null;
+  if (context.action === "activate") {
+    assertServingReadinessProofV3(readinessProof);
+    const attestation = readinessProof.attestation;
+    if (
+      attestation.publication_id !== manifest.publicationId ||
+      attestation.closure_hash !== manifest.closureHash ||
+      attestation.environment !== proof.environment ||
+      switchedAtMs < attestation.ready_at_ms ||
+      switchedAtMs > attestation.effective_valid_until_ms
+    )
+      throw new TypeError("switch activation v3 attestation is invalid");
+    attestationHash = attestation.attestation_hash;
+  } else if (readinessProof !== null) {
+    throw new TypeError("switch rollback v3 carries readiness attestation");
+  }
+  const expectedPriorSwitchedAt =
+    context.expectedPriorSwitchedAtMs === null
+      ? null
+      : timestampFromMs(
+          context.expectedPriorSwitchedAtMs as number,
+          "expected prior switch v3 time",
+        );
+  const switchedAt = timestampFromMs(switchedAtMs, "switch v3 time");
+  const observedAt = timestampFromMs(observedAtMs, "switch v3 observation");
+  const validUntil = timestampFromMs(validUntilMs, "switch v3 validity");
+  const preflightHash = await digest("publication-switch-preflight", [
+    field("preflight_version", "text", SERVING_SWITCH_PREFLIGHT_VERSION_V3),
+    field("action", "text", context.action),
+    field("environment", "text", proof.environment),
+    field(
+      "expected_prior_generation",
+      "integer",
+      String(context.expectedPriorGeneration),
+    ),
+    nullableCanonical(
+      "expected_prior_rollback_candidate_publication_id",
+      "identifier",
+      context.expectedPriorRollbackCandidatePublicationId,
+    ),
+    expectedPriorSwitchedAt === null
+      ? field("expected_prior_switched_at", "null", "null")
+      : field(
+          "expected_prior_switched_at",
+          "timestamp",
+          expectedPriorSwitchedAt,
+        ),
+    field("new_generation", "integer", String(context.newGeneration)),
+    nullableCanonical(
+      "from_publication_id",
+      "identifier",
+      context.fromPublicationId,
+    ),
+    nullableCanonical("from_closure_hash", "digest", context.fromClosureHash),
+    field("to_publication_id", "identifier", manifest.publicationId),
+    field("to_closure_hash", "digest", manifest.closureHash),
+    nullableCanonical("to_attestation_hash", "digest", attestationHash),
+    field("switched_at", "timestamp", switchedAt),
+    field("observed_at", "timestamp", observedAt),
+    field("maximum_age_ms", "integer", String(maximumAgeMs)),
+    field("valid_until", "timestamp", validUntil),
+    field("fts_build_version", "text", proof.ftsBuildVersion),
+    field(
+      "fts_source_document_count",
+      "integer",
+      String(proof.ftsSourceDocumentCount),
+    ),
+    field(
+      "fts_index_document_count",
+      "integer",
+      String(proof.ftsIndexDocumentCount),
+    ),
+    field("fts_source_inventory_hash", "digest", proof.ftsSourceInventoryHash),
+    field("fts_exact_parity", "boolean", "true"),
+    field("archive_bundle_hash", "digest", proof.archiveBundleHash),
+    field("archive_immutable", "boolean", "true"),
+    field("vector_namespace", "identifier", proof.vectorNamespace),
+    field(
+      "vector_document_count",
+      "integer",
+      String(proof.vectorDocumentCount),
+    ),
+    field(
+      "vector_verified_document_count",
+      "integer",
+      String(proof.vectorVerifiedDocumentCount),
+    ),
+    field("vector_inventory_hash", "digest", proof.vectorInventoryHash),
+    field(
+      "vector_visibility_probe_version",
+      "text",
+      proof.vectorVisibilityProbeVersion,
+    ),
+    field("vector_mutation_id", "text", proof.vectorMutationId),
+    field("vector_all_ids_present", "boolean", "true"),
+    field("vector_all_namespaces_match", "boolean", "true"),
+    field("vector_queryable", "boolean", "true"),
+    field("probe_set_version", "text", READINESS_PROBE_SET_VERSION_V3),
+    field("integrity_passed", "boolean", "true"),
+    field("exact_search_passed", "boolean", "true"),
+    field("semantic_search_passed", "boolean", "true"),
+    field("structured_filter_passed", "boolean", "true"),
+    field("neutrality_passed", "boolean", "true"),
+    field("version_isolation_passed", "boolean", "true"),
+    ...providerSearchProofFieldsV2(providerProof),
+    ...modelVariantNameSearchProofFieldsV3(modelVariantNameProof),
+  ]);
+  const result = {
+    switch_id: context.switchId,
+    preflight_version: SERVING_SWITCH_PREFLIGHT_VERSION_V3,
+    preflight_hash: preflightHash,
+    action: context.action,
+    environment: proof.environment as Exclude<PublicationEnvironment, "test">,
+    expected_prior_generation: context.expectedPriorGeneration,
+    expected_prior_rollback_candidate_publication_id:
+      context.expectedPriorRollbackCandidatePublicationId as PublicationId | null,
+    expected_prior_switched_at_ms: context.expectedPriorSwitchedAtMs as
+      number | null,
+    new_generation: context.newGeneration,
+    from_publication_id: context.fromPublicationId as PublicationId | null,
+    from_closure_hash: context.fromClosureHash as Sha256 | null,
+    to_publication_id: manifest.publicationId,
+    to_closure_hash: manifest.closureHash,
+    to_attestation_hash: attestationHash,
+    switched_at_ms: switchedAtMs,
+    observed_at_ms: observedAtMs,
+    maximum_age_ms: maximumAgeMs,
+    valid_until_ms: validUntilMs,
+    fts_build_version: proof.ftsBuildVersion as string,
+    fts_source_document_count: proof.ftsSourceDocumentCount,
+    fts_index_document_count: proof.ftsIndexDocumentCount,
+    fts_source_inventory_hash: proof.ftsSourceInventoryHash,
+    fts_exact_parity: 1 as const,
+    archive_bundle_hash: proof.archiveBundleHash,
+    archive_immutable: 1 as const,
+    vector_namespace: proof.vectorNamespace,
+    vector_document_count: proof.vectorDocumentCount,
+    vector_verified_document_count: proof.vectorVerifiedDocumentCount,
+    vector_inventory_hash: proof.vectorInventoryHash,
+    vector_visibility_probe_version:
+      proof.vectorVisibilityProbeVersion as string,
+    vector_mutation_id: proof.vectorMutationId,
+    vector_all_ids_present: 1 as const,
+    vector_all_namespaces_match: 1 as const,
+    vector_queryable: 1 as const,
+    probe_set_version: READINESS_PROBE_SET_VERSION_V3,
+    integrity_passed: 1 as const,
+    exact_search_passed: 1 as const,
+    semantic_search_passed: 1 as const,
+    structured_filter_passed: 1 as const,
+    neutrality_passed: 1 as const,
+    version_isolation_passed: 1 as const,
+    provider_search_projection_version:
+      providerProof.provider_search_projection_version,
+    provider_search_document_count:
+      providerProof.provider_search_document_count,
+    provider_search_inventory_hash:
+      providerProof.provider_search_inventory_hash,
+    provider_search_fts_build_version:
+      providerProof.provider_search_fts_build_version,
+    provider_search_fts_document_count:
+      providerProof.provider_search_fts_document_count,
+    provider_search_fts_queryable: 1 as const,
+    provider_search_exact_parity: 1 as const,
+    model_variant_name_projection_version:
+      modelVariantNameProof.model_variant_name_projection_version,
+    model_variant_name_document_count:
+      modelVariantNameProof.model_variant_name_document_count,
+    model_variant_name_inventory_hash:
+      modelVariantNameProof.model_variant_name_inventory_hash,
+    model_variant_name_storage_version:
+      modelVariantNameProof.model_variant_name_storage_version,
+    model_variant_name_storage_document_count:
+      modelVariantNameProof.model_variant_name_storage_document_count,
+    model_variant_name_storage_queryable: 1 as const,
+    model_variant_name_storage_exact_parity: 1 as const,
+  };
+  Object.defineProperty(result, servingSwitchPreflightProofV3Brand, {
+    value: true,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  trustedServingSwitchPreflightProofsV3.set(
+    result,
+    Object.freeze({
+      manifest,
+      readinessProof,
+      providerProof,
+      modelVariantNameProof,
+    }),
+  );
+  return Object.freeze(result) as ServingSwitchPreflightProofV3;
+};
+
+export type ServingReceiptRowV3 = Readonly<
+  ServingServingReceiptRowV2 & {
+    model_variant_name_projection_version: typeof MODEL_VARIANT_NAME_SEARCH_PROJECTION_VERSION;
+    model_variant_name_document_count: number;
+    model_variant_name_inventory_hash: Sha256;
+    model_variant_name_storage_version: typeof MODEL_VARIANT_NAME_SEARCH_STORAGE_VERSION;
+    model_variant_name_storage_document_count: number;
+    model_variant_name_storage_queryable: 1;
+    model_variant_name_storage_exact_parity: 1;
+  }
+>;
+
+export type ServingReadinessReceiptRowsV3 = Readonly<{
+  bindings: readonly ServingReadinessReceiptBindingRow[];
+  archives: readonly ServingArchiveReceiptRow[];
+  servings: readonly ServingReceiptRowV3[];
+  vectors: readonly ServingVectorReceiptRow[];
+  probes: readonly ServingProbeReceiptRow[];
+}>;
+
+export type ServingReadinessCommitPersistenceV3 = Readonly<{
+  providerSearch: ProviderSearchStagingPersistenceV2;
+  modelVariantNameSearch: ModelVariantNameSearchStagingPersistenceV1;
+  receiptRows: ServingReadinessReceiptRowsV3;
+  attestation: ServingReadinessAttestationProjectionV3;
+  transition: Readonly<{
+    publication_id: PublicationId;
+    closure_hash: Sha256;
+    expected_state: "building";
+    next_state: "ready";
+    ready_at_ms: number;
+  }>;
+}>;
+
+const servingReadinessCommitProjectionV3Brand: unique symbol = Symbol(
+  "ServingReadinessCommitProjectionV3",
+);
+export type ServingReadinessCommitProjectionV3 = Readonly<{
+  readonly [servingReadinessCommitProjectionV3Brand]: true;
+}>;
+const trustedServingReadinessCommitProjectionsV3 = new WeakMap<
+  object,
+  ServingReadinessCommitPersistenceV3
+>();
+
+export const assertServingReadinessCommitProjectionV3: (
+  value: unknown,
+) => asserts value is ServingReadinessCommitProjectionV3 = (value) => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !(servingReadinessCommitProjectionV3Brand in value) ||
+    value[servingReadinessCommitProjectionV3Brand] !== true ||
+    !trustedServingReadinessCommitProjectionsV3.has(value)
+  )
+    throw new TypeError(
+      "serving readiness commit projection v3 is not trusted",
+    );
+};
+
+const receiptDetailRowsV3 = (
+  proof: ServingReadinessProofV3,
+): ServingReadinessReceiptRowsV3 => {
+  const bindings: ServingReadinessReceiptBindingRow[] = [];
+  const archives: ServingArchiveReceiptRow[] = [];
+  const servings: ServingReceiptRowV3[] = [];
+  const vectors: ServingVectorReceiptRow[] = [];
+  const probes: ServingProbeReceiptRow[] = [];
+  for (const receiptProof of proof.receipts) {
+    const binding = trustedReadinessReceiptProofsV3.get(receiptProof);
+    if (binding === undefined)
+      throw new TypeError("readiness receipt proof v3 is not trusted");
+    const receipt = binding.receipt;
+    bindings.push(
+      Object.freeze({
+        publication_id: receiptProof.publication_id,
+        kind: receipt.kind,
+        receipt_version: receiptProof.receipt_version,
+        receipt_hash: receiptProof.receipt_hash,
+        environment: receiptProof.environment,
+        closure_hash: receiptProof.closure_hash,
+        bundle_hash: receiptProof.bundle_hash,
+        schema_version: receipt.binding.schemaVersion,
+        build_commit: receipt.binding.buildCommit,
+        observed_at_ms: receiptProof.observed_at_ms,
+      }),
+    );
+    switch (receipt.kind) {
+      case "archive":
+        archives.push(
+          Object.freeze({
+            publication_id: receiptProof.publication_id,
+            kind: "archive",
+            retained_bundle_hash: receipt.retainedBundleHash,
+            immutable: receipt.immutable ? 1 : 0,
+          }),
+        );
+        break;
+      case "serving": {
+        const providerProof = binding.providerProof;
+        const modelProof = binding.modelVariantNameProof;
+        assertProviderSearchArtifactProofV2(providerProof);
+        assertModelVariantNameSearchQueryableArtifactProofV3(modelProof);
+        servings.push(
+          Object.freeze({
+            publication_id: receiptProof.publication_id,
+            kind: "serving",
+            enabled_provider_count: receipt.enabledProviderCount,
+            enabled_provider_scope_hash: receipt.enabledProviderScopeHash,
+            provider_slice_count: receipt.providerSliceCount,
+            provider_slice_hash: receipt.providerSliceHash,
+            provider_attribution_count: receipt.providerAttributionCount,
+            provider_attribution_hash: receipt.providerAttributionHash,
+            resource_count: receipt.resourceCount,
+            exact_document_count: receipt.exactDocumentCount,
+            resource_inventory_hash: receipt.resourceInventoryHash,
+            exact_search_inventory_hash: receipt.exactSearchInventoryHash,
+            fts_build_version: receipt.ftsBuildVersion,
+            fts_document_count: receipt.ftsDocumentCount,
+            fts_queryable: receipt.ftsQueryable ? 1 : 0,
+            foreign_keys_valid: receipt.foreignKeysValid ? 1 : 0,
+            content_hashes_valid: receipt.contentHashesValid ? 1 : 0,
+            unavailable_provider_isolation_valid:
+              receipt.unavailableProviderIsolationValid ? 1 : 0,
+            provider_search_projection_version:
+              providerProof.provider_search_projection_version,
+            provider_search_document_count:
+              providerProof.provider_search_document_count,
+            provider_search_inventory_hash:
+              providerProof.provider_search_inventory_hash,
+            provider_search_fts_build_version:
+              providerProof.provider_search_fts_build_version,
+            provider_search_fts_document_count:
+              providerProof.provider_search_fts_document_count,
+            provider_search_fts_queryable: 1,
+            provider_search_exact_parity: 1,
+            model_variant_name_projection_version:
+              modelProof.model_variant_name_projection_version,
+            model_variant_name_document_count:
+              modelProof.model_variant_name_document_count,
+            model_variant_name_inventory_hash:
+              modelProof.model_variant_name_inventory_hash,
+            model_variant_name_storage_version:
+              modelProof.model_variant_name_storage_version,
+            model_variant_name_storage_document_count:
+              modelProof.model_variant_name_storage_document_count,
+            model_variant_name_storage_queryable: 1,
+            model_variant_name_storage_exact_parity: 1,
+          }),
+        );
+        break;
+      }
+      case "vectors":
+        vectors.push(
+          Object.freeze({
+            publication_id: receiptProof.publication_id,
+            kind: "vectors",
+            vector_namespace: receipt.namespace,
+            document_count: receipt.documentCount,
+            verified_document_count: receipt.verifiedDocumentCount,
+            vector_inventory_hash: receipt.vectorInventoryHash,
+            visibility_probe_version: receipt.visibilityProbeVersion,
+            mutation_id: receipt.mutationId,
+            all_ids_present: receipt.allIdsPresent ? 1 : 0,
+            all_namespaces_match: receipt.allNamespacesMatch ? 1 : 0,
+            queryable: receipt.queryable ? 1 : 0,
+          }),
+        );
+        break;
+      case "probes":
+        probes.push(
+          Object.freeze({
+            publication_id: receiptProof.publication_id,
+            kind: "probes",
+            probe_set_version: receipt.probeSetVersion,
+            integrity_passed: receipt.integrityPassed ? 1 : 0,
+            evidence_coverage_passed: receipt.evidenceCoveragePassed ? 1 : 0,
+            exact_search_passed: receipt.exactSearchPassed ? 1 : 0,
+            semantic_search_passed: receipt.semanticSearchPassed ? 1 : 0,
+            structured_filter_passed: receipt.structuredFilterPassed ? 1 : 0,
+            neutrality_passed: receipt.neutralityPassed ? 1 : 0,
+            version_isolation_passed: receipt.versionIsolationPassed ? 1 : 0,
+          }),
+        );
+        break;
+    }
+  }
+  return Object.freeze({
+    bindings: Object.freeze(
+      bindings.sort((left, right) => compareAscii(left.kind, right.kind)),
+    ),
+    archives: Object.freeze(archives),
+    servings: Object.freeze(servings),
+    vectors: Object.freeze(vectors),
+    probes: Object.freeze(probes),
+  });
+};
+
+/** Reconstructs v3 nominal authority from exact persisted rows and fresh
+ * provider/model queryability observations. Persisted digests are comparison
+ * values only and never confer authority. */
+export const reconstructServingReadinessProofV3FromPersistence = async (input: {
+  readonly manifest: TrustedImmutablePublicationManifest;
+  readonly providerProjection: TrustedProviderSearchProjection;
+  readonly providerFts: ProviderSearchFtsObservationV2;
+  readonly providerSearchDocuments: readonly ProviderSearchDocumentRowV2[];
+  readonly providerSearchFtsRows: readonly ProviderSearchFtsRowV2[];
+  readonly modelVariantNameStaging: ModelVariantNameSearchStagingProjectionV1;
+  readonly modelVariantNameStorage: ModelVariantNameSearchStorageObservationV1;
+  readonly modelVariantNameQueryability: ModelVariantNameSearchQueryabilityObservationV3;
+  readonly receiptRows: ServingReadinessReceiptRowsV3;
+  readonly attestation: ServingReadinessAttestationProjectionV3;
+}): Promise<ServingReadinessProofV3> => {
+  const manifest = input.manifest;
+  const providerProjection = input.providerProjection;
+  const providerFtsInput = input.providerFts;
+  const providerSearchDocumentsInput = input.providerSearchDocuments;
+  const providerSearchFtsRowsInput = input.providerSearchFtsRows;
+  const modelVariantNameStaging = input.modelVariantNameStaging;
+  const modelVariantNameStorageInput = input.modelVariantNameStorage;
+  const modelVariantNameQueryabilityInput = input.modelVariantNameQueryability;
+  const receiptRowsInput = input.receiptRows;
+  const attestationInput = input.attestation;
+  assertImmutablePublicationManifest(manifest);
+  assertProviderSearchProjection(providerProjection);
+  assertModelVariantNameSearchStagingProjectionV1(modelVariantNameStaging);
+  const modelStagingBinding =
+    trustedModelVariantNameSearchStagingProjectionsV1.get(
+      modelVariantNameStaging,
+    );
+  if (modelStagingBinding === undefined)
+    throw new TypeError(
+      "persisted model/variant staging v3 uses another manifest",
+    );
+  if (
+    modelStagingBinding.manifest.publicationId !== manifest.publicationId ||
+    modelStagingBinding.manifest.closureHash !== manifest.closureHash
+  )
+    throw new TypeError(
+      "persisted model/variant staging v3 uses another manifest",
+    );
+  const observed = structuredClone({
+    providerFts: providerFtsInput,
+    providerSearchDocuments: providerSearchDocumentsInput,
+    providerSearchFtsRows: providerSearchFtsRowsInput,
+    modelVariantNameStorage: modelVariantNameStorageInput,
+    modelVariantNameQueryability: modelVariantNameQueryabilityInput,
+    receiptRows: receiptRowsInput,
+    attestation: attestationInput,
+  });
+  const providerPersistence = providerSearchPersistenceV2(providerProjection);
+  if (
+    JSON.stringify(observed.providerSearchDocuments) !==
+      JSON.stringify(providerPersistence.documents) ||
+    JSON.stringify(observed.providerSearchFtsRows) !==
+      JSON.stringify(providerPersistence.ftsRows)
+  )
+    throw new TypeError("persisted provider search projection v3 is invalid");
+  const providerProof = projectProviderSearchArtifactProofV2({
+    manifest,
+    projection: providerProjection,
+    fts: observed.providerFts,
+  });
+  const modelStorageProof = projectModelVariantNameSearchArtifactProofV1({
+    staging: modelVariantNameStaging,
+    observation: observed.modelVariantNameStorage,
+  });
+  const modelVariantNameProof =
+    projectModelVariantNameSearchQueryableArtifactProofV3({
+      storageProof: modelStorageProof,
+      queryability: observed.modelVariantNameQueryability,
+    });
+  if (
+    observed.receiptRows.bindings.length !== 4 ||
+    observed.receiptRows.archives.length !== 1 ||
+    observed.receiptRows.servings.length !== 1 ||
+    observed.receiptRows.vectors.length !== 1 ||
+    observed.receiptRows.probes.length !== 1
+  )
+    throw new TypeError("persisted readiness receipt v3 set is incomplete");
+  const detail = {
+    archive: requireSingleRow(observed.receiptRows.archives, "archive v3"),
+    serving: requireSingleRow(observed.receiptRows.servings, "serving v3"),
+    vectors: requireSingleRow(observed.receiptRows.vectors, "vectors v3"),
+    probes: requireSingleRow(observed.receiptRows.probes, "probes v3"),
+  };
+  const persistedServing = detail.serving as Readonly<Record<string, unknown>>;
+  if (
+    persistedServing.provider_search_projection_version !==
+      providerProof.provider_search_projection_version ||
+    persistedServing.provider_search_document_count !==
+      providerProof.provider_search_document_count ||
+    persistedServing.provider_search_inventory_hash !==
+      providerProof.provider_search_inventory_hash ||
+    persistedServing.provider_search_fts_build_version !==
+      providerProof.provider_search_fts_build_version ||
+    persistedServing.provider_search_fts_document_count !==
+      providerProof.provider_search_fts_document_count ||
+    persistedServing.provider_search_fts_queryable !== 1 ||
+    persistedServing.provider_search_exact_parity !== 1 ||
+    persistedServing.model_variant_name_projection_version !==
+      modelVariantNameProof.model_variant_name_projection_version ||
+    persistedServing.model_variant_name_document_count !==
+      modelVariantNameProof.model_variant_name_document_count ||
+    persistedServing.model_variant_name_inventory_hash !==
+      modelVariantNameProof.model_variant_name_inventory_hash ||
+    persistedServing.model_variant_name_storage_version !==
+      modelVariantNameProof.model_variant_name_storage_version ||
+    persistedServing.model_variant_name_storage_document_count !==
+      modelVariantNameProof.model_variant_name_storage_document_count ||
+    persistedServing.model_variant_name_storage_queryable !== 1 ||
+    persistedServing.model_variant_name_storage_exact_parity !== 1
+  )
+    throw new TypeError(
+      "persisted serving receipt v3 search suffix is invalid",
+    );
+  const receipts: ReadinessReceipt[] = [];
+  const persistedProofByKind = new Map<
+    ReadinessReceipt["kind"],
+    ServingReadinessReceiptBindingRow
+  >();
+  for (const row of observed.receiptRows.bindings) {
+    if (
+      row.receipt_version !== READINESS_RECEIPT_VERSION_V3 ||
+      persistedProofByKind.has(row.kind) ||
+      detail[row.kind].publication_id !== row.publication_id
+    )
+      throw new TypeError("persisted readiness receipt v3 binding is invalid");
+    persistedProofByKind.set(row.kind, row);
+    const binding: ArtifactBinding = Object.freeze({
+      environment: row.environment as PublicationEnvironment,
+      publicationId: row.publication_id as PublicationId,
+      closureHash: row.closure_hash as Sha256,
+      bundleHash: row.bundle_hash as Sha256,
+      schemaVersion: row.schema_version,
+      buildCommit: row.build_commit,
+    });
+    const common = {
+      binding,
+      observedAt: timestampFromMs(
+        row.observed_at_ms,
+        "persisted readiness v3 observation",
+      ),
+    };
+    switch (row.kind) {
+      case "archive":
+        receipts.push({
+          ...common,
+          kind: "archive",
+          retainedBundleHash: detail.archive.retained_bundle_hash as Sha256,
+          immutable: receiptFlag(detail.archive.immutable, "archive immutable"),
+        });
+        break;
+      case "serving":
+        receipts.push({
+          ...common,
+          kind: "serving",
+          enabledProviderCount: detail.serving.enabled_provider_count,
+          enabledProviderScopeHash: detail.serving
+            .enabled_provider_scope_hash as Sha256,
+          providerSliceCount: detail.serving.provider_slice_count,
+          providerSliceHash: detail.serving.provider_slice_hash as Sha256,
+          providerAttributionCount: detail.serving.provider_attribution_count,
+          providerAttributionHash: detail.serving
+            .provider_attribution_hash as Sha256,
+          resourceCount: detail.serving.resource_count,
+          exactDocumentCount: detail.serving.exact_document_count,
+          resourceInventoryHash: detail.serving
+            .resource_inventory_hash as Sha256,
+          exactSearchInventoryHash: detail.serving
+            .exact_search_inventory_hash as Sha256,
+          ftsBuildVersion: detail.serving.fts_build_version,
+          ftsDocumentCount: detail.serving.fts_document_count,
+          ftsQueryable: receiptFlag(
+            detail.serving.fts_queryable,
+            "serving FTS queryable",
+          ),
+          foreignKeysValid: receiptFlag(
+            detail.serving.foreign_keys_valid,
+            "serving foreign keys",
+          ),
+          contentHashesValid: receiptFlag(
+            detail.serving.content_hashes_valid,
+            "serving content hashes",
+          ),
+          unavailableProviderIsolationValid: receiptFlag(
+            detail.serving.unavailable_provider_isolation_valid,
+            "serving unavailable provider isolation",
+          ),
+        });
+        break;
+      case "vectors":
+        receipts.push({
+          ...common,
+          kind: "vectors",
+          namespace: detail.vectors.vector_namespace as PublicationId,
+          documentCount: detail.vectors.document_count,
+          verifiedDocumentCount: detail.vectors.verified_document_count,
+          vectorInventoryHash: detail.vectors.vector_inventory_hash as Sha256,
+          visibilityProbeVersion: detail.vectors.visibility_probe_version,
+          mutationId: detail.vectors.mutation_id,
+          allIdsPresent: receiptFlag(
+            detail.vectors.all_ids_present,
+            "vector IDs present",
+          ),
+          allNamespacesMatch: receiptFlag(
+            detail.vectors.all_namespaces_match,
+            "vector namespaces",
+          ),
+          queryable: receiptFlag(detail.vectors.queryable, "vectors queryable"),
+        });
+        break;
+      case "probes":
+        receipts.push({
+          ...common,
+          kind: "probes",
+          probeSetVersion: detail.probes.probe_set_version,
+          integrityPassed: receiptFlag(
+            detail.probes.integrity_passed,
+            "probe integrity",
+          ),
+          evidenceCoveragePassed: receiptFlag(
+            detail.probes.evidence_coverage_passed,
+            "probe evidence coverage",
+          ),
+          exactSearchPassed: receiptFlag(
+            detail.probes.exact_search_passed,
+            "probe exact search",
+          ),
+          semanticSearchPassed: receiptFlag(
+            detail.probes.semantic_search_passed,
+            "probe semantic search",
+          ),
+          structuredFilterPassed: receiptFlag(
+            detail.probes.structured_filter_passed,
+            "probe structured filter",
+          ),
+          neutralityPassed: receiptFlag(
+            detail.probes.neutrality_passed,
+            "probe neutrality",
+          ),
+          versionIsolationPassed: receiptFlag(
+            detail.probes.version_isolation_passed,
+            "probe version isolation",
+          ),
+        });
+        break;
+    }
+  }
+  const receiptProofs = await Promise.all(
+    receipts.map((receipt) =>
+      projectReadinessReceiptProofV3({
+        receipt,
+        providerProof: receipt.kind === "serving" ? providerProof : null,
+        modelVariantNameProof:
+          receipt.kind === "serving" ? modelVariantNameProof : null,
+      }),
+    ),
+  );
+  for (const proof of receiptProofs) {
+    const persisted = persistedProofByKind.get(proof.kind);
+    if (
+      persisted?.receipt_hash !== proof.receipt_hash ||
+      persisted.observed_at_ms !== proof.observed_at_ms
+    )
+      throw new TypeError("persisted readiness receipt v3 hash is invalid");
+  }
+  const reconstructed = await projectServingReadinessProofV3({
+    manifest,
+    receiptProofs,
+    environment: observed.attestation.environment,
+    readyAtMs: observed.attestation.ready_at_ms,
+    maximumReceiptAgeMs: observed.attestation.maximum_receipt_age_ms,
+  });
+  if (
+    JSON.stringify(reconstructed.attestation) !==
+    JSON.stringify(observed.attestation)
+  )
+    throw new TypeError("persisted readiness attestation v3 is invalid");
+  return reconstructed;
+};
+
+export const projectServingReadinessCommitV3 = async (input: {
+  readonly proof: ServingReadinessProofV3;
+  readonly closureRows: ServingClosureRows;
+  readonly persistedSeal: ServingClosureSealProjection;
+  readonly persistedProviderSearchDocuments: readonly ProviderSearchDocumentRowV2[];
+  readonly persistedProviderSearchFtsRows: readonly ProviderSearchFtsRowV2[];
+  readonly persistedModelVariantNameRows: readonly ModelVariantNameSearchStorageRowV1[];
+}): Promise<ServingReadinessCommitProjectionV3> => {
+  const proof = input.proof;
+  const closureRowsInput = input.closureRows;
+  const persistedSealInput = input.persistedSeal;
+  const persistedProviderSearchDocumentsInput =
+    input.persistedProviderSearchDocuments;
+  const persistedProviderSearchFtsRowsInput =
+    input.persistedProviderSearchFtsRows;
+  const persistedModelVariantNameRowsInput =
+    input.persistedModelVariantNameRows;
+  assertServingReadinessProofV3(proof);
+  const observed = structuredClone({
+    closureRows: closureRowsInput,
+    persistedSeal: persistedSealInput,
+    providerDocuments: persistedProviderSearchDocumentsInput,
+    providerFtsRows: persistedProviderSearchFtsRowsInput,
+    modelRows: persistedModelVariantNameRowsInput,
+  });
+  const receiptRows = receiptDetailRowsV3(proof);
+  const servingProof = proof.receipts.find(
+    (receipt) => receipt.kind === "serving",
+  );
+  if (servingProof === undefined)
+    throw new TypeError("serving readiness proof v3 lacks serving evidence");
+  const receiptBinding = trustedReadinessReceiptProofsV3.get(servingProof);
+  const providerProof = receiptBinding?.providerProof;
+  const modelProof = receiptBinding?.modelVariantNameProof;
+  assertProviderSearchArtifactProofV2(providerProof);
+  assertModelVariantNameSearchQueryableArtifactProofV3(modelProof);
+  const providerBinding =
+    trustedProviderSearchArtifactProofsV2.get(providerProof);
+  const modelBinding =
+    trustedModelVariantNameSearchQueryableArtifactProofsV3.get(modelProof);
+  if (providerBinding === undefined || modelBinding === undefined)
+    throw new TypeError(
+      "serving readiness proof v3 search proof is not trusted",
+    );
+  const providerSearch = providerSearchPersistenceV2(
+    providerBinding.projection,
+    observed.closureRows.stagingRevision,
+  );
+  const modelVariantNameSearch = modelVariantNameSearchStoragePersistenceV1(
+    modelBinding.projection,
+    observed.closureRows.stagingRevision,
+  );
+  const closure = await projectServingClosureSeal(observed.closureRows);
+  const sealErrors = await verifyServingClosureSealProjection(
+    observed.closureRows,
+    observed.persistedSeal,
+  );
+  if (
+    sealErrors.length > 0 ||
+    closure.manifest.publicationId !== proof.attestation.publication_id ||
+    closure.manifest.closureHash !== proof.attestation.closure_hash ||
+    closure.manifest.bundleHash !== proof.attestation.bundle_hash ||
+    providerBinding.manifest.publicationId !== closure.manifest.publicationId ||
+    providerBinding.manifest.closureHash !== closure.manifest.closureHash ||
+    modelBinding.manifest.publicationId !== closure.manifest.publicationId ||
+    modelBinding.manifest.closureHash !== closure.manifest.closureHash ||
+    proof.receipts.some(
+      (receipt) => receipt.observed_at_ms < observed.closureRows.sealedAtMs,
+    ) ||
+    JSON.stringify(observed.providerDocuments) !==
+      JSON.stringify(providerSearch.documents) ||
+    JSON.stringify(observed.providerFtsRows) !==
+      JSON.stringify(providerSearch.ftsRows) ||
+    JSON.stringify(observed.modelRows) !==
+      JSON.stringify(modelVariantNameSearch.rows)
+  )
+    throw new TypeError(
+      "serving readiness commit v3 does not match persisted sealed evidence",
+    );
+  const persistence = Object.freeze({
+    providerSearch,
+    modelVariantNameSearch,
+    receiptRows,
+    attestation: Object.freeze({ ...proof.attestation }),
+    transition: Object.freeze({
+      publication_id: proof.attestation.publication_id,
+      closure_hash: proof.attestation.closure_hash,
+      expected_state: "building" as const,
+      next_state: "ready" as const,
+      ready_at_ms: proof.attestation.ready_at_ms,
+    }),
+  });
+  const result = {};
+  Object.defineProperty(result, servingReadinessCommitProjectionV3Brand, {
+    value: true,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  trustedServingReadinessCommitProjectionsV3.set(result, persistence);
+  return Object.freeze(result) as ServingReadinessCommitProjectionV3;
+};
+
+export const readServingReadinessCommitPersistenceV3 = (
+  value: ServingReadinessCommitProjectionV3,
+): ServingReadinessCommitPersistenceV3 => {
+  assertServingReadinessCommitProjectionV3(value);
+  const persistence = trustedServingReadinessCommitProjectionsV3.get(value);
+  if (persistence === undefined)
+    throw new TypeError(
+      "serving readiness commit projection v3 is not trusted",
+    );
+  return persistence;
+};
+
+export const classifyServingReadinessCommitRetryV3 = (input: {
+  readonly expected: ServingReadinessCommitProjectionV3;
+  readonly publicationState: PublicationState;
+  readonly publicationReadyAtMs: number | null;
+  readonly publicationClosureHash: string;
+  readonly receiptRows: ServingReadinessReceiptRowsV3;
+  readonly attestation: ServingReadinessAttestationProjectionV3 | null;
+}): ServingReadinessCommitRetryDecision => {
+  const expected = readServingReadinessCommitPersistenceV3(input.expected);
+  const hasRows = !readinessRowsEmpty(input.receiptRows);
+  if (!hasRows && input.attestation === null) {
+    if (input.publicationClosureHash !== expected.transition.closure_hash)
+      return Object.freeze({ outcome: "integrity_failure" });
+    if (
+      input.publicationState === expected.transition.expected_state &&
+      input.publicationReadyAtMs === null
+    )
+      return Object.freeze({ outcome: "execute" });
+    if (
+      input.publicationState === "failed" &&
+      input.publicationReadyAtMs === null
+    )
+      return Object.freeze({ outcome: "stale" });
+    return Object.freeze({ outcome: "integrity_failure" });
+  }
+  if (
+    readinessRowsConflict(input.receiptRows, expected.receiptRows) ||
+    (input.attestation !== null &&
+      JSON.stringify(input.attestation) !==
+        JSON.stringify(expected.attestation))
+  )
+    return Object.freeze({ outcome: "conflict" });
+  if (
+    !exactReadinessRows(input.receiptRows, expected.receiptRows) ||
+    input.attestation === null
+  )
+    return Object.freeze({ outcome: "integrity_failure" });
+  if (
+    !(
+      /* prettier-ignore */ (["ready", "active", "superseded", "rolled_back"] as const).includes(
+      input.publicationState as
+        "ready" | "active" | "superseded" | "rolled_back",
+    )
+    ) ||
+    input.publicationReadyAtMs !== expected.transition.ready_at_ms ||
+    input.publicationClosureHash !== expected.transition.closure_hash
+  )
+    return Object.freeze({ outcome: "integrity_failure" });
+  return Object.freeze({ outcome: "idempotent_success" });
+};
+
+export type ServingSwitchPersistenceV3 = Readonly<{
+  plan: HeadSwitchPlan;
+  preflight: ServingSwitchPreflightProofV3;
+  history: ServingSwitchHistoryRow;
+}>;
+
+const servingSwitchProjectionV3Brand: unique symbol = Symbol(
+  "ServingSwitchProjectionV3",
+);
+export type ServingSwitchProjectionV3 = Readonly<{
+  readonly [servingSwitchProjectionV3Brand]: true;
+}>;
+const trustedServingSwitchProjectionsV3 = new WeakMap<
+  object,
+  ServingSwitchPersistenceV3
+>();
+
+export const assertServingSwitchProjectionV3: (
+  value: unknown,
+) => asserts value is ServingSwitchProjectionV3 = (value) => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !(servingSwitchProjectionV3Brand in value) ||
+    value[servingSwitchProjectionV3Brand] !== true ||
+    !trustedServingSwitchProjectionsV3.has(value)
+  )
+    throw new TypeError("serving switch projection v3 is not trusted");
+};
+
+export const projectServingSwitchV3 = async (input: {
+  readonly preflight: ServingSwitchPreflightProofV3;
+  readonly target: PublicationRecord;
+  readonly currentHead: StoredPublicationHead | null;
+  readonly currentActive: PublicationRecord | null;
+  readonly authorizedBy: SwitchAuthorization;
+  readonly closureRows: ServingClosureRows;
+  readonly persistedSeal: ServingClosureSealProjection;
+  readonly persistedProviderSearchDocuments: readonly ProviderSearchDocumentRowV2[];
+  readonly persistedProviderSearchFtsRows: readonly ProviderSearchFtsRowV2[];
+  readonly persistedModelVariantNameRows: readonly ModelVariantNameSearchStorageRowV1[];
+  readonly persistedReceiptRows: ServingReadinessReceiptRowsV3 | null;
+  readonly persistedAttestation: ServingReadinessAttestationProjectionV3 | null;
+}): Promise<ServingSwitchProjectionV3> => {
+  const preflight = input.preflight;
+  const targetInput = input.target;
+  const currentHeadInput = input.currentHead;
+  const currentActiveInput = input.currentActive;
+  const authorizedByInput = input.authorizedBy;
+  const closureRowsInput = input.closureRows;
+  const persistedSealInput = input.persistedSeal;
+  const persistedProviderSearchDocumentsInput =
+    input.persistedProviderSearchDocuments;
+  const persistedProviderSearchFtsRowsInput =
+    input.persistedProviderSearchFtsRows;
+  const persistedModelVariantNameRowsInput =
+    input.persistedModelVariantNameRows;
+  const persistedReceiptRowsInput = input.persistedReceiptRows;
+  const persistedAttestationInput = input.persistedAttestation;
+  assertServingSwitchPreflightProofV3(preflight);
+  const proofBinding = trustedServingSwitchPreflightProofsV3.get(preflight);
+  if (proofBinding === undefined)
+    throw new TypeError("serving switch preflight proof v3 is not trusted");
+  const observed = structuredClone({
+    target: targetInput,
+    currentHead: currentHeadInput,
+    currentActive: currentActiveInput,
+    authorizedBy: authorizedByInput,
+    closureRows: closureRowsInput,
+    persistedSeal: persistedSealInput,
+    providerDocuments: persistedProviderSearchDocumentsInput,
+    providerFtsRows: persistedProviderSearchFtsRowsInput,
+    modelRows: persistedModelVariantNameRowsInput,
+    receiptRows: persistedReceiptRowsInput,
+    attestation: persistedAttestationInput,
+  });
+  const closure = await projectServingClosureSeal(observed.closureRows);
+  const sealErrors = await verifyServingClosureSealProjection(
+    observed.closureRows,
+    observed.persistedSeal,
+  );
+  const providerBinding = trustedProviderSearchArtifactProofsV2.get(
+    proofBinding.providerProof,
+  );
+  const modelBinding =
+    trustedModelVariantNameSearchQueryableArtifactProofsV3.get(
+      proofBinding.modelVariantNameProof,
+    );
+  if (providerBinding === undefined || modelBinding === undefined)
+    throw new TypeError("serving switch v3 search proof is not trusted");
+  const providerSearch = providerSearchPersistenceV2(
+    providerBinding.projection,
+    observed.closureRows.stagingRevision,
+  );
+  const modelVariantNameSearch = modelVariantNameSearchStoragePersistenceV1(
+    modelBinding.projection,
+    observed.closureRows.stagingRevision,
+  );
+  if (
+    sealErrors.length > 0 ||
+    closure.manifest.publicationId !== proofBinding.manifest.publicationId ||
+    closure.manifest.closureHash !== proofBinding.manifest.closureHash ||
+    JSON.stringify(observed.providerDocuments) !==
+      JSON.stringify(providerSearch.documents) ||
+    JSON.stringify(observed.providerFtsRows) !==
+      JSON.stringify(providerSearch.ftsRows) ||
+    JSON.stringify(observed.modelRows) !==
+      JSON.stringify(modelVariantNameSearch.rows) ||
+    preflight.observed_at_ms < observed.closureRows.sealedAtMs
+  )
+    throw new TypeError(
+      "serving switch v3 does not match persisted sealed evidence",
+    );
+  if (preflight.action === "activate") {
+    const readinessProof = proofBinding.readinessProof;
+    assertServingReadinessProofV3(readinessProof);
+    const expectedRows = receiptDetailRowsV3(readinessProof);
+    if (
+      observed.receiptRows === null ||
+      observed.attestation === null ||
+      JSON.stringify(observed.receiptRows) !== JSON.stringify(expectedRows) ||
+      JSON.stringify(observed.attestation) !==
+        JSON.stringify(readinessProof.attestation)
+    )
+      throw new TypeError(
+        "serving switch activation v3 lacks persisted readiness",
+      );
+  } else if (observed.receiptRows !== null || observed.attestation !== null) {
+    throw new TypeError(
+      "serving switch rollback v3 carries readiness evidence",
+    );
+  }
+  if (
+    observed.target.publicationId !== proofBinding.manifest.publicationId ||
+    observed.target.closureHash !== proofBinding.manifest.closureHash ||
+    preflight.to_publication_id !== observed.target.publicationId ||
+    preflight.to_closure_hash !== observed.target.closureHash
+  )
+    throw new TypeError("serving switch v3 target does not bind its manifest");
+  const switchedAt = timestampFromMs(
+    preflight.switched_at_ms,
+    "switch v3 time",
+  );
+  const plan =
+    preflight.action === "activate"
+      ? planActivation({
+          candidate: observed.target,
+          currentHead: observed.currentHead,
+          currentActive: observed.currentActive,
+          switchedAt,
+          authorizedBy: observed.authorizedBy,
+        })
+      : (() => {
+          if (observed.currentHead === null || observed.currentActive === null)
+            throw new TypeError("rollback v3 lacks current serving state");
+          return planRollback({
+            currentHead: observed.currentHead,
+            defective: observed.currentActive,
+            target: observed.target,
+            switchedAt,
+            authorizedBy: observed.authorizedBy,
+          });
+        })();
+  const event = switchHistoryStep(plan);
+  if (
+    event.switchId !== preflight.switch_id ||
+    event.action !== preflight.action ||
+    event.expectedPriorGeneration !== preflight.expected_prior_generation ||
+    event.newGeneration !== preflight.new_generation ||
+    event.fromPublicationId !== preflight.from_publication_id ||
+    event.fromClosureHash !== preflight.from_closure_hash ||
+    event.toPublicationId !== preflight.to_publication_id ||
+    event.toClosureHash !== preflight.to_closure_hash ||
+    (observed.currentHead?.rollbackCandidatePublicationId ?? null) !==
+      preflight.expected_prior_rollback_candidate_publication_id ||
+    (observed.currentHead === null
+      ? null
+      : assertTimestamp(
+          observed.currentHead.switchedAt,
+          "prior switch v3 time",
+        )) !== preflight.expected_prior_switched_at_ms
+  )
+    throw new TypeError(
+      "serving switch v3 preflight does not bind its lifecycle plan",
+    );
+  const eventHash = await digest("publication-switch-event", [
+    field("event_version", "text", SERVING_SWITCH_EVENT_VERSION),
+    field("switch_id", "text", event.switchId),
+    field("preflight_hash", "digest", preflight.preflight_hash),
+    field("action", "text", event.action),
+    field(
+      "expected_prior_generation",
+      "integer",
+      String(event.expectedPriorGeneration),
+    ),
+    nullableCanonical(
+      "expected_prior_rollback_candidate_publication_id",
+      "identifier",
+      observed.currentHead?.rollbackCandidatePublicationId ?? null,
+    ),
+    observed.currentHead === null
+      ? field("expected_prior_switched_at", "null", "null")
+      : field(
+          "expected_prior_switched_at",
+          "timestamp",
+          observed.currentHead.switchedAt,
+        ),
+    field("new_generation", "integer", String(event.newGeneration)),
+    nullableCanonical(
+      "from_publication_id",
+      "identifier",
+      event.fromPublicationId,
+    ),
+    nullableCanonical("from_closure_hash", "digest", event.fromClosureHash),
+    field("to_publication_id", "identifier", event.toPublicationId),
+    field("to_closure_hash", "digest", event.toClosureHash),
+    nullableCanonical(
+      "to_attestation_hash",
+      "digest",
+      preflight.to_attestation_hash,
+    ),
+    nullableCanonical(
+      "resulting_rollback_candidate_publication_id",
+      "identifier",
+      event.resultingRollbackCandidatePublicationId,
+    ),
+    field("switched_at", "timestamp", event.switchedAt),
+    field("authorized_by_kind", "text", event.authorizedBy.kind),
+    field("authorized_identity_id", "text", event.authorizedBy.identityId),
+  ]);
+  const history = Object.freeze({
+    switch_id: event.switchId,
+    event_version: SERVING_SWITCH_EVENT_VERSION,
+    event_hash: eventHash,
+    preflight_hash: preflight.preflight_hash,
+    action: event.action,
+    expected_prior_generation: event.expectedPriorGeneration,
+    expected_prior_rollback_candidate_publication_id:
+      observed.currentHead?.rollbackCandidatePublicationId ?? null,
+    expected_prior_switched_at_ms:
+      observed.currentHead === null
+        ? null
+        : assertTimestamp(
+            observed.currentHead.switchedAt,
+            "prior switch v3 time",
+          ),
+    new_generation: event.newGeneration,
+    from_publication_id: event.fromPublicationId,
+    from_closure_hash: event.fromClosureHash,
+    to_publication_id: event.toPublicationId,
+    to_closure_hash: event.toClosureHash,
+    to_attestation_hash: preflight.to_attestation_hash,
+    resulting_rollback_candidate_publication_id:
+      event.resultingRollbackCandidatePublicationId,
+    switched_at_ms: preflight.switched_at_ms,
+    authorized_by_kind: event.authorizedBy.kind,
+    authorized_identity_id: event.authorizedBy.identityId,
+  } satisfies ServingSwitchHistoryRow);
+  const persistence = Object.freeze({
+    plan,
+    preflight,
+    history,
+  });
+  const result = {};
+  Object.defineProperty(result, servingSwitchProjectionV3Brand, {
+    value: true,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  trustedServingSwitchProjectionsV3.set(result, persistence);
+  return Object.freeze(result) as ServingSwitchProjectionV3;
+};
+
+export const readServingSwitchPersistenceV3 = (
+  value: ServingSwitchProjectionV3,
+): ServingSwitchPersistenceV3 => {
+  assertServingSwitchProjectionV3(value);
+  const persistence = trustedServingSwitchProjectionsV3.get(value);
+  if (persistence === undefined)
+    throw new TypeError("serving switch projection v3 is not trusted");
+  return persistence;
+};
+
+export const classifyServingSwitchRetryV3 = (input: {
+  readonly expected: ServingSwitchProjectionV3;
+  readonly currentHead: StoredPublicationHead | null;
+  readonly preflightAtGeneration: ServingSwitchPreflightProofV3 | null;
+  readonly historyAtGeneration: ServingSwitchHistoryRow | null;
+  readonly targetState: PublicationState;
+  readonly formerState: PublicationState | null;
+}): ServingSwitchRetryDecision => {
+  const expected = readServingSwitchPersistenceV3(input.expected);
+  if (input.currentHead !== null) validateHead(input.currentHead);
+  const cas = expected.plan.steps.find(
+    (
+      step,
+    ): step is Extract<HeadSwitchStep, { kind: "compare_and_swap_head" }> =>
+      step.kind === "compare_and_swap_head",
+  );
+  if (cas === undefined)
+    throw new TypeError("switch v3 plan lacks its head CAS");
   if (input.historyAtGeneration === null) {
     if (input.preflightAtGeneration !== null)
       return Object.freeze({

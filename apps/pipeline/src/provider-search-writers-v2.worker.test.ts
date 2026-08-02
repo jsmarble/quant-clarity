@@ -72,7 +72,12 @@ const one = async <Row>(
 };
 
 beforeAll(async () => {
-  await applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS);
+  await applyD1Migrations(
+    env.SERVING_DB,
+    env.TEST_MIGRATIONS.filter(
+      (migration) => migration.name <= "0008_provider_name_nul_guard.sql",
+    ),
+  );
 });
 
 describe("schema-1.5.1 provider publication flow in workerd (PIPE-050–PIPE-053, QA-006)", () => {

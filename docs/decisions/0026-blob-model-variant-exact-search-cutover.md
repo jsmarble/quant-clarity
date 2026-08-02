@@ -2,9 +2,14 @@
 
 - Status: Accepted
 - Date: 2026-08-02
+- Last clarified: 2026-08-02
 - Decision owners: Staff engineer, search lead, data-integrity lead
 - Related requirements: `DATA-001`–`DATA-004`, `DATA-008`, `API-003`, `API-010`, `SRCH-002`, `SRCH-006`, `SRCH-007`, `SRCH-009`, `PIPE-044`, `PIPE-050`–`PIPE-056`, `BE-003`, `BE-010`–`BE-012`, `PRIV-006`, `PRIV-007`, `PRIV-011`, `QA-005`, `QA-006`
 - Extends: ADRs 0015, 0019–0023, and 0025
+
+## Clarification history
+
+- **2026-08-02:** Froze the initial A2 operational envelope, separated per-publication runtime queryability from workerd semantic gold coverage, and defined the backup-v1 restore-source transformation used by the local rebuild seam. This clarification narrows implementation choices within the accepted design; it changes no product requirement and makes no backup, restore, backend, release, resource, or deployment claim.
 
 ## Context
 
@@ -44,7 +49,9 @@ The staging plan binds publication ID, closure hash, projection version, staging
 
 Migration triggers provide defense in depth: projection rows are insert-only while the candidate is unsealed and building; their identity and resource hash must agree with canonical resources; and sealing requires bidirectional completeness between canonical model/variant resources with known display names and projection rows. SQL cannot independently reproduce `exact-search-normalization@1`, so trusted derivation plus post-write byte/root reconstruction remains required rather than pretending a trigger can prove normalization.
 
-The first writer is deliberately atomic and bounded. Its deterministic chunk planner measures the final JSON parameter in UTF-8 after hexadecimal expansion and keeps every payload strictly below D1's 2,000,000-byte value limit, with additional documented headroom for the fixed envelope. It must reject the whole candidate before mutation when the trusted projection exceeds its documented D1 statement, parameter, payload, query-count, batch-time, or Worker-memory ceiling. It may not truncate or silently page. A restart-safe multi-transaction staging protocol would require a separately accepted completion ledger and repair/abandon policy because current projection rows are immutable; that protocol is not implied by this ADR.
+The first writer is deliberately atomic and bounded. Its deterministic chunk planner measures the final JSON parameters in UTF-8 after hexadecimal expansion. One invocation accepts at most 2,000 documents, 2 MiB (2,097,152 bytes) of combined raw display-name and normalized-name bytes, 1,500,000 UTF-8 bytes per JSON payload, 8 MiB (8,388,608 bytes) of retained JSON payloads in aggregate, 40 insert chunks, 50 D1 queries across preflight/write/reconciliation, and a conservative retained-heap estimate of 64 MiB (67,108,864 bytes). The query budget reserves twelve fixed statements, including a second fail-closed reconciliation if the first durability read fails, so it independently limits the theoretical insert count to 38 chunks; the dominant raw-byte cap keeps that path unreachable. Every cap must pass before the writer acquires D1; crossing any one rejects the whole candidate without mutation. The estimate includes at least the trusted byte arrays, hexadecimal strings, retained JSON, fixed-envelope overhead, and reconstructed D1 rows rather than counting only the final binding.
+
+These initial caps are acceptance ceilings, not capacity promises. A2 must benchmark the full maximum-envelope path in the repository's pinned workerd runtime with the same retained objects and prove adequate margin below D1's transaction-duration limit and the Worker memory limit. Implementation may lower a cap in response to evidence. Raising any cap, removing retained-object accounting, or allowing multiple mutation transactions requires ADR review. The writer may not truncate or silently page. A restart-safe multi-transaction staging protocol would require a separately accepted completion ledger and repair/abandon policy because current projection rows are immutable; that protocol is not implied by this ADR.
 
 ### Atomic v3 proof cutover
 
@@ -65,15 +72,23 @@ The switch-history event stays `1.0.0` because it already binds the versioned pr
 6. `model_variant_name_storage_queryable`; and
 7. `model_variant_name_storage_exact_parity`.
 
-The storage version is exactly `model-variant-name-utf8-blob@1`, and both booleans must be true. Projection count/root must equal the trusted Phase 5F projection; storage count and exact parity must equal the nominal A1 storage-artifact proof and a strict A2 reconstruction of persisted BLOB rows. Exact parity is bidirectional and includes the exact canonical display bytes, normalized bytes, and resource content hash. The A1 artifact proof contains the other six fields but deliberately cannot claim queryability; A2 appends `model_variant_name_storage_queryable` only after indexed D1 probes pass. Queryability evidence includes indexed equality probes with leading, interior, and trailing U+0000, model/variant collisions, unknown-name omission, and corruption failures. All seven fields participate in serving-receipt and switch-preflight hashing in the declared order. Existing v1/v2 readiness constructors and hash vectors remain historical; adapters for schema `1.6.0` reject them.
+The storage version is exactly `model-variant-name-utf8-blob@1`, and both booleans must be true. Projection count/root must equal the trusted Phase 5F projection; storage count and exact parity must equal the nominal A1 storage-artifact proof and a strict A2 reconstruction of persisted BLOB rows. Exact parity is bidirectional and includes the exact canonical display bytes, normalized bytes, and resource content hash. The A1 artifact proof contains the other six fields but deliberately cannot claim queryability.
+
+A2 appends `model_variant_name_storage_queryable` only after one fixed, SELECT-only runtime probe succeeds against the reconstructed persisted table. The probe names `publication_model_variant_name_exact_idx` with `INDEXED BY`. For a nonempty projection, it binds the normalized-name BLOB from the deterministic first persisted row and requires the complete expected stable-ID-ordered collision set for that exact BLOB. It then binds a fixed empty BLOB, which cannot equal a valid stored normalized name, and requires zero rows. An empty valid projection requires both the live canonical eligible-name count and persisted table count to be zero, runs the same forced-index no-result probe, and returns `idempotent_success` on every invocation because no durable row distinguishes first and repeated empty assertions. It inserts no sentinel and performs no empty-state mutation. These checks establish that this publication's exact persisted rows are reachable through the declared index without relying on unstable `EXPLAIN QUERY PLAN` prose.
+
+Per-publication runtime probing does not manufacture NUL or collision data. Separate pinned-workerd `search-gold@3` fixtures prove leading, interior, and trailing U+0000 round trips, model/variant normalized-name collisions, unknown-name omission, malformed/corrupt-row rejection, and fixed-index behavior. Runtime queryability and semantic gold evidence are both required; neither substitutes for storage exact parity. All seven fields participate in serving-receipt and switch-preflight hashing in the declared order. Existing v1/v2 readiness constructors and hash vectors remain historical; adapters for schema `1.6.0` reject them.
 
 Migration `0009` is a pristine-state cutover, like migration `0007`: it rejects legacy sealed publications, readiness attestations, heads, preflights, or switch history instead of fabricating v3 evidence for already published state. A future populated upgrade requires a separate rebuild plan and approval. The canonical publication `schema_version` remains distinct from serving D1 schema `1.6.0`.
 
 ### Backup and restore
 
-The BLOB projection is reconstructible and noncanonical. Portable serving backup omits it, as it already omits the provider projection and FTS copy. Restore imports and verifies canonical closure rows into an isolated unsealed building publication, recreates the trusted manifest, rebuilds provider search and then model/variant exact-name search, verifies both inventories, seals, regenerates v3 readiness/probe evidence, and only then may switch. A missing, extra, malformed, byte-mismatched, normalization-mismatched, or hash-mismatched rebuilt row blocks restore before the head can change.
+The BLOB projection is reconstructible and noncanonical. Portable serving backup omits it, as it already omits the provider projection and FTS copy. A2 defines a local restore-source profile over a fully validated backup-format-`1.0.0` manifest; validation of the complete manifest, trusted closure, boundaries, chunks, counts, and root happens before transformation. The profile then selects only the target publication's canonical and deterministic rebuild-source rows: the publication record, provider dispositions and metadata, provider attribution, canonical resources, broad search documents, vector inventory, and inventory chunks. The fresh schema seeds the staging revision and deterministically advances it as those rows are imported; backup v1 does not import a revision row. The publication lifecycle is transformed into an isolated `building`, unsealed candidate while preserving the closure-bearing facts needed to reconstruct the same trusted manifest.
 
-The existing backup format may remain unchanged only if its closed table allowlist already defines these search projections as reconstructible exclusions. The implementation must make that exclusion explicit and test it; otherwise the backup format must be versioned rather than reinterpreted.
+The restore-source profile excludes the backed-up `serving_schema_metadata`, closure seal, every readiness receipt and attestation, switch preflight/history, publication head, broad FTS virtual table, provider ordinary/FTS projections, and model/variant BLOB projection. Literal import of the full backup table inventory is forbidden: it would import stale schema and authorization state and bypass deterministic search reconstruction. Unexpected dependencies or a transformation that cannot reproduce the trusted closure fail before any seal or head write.
+
+The local A2 restore-rebuild coordinator seam consumes only this verified profile in a fresh isolated schema, reconstructs the trusted manifest, rebuilds provider search and then model/variant exact-name search, verifies both inventories and queryability, seals, and regenerates v3 readiness/probe evidence. It stops before switching by default; any optional local switch still uses the ordinary v3 adapter. A missing, extra, malformed, byte-mismatched, normalization-mismatched, hash-mismatched, or nonqueryable rebuilt row blocks the transcript before the head can change.
+
+The closed backup-v1 allowlist remains unchanged and must explicitly reject both provider and model/variant reconstructible projection tables. A2's local profile, coordinator interface, and deterministic transcript are not a real exporter/importer, R2 backup, Time Travel recovery, production restore, migration-away proof, RPO/RTO result, or disaster-recovery exercise. `BE-010`–`BE-012` and `GATE-restore-and-rebuild` remain `Planned` release gates until those complete operational paths run successfully.
 
 ### Delivery split
 
@@ -93,7 +108,8 @@ No visitor-derived value is persisted, logged, traced, measured, cached, or adde
 - A sealed or switched publication cannot claim canonical exact-name completeness using only the older broad search document or v2 provider proof.
 - The model/variant projection remains reproducible from canonical closure data and is never a second canonical fact store.
 - Schema `1.6.0` is an all-at-once compatibility boundary; partial deployment of its table, writers, proofs, seal guard, switch logic, or restore logic is prohibited.
-- The initial bounded writer can block an oversized candidate. That is safer than partial publication but requires an explicit measured capacity ceiling before A2 is accepted.
+- The initial bounded writer blocks any candidate above the frozen operational envelope. Pinned-workerd benchmarking may lower but cannot raise that envelope without ADR review.
+- A2 proves only a local canonical-source transformation and rebuild seam. Full backup/export/import and disaster-recovery claims remain release work.
 - Search traceability remains `Planned` until A2, B, public composition, full acceptance, and deployed evidence exist.
 
 ## Alternatives considered
@@ -112,9 +128,9 @@ No visitor-derived value is persisted, logged, traced, measured, cached, or adde
 - In portable SQLite and real workerd/D1, prove `STRICT` BLOB enforcement, `unhex` materialization from lowercase even-length JSON hex, direct ArrayBuffer/View query binding, exact UTF-8 round trips, byte lengths, equality lookup, and index use for leading, interior, and trailing U+0000.
 - Reject malformed UTF-8, invalid scalar input, empty normalized bytes, type/ID mismatch, unknown-name rows, wrong hashes, wrong revisions, duplicates, omissions, extras, and normalized collisions that are incorrectly collapsed.
 - Prove migration atomicity, exact `1.5.1` precondition, pristine-state rejection, schema-name collision rollback, final `1.6.0` metadata, immutable rows, and seal-time bidirectional completeness.
-- Prove the bounded writer measures hex-expanded JSON bytes, stays below the 2,000,000-byte value ceiling with declared headroom, fails before mutation above every configured resource/query/payload/batch-time/memory ceiling, and reconciles exact committed state after ambiguous outcomes in both portable SQLite and workerd.
+- Prove the bounded writer enforces all seven frozen caps before D1, benchmarks the maximum retained-object envelope in pinned workerd, fails without mutation one unit above each cap, and reconciles exact committed state after ambiguous outcomes in both portable SQLite and workerd.
 - Add independent v3 receipt/preflight hash oracles and prove the seven-field suffix order, A1's inability to claim queryability, v2 incompatibility, readiness failure, switch failure, rollback failure, and last-known-good head preservation at every statement boundary.
-- Prove backup exclusion, isolated deterministic rebuild, exact v3 proof regeneration, and restore failure before switching for every row/byte/root corruption.
+- Prove complete backup-v1 validation precedes the canonical/rebuild-source transformation; literal full import and every excluded proof, head, schema, or search-projection table are rejected; and the isolated local coordinator rebuilds exact v3 evidence or fails before switching for every row/byte/root corruption.
 - In 5G-B, prove fixed SELECT-only source, active/default eligibility, strict canonical rehydration, byte parity, stable-ID ordering, bounded pagination, D1 bookmark continuation, and absence of a public route or visitor-data sink.
 - Keep every mapped traceability status `Planned` until its complete local, preview, production, legal, privacy, and release evidence exists.
 
@@ -126,6 +142,7 @@ No visitor-derived value is persisted, logged, traced, measured, cached, or adde
 - [ADR 0022: provider-only NUL prohibition](0022-forbid-nul-provider-display-names.md)
 - [ADR 0023: local query RPC and bookmark continuity](0023-local-query-rpc-and-bookmark-continuity.md)
 - [ADR 0025: trusted model/variant exact-name projection](0025-trusted-model-variant-name-projection.md)
+- [Phase 5G-A2 cutover design](../design/phase-5g-a2-model-variant-search-cutover.md)
 - [SQLite: NUL characters in strings](https://www.sqlite.org/nulinstr.html) — documents TEXT `length()` truncation at the first U+0000 and full-byte BLOB representation.
 - [SQLite: built-in scalar functions](https://www.sqlite.org/lang_corefunc.html) — specifies BLOB byte length, `typeof`, and paired-hex-to-BLOB `unhex` behavior.
 - [Cloudflare D1 Workers Binding API](https://developers.cloudflare.com/d1/worker-api/) — specifies `STRICT` guidance plus ArrayBuffer/View-to-BLOB writes and Array reads.

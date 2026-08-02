@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
 import {
+  MODEL_VARIANT_NAME_SEARCH_EXACT_INDEX_NAME,
   MODEL_VARIANT_NAME_SEARCH_MAX_DISPLAY_NAME_UTF8_BYTES,
   MODEL_VARIANT_NAME_SEARCH_MAX_NORMALIZED_NAME_UTF8_BYTES,
   MODEL_VARIANT_NAME_SEARCH_MAX_RESOURCES,
@@ -14,6 +15,7 @@ import {
   assertModelVariantNameSearchProjection,
   assertModelVariantNameSearchResourceByteBudget,
   assertModelVariantNameSearchStagingProjectionV1,
+  assertModelVariantNameSearchQueryableArtifactProofV3,
   buildImmutableManifestFromPersistedContent,
   canonicalizePublicationJson,
   derivePublicationVectorId,
@@ -24,6 +26,8 @@ import {
   hashPublicationVectorChunk,
   projectModelVariantNameSearchArtifactProofV1,
   projectModelVariantNameSearchProjection,
+  projectModelVariantNameSearchQueryabilityPlanV3,
+  projectModelVariantNameSearchQueryableArtifactProofV3,
   projectModelVariantNameSearchStagingV1,
   readModelVariantNameSearchStagingPersistenceV1,
   type ModelVariantNameSearchStorageRowV1,
@@ -1525,6 +1529,63 @@ describe("model/variant canonical-name storage proof (ADR 0026, PIPE-050)", () =
     );
     expect(proof.model_variant_name_storage_document_count).toBe(2);
     expect(proof.model_variant_name_storage_exact_parity).toBe(true);
+
+    const queryability = projectModelVariantNameSearchQueryabilityPlanV3(proof);
+    expect(queryability.indexName).toBe(
+      MODEL_VARIANT_NAME_SEARCH_EXACT_INDEX_NAME,
+    );
+    expect(queryability.matchNormalizedNameUtf8).toEqual(
+      persistence.rows[0]?.normalized_name_utf8,
+    );
+    expect(queryability.matchResourceIds).toEqual(
+      persistence.rows.map((row) => row.resource_id).sort(),
+    );
+    expect(queryability.missResourceIds).toEqual([]);
+    expect(queryability.missNormalizedNameUtf8).not.toEqual(
+      queryability.matchNormalizedNameUtf8,
+    );
+
+    const queryableProof =
+      projectModelVariantNameSearchQueryableArtifactProofV3({
+        storageProof: proof,
+        queryability: {
+          indexName: queryability.indexName,
+          matchNormalizedNameUtf8: [...queryability.matchNormalizedNameUtf8],
+          matchResourceIds: [...queryability.matchResourceIds],
+          missNormalizedNameUtf8: [...queryability.missNormalizedNameUtf8],
+          missResourceIds: [],
+        },
+      });
+    expect(() => {
+      assertModelVariantNameSearchQueryableArtifactProofV3(queryableProof);
+    }).not.toThrow();
+    expect(Object.keys(queryableProof)).toEqual([
+      "model_variant_name_projection_version",
+      "model_variant_name_document_count",
+      "model_variant_name_inventory_hash",
+      "model_variant_name_storage_version",
+      "model_variant_name_storage_document_count",
+      "model_variant_name_storage_queryable",
+      "model_variant_name_storage_exact_parity",
+    ]);
+    expect(queryableProof).toMatchObject({
+      ...proof,
+      model_variant_name_storage_queryable: true,
+    });
+    expect(() => {
+      assertModelVariantNameSearchQueryableArtifactProofV3({
+        ...queryableProof,
+      });
+    }).toThrow(/not trusted/u);
+    expect(() =>
+      projectModelVariantNameSearchQueryableArtifactProofV3({
+        storageProof: proof,
+        queryability: {
+          ...queryability,
+          matchResourceIds: queryability.matchResourceIds.slice(1),
+        },
+      }),
+    ).toThrow(/trusted probe/u);
   });
 
   it("keeps storage rows and proof fields neutral across unrelated provider context", async () => {
@@ -1604,5 +1665,16 @@ describe("model/variant canonical-name storage proof (ADR 0026, PIPE-050)", () =
     expect(proof.model_variant_name_document_count).toBe(0);
     expect(proof.model_variant_name_storage_document_count).toBe(0);
     expect(proof.model_variant_name_storage_exact_parity).toBe(true);
+    const queryability = projectModelVariantNameSearchQueryabilityPlanV3(proof);
+    expect(queryability.matchResourceIds).toEqual([]);
+    expect(queryability.missResourceIds).toEqual([]);
+    expect(queryability.matchNormalizedNameUtf8).toEqual([]);
+    expect(queryability.missNormalizedNameUtf8).toEqual([]);
+    expect(() =>
+      projectModelVariantNameSearchQueryableArtifactProofV3({
+        storageProof: proof,
+        queryability,
+      }),
+    ).not.toThrow();
   });
 });
