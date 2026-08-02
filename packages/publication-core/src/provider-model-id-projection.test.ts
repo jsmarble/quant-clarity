@@ -12,12 +12,18 @@ import {
   PROVIDER_MODEL_ID_SEARCH_MAX_RESOURCES,
   PROVIDER_MODEL_ID_SEARCH_MAX_TOTAL_RESOURCE_BYTES,
   PROVIDER_MODEL_ID_SEARCH_MAX_UTF8_BYTES,
+  PROVIDER_MODEL_ID_SEARCH_NORMALIZED_EXACT_INDEX_NAME,
   PROVIDER_MODEL_ID_SEARCH_PROJECTION_VERSION,
+  PROVIDER_MODEL_ID_SEARCH_RAW_EXACT_INDEX_NAME,
+  PROVIDER_MODEL_ID_SEARCH_STORAGE_VERSION,
   advanceProviderModelIdSearchRetainedTextByteBudget,
   assertImmutablePublicationManifest,
+  assertProviderModelIdSearchArtifactProofV1,
   assertProviderModelIdSearchInventoryByteBudget,
   assertProviderModelIdSearchProjection,
+  assertProviderModelIdSearchQueryableArtifactProofV4,
   assertProviderModelIdSearchResourceByteBudget,
+  assertProviderModelIdSearchStagingProjectionV1,
   buildImmutableManifestFromPersistedContent,
   canonicalizePublicationJson,
   derivePublicationVectorId,
@@ -27,12 +33,24 @@ import {
   hashPublicationSearchDocumentContent,
   hashPublicationVectorChunk,
   normalizeExactSearchName,
+  projectProviderModelIdSearchArtifactProofV1,
   projectProviderModelIdSearchProjection,
+  projectProviderModelIdSearchQueryabilityPlanV4,
+  projectProviderModelIdSearchQueryableArtifactProofV4,
+  projectProviderModelIdSearchStagingV1,
+  providerModelIdSearchProofFieldsV4,
+  readProviderModelIdSearchQueryablePersistenceV4,
+  readProviderModelIdSearchStagingPersistenceV1,
   type PersistedResourceDescriptor,
+  type ProviderModelIdSearchArtifactProofV1,
   type ProviderModelIdSearchDocumentProjection,
   type ProviderModelIdSearchProjectionInput,
+  type ProviderModelIdSearchQueryableArtifactProofV4,
+  type ProviderModelIdSearchStagingPersistenceV1,
+  type ProviderModelIdSearchStagingProjectionV1,
   type ResourceType,
   type SearchResourceType,
+  type ServingClosureRows,
   type ServingResourceClosureRow,
 } from "./index.js";
 
@@ -257,6 +275,7 @@ type FixtureOptions = Readonly<{
 type Fixture = ProviderModelIdSearchProjectionInput &
   Readonly<{
     allRows: readonly ServingResourceClosureRow[];
+    closureRows: ServingClosureRows;
     unrelatedRows: readonly ServingResourceClosureRow[];
   }>;
 
@@ -388,6 +407,16 @@ async function makeFixture(options: FixtureOptions = {}): Promise<Fixture> {
         "provider" | "price" | "precision_observation",
     })),
   ];
+  const providerSlices = enabledProviderIds.map((providerId, index) => ({
+    adapterVersion: "adapter@1",
+    carriedForward: false,
+    freshnessState: "fresh" as const,
+    providerId,
+    providerRunId: id("pvr", index + 1),
+    providerSliceId: id("prn", index + 1),
+    rosterVersion: "roster@1",
+    sourceRegisterVersion: "sources@1",
+  }));
   const manifest = await buildImmutableManifestFromPersistedContent({
     bundleHash: `sha256:${"b".repeat(64)}`,
     chunks,
@@ -397,16 +426,7 @@ async function makeFixture(options: FixtureOptions = {}): Promise<Fixture> {
     generatedAt: observedAt,
     parentPublicationId: null,
     providerAttributions,
-    providerSlices: enabledProviderIds.map((providerId, index) => ({
-      adapterVersion: "adapter@1",
-      carriedForward: false,
-      freshnessState: "fresh" as const,
-      providerId,
-      providerRunId: id("pvr", index + 1),
-      providerSliceId: id("prn", index + 1),
-      rosterVersion: "roster@1",
-      sourceRegisterVersion: "sources@1",
-    })),
+    providerSlices,
     publicationId: publicationId as `pub_${string}`,
     resources: persistedResources,
     searchDocuments,
@@ -441,8 +461,74 @@ async function makeFixture(options: FixtureOptions = {}): Promise<Fixture> {
         resource.resource_type === "variant") &&
         referencedIds.has(resource.resource_id)),
   );
+  const closureRows: ServingClosureRows = {
+    publication: {
+      publication_id: manifest.publicationId,
+      source_run_id: manifest.sourceRunId,
+      parent_publication_id: manifest.parentPublicationId,
+      generated_at_ms: Date.parse(manifest.generatedAt),
+      schema_version: manifest.versions.schema,
+      methodology_version: manifest.versions.methodology,
+      precision_normalization_version: manifest.versions.precisionNormalization,
+      precision_display_order_version: manifest.versions.precisionDisplayOrder,
+      price_policy_version: manifest.versions.pricePolicy,
+      source_policy_version: manifest.versions.sourcePolicy,
+      embedding_version: manifest.versions.embedding,
+      build_commit: manifest.versions.buildCommit,
+      closure_hash: manifest.closureHash,
+    },
+    providerSlices: providerSlices.map((slice) => ({
+      provider_id: slice.providerId,
+      provider_slice_id: slice.providerSliceId,
+      provider_run_id: slice.providerRunId,
+      adapter_version: slice.adapterVersion,
+      roster_version: slice.rosterVersion,
+      source_register_version: slice.sourceRegisterVersion,
+      carried_forward: slice.carriedForward ? 1 : 0,
+      freshness_state: slice.freshnessState,
+    })),
+    providerAttributions: providerAttributions.map((attribution) => ({
+      provider_id: attribution.providerId,
+      resource_id: attribution.resourceId,
+      resource_type: attribution.resourceType,
+    })),
+    resources: allRows,
+    searchDocuments: sortedDocuments.map((document) => ({
+      document_id: document.documentId,
+      resource_type: document.resourceType,
+      resource_id: document.resourceId,
+      normalized_name: document.normalizedName,
+      aliases_json: document.aliasesJson,
+      publisher_name: document.publisherName,
+      provider_model_ids_json: document.providerModelIdsJson,
+      document_text: document.documentText,
+      content_hash: document.contentHash,
+    })),
+    vectors: sortedVectors.map((vector) => ({
+      vector_namespace: manifest.publicationId,
+      vector_id: vector.vectorId,
+      resource_type: vector.resourceType,
+      resource_id: vector.resourceId,
+      search_document_content_hash: vector.searchDocumentContentHash,
+      embedding_input_hash: vector.embeddingInputHash,
+    })),
+    chunks: chunks.map((chunk) => ({
+      kind: chunk.kind,
+      ordinal: chunk.ordinal,
+      first_key: chunk.firstKey,
+      last_key: chunk.lastKey,
+      item_count: chunk.itemCount,
+      content_hash: chunk.contentHash,
+    })),
+    manifestContractVersion: "1.0.0",
+    enabledProviderScopeVersion: manifest.enabledProviderScopeVersion,
+    bundleHash: manifest.bundleHash,
+    stagingRevision: 42,
+    sealedAtMs: Date.parse(manifest.generatedAt) + 60_000,
+  };
   return {
     allRows,
+    closureRows,
     manifest,
     resources,
     unrelatedRows: allRows.filter(
@@ -665,6 +751,42 @@ function utf8StringOfByteLength(bytes: number): string {
   const astralCount = Math.floor(bytes / 4);
   const remainder = bytes % 4;
   return `${"😀".repeat(astralCount)}${remainder === 0 ? "" : remainder === 1 ? "a" : remainder === 2 ? "¢" : "€"}`;
+}
+
+type StorageProofFixture = Readonly<{
+  source: Fixture;
+  staging: ProviderModelIdSearchStagingProjectionV1;
+  persistence: ProviderModelIdSearchStagingPersistenceV1;
+  storageProof: ProviderModelIdSearchArtifactProofV1;
+  queryableProof: ProviderModelIdSearchQueryableArtifactProofV4;
+}>;
+
+async function makeStorageProofFixture(
+  options: FixtureOptions = {},
+): Promise<StorageProofFixture> {
+  const source = await makeFixture(options);
+  const projection = await projectProviderModelIdSearchProjection(
+    exactInput(source),
+  );
+  const staging = await projectProviderModelIdSearchStagingV1({
+    projection,
+    closureRows: source.closureRows,
+  });
+  const persistence = readProviderModelIdSearchStagingPersistenceV1(staging);
+  const storageProof = projectProviderModelIdSearchArtifactProofV1({
+    staging,
+    observation: {
+      storageVersion: PROVIDER_MODEL_ID_SEARCH_STORAGE_VERSION,
+      rows: persistence.rows,
+    },
+  });
+  const queryability =
+    projectProviderModelIdSearchQueryabilityPlanV4(storageProof);
+  const queryableProof = projectProviderModelIdSearchQueryableArtifactProofV4({
+    storageProof,
+    queryability,
+  });
+  return { source, staging, persistence, storageProof, queryableProof };
 }
 
 describe("trusted provider-model-ID projection", () => {
@@ -1656,5 +1778,335 @@ describe("trusted provider-model-ID projection", () => {
     expect(retainedBudgetCheck).toBeGreaterThan(-1);
     expect(retainedBudgetCheck).toBeLessThan(retainedResource);
     expect(retainedBudgetCheck).toBeLessThan(firstContentHash);
+  });
+});
+
+describe("provider-model-ID dormant storage and v4 queryability proofs", () => {
+  const proofOfferings = () => [
+    spec(
+      "offering",
+      id("off", 1),
+      offering(1, id("mdl", 1), "same/provider-id"),
+    ),
+    spec(
+      "offering",
+      id("off", 2),
+      offering(2, id("mdl", 1), "same/provider-id"),
+    ),
+    spec(
+      "offering",
+      id("off", 3),
+      offering(3, id("mdl", 1), "SAME/Provider-ID"),
+    ),
+    spec("offering", id("off", 4), offering(4, id("mdl", 1), "/_-—")),
+  ];
+
+  it("projects exact frozen UTF-8 rows and preserves duplicate and empty normalized bytes", async () => {
+    const fixture = await makeStorageProofFixture({
+      offerings: proofOfferings(),
+      targets: [spec("model", id("mdl", 1), model(1))],
+    });
+    expect(() => {
+      assertProviderModelIdSearchStagingProjectionV1(fixture.staging);
+      assertProviderModelIdSearchArtifactProofV1(fixture.storageProof);
+      assertProviderModelIdSearchQueryableArtifactProofV4(
+        fixture.queryableProof,
+      );
+    }).not.toThrow();
+    expect(fixture.persistence).toMatchObject({
+      stagingRevision: 42,
+      storageVersion: PROVIDER_MODEL_ID_SEARCH_STORAGE_VERSION,
+      documentCount: 4,
+    });
+    expect(fixture.persistence.rows.map((row) => row.offering_id)).toEqual([
+      id("off", 1),
+      id("off", 2),
+      id("off", 3),
+      id("off", 4),
+    ]);
+    expect(
+      fixture.persistence.rows.map((row) =>
+        Buffer.from(row.raw_provider_model_id_utf8).toString("utf8"),
+      ),
+    ).toEqual([
+      "same/provider-id",
+      "same/provider-id",
+      "SAME/Provider-ID",
+      "/_-—",
+    ]);
+    expect(
+      fixture.persistence.rows.map(
+        (row) => row.normalized_provider_model_id_utf8.length,
+      ),
+    ).toEqual([
+      Buffer.byteLength(normalizeExactSearchName("same/provider-id")),
+      Buffer.byteLength(normalizeExactSearchName("same/provider-id")),
+      Buffer.byteLength(normalizeExactSearchName("SAME/Provider-ID")),
+      0,
+    ]);
+    expect(Object.isFrozen(fixture.persistence)).toBe(true);
+    expect(Object.isFrozen(fixture.persistence.rows)).toBe(true);
+    expect(
+      fixture.persistence.rows.every(
+        (row) =>
+          Object.isFrozen(row) &&
+          Object.isFrozen(row.raw_provider_model_id_utf8) &&
+          Object.isFrozen(row.normalized_provider_model_id_utf8),
+      ),
+    ).toBe(true);
+    expect(Object.keys(fixture.persistence.rows[0] ?? {})).toEqual([
+      "publication_id",
+      "offering_id",
+      "provider_id",
+      "target_resource_type",
+      "target_resource_id",
+      "projection_version",
+      "raw_provider_model_id_utf8",
+      "normalized_provider_model_id_utf8",
+      "offering_content_hash",
+      "target_content_hash",
+    ]);
+  });
+
+  it("proves both exact indexes, complete collisions, fixed misses, and the seven-field suffix", async () => {
+    const fixture = await makeStorageProofFixture({
+      offerings: proofOfferings(),
+      targets: [spec("model", id("mdl", 1), model(1))],
+    });
+    const plan = projectProviderModelIdSearchQueryabilityPlanV4(
+      fixture.storageProof,
+    );
+    expect(plan).toEqual({
+      rawIndexName: PROVIDER_MODEL_ID_SEARCH_RAW_EXACT_INDEX_NAME,
+      rawMatchProviderModelIdUtf8: [...Buffer.from("same/provider-id", "utf8")],
+      rawMatchOfferingIds: [id("off", 1), id("off", 2)],
+      rawMissProviderModelIdUtf8: [255],
+      rawMissOfferingIds: [],
+      normalizedIndexName: PROVIDER_MODEL_ID_SEARCH_NORMALIZED_EXACT_INDEX_NAME,
+      normalizedMatchProviderModelIdUtf8: [
+        ...Buffer.from(normalizeExactSearchName("same/provider-id"), "utf8"),
+      ],
+      normalizedMatchOfferingIds: [id("off", 1), id("off", 2), id("off", 3)],
+      normalizedMissProviderModelIdUtf8: [255],
+      normalizedMissOfferingIds: [],
+    });
+    expect(fixture.storageProof).toMatchObject({
+      provider_model_id_projection_version: "provider-model-id@1",
+      provider_model_id_document_count: 4,
+      provider_model_id_storage_version: "provider-model-id-utf8-blob@1",
+      provider_model_id_storage_document_count: 4,
+      provider_model_id_storage_exact_parity: true,
+    });
+    expect(fixture.queryableProof).toEqual(
+      expect.objectContaining({
+        provider_model_id_projection_version: "provider-model-id@1",
+        provider_model_id_document_count: 4,
+        provider_model_id_storage_version: "provider-model-id-utf8-blob@1",
+        provider_model_id_storage_document_count: 4,
+        provider_model_id_storage_queryable: true,
+        provider_model_id_storage_exact_parity: true,
+      }),
+    );
+    const queryablePersistence =
+      readProviderModelIdSearchQueryablePersistenceV4(fixture.queryableProof);
+    expect(queryablePersistence.providerModelIdSearch).toBe(
+      fixture.persistence,
+    );
+    expect(queryablePersistence.queryabilityPlan).toEqual(
+      projectProviderModelIdSearchQueryabilityPlanV4(fixture.storageProof),
+    );
+    expect(
+      providerModelIdSearchProofFieldsV4(fixture.queryableProof).map(
+        (entry) => entry.name,
+      ),
+    ).toEqual([
+      "provider_model_id_projection_version",
+      "provider_model_id_document_count",
+      "provider_model_id_inventory_hash",
+      "provider_model_id_storage_version",
+      "provider_model_id_storage_document_count",
+      "provider_model_id_storage_queryable",
+      "provider_model_id_storage_exact_parity",
+    ]);
+    expect(fixture.persistence.inventoryHash).toBe(
+      "sha256:0aa56fb2945663e2bd535d6c9b49d8cd82939dce2a8d02a0e94dfc399693eed2",
+    );
+  });
+
+  it("accepts an exact empty projection with two fixed X'FF' misses and no sentinel", async () => {
+    const fixture = await makeStorageProofFixture({
+      offerings: [],
+      targets: [],
+    });
+    expect(fixture.persistence).toMatchObject({
+      documentCount: 0,
+      rows: [],
+    });
+    expect(
+      projectProviderModelIdSearchQueryabilityPlanV4(fixture.storageProof),
+    ).toEqual({
+      rawIndexName: PROVIDER_MODEL_ID_SEARCH_RAW_EXACT_INDEX_NAME,
+      rawMatchProviderModelIdUtf8: null,
+      rawMatchOfferingIds: [],
+      rawMissProviderModelIdUtf8: [255],
+      rawMissOfferingIds: [],
+      normalizedIndexName: PROVIDER_MODEL_ID_SEARCH_NORMALIZED_EXACT_INDEX_NAME,
+      normalizedMatchProviderModelIdUtf8: null,
+      normalizedMatchOfferingIds: [],
+      normalizedMissProviderModelIdUtf8: [255],
+      normalizedMissOfferingIds: [],
+    });
+    expect(fixture.queryableProof).toMatchObject({
+      provider_model_id_document_count: 0,
+      provider_model_id_storage_document_count: 0,
+      provider_model_id_storage_queryable: true,
+    });
+  });
+
+  it("rejects storage omission, reordering, byte drift, malformed UTF-8, and a nonempty raw-byte violation", async () => {
+    const fixture = await makeStorageProofFixture({
+      offerings: proofOfferings(),
+      targets: [spec("model", id("mdl", 1), model(1))],
+    });
+    const prove = (rows: readonly unknown[]) =>
+      projectProviderModelIdSearchArtifactProofV1({
+        staging: fixture.staging,
+        observation: {
+          storageVersion: PROVIDER_MODEL_ID_SEARCH_STORAGE_VERSION,
+          rows: rows as ProviderModelIdSearchStagingPersistenceV1["rows"],
+        },
+      });
+    expect(() => prove(fixture.persistence.rows.slice(1))).toThrow(
+      /exactly match/u,
+    );
+    expect(() => prove([...fixture.persistence.rows].reverse())).toThrow(
+      /invalid|exactly match/u,
+    );
+    const first = fixture.persistence.rows[0]!;
+    for (const rawBytes of [
+      [],
+      [255],
+      [...first.raw_provider_model_id_utf8, 0],
+    ])
+      expect(() =>
+        prove([
+          { ...first, raw_provider_model_id_utf8: rawBytes },
+          ...fixture.persistence.rows.slice(1),
+        ]),
+      ).toThrow(/invalid|exactly match/u);
+    expect(() =>
+      prove([
+        {
+          ...first,
+          normalized_provider_model_id_utf8: [255],
+        },
+        ...fixture.persistence.rows.slice(1),
+      ]),
+    ).toThrow(/invalid|exactly match/u);
+    expect(() =>
+      prove([
+        { ...first, offering_content_hash: `sha256:${"0".repeat(64)}` },
+        ...fixture.persistence.rows.slice(1),
+      ]),
+    ).toThrow(/invalid|exactly match/u);
+  });
+
+  it("rejects copied authority and hostile accessors without invoking them", async () => {
+    const fixture = await makeStorageProofFixture({
+      offerings: proofOfferings(),
+      targets: [spec("model", id("mdl", 1), model(1))],
+    });
+    expect(() => {
+      assertProviderModelIdSearchStagingProjectionV1({ ...fixture.staging });
+    }).toThrow(/not trusted/u);
+    expect(() => {
+      assertProviderModelIdSearchArtifactProofV1({ ...fixture.storageProof });
+    }).toThrow(/not trusted/u);
+    expect(() => {
+      assertProviderModelIdSearchQueryableArtifactProofV4({
+        ...fixture.queryableProof,
+      });
+    }).toThrow(/not trusted/u);
+    expect(() =>
+      readProviderModelIdSearchQueryablePersistenceV4({
+        ...fixture.queryableProof,
+      }),
+    ).toThrow(/not trusted/u);
+
+    let stagingReads = 0;
+    const hostileStaging = {
+      closureRows: fixture.source.closureRows,
+      get projection() {
+        stagingReads += 1;
+        return fixture.source;
+      },
+    };
+    await expect(
+      projectProviderModelIdSearchStagingV1(hostileStaging as never),
+    ).rejects.toThrow(/invalid/u);
+    expect(stagingReads).toBe(0);
+
+    let rowReads = 0;
+    const first = fixture.persistence.rows[0]!;
+    const hostileRow = { ...first } as Record<string, unknown>;
+    Object.defineProperty(hostileRow, "raw_provider_model_id_utf8", {
+      enumerable: true,
+      get() {
+        rowReads += 1;
+        return first.raw_provider_model_id_utf8;
+      },
+    });
+    expect(() =>
+      projectProviderModelIdSearchArtifactProofV1({
+        staging: fixture.staging,
+        observation: {
+          storageVersion: PROVIDER_MODEL_ID_SEARCH_STORAGE_VERSION,
+          rows: [hostileRow, ...fixture.persistence.rows.slice(1)] as never,
+        },
+      }),
+    ).toThrow(/invalid/u);
+    expect(rowReads).toBe(0);
+
+    let queryReads = 0;
+    const plan = projectProviderModelIdSearchQueryabilityPlanV4(
+      fixture.storageProof,
+    );
+    const hostileQuery = { ...plan } as Record<string, unknown>;
+    Object.defineProperty(hostileQuery, "rawMatchOfferingIds", {
+      enumerable: true,
+      get() {
+        queryReads += 1;
+        return plan.rawMatchOfferingIds;
+      },
+    });
+    expect(() =>
+      projectProviderModelIdSearchQueryableArtifactProofV4({
+        storageProof: fixture.storageProof,
+        queryability: hostileQuery as never,
+      }),
+    ).toThrow(/invalid/u);
+    expect(queryReads).toBe(0);
+  });
+
+  it("snapshots the closure before its first asynchronous seal operation", async () => {
+    const source = await makeFixture({
+      offerings: proofOfferings(),
+      targets: [spec("model", id("mdl", 1), model(1))],
+    });
+    const projection = await projectProviderModelIdSearchProjection(
+      exactInput(source),
+    );
+    const pending = projectProviderModelIdSearchStagingV1({
+      projection,
+      closureRows: source.closureRows,
+    });
+    (source.closureRows.resources as ServingResourceClosureRow[])[0] = {
+      ...source.closureRows.resources[0]!,
+      resource_json: "{}",
+    };
+    await expect(pending).resolves.toSatisfy((staging: unknown) => {
+      assertProviderModelIdSearchStagingProjectionV1(staging);
+      return true;
+    });
   });
 });

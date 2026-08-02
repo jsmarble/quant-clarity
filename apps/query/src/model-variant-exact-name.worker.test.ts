@@ -244,7 +244,13 @@ const read = (query: string, recordType: "model" | "variant" | null = null) =>
   });
 
 beforeAll(async () => {
-  await applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS);
+  await applyD1Migrations(
+    env.SERVING_DB,
+    env.TEST_MIGRATIONS.filter(
+      (migration) =>
+        migration.name <= "0009_model_variant_name_exact_projection.sql",
+    ),
+  );
   fixture = await createServingV3Fixture(PUBLICATION, GENERATED_AT, {
     modelDisplayName: [
       "\u0000Leading Model",

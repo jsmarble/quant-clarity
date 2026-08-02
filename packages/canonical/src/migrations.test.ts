@@ -133,6 +133,43 @@ function applyServingModelVariantNameMigration(database: DatabaseSync): void {
   );
 }
 
+function applyServingProviderModelIdMigration(database: DatabaseSync): void {
+  applyAtomicMigration(
+    database,
+    readFileSync(
+      resolve(
+        "migrations",
+        "serving",
+        "0010_provider_model_id_exact_projection.sql",
+      ),
+      "utf8",
+    ),
+  );
+}
+
+function splitMigrationStatements(sql: string): readonly string[] {
+  const statements: string[] = [];
+  let current = "";
+  let trigger = false;
+  for (const line of sql.split("\n")) {
+    current += `${line}\n`;
+    if (/^CREATE TRIGGER\b/u.test(line)) trigger = true;
+    if (
+      (trigger && /^END;\s*$/u.test(line)) ||
+      (!trigger && /;\s*$/u.test(line))
+    ) {
+      statements.push(current);
+      current = "";
+      trigger = false;
+    }
+  }
+  if (current.trim() !== "")
+    throw new Error(
+      "migration statement splitter found an incomplete statement",
+    );
+  return statements;
+}
+
 function expectConstraint(action: () => unknown, message?: string): void {
   expect(action).toThrow(
     message ?? /constraint|mismatch|immutable|cannot|lacks|does not equal/iu,
@@ -1140,6 +1177,193 @@ describe("serving publication migrations (PIPE-050–PIPE-056)", () => {
           HASH,
         );
     }
+  }
+
+  function insertBuildingProviderModelIdContext(
+    database: DatabaseSync,
+    publicationId: string,
+    providerId: string,
+    targetType: "model" | "variant",
+    targetId: string,
+    offerings: readonly Readonly<{
+      offeringId: string;
+      rawProviderModelId: string;
+    }>[],
+    sequence: number,
+  ): void {
+    insertBuildingPublication(
+      database,
+      publicationId,
+      {
+        resources: offerings.length + 1,
+        exactDocuments: 1,
+        vectorDocuments: 1,
+      },
+      null,
+      sequence,
+    );
+    database
+      .prepare(
+        "INSERT INTO publication_provider_slice(publication_id, provider_id, provider_slice_id, provider_run_id, carried_forward, freshness_state) VALUES (?, ?, ?, ?, 0, 'fresh')",
+      )
+      .run(publicationId, providerId, id("prn", sequence), id("pvr", sequence));
+    database
+      .prepare(
+        "INSERT INTO publication_provider_slice_metadata VALUES (?, ?, 'adapter@1', 'roster@1', 'register@1')",
+      )
+      .run(publicationId, providerId);
+    const targetIdentity = targetType === "model" ? "model_id" : "variant_id";
+    database
+      .prepare("INSERT INTO publication_resource VALUES (?, ?, ?, ?, ?)")
+      .run(
+        publicationId,
+        targetType,
+        targetId,
+        JSON.stringify({
+          [targetIdentity]: targetId,
+          display_name: { state: "unknown" },
+        }),
+        OTHER_HASH,
+      );
+    for (const offering of offerings) {
+      database
+        .prepare(
+          "INSERT INTO publication_resource VALUES (?, 'offering', ?, ?, ?)",
+        )
+        .run(
+          publicationId,
+          offering.offeringId,
+          JSON.stringify({
+            offering_id: offering.offeringId,
+            provider_id: providerId,
+            model_resource_id: targetId,
+            provider_model_id: offering.rawProviderModelId,
+          }),
+          HASH,
+        );
+      database
+        .prepare(
+          "INSERT INTO publication_provider_attribution VALUES (?, 'offering', ?, ?)",
+        )
+        .run(publicationId, offering.offeringId, providerId);
+    }
+    const vectorId = sequence.toString(16).padStart(64, "0");
+    database
+      .prepare(
+        "INSERT INTO publication_search_document VALUES (?, ?, ?, ?, 'target', '[]', '', '[]', 'target', ?)",
+      )
+      .run(publicationId, vectorId, targetType, targetId, HASH);
+    database
+      .prepare(
+        "INSERT INTO publication_vector_inventory VALUES (?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run(
+        publicationId,
+        publicationId,
+        vectorId,
+        targetType,
+        targetId,
+        HASH,
+        HASH,
+      );
+    const resourceKeys = [
+      `${targetType}:${targetId}`,
+      ...offerings.map((offering) => `offering:${offering.offeringId}`),
+    ].sort();
+    for (const [kind, firstKey, lastKey, count] of [
+      [
+        "resources",
+        resourceKeys[0]!,
+        resourceKeys.at(-1)!,
+        resourceKeys.length,
+      ],
+      ["exact_search", vectorId, vectorId, 1],
+      ["vectors", vectorId, vectorId, 1],
+    ] as const)
+      database
+        .prepare(
+          "INSERT INTO publication_inventory_chunk VALUES (?, ?, 0, ?, ?, ?, ?)",
+        )
+        .run(publicationId, kind, firstKey, lastKey, count, HASH);
+  }
+
+  function insertProviderModelIdDocument(
+    database: DatabaseSync,
+    values: Readonly<{
+      publicationId: string;
+      offeringId: string;
+      providerId: string;
+      targetType: "model" | "variant";
+      targetId: string;
+      rawHex: string;
+      normalizedHex: string;
+      offeringHash?: string;
+      targetHash?: string;
+    }>,
+  ): void {
+    database
+      .prepare(
+        `INSERT INTO publication_provider_model_id_search_document(
+          publication_id, offering_id, provider_id,
+          target_resource_type, target_resource_id, projection_version,
+          raw_provider_model_id_utf8, normalized_provider_model_id_utf8,
+          offering_content_hash, target_content_hash
+        ) VALUES (?, ?, ?, ?, ?, 'provider-model-id@1', unhex(?), unhex(?), ?, ?)`,
+      )
+      .run(
+        values.publicationId,
+        values.offeringId,
+        values.providerId,
+        values.targetType,
+        values.targetId,
+        values.rawHex,
+        values.normalizedHex,
+        values.offeringHash ?? HASH,
+        values.targetHash ?? OTHER_HASH,
+      );
+  }
+
+  function insertProviderModelIdClosureSeal(
+    database: DatabaseSync,
+    publicationId: string,
+    offeringCount: number,
+  ): void {
+    const revision = database
+      .prepare(
+        "SELECT revision FROM publication_staging_revision WHERE publication_id = ?",
+      )
+      .get(publicationId) as { revision: number };
+    database
+      .prepare(
+        `INSERT INTO publication_closure_seal(
+          publication_id, staging_revision, manifest_contract_version,
+          hash_domain, hash_encoding_version, enabled_provider_scope_version,
+          enabled_provider_count, provider_slice_count,
+          provider_attribution_count, resource_count, exact_document_count,
+          vector_document_count, chunk_count, bundle_hash,
+          enabled_provider_scope_hash, provider_slice_hash,
+          provider_attribution_hash, resource_inventory_hash,
+          exact_search_inventory_hash, vector_inventory_hash, chunk_root_hash,
+          closure_hash, sealed_at_ms
+        ) VALUES (?, ?, '1.0.0', 'publication-closure', '1', 'scope@1',
+          1, 1, ?, ?, 1, 1, 3, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        publicationId,
+        revision.revision,
+        offeringCount,
+        offeringCount + 1,
+        HASH,
+        HASH,
+        HASH,
+        HASH,
+        HASH,
+        HASH,
+        HASH,
+        HASH,
+        OTHER_HASH,
+        10_000,
+      );
   }
 
   function insertCompleteModelPublication(
@@ -3784,7 +4008,10 @@ describe("serving publication migrations (PIPE-050–PIPE-056)", () => {
   });
 
   it("adds the STRICT model/variant BLOB projection and closed v3 proof schemas in 1.6.0", () => {
-    const database = applyMigrations("serving");
+    const database = applyMigrations(
+      "serving",
+      "0009_model_variant_name_exact_projection.sql",
+    );
     expect(
       database
         .prepare(
@@ -3884,7 +4111,10 @@ describe("serving publication migrations (PIPE-050–PIPE-056)", () => {
   ] as const)(
     "atomically rejects a corrupt v3 $subtype subtype before readiness",
     ({ corruptAt }) => {
-      const database = applyMigrations("serving");
+      const database = applyMigrations(
+        "serving",
+        "0009_model_variant_name_exact_projection.sql",
+      );
       const publicationId = id(
         "pub",
         900 + ["archive", "serving", "vectors", "probes"].indexOf(corruptAt),
@@ -4212,7 +4442,10 @@ describe("serving publication migrations (PIPE-050–PIPE-056)", () => {
   );
 
   it("stores exact model and variant UTF-8 BLOBs through unhex while preserving U+0000 bytes", () => {
-    const database = applyMigrations("serving");
+    const database = applyMigrations(
+      "serving",
+      "0009_model_variant_name_exact_projection.sql",
+    );
     const publicationId = id("pub", 810);
     const modelId = id("mdl", 811);
     const variantId = modelId.replace(/^mdl_/u, "var_");
@@ -4354,7 +4587,10 @@ describe("serving publication migrations (PIPE-050–PIPE-056)", () => {
   });
 
   it("enforces model projection byte bounds, identity, and bidirectional seal completeness", () => {
-    const missing = applyMigrations("serving");
+    const missing = applyMigrations(
+      "serving",
+      "0009_model_variant_name_exact_projection.sql",
+    );
     const missingPublicationId = id("pub", 820);
     const missingModelId = id("mdl", 820);
     insertCompleteModelPublication(
@@ -4427,7 +4663,10 @@ describe("serving publication migrations (PIPE-050–PIPE-056)", () => {
         .get(missingPublicationId),
     ).toEqual({ count: 1 });
 
-    const reverse = applyMigrations("serving");
+    const reverse = applyMigrations(
+      "serving",
+      "0009_model_variant_name_exact_projection.sql",
+    );
     const reversePublicationId = id("pub", 822);
     const reverseModelId = id("mdl", 822);
     insertCompleteModelPublication(
@@ -4518,6 +4757,1095 @@ describe("serving publication migrations (PIPE-050–PIPE-056)", () => {
     expect(database.prepare("PRAGMA integrity_check").get()).toEqual({
       integrity_check: "ok",
     });
+  });
+
+  it("adds the STRICT provider-model-ID projection and exact closed v4 schemas in 1.7.0", () => {
+    const database = applyMigrations("serving");
+    expect(
+      database
+        .prepare(
+          "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+        )
+        .get(),
+    ).toEqual({ schema_version: "1.7.0" });
+
+    const schema = database
+      .prepare(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'publication_provider_model_id_search_document'",
+      )
+      .get() as { sql: string };
+    expect(schema.sql).toContain("raw_provider_model_id_utf8 BLOB");
+    expect(schema.sql).toContain("normalized_provider_model_id_utf8 BLOB");
+    expect(schema.sql).toMatch(/\) STRICT$/u);
+    expect(
+      database
+        .prepare(
+          "PRAGMA index_info(publication_provider_model_id_raw_exact_idx)",
+        )
+        .all()
+        .map((row) => row.name),
+    ).toEqual(["publication_id", "raw_provider_model_id_utf8", "offering_id"]);
+    expect(
+      database
+        .prepare(
+          "PRAGMA index_info(publication_provider_model_id_normalized_exact_idx)",
+        )
+        .all()
+        .map((row) => row.name),
+    ).toEqual([
+      "publication_id",
+      "normalized_provider_model_id_utf8",
+      "offering_id",
+    ]);
+
+    const providerModelIdProofColumns = [
+      "provider_model_id_projection_version",
+      "provider_model_id_document_count",
+      "provider_model_id_inventory_hash",
+      "provider_model_id_storage_version",
+      "provider_model_id_storage_document_count",
+      "provider_model_id_storage_queryable",
+      "provider_model_id_storage_exact_parity",
+    ];
+    for (const table of [
+      "publication_serving_receipt",
+      "publication_switch_preflight",
+    ]) {
+      const columns = database
+        .prepare(`PRAGMA table_info(${table})`)
+        .all()
+        .map((row) => row.name);
+      expect(columns.slice(-7)).toEqual(providerModelIdProofColumns);
+    }
+    const schemas = database
+      .prepare(
+        "SELECT name, sql FROM sqlite_master WHERE type = 'table' AND name IN ('publication_readiness_receipt', 'publication_readiness_attestation', 'publication_probe_receipt', 'publication_switch_preflight', 'publication_switch_history') ORDER BY name",
+      )
+      .all() as { name: string; sql: string }[];
+    expect(
+      schemas.find((row) => row.name === "publication_readiness_receipt")?.sql,
+    ).toContain("receipt_version = '4.0.0'");
+    expect(
+      schemas.find((row) => row.name === "publication_readiness_attestation")
+        ?.sql,
+    ).toContain("evaluator_version = '4.0.0'");
+    expect(
+      schemas.find((row) => row.name === "publication_probe_receipt")?.sql,
+    ).toContain("probe_set_version = 'search-gold@4'");
+    expect(
+      schemas.find((row) => row.name === "publication_switch_preflight")?.sql,
+    ).toContain("preflight_version = '4.0.0'");
+    expect(
+      schemas.find((row) => row.name === "publication_switch_history")?.sql,
+    ).toContain("event_version = '1.0.0'");
+    expect(database.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+    expect(database.prepare("PRAGMA integrity_check").get()).toEqual({
+      integrity_check: "ok",
+    });
+  });
+
+  it("requires exact pristine schema 1.6.0 and rejects every provider-model-ID object collision before mutation", () => {
+    const oldSchema = applyMigrations(
+      "serving",
+      "0008_provider_name_nul_guard.sql",
+    );
+    expect(() => {
+      applyServingProviderModelIdMigration(oldSchema);
+    }).toThrow();
+    expect(
+      oldSchema
+        .prepare(
+          "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+        )
+        .get(),
+    ).toEqual({ schema_version: "1.5.1" });
+
+    const proofBearing = applyMigrations(
+      "serving",
+      "0009_model_variant_name_exact_projection.sql",
+    );
+    proofBearing
+      .prepare(
+        "INSERT INTO publication VALUES (?, 'ready', '1.0.0', '1.0.0', 'precision@1', 'display@1', 'price@1', 'source@1', 'embedding@1', 'commit', ?, NULL, 1, 1, NULL, 0, 0, 0, ?, 'vector@1', ?, '[]', 1)",
+      )
+      .run(id("pub", 830), id("run", 830), HASH, OTHER_HASH);
+    expect(() => {
+      applyServingProviderModelIdMigration(proofBearing);
+    }).toThrow();
+    expect(
+      proofBearing
+        .prepare(
+          "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+        )
+        .get(),
+    ).toEqual({ schema_version: "1.6.0" });
+
+    const collisions = [
+      {
+        name: "publication_provider_model_id_search_document",
+        sql: "CREATE TABLE publication_provider_model_id_search_document(fake TEXT)",
+      },
+      {
+        name: "publication_provider_model_id_raw_exact_idx",
+        sql: "CREATE INDEX publication_provider_model_id_raw_exact_idx ON publication(publication_id)",
+      },
+      {
+        name: "publication_provider_model_id_normalized_exact_idx",
+        sql: "CREATE INDEX publication_provider_model_id_normalized_exact_idx ON publication(publication_id)",
+      },
+      ...[
+        "publication_provider_model_id_search_document_insert_guard",
+        "publication_provider_model_id_search_document_immutable_update",
+        "publication_provider_model_id_search_document_immutable_delete",
+        "publication_provider_model_id_search_seal_guard",
+      ].map((name) => ({
+        name,
+        sql: `CREATE TRIGGER ${name} BEFORE INSERT ON publication BEGIN SELECT 1; END`,
+      })),
+    ];
+    for (const collision of collisions) {
+      const database = applyMigrations(
+        "serving",
+        "0009_model_variant_name_exact_projection.sql",
+      );
+      database.exec(collision.sql);
+      expect(() => {
+        applyServingProviderModelIdMigration(database);
+      }).toThrow();
+      expect(
+        database
+          .prepare(
+            "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+          )
+          .get(),
+      ).toEqual({ schema_version: "1.6.0" });
+      expect(
+        database
+          .prepare("SELECT count(*) AS count FROM sqlite_master WHERE name = ?")
+          .get(collision.name),
+      ).toEqual({ count: 1 });
+      expect(
+        database
+          .prepare(
+            "SELECT count(*) AS count FROM sqlite_master WHERE name = 'publication_model_variant_name_search_seal_guard'",
+          )
+          .get(),
+      ).toEqual({ count: 1 });
+    }
+  });
+
+  it.each([
+    {
+      label: "missing retained exact index",
+      objectName: "publication_model_variant_name_exact_idx",
+      damage: "DROP INDEX publication_model_variant_name_exact_idx",
+    },
+    {
+      label: "modified retained exact index",
+      objectName: "publication_model_variant_name_exact_idx",
+      damage: `DROP INDEX publication_model_variant_name_exact_idx;
+        CREATE INDEX publication_model_variant_name_exact_idx
+        ON publication_model_variant_name_search_document(
+          publication_id,
+          resource_id,
+          normalized_name_utf8
+        )`,
+    },
+    {
+      label: "missing retained provider exact index",
+      objectName: "publication_provider_search_exact_idx",
+      damage: "DROP INDEX publication_provider_search_exact_idx",
+    },
+    {
+      label: "modified retained provider exact index",
+      objectName: "publication_provider_search_exact_idx",
+      damage: `DROP INDEX publication_provider_search_exact_idx;
+        CREATE INDEX publication_provider_search_exact_idx
+        ON publication_provider_search_document(
+          publication_id,
+          provider_id,
+          normalized_name
+        )`,
+    },
+    {
+      label: "missing retained immutable trigger",
+      objectName:
+        "publication_model_variant_name_search_document_immutable_update",
+      damage:
+        "DROP TRIGGER publication_model_variant_name_search_document_immutable_update",
+    },
+    {
+      label: "missing retained provider insert guard",
+      objectName: "publication_provider_search_document_insert_guard",
+      damage: "DROP TRIGGER publication_provider_search_document_insert_guard",
+    },
+    {
+      label: "missing retained provider FTS trigger",
+      objectName: "publication_provider_search_fts_insert",
+      damage: "DROP TRIGGER publication_provider_search_fts_insert",
+    },
+  ])(
+    "rejects a $label before mutation and succeeds after exact repair",
+    ({ damage, objectName }) => {
+      const database = applyMigrations(
+        "serving",
+        "0009_model_variant_name_exact_projection.sql",
+      );
+      const original = database
+        .prepare("SELECT type, sql FROM sqlite_master WHERE name = ?")
+        .get(objectName) as { type: "index" | "trigger"; sql: string };
+      database.exec(damage);
+
+      expect(() => {
+        applyServingProviderModelIdMigration(database);
+      }).toThrow();
+      expect(
+        database
+          .prepare(
+            "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+          )
+          .get(),
+      ).toEqual({ schema_version: "1.6.0" });
+      expect(
+        database
+          .prepare(
+            "SELECT count(*) AS count FROM sqlite_master WHERE name LIKE 'publication_provider_model_id_%'",
+          )
+          .get(),
+      ).toEqual({ count: 0 });
+
+      database.exec(
+        `DROP ${original.type.toUpperCase()} IF EXISTS ${objectName}`,
+      );
+      database.exec(original.sql);
+      applyServingProviderModelIdMigration(database);
+      expect(
+        database
+          .prepare(
+            "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+          )
+          .get(),
+      ).toEqual({ schema_version: "1.7.0" });
+    },
+  );
+
+  it("transactionally canonicalizes a message-preserving no-op retained trigger", () => {
+    const database = applyMigrations(
+      "serving",
+      "0009_model_variant_name_exact_projection.sql",
+    );
+    const publicationId = id("pub", 829);
+    const modelId = id("mdl", 829);
+    insertBuildingModelVariantNameContext(
+      database,
+      publicationId,
+      [
+        {
+          resourceType: "model",
+          resourceId: modelId,
+          displayNameState: "known",
+          displayName: "Canonical trigger",
+        },
+      ],
+      829,
+    );
+    database
+      .prepare(
+        "INSERT INTO publication_model_variant_name_search_document VALUES (?, 'model', ?, 'model-variant-name@1', CAST('Canonical trigger' AS BLOB), CAST('canonical trigger' AS BLOB), ?)",
+      )
+      .run(publicationId, modelId, HASH);
+
+    const triggerName =
+      "publication_model_variant_name_search_document_immutable_update";
+    const canonical = database
+      .prepare(
+        "SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = ?",
+      )
+      .get(triggerName) as { sql: string };
+    database.exec(`DROP TRIGGER ${triggerName}`);
+    database.exec(`CREATE TRIGGER ${triggerName}
+      BEFORE UPDATE ON publication_model_variant_name_search_document
+      WHEN 0
+      BEGIN SELECT RAISE(ABORT, 'model/variant name search document is immutable'); END`);
+    expect(
+      database
+        .prepare(
+          "UPDATE publication_model_variant_name_search_document SET normalized_name_utf8 = normalized_name_utf8 WHERE publication_id = ? AND resource_id = ?",
+        )
+        .run(publicationId, modelId).changes,
+    ).toBe(1);
+
+    applyServingProviderModelIdMigration(database);
+    expect(
+      database
+        .prepare(
+          "SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = ?",
+        )
+        .get(triggerName),
+    ).toEqual(canonical);
+    expectConstraint(
+      () =>
+        database
+          .prepare(
+            "UPDATE publication_model_variant_name_search_document SET normalized_name_utf8 = normalized_name_utf8 WHERE publication_id = ? AND resource_id = ?",
+          )
+          .run(publicationId, modelId),
+      "model/variant name search document is immutable",
+    );
+  });
+
+  it.each([
+    "publication_model_variant_name_exact_idx",
+    "publication_provider_search_exact_idx",
+  ])(
+    "rejects same-length partial retained index %s before mutation and remains retryable",
+    (indexName) => {
+      const database = applyMigrations(
+        "serving",
+        "0009_model_variant_name_exact_projection.sql",
+      );
+      const original = database
+        .prepare(
+          "SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?",
+        )
+        .get(indexName) as { sql: string };
+      const partial = `${original.sql
+        .replaceAll("\n  ", "\n")
+        .replace("(\npublication_id", "(publication_id")
+        .replace(/\n\)$/u, ")")} WHERE 0`;
+      expect(partial).toHaveLength(original.sql.length);
+
+      database.exec(`DROP INDEX ${indexName}`);
+      database.exec(partial);
+      expect(
+        database
+          .prepare("SELECT partial FROM pragma_index_list(?) WHERE name = ?")
+          .get(
+            indexName === "publication_model_variant_name_exact_idx"
+              ? "publication_model_variant_name_search_document"
+              : "publication_provider_search_document",
+            indexName,
+          ),
+      ).toEqual({ partial: 1 });
+
+      expect(() => {
+        applyServingProviderModelIdMigration(database);
+      }).toThrow();
+      expect(
+        database
+          .prepare(
+            "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+          )
+          .get(),
+      ).toEqual({ schema_version: "1.6.0" });
+      expect(
+        database
+          .prepare(
+            "SELECT count(*) AS count FROM sqlite_master WHERE name LIKE 'publication_provider_model_id_%'",
+          )
+          .get(),
+      ).toEqual({ count: 0 });
+
+      database.exec(`DROP INDEX ${indexName}`);
+      database.exec(original.sql);
+      applyServingProviderModelIdMigration(database);
+      expect(
+        database
+          .prepare(
+            "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+          )
+          .get(),
+      ).toEqual({ schema_version: "1.7.0" });
+    },
+  );
+
+  it.each([
+    {
+      label: "unique model index",
+      indexName: "publication_model_variant_name_exact_idx",
+      sql: `CREATE UNIQUE INDEX publication_model_variant_name_exact_idx
+        ON publication_model_variant_name_search_document(
+          publication_id, normalized_name_utf8, resource_id
+        )`,
+    },
+    {
+      label: "collated model index",
+      indexName: "publication_model_variant_name_exact_idx",
+      sql: `CREATE INDEX publication_model_variant_name_exact_idx
+        ON publication_model_variant_name_search_document(
+          publication_id, normalized_name_utf8 COLLATE NOCASE, resource_id
+        )`,
+    },
+    {
+      label: "descending model index",
+      indexName: "publication_model_variant_name_exact_idx",
+      sql: `CREATE INDEX publication_model_variant_name_exact_idx
+        ON publication_model_variant_name_search_document(
+          publication_id, normalized_name_utf8 DESC, resource_id
+        )`,
+    },
+    {
+      label: "unique provider index",
+      indexName: "publication_provider_search_exact_idx",
+      sql: `CREATE UNIQUE INDEX publication_provider_search_exact_idx
+        ON publication_provider_search_document(
+          publication_id, normalized_name, provider_id
+        )`,
+    },
+    {
+      label: "collated provider index",
+      indexName: "publication_provider_search_exact_idx",
+      sql: `CREATE INDEX publication_provider_search_exact_idx
+        ON publication_provider_search_document(
+          publication_id, normalized_name COLLATE NOCASE, provider_id
+        )`,
+    },
+    {
+      label: "descending provider index",
+      indexName: "publication_provider_search_exact_idx",
+      sql: `CREATE INDEX publication_provider_search_exact_idx
+        ON publication_provider_search_document(
+          publication_id, normalized_name DESC, provider_id
+        )`,
+    },
+  ])(
+    "rejects a $label before mutation and remains retryable",
+    ({ indexName, sql }) => {
+      const database = applyMigrations(
+        "serving",
+        "0009_model_variant_name_exact_projection.sql",
+      );
+      const original = database
+        .prepare(
+          "SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?",
+        )
+        .get(indexName) as { sql: string };
+
+      database.exec(`DROP INDEX ${indexName}`);
+      database.exec(sql);
+      expect(() => {
+        applyServingProviderModelIdMigration(database);
+      }).toThrow();
+      expect(
+        database
+          .prepare(
+            "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+          )
+          .get(),
+      ).toEqual({ schema_version: "1.6.0" });
+      expect(
+        database
+          .prepare(
+            "SELECT count(*) AS count FROM sqlite_master WHERE name LIKE 'publication_provider_model_id_%'",
+          )
+          .get(),
+      ).toEqual({ count: 0 });
+
+      database.exec(`DROP INDEX ${indexName}`);
+      database.exec(original.sql);
+      applyServingProviderModelIdMigration(database);
+      expect(
+        database
+          .prepare(
+            "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+          )
+          .get(),
+      ).toEqual({ schema_version: "1.7.0" });
+    },
+  );
+
+  it.each([
+    ["publication_closure_seal", ["publication_closure_seal_insert_guard"]],
+    [
+      "publication_readiness_receipt",
+      ["publication_readiness_receipt_insert_guard"],
+    ],
+    [
+      "publication_archive_receipt",
+      ["publication_archive_receipt_insert_guard"],
+    ],
+    [
+      "publication_serving_receipt",
+      ["publication_serving_receipt_insert_guard"],
+    ],
+    ["publication_vector_receipt", ["publication_vector_receipt_insert_guard"]],
+    ["publication_probe_receipt", ["publication_probe_receipt_insert_guard"]],
+    [
+      "publication_readiness_attestation",
+      ["publication_readiness_attestation_insert_guard"],
+    ],
+    ["publication_head", ["publication_head_switch_insert"]],
+    [
+      "publication_switch_preflight",
+      ["publication_switch_preflight_insert_guard"],
+    ],
+    [
+      "publication_switch_history",
+      [
+        "publication_switch_history_insert_guard",
+        "publication_switch_history_apply",
+      ],
+    ],
+  ] as const)(
+    "rejects a lone %s proof row while every publication remains building",
+    (table, insertGuards) => {
+      const database = applyMigrations(
+        "serving",
+        "0009_model_variant_name_exact_projection.sql",
+      );
+      const publicationId = id("pub", 835);
+      insertBuildingPublication(
+        database,
+        publicationId,
+        { resources: 1, exactDocuments: 0, vectorDocuments: 0 },
+        null,
+        835,
+      );
+
+      // Construct one schema-shaped orphan while constraint enforcement is
+      // explicitly suspended. This isolates each migration precondition: no
+      // seal, readiness row, or ready lifecycle state can short-circuit it.
+      database.exec("PRAGMA foreign_keys = OFF");
+      database.exec("PRAGMA ignore_check_constraints = ON");
+      for (const insertGuard of insertGuards)
+        database.exec(`DROP TRIGGER ${insertGuard}`);
+      const columns = database.prepare(`PRAGMA table_info(${table})`).all() as {
+        name: string;
+        type: string;
+      }[];
+      const values = columns.map((column) => {
+        if (
+          column.name === "publication_id" ||
+          column.name === "active_publication_id" ||
+          column.name === "to_publication_id"
+        )
+          return publicationId;
+        return column.type === "INTEGER" ? 0 : "x";
+      });
+      database
+        .prepare(
+          `INSERT INTO ${table} (${columns.map((column) => `"${column.name}"`).join(", ")}) VALUES (${columns.map(() => "?").join(", ")})`,
+        )
+        .run(...values);
+      database.exec("PRAGMA ignore_check_constraints = OFF");
+      database.exec("PRAGMA foreign_keys = ON");
+
+      expect(() => {
+        applyServingProviderModelIdMigration(database);
+      }).toThrow();
+      expect(
+        database
+          .prepare(
+            "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+          )
+          .get(),
+      ).toEqual({ schema_version: "1.6.0" });
+      expect(
+        database
+          .prepare("SELECT state FROM publication WHERE publication_id = ?")
+          .get(publicationId),
+      ).toEqual({ state: "building" });
+      expect(
+        database.prepare(`SELECT count(*) AS count FROM ${table}`).get(),
+      ).toEqual({ count: 1 });
+      expect(
+        database
+          .prepare(
+            "SELECT count(*) AS count FROM sqlite_master WHERE name = 'publication_provider_model_id_search_document'",
+          )
+          .get(),
+      ).toEqual({ count: 0 });
+    },
+  );
+
+  it.each([
+    {
+      proofTable: "publication_readiness_attestation",
+      guardMessage:
+        "provider model ID exact indexes are missing malformed or unqueryable",
+      insertSql: `INSERT INTO publication_readiness_attestation(
+        publication_id, environment, closure_hash, bundle_hash,
+        evaluator_version, ready_at_ms, maximum_receipt_age_ms,
+        effective_valid_until_ms, archive_observed_at_ms,
+        serving_observed_at_ms, vector_observed_at_ms,
+        probes_observed_at_ms, archive_receipt_hash,
+        serving_receipt_hash, vector_receipt_hash,
+        probes_receipt_hash, attestation_hash
+      ) VALUES (?, 'local', ?, ?, '4.0.0', 0, 0, 0, 0, 0, 0, 0, ?, ?, ?, ?, ?)`,
+      parameters: (publicationId: string) => [
+        publicationId,
+        HASH,
+        HASH,
+        HASH,
+        HASH,
+        HASH,
+        HASH,
+        HASH,
+      ],
+    },
+    {
+      proofTable: "publication_switch_history",
+      guardMessage:
+        "switch-time provider model ID exact indexes are missing malformed or unqueryable",
+      insertSql: `INSERT INTO publication_switch_history(
+        switch_id, event_version, event_hash, preflight_hash, action,
+        expected_prior_generation,
+        expected_prior_rollback_candidate_publication_id,
+        expected_prior_switched_at_ms, new_generation,
+        from_publication_id, from_closure_hash, to_publication_id,
+        to_closure_hash, to_attestation_hash,
+        resulting_rollback_candidate_publication_id, switched_at_ms,
+        authorized_by_kind, authorized_identity_id
+      ) VALUES ('switch-index-guard', '1.0.0', ?, ?, 'activate',
+        0, NULL, NULL, 1, NULL, NULL, ?, ?, ?, NULL, 0,
+        'pipeline', 'pipeline:index-guard')`,
+      parameters: (publicationId: string) => [
+        HASH,
+        OTHER_HASH,
+        publicationId,
+        HASH,
+        OTHER_HASH,
+      ],
+    },
+  ])(
+    "rejects direct $proofTable insertion and rolls back missing or malformed exact indexes",
+    ({ proofTable, guardMessage, insertSql, parameters }) => {
+      const publicationId = id("pub", 838);
+      for (const definition of [
+        {
+          name: "publication_provider_model_id_raw_exact_idx",
+          columns: [
+            "publication_id",
+            "raw_provider_model_id_utf8",
+            "offering_id",
+          ],
+          wrongColumns: ["publication_id", "provider_id", "offering_id"],
+        },
+        {
+          name: "publication_provider_model_id_normalized_exact_idx",
+          columns: [
+            "publication_id",
+            "normalized_provider_model_id_utf8",
+            "offering_id",
+          ],
+          wrongColumns: ["publication_id", "target_resource_id", "offering_id"],
+        },
+      ]) {
+        for (const mode of ["missing", "wrong-columns"] as const) {
+          const database = applyMigrations("serving");
+          database.exec("BEGIN IMMEDIATE");
+          try {
+            database.exec(`DROP INDEX ${definition.name}`);
+            if (mode === "wrong-columns")
+              database.exec(
+                `CREATE INDEX ${definition.name} ON publication_provider_model_id_search_document(${definition.wrongColumns.join(", ")})`,
+              );
+            expect(() =>
+              database.prepare(insertSql).run(...parameters(publicationId)),
+            ).toThrow(mode === "missing" ? definition.name : guardMessage);
+          } finally {
+            database.exec("ROLLBACK");
+          }
+          expect(
+            database
+              .prepare(`PRAGMA index_info(${definition.name})`)
+              .all()
+              .map((row) => row.name),
+          ).toEqual(definition.columns);
+          expect(
+            database
+              .prepare(`SELECT count(*) AS count FROM ${proofTable}`)
+              .get(),
+          ).toEqual({ count: 0 });
+          database.close();
+        }
+      }
+    },
+  );
+
+  it.each([
+    {
+      proofTable: "publication_readiness_attestation",
+      guardMessage:
+        "provider model ID exact indexes are missing malformed or unqueryable",
+      insertSql: `INSERT INTO publication_readiness_attestation(
+        publication_id, environment, closure_hash, bundle_hash,
+        evaluator_version, ready_at_ms, maximum_receipt_age_ms,
+        effective_valid_until_ms, archive_observed_at_ms,
+        serving_observed_at_ms, vector_observed_at_ms,
+        probes_observed_at_ms, archive_receipt_hash,
+        serving_receipt_hash, vector_receipt_hash,
+        probes_receipt_hash, attestation_hash
+      ) VALUES (?, 'local', ?, ?, '4.0.0', 0, 0, 0, 0, 0, 0, 0, ?, ?, ?, ?, ?)`,
+      parameters: (publicationId: string) => [
+        publicationId,
+        HASH,
+        HASH,
+        HASH,
+        HASH,
+        HASH,
+        HASH,
+        HASH,
+      ],
+    },
+    {
+      proofTable: "publication_switch_history",
+      guardMessage:
+        "switch-time provider model ID exact indexes are missing malformed or unqueryable",
+      insertSql: `INSERT INTO publication_switch_history(
+        switch_id, event_version, event_hash, preflight_hash, action,
+        expected_prior_generation,
+        expected_prior_rollback_candidate_publication_id,
+        expected_prior_switched_at_ms, new_generation,
+        from_publication_id, from_closure_hash, to_publication_id,
+        to_closure_hash, to_attestation_hash,
+        resulting_rollback_candidate_publication_id, switched_at_ms,
+        authorized_by_kind, authorized_identity_id
+      ) VALUES ('switch-ff-guard', '1.0.0', ?, ?, 'activate',
+        0, NULL, NULL, 1, NULL, NULL, ?, ?, ?, NULL, 0,
+        'pipeline', 'pipeline:ff-guard')`,
+      parameters: (publicationId: string) => [
+        HASH,
+        OTHER_HASH,
+        publicationId,
+        HASH,
+        OTHER_HASH,
+      ],
+    },
+  ])(
+    "executes both forced X'FF' miss probes before direct $proofTable insertion",
+    ({ proofTable, guardMessage, insertSql, parameters }) => {
+      for (const corruptColumn of [
+        "raw_provider_model_id_utf8",
+        "normalized_provider_model_id_utf8",
+      ] as const) {
+        const database = applyMigrations("serving");
+        const publicationId = id("pub", 839);
+        database.exec("PRAGMA foreign_keys = OFF");
+        database.exec(
+          "DROP TRIGGER publication_provider_model_id_search_document_insert_guard",
+        );
+        database
+          .prepare(
+            `INSERT INTO publication_provider_model_id_search_document(
+              publication_id, offering_id, provider_id,
+              target_resource_type, target_resource_id, projection_version,
+              raw_provider_model_id_utf8,
+              normalized_provider_model_id_utf8,
+              offering_content_hash, target_content_hash
+            ) VALUES (?, ?, ?, 'model', ?, 'provider-model-id@1',
+              ${corruptColumn === "raw_provider_model_id_utf8" ? "X'FF'" : "X'61'"},
+              ${corruptColumn === "normalized_provider_model_id_utf8" ? "X'FF'" : "X'61'"},
+              ?, ?)`,
+          )
+          .run(
+            publicationId,
+            id("off", 839),
+            id("prv", 839),
+            id("mdl", 839),
+            HASH,
+            OTHER_HASH,
+          );
+        database.exec("PRAGMA foreign_keys = ON");
+
+        expect(() =>
+          database.prepare(insertSql).run(...parameters(publicationId)),
+        ).toThrow(guardMessage);
+        expect(
+          database.prepare(`SELECT count(*) AS count FROM ${proofTable}`).get(),
+        ).toEqual({ count: 0 });
+        database.close();
+      }
+    },
+  );
+
+  it("stores duplicate exact provider model IDs as strict UTF-8 BLOBs and closes one row per offering", () => {
+    const database = applyMigrations("serving");
+    const publicationId = id("pub", 840);
+    const providerId = id("prv", 840);
+    const targetId = id("mdl", 840);
+    const offerings = [
+      { offeringId: id("off", 840), rawProviderModelId: "A\u0000B" },
+      { offeringId: id("off", 841), rawProviderModelId: "A\u0000B" },
+    ];
+    insertBuildingProviderModelIdContext(
+      database,
+      publicationId,
+      providerId,
+      "model",
+      targetId,
+      offerings,
+      840,
+    );
+    const rawHex = Buffer.from("A\u0000B", "utf8").toString("hex");
+    insertProviderModelIdDocument(database, {
+      publicationId,
+      offeringId: offerings[0]!.offeringId,
+      providerId,
+      targetType: "model",
+      targetId,
+      rawHex,
+      normalizedHex: "",
+    });
+    insertProviderModelIdDocument(database, {
+      publicationId,
+      offeringId: offerings[1]!.offeringId,
+      providerId,
+      targetType: "model",
+      targetId,
+      rawHex,
+      normalizedHex: "",
+    });
+    expect(
+      database
+        .prepare(
+          `SELECT offering_id, typeof(raw_provider_model_id_utf8) AS raw_type,
+             typeof(normalized_provider_model_id_utf8) AS normalized_type,
+             hex(raw_provider_model_id_utf8) AS raw_hex,
+             hex(normalized_provider_model_id_utf8) AS normalized_hex
+           FROM publication_provider_model_id_search_document
+           WHERE publication_id = ? ORDER BY offering_id`,
+        )
+        .all(publicationId),
+    ).toEqual(
+      offerings.map((offering) => ({
+        offering_id: offering.offeringId,
+        raw_type: "blob",
+        normalized_type: "blob",
+        raw_hex: rawHex.toUpperCase(),
+        normalized_hex: "",
+      })),
+    );
+    expectConstraint(
+      () =>
+        database
+          .prepare(
+            "UPDATE publication_provider_model_id_search_document SET normalized_provider_model_id_utf8 = X'61' WHERE publication_id = ?",
+          )
+          .run(publicationId),
+      "provider model ID search document is immutable",
+    );
+    expectConstraint(
+      () =>
+        database
+          .prepare(
+            "DELETE FROM publication_provider_model_id_search_document WHERE publication_id = ?",
+          )
+          .run(publicationId),
+      "provider model ID search document cannot be deleted",
+    );
+    insertProviderModelIdClosureSeal(database, publicationId, offerings.length);
+    expect(
+      database
+        .prepare(
+          "SELECT count(*) AS count FROM publication_closure_seal WHERE publication_id = ?",
+        )
+        .get(publicationId),
+    ).toEqual({ count: 1 });
+  });
+
+  it("rejects malformed UTF-8, byte overflow, canonical drift, and incomplete provider-model-ID closure", () => {
+    const database = applyMigrations("serving");
+    const publicationId = id("pub", 850);
+    const providerId = id("prv", 850);
+    const targetId = id("var", 850);
+    const offeringId = id("off", 850);
+    insertBuildingProviderModelIdContext(
+      database,
+      publicationId,
+      providerId,
+      "variant",
+      targetId,
+      [{ offeringId, rawProviderModelId: "canonical/model" }],
+      850,
+    );
+    expectConstraint(() => {
+      insertProviderModelIdClosureSeal(database, publicationId, 1);
+    }, "provider model ID search projection does not close");
+
+    expectConstraint(() => {
+      insertProviderModelIdDocument(database, {
+        publicationId,
+        offeringId,
+        providerId,
+        targetType: "variant",
+        targetId,
+        rawHex: "80",
+        normalizedHex: "",
+      });
+    }, "raw provider model ID must be strict UTF-8");
+
+    for (const malformedHex of ["80", "c080", "eda080", "f4908080"])
+      expectConstraint(() => {
+        insertProviderModelIdDocument(database, {
+          publicationId,
+          offeringId,
+          providerId,
+          targetType: "variant",
+          targetId,
+          rawHex: Buffer.from("canonical/model", "utf8").toString("hex"),
+          normalizedHex: malformedHex,
+        });
+      }, "normalized provider model ID must be strict UTF-8");
+    expectConstraint(() => {
+      insertProviderModelIdDocument(database, {
+        publicationId,
+        offeringId,
+        providerId,
+        targetType: "variant",
+        targetId,
+        rawHex: Buffer.from("drifted/model", "utf8").toString("hex"),
+        normalizedHex: "61",
+      });
+    }, "provider model ID search document does not match canonical offering and target content");
+    expectConstraint(() => {
+      insertProviderModelIdDocument(database, {
+        publicationId,
+        offeringId,
+        providerId,
+        targetType: "variant",
+        targetId,
+        rawHex: Buffer.from("canonical/model", "utf8").toString("hex"),
+        normalizedHex: "61",
+        targetHash: HASH,
+      });
+    }, "provider model ID search document does not match canonical offering and target content");
+
+    database.exec(
+      "DROP TRIGGER publication_provider_model_id_search_document_insert_guard",
+    );
+    expectConstraint(() => {
+      insertProviderModelIdDocument(database, {
+        publicationId,
+        offeringId,
+        providerId,
+        targetType: "variant",
+        targetId,
+        rawHex: "61".repeat(1025),
+        normalizedHex: "61",
+      });
+    });
+    expectConstraint(() => {
+      insertProviderModelIdDocument(database, {
+        publicationId,
+        offeringId,
+        providerId,
+        targetType: "variant",
+        targetId,
+        rawHex: Buffer.from("canonical/model", "utf8").toString("hex"),
+        normalizedHex: "61".repeat(18_433),
+      });
+    });
+    insertProviderModelIdDocument(database, {
+      publicationId,
+      offeringId,
+      providerId,
+      targetType: "variant",
+      targetId,
+      rawHex: Buffer.from("drifted/model", "utf8").toString("hex"),
+      normalizedHex: "61",
+    });
+    expectConstraint(() => {
+      insertProviderModelIdClosureSeal(database, publicationId, 1);
+    }, "provider model ID search projection does not close");
+  });
+
+  it("accepts the exact provider-model-ID BLOB byte ceilings", () => {
+    const database = applyMigrations("serving");
+    const publicationId = id("pub", 860);
+    const providerId = id("prv", 860);
+    const targetId = id("mdl", 860);
+    const offeringId = id("off", 860);
+    const rawProviderModelId = "😀".repeat(256);
+    insertBuildingProviderModelIdContext(
+      database,
+      publicationId,
+      providerId,
+      "model",
+      targetId,
+      [{ offeringId, rawProviderModelId }],
+      860,
+    );
+    insertProviderModelIdDocument(database, {
+      publicationId,
+      offeringId,
+      providerId,
+      targetType: "model",
+      targetId,
+      rawHex: Buffer.from(rawProviderModelId, "utf8").toString("hex"),
+      normalizedHex: "61".repeat(18_432),
+    });
+    expect(
+      database
+        .prepare(
+          `SELECT length(raw_provider_model_id_utf8) AS raw_bytes,
+             length(normalized_provider_model_id_utf8) AS normalized_bytes
+           FROM publication_provider_model_id_search_document
+           WHERE publication_id = ? AND offering_id = ?`,
+        )
+        .get(publicationId, offeringId),
+    ).toEqual({ raw_bytes: 1024, normalized_bytes: 18_432 });
+  });
+
+  it("rolls back after every migration 0010 statement boundary and remains retryable", () => {
+    const migration = readFileSync(
+      resolve(
+        "migrations",
+        "serving",
+        "0010_provider_model_id_exact_projection.sql",
+      ),
+      "utf8",
+    );
+    const statements = splitMigrationStatements(migration);
+    expect(statements).toHaveLength(50);
+    for (let boundary = 1; boundary <= statements.length; boundary += 1) {
+      const database = applyMigrations(
+        "serving",
+        "0009_model_variant_name_exact_projection.sql",
+      );
+      expect(() => {
+        applyAtomicMigration(
+          database,
+          `${statements.slice(0, boundary).join("\n")}\nSELECT * FROM __injected_migration_failure__;`,
+        );
+      }).toThrow();
+      expect(
+        database
+          .prepare(
+            "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+          )
+          .get(),
+      ).toEqual({ schema_version: "1.6.0" });
+      expect(
+        database
+          .prepare(
+            "SELECT count(*) AS count FROM sqlite_master WHERE name LIKE 'publication_provider_model_id_%'",
+          )
+          .get(),
+      ).toEqual({ count: 0 });
+      expect(
+        database
+          .prepare(
+            "SELECT count(*) AS count FROM sqlite_master WHERE name = 'publication_model_variant_name_search_seal_guard'",
+          )
+          .get(),
+      ).toEqual({ count: 1 });
+      const receiptSchema = database
+        .prepare(
+          "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'publication_readiness_receipt'",
+        )
+        .get() as { sql: string };
+      expect(receiptSchema.sql).toContain("receipt_version = '3.0.0'");
+      applyServingProviderModelIdMigration(database);
+      expect(
+        database
+          .prepare(
+            "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+          )
+          .get(),
+      ).toEqual({ schema_version: "1.7.0" });
+      database.close();
+    }
   });
 
   it("atomically rejects malformed metadata and colliding activation objects", () => {

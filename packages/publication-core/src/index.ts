@@ -74,6 +74,12 @@ export const PROVIDER_MODEL_ID_SEARCH_MAX_NORMALIZED_UNICODE_SCALARS =
   EXACT_SEARCH_NORMALIZATION_MAX_UNICODE_SCALAR_EXPANSION;
 export const PROVIDER_MODEL_ID_SEARCH_MAX_NORMALIZED_UTF8_BYTES =
   PROVIDER_MODEL_ID_SEARCH_MAX_NORMALIZED_UNICODE_SCALARS * 4;
+export const PROVIDER_MODEL_ID_SEARCH_STORAGE_VERSION =
+  "provider-model-id-utf8-blob@1" as const;
+export const PROVIDER_MODEL_ID_SEARCH_RAW_EXACT_INDEX_NAME =
+  "publication_provider_model_id_raw_exact_idx" as const;
+export const PROVIDER_MODEL_ID_SEARCH_NORMALIZED_EXACT_INDEX_NAME =
+  "publication_provider_model_id_normalized_exact_idx" as const;
 
 export const assertProviderModelIdSearchResourceByteBudget = (
   resourceByteLengths: readonly number[],
@@ -1342,6 +1348,10 @@ export const READINESS_RECEIPT_VERSION_V3 = "3.0.0" as const;
 export const READINESS_EVALUATOR_VERSION_V3 = "3.0.0" as const;
 export const READINESS_PROBE_SET_VERSION_V3 = "search-gold@3" as const;
 export const SERVING_SWITCH_PREFLIGHT_VERSION_V3 = "3.0.0" as const;
+export const READINESS_RECEIPT_VERSION_V4 = "4.0.0" as const;
+export const READINESS_EVALUATOR_VERSION_V4 = "4.0.0" as const;
+export const READINESS_PROBE_SET_VERSION_V4 = "search-gold@4" as const;
+export const SERVING_SWITCH_PREFLIGHT_VERSION_V4 = "4.0.0" as const;
 
 export interface ProviderSearchFtsObservationV2 {
   readonly buildVersion: typeof PROVIDER_SEARCH_FTS_BUILD_VERSION;
@@ -2768,6 +2778,807 @@ export const projectProviderModelIdSearchProjection = async (
   });
   trustedProviderModelIdSearchProjections.add(projection);
   return Object.freeze(projection) as TrustedProviderModelIdSearchProjection;
+};
+
+export type ProviderModelIdSearchStorageRowV1 = Readonly<{
+  publication_id: PublicationId;
+  offering_id: string;
+  provider_id: string;
+  target_resource_type: SearchResourceType;
+  target_resource_id: string;
+  projection_version: typeof PROVIDER_MODEL_ID_SEARCH_PROJECTION_VERSION;
+  raw_provider_model_id_utf8: readonly number[];
+  normalized_provider_model_id_utf8: readonly number[];
+  offering_content_hash: Sha256;
+  target_content_hash: Sha256;
+}>;
+
+export type ProviderModelIdSearchStagingPersistenceV1 = Readonly<{
+  publicationId: PublicationId;
+  closureHash: Sha256;
+  stagingRevision: number;
+  projectionVersion: typeof PROVIDER_MODEL_ID_SEARCH_PROJECTION_VERSION;
+  storageVersion: typeof PROVIDER_MODEL_ID_SEARCH_STORAGE_VERSION;
+  documentCount: number;
+  inventoryHash: Sha256;
+  rows: readonly ProviderModelIdSearchStorageRowV1[];
+}>;
+
+const providerModelIdSearchStagingProjectionV1Brand: unique symbol = Symbol(
+  "ProviderModelIdSearchStagingProjectionV1",
+);
+
+export type ProviderModelIdSearchStagingProjectionV1 = Readonly<{
+  readonly [providerModelIdSearchStagingProjectionV1Brand]: true;
+}>;
+
+interface ProviderModelIdSearchStagingBindingV1 {
+  readonly manifest: TrustedImmutablePublicationManifest;
+  readonly projection: TrustedProviderModelIdSearchProjection;
+  readonly persistence: ProviderModelIdSearchStagingPersistenceV1;
+}
+
+const trustedProviderModelIdSearchStagingProjectionsV1 = new WeakMap<
+  object,
+  ProviderModelIdSearchStagingBindingV1
+>();
+
+export const assertProviderModelIdSearchStagingProjectionV1: (
+  value: unknown,
+) => asserts value is ProviderModelIdSearchStagingProjectionV1 = (value) => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !trustedProviderModelIdSearchStagingProjectionsV1.has(value) ||
+    !(providerModelIdSearchStagingProjectionV1Brand in value) ||
+    value[providerModelIdSearchStagingProjectionV1Brand] !== true
+  )
+    throw new TypeError(
+      "provider model ID search staging projection v1 is not trusted",
+    );
+};
+
+const frozenProviderModelIdUtf8Bytes = (value: string): readonly number[] => {
+  const encoded = utf8.encode(value);
+  const bytes = new Array<number>(encoded.byteLength);
+  for (let index = 0; index < encoded.byteLength; index += 1) {
+    const byte = encoded[index];
+    if (byte === undefined)
+      throw new TypeError("encoded provider model ID bytes are incomplete");
+    bytes[index] = byte;
+  }
+  return Object.freeze(bytes);
+};
+
+const providerModelIdSearchStoragePersistenceV1 = (
+  projection: TrustedProviderModelIdSearchProjection,
+  stagingRevision: number,
+): ProviderModelIdSearchStagingPersistenceV1 => {
+  assertProviderModelIdSearchProjection(projection);
+  assertSafeInteger(
+    stagingRevision,
+    0,
+    "provider model ID search staging revision",
+  );
+  const rows = projection.documents.map((document) =>
+    Object.freeze({
+      publication_id: projection.publicationId,
+      offering_id: document.offeringId,
+      provider_id: document.providerId,
+      target_resource_type: document.resourceType,
+      target_resource_id: document.resourceId,
+      projection_version: document.projectionVersion,
+      raw_provider_model_id_utf8: frozenProviderModelIdUtf8Bytes(
+        document.rawProviderModelId,
+      ),
+      normalized_provider_model_id_utf8: frozenProviderModelIdUtf8Bytes(
+        document.normalizedProviderModelId,
+      ),
+      offering_content_hash: document.offeringContentHash,
+      target_content_hash: document.targetContentHash,
+    }),
+  );
+  return Object.freeze({
+    publicationId: projection.publicationId,
+    closureHash: projection.closureHash,
+    stagingRevision,
+    projectionVersion: projection.projectionVersion,
+    storageVersion: PROVIDER_MODEL_ID_SEARCH_STORAGE_VERSION,
+    documentCount: projection.documentCount,
+    inventoryHash: projection.inventoryHash,
+    rows: Object.freeze(rows),
+  });
+};
+
+export const projectProviderModelIdSearchStagingV1 = async (input: {
+  readonly projection: TrustedProviderModelIdSearchProjection;
+  readonly closureRows: ServingClosureRows;
+}): Promise<ProviderModelIdSearchStagingProjectionV1> => {
+  const snapshot = ownDataRecordSnapshot(
+    input,
+    ["closureRows", "projection"],
+    "provider model ID search staging input",
+  );
+  const projection = snapshot.projection;
+  assertProviderModelIdSearchProjection(projection);
+  let rows: ServingClosureRows;
+  try {
+    rows = structuredClone(snapshot.closureRows) as ServingClosureRows;
+  } catch {
+    throw new TypeError("provider model ID search staging closure is invalid");
+  }
+  const closure = await projectServingClosureSeal(rows);
+  if (
+    closure.manifest.publicationId !== projection.publicationId ||
+    closure.manifest.closureHash !== projection.closureHash
+  )
+    throw new TypeError(
+      "provider model ID search staging closure does not match projection",
+    );
+  const persistence = providerModelIdSearchStoragePersistenceV1(
+    projection,
+    rows.stagingRevision,
+  );
+  const result = {};
+  Object.defineProperty(result, providerModelIdSearchStagingProjectionV1Brand, {
+    value: true,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  trustedProviderModelIdSearchStagingProjectionsV1.set(
+    result,
+    Object.freeze({ manifest: closure.manifest, projection, persistence }),
+  );
+  return Object.freeze(result) as ProviderModelIdSearchStagingProjectionV1;
+};
+
+export const readProviderModelIdSearchStagingPersistenceV1 = (
+  value: ProviderModelIdSearchStagingProjectionV1,
+): ProviderModelIdSearchStagingPersistenceV1 => {
+  assertProviderModelIdSearchStagingProjectionV1(value);
+  const binding = trustedProviderModelIdSearchStagingProjectionsV1.get(value);
+  if (binding === undefined)
+    throw new TypeError(
+      "provider model ID search staging projection v1 is not trusted",
+    );
+  return binding.persistence;
+};
+
+export type ProviderModelIdSearchStorageObservationV1 = Readonly<{
+  storageVersion: typeof PROVIDER_MODEL_ID_SEARCH_STORAGE_VERSION;
+  rows: readonly ProviderModelIdSearchStorageRowV1[];
+}>;
+
+const providerModelIdSearchArtifactProofV1Brand: unique symbol = Symbol(
+  "ProviderModelIdSearchArtifactProofV1",
+);
+
+export type ProviderModelIdSearchArtifactProofV1 = Readonly<{
+  provider_model_id_projection_version: typeof PROVIDER_MODEL_ID_SEARCH_PROJECTION_VERSION;
+  provider_model_id_document_count: number;
+  provider_model_id_inventory_hash: Sha256;
+  provider_model_id_storage_version: typeof PROVIDER_MODEL_ID_SEARCH_STORAGE_VERSION;
+  provider_model_id_storage_document_count: number;
+  provider_model_id_storage_exact_parity: true;
+  readonly [providerModelIdSearchArtifactProofV1Brand]: true;
+}>;
+
+interface ProviderModelIdSearchArtifactProofBindingV1 {
+  readonly manifest: TrustedImmutablePublicationManifest;
+  readonly projection: TrustedProviderModelIdSearchProjection;
+  readonly persistence: ProviderModelIdSearchStagingPersistenceV1;
+}
+
+const trustedProviderModelIdSearchArtifactProofsV1 = new WeakMap<
+  object,
+  ProviderModelIdSearchArtifactProofBindingV1
+>();
+
+export const assertProviderModelIdSearchArtifactProofV1: (
+  value: unknown,
+) => asserts value is ProviderModelIdSearchArtifactProofV1 = (value) => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !trustedProviderModelIdSearchArtifactProofsV1.has(value) ||
+    !(providerModelIdSearchArtifactProofV1Brand in value) ||
+    value[providerModelIdSearchArtifactProofV1Brand] !== true
+  )
+    throw new TypeError(
+      "provider model ID search artifact proof v1 is not trusted",
+    );
+};
+
+const snapshotProviderModelIdStorageBytes = (
+  value: unknown,
+  maximumBytes: number,
+  expected: readonly number[],
+  allowEmpty: boolean,
+  label: string,
+): readonly number[] => {
+  const bytes = denseArraySnapshot(value, maximumBytes, label);
+  if ((!allowEmpty && bytes.length === 0) || bytes.length !== expected.length)
+    throw new TypeError(`${label} does not exactly match trusted storage`);
+  const encoded = new Uint8Array(bytes.length);
+  const result = new Array<number>(bytes.length);
+  for (let index = 0; index < bytes.length; index += 1) {
+    const candidate: unknown = bytes[index];
+    if (
+      typeof candidate !== "number" ||
+      !Number.isSafeInteger(candidate) ||
+      candidate < 0 ||
+      candidate > 255 ||
+      candidate !== expected[index]
+    )
+      throw new TypeError(`${label} does not exactly match trusted storage`);
+    result[index] = candidate;
+    encoded[index] = candidate;
+  }
+  try {
+    const decoded = new TextDecoder("utf-8", { fatal: true }).decode(encoded);
+    const reencoded = utf8.encode(decoded);
+    if (
+      (!allowEmpty && decoded.length === 0) ||
+      reencoded.byteLength !== result.length
+    )
+      throw new TypeError(`${label} is invalid`);
+    for (let index = 0; index < reencoded.byteLength; index += 1)
+      if (reencoded[index] !== result[index])
+        throw new TypeError(`${label} is invalid`);
+  } catch {
+    throw new TypeError(`${label} is invalid`);
+  }
+  return Object.freeze(result);
+};
+
+const snapshotProviderModelIdSearchStorageRowV1 = (
+  value: unknown,
+  expected: ProviderModelIdSearchStorageRowV1,
+): ProviderModelIdSearchStorageRowV1 => {
+  const row = ownDataRecordSnapshot(
+    value,
+    [
+      "normalized_provider_model_id_utf8",
+      "offering_content_hash",
+      "offering_id",
+      "projection_version",
+      "provider_id",
+      "publication_id",
+      "raw_provider_model_id_utf8",
+      "target_content_hash",
+      "target_resource_id",
+      "target_resource_type",
+    ],
+    "provider model ID search storage row",
+  );
+  const targetType = row.target_resource_type;
+  const targetId = row.target_resource_id;
+  if (
+    row.publication_id !== expected.publication_id ||
+    row.offering_id !== expected.offering_id ||
+    row.provider_id !== expected.provider_id ||
+    targetType !== expected.target_resource_type ||
+    targetId !== expected.target_resource_id ||
+    row.projection_version !== expected.projection_version ||
+    row.offering_content_hash !== expected.offering_content_hash ||
+    row.target_content_hash !== expected.target_content_hash ||
+    typeof row.publication_id !== "string" ||
+    !PUBLICATION_ID.test(row.publication_id) ||
+    typeof row.offering_id !== "string" ||
+    !new RegExp(`^off_${UUID_V4}$`, "u").test(row.offering_id) ||
+    typeof row.provider_id !== "string" ||
+    !new RegExp(`^prv_${UUID_V4}$`, "u").test(row.provider_id) ||
+    (targetType !== "model" && targetType !== "variant") ||
+    typeof targetId !== "string" ||
+    !new RegExp(
+      `^${targetType === "model" ? "mdl_" : "var_"}${UUID_V4}$`,
+      "u",
+    ).test(targetId) ||
+    typeof row.offering_content_hash !== "string" ||
+    !HASH.test(row.offering_content_hash) ||
+    typeof row.target_content_hash !== "string" ||
+    !HASH.test(row.target_content_hash)
+  )
+    throw new TypeError("provider model ID search storage row is invalid");
+  return Object.freeze({
+    publication_id: row.publication_id,
+    offering_id: row.offering_id,
+    provider_id: row.provider_id,
+    target_resource_type: targetType,
+    target_resource_id: targetId,
+    projection_version: PROVIDER_MODEL_ID_SEARCH_PROJECTION_VERSION,
+    raw_provider_model_id_utf8: snapshotProviderModelIdStorageBytes(
+      row.raw_provider_model_id_utf8,
+      PROVIDER_MODEL_ID_SEARCH_MAX_UTF8_BYTES,
+      expected.raw_provider_model_id_utf8,
+      false,
+      "provider model ID raw UTF-8 bytes",
+    ),
+    normalized_provider_model_id_utf8: snapshotProviderModelIdStorageBytes(
+      row.normalized_provider_model_id_utf8,
+      PROVIDER_MODEL_ID_SEARCH_MAX_NORMALIZED_UTF8_BYTES,
+      expected.normalized_provider_model_id_utf8,
+      true,
+      "provider model ID normalized UTF-8 bytes",
+    ),
+    offering_content_hash: row.offering_content_hash,
+    target_content_hash: row.target_content_hash,
+  });
+};
+
+const equalProviderModelIdSearchStorageRowsV1 = (
+  left: ProviderModelIdSearchStorageRowV1,
+  right: ProviderModelIdSearchStorageRowV1,
+): boolean =>
+  left.publication_id === right.publication_id &&
+  left.offering_id === right.offering_id &&
+  left.provider_id === right.provider_id &&
+  left.target_resource_type === right.target_resource_type &&
+  left.target_resource_id === right.target_resource_id &&
+  equalStorageBytes(
+    left.raw_provider_model_id_utf8,
+    right.raw_provider_model_id_utf8,
+  ) &&
+  equalStorageBytes(
+    left.normalized_provider_model_id_utf8,
+    right.normalized_provider_model_id_utf8,
+  ) &&
+  left.offering_content_hash === right.offering_content_hash &&
+  left.target_content_hash === right.target_content_hash;
+
+export const projectProviderModelIdSearchArtifactProofV1 = (input: {
+  readonly staging: ProviderModelIdSearchStagingProjectionV1;
+  readonly observation: ProviderModelIdSearchStorageObservationV1;
+}): ProviderModelIdSearchArtifactProofV1 => {
+  const snapshot = ownDataRecordSnapshot(
+    input,
+    ["observation", "staging"],
+    "provider model ID search artifact proof input",
+  );
+  const staging = snapshot.staging;
+  assertProviderModelIdSearchStagingProjectionV1(staging);
+  const binding = trustedProviderModelIdSearchStagingProjectionsV1.get(staging);
+  if (binding === undefined)
+    throw new TypeError(
+      "provider model ID search staging projection v1 is not trusted",
+    );
+  const observation = ownDataRecordSnapshot(
+    snapshot.observation,
+    ["rows", "storageVersion"],
+    "provider model ID search storage observation",
+  );
+  if (observation.storageVersion !== PROVIDER_MODEL_ID_SEARCH_STORAGE_VERSION)
+    throw new TypeError(
+      "provider model ID search storage observation is invalid",
+    );
+  const observedRows = denseArraySnapshot(
+    observation.rows,
+    PROVIDER_MODEL_ID_SEARCH_MAX_RESOURCES,
+    "provider model ID search storage observation rows",
+  );
+  const expected = binding.persistence;
+  if (
+    observedRows.length !== expected.documentCount ||
+    observedRows.length !== expected.rows.length
+  )
+    throw new TypeError(
+      "provider model ID search storage does not exactly match the trusted projection",
+    );
+  for (let index = 0; index < observedRows.length; index += 1) {
+    const expectedRow = expected.rows[index];
+    if (expectedRow === undefined)
+      throw new TypeError(
+        "provider model ID search storage does not exactly match the trusted projection",
+      );
+    const observed = snapshotProviderModelIdSearchStorageRowV1(
+      observedRows[index],
+      expectedRow,
+    );
+    if (!equalProviderModelIdSearchStorageRowsV1(observed, expectedRow))
+      throw new TypeError(
+        "provider model ID search storage does not exactly match the trusted projection",
+      );
+  }
+  const proof = {
+    provider_model_id_projection_version: expected.projectionVersion,
+    provider_model_id_document_count: expected.documentCount,
+    provider_model_id_inventory_hash: expected.inventoryHash,
+    provider_model_id_storage_version: expected.storageVersion,
+    provider_model_id_storage_document_count: observedRows.length,
+    provider_model_id_storage_exact_parity: true as const,
+  };
+  Object.defineProperty(proof, providerModelIdSearchArtifactProofV1Brand, {
+    value: true,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  trustedProviderModelIdSearchArtifactProofsV1.set(
+    proof,
+    Object.freeze({
+      manifest: binding.manifest,
+      projection: binding.projection,
+      persistence: expected,
+    }),
+  );
+  return Object.freeze(proof) as ProviderModelIdSearchArtifactProofV1;
+};
+
+export type ProviderModelIdSearchQueryabilityPlanV4 = Readonly<{
+  rawIndexName: typeof PROVIDER_MODEL_ID_SEARCH_RAW_EXACT_INDEX_NAME;
+  rawMatchProviderModelIdUtf8: readonly number[] | null;
+  rawMatchOfferingIds: readonly string[];
+  rawMissProviderModelIdUtf8: readonly number[];
+  rawMissOfferingIds: readonly string[];
+  normalizedIndexName: typeof PROVIDER_MODEL_ID_SEARCH_NORMALIZED_EXACT_INDEX_NAME;
+  normalizedMatchProviderModelIdUtf8: readonly number[] | null;
+  normalizedMatchOfferingIds: readonly string[];
+  normalizedMissProviderModelIdUtf8: readonly number[];
+  normalizedMissOfferingIds: readonly string[];
+}>;
+
+export type ProviderModelIdSearchQueryabilityObservationV4 =
+  ProviderModelIdSearchQueryabilityPlanV4;
+
+const providerModelIdSearchQueryableArtifactProofV4Brand: unique symbol =
+  Symbol("ProviderModelIdSearchQueryableArtifactProofV4");
+
+export type ProviderModelIdSearchQueryableArtifactProofV4 = Readonly<{
+  provider_model_id_projection_version: typeof PROVIDER_MODEL_ID_SEARCH_PROJECTION_VERSION;
+  provider_model_id_document_count: number;
+  provider_model_id_inventory_hash: Sha256;
+  provider_model_id_storage_version: typeof PROVIDER_MODEL_ID_SEARCH_STORAGE_VERSION;
+  provider_model_id_storage_document_count: number;
+  provider_model_id_storage_queryable: true;
+  provider_model_id_storage_exact_parity: true;
+  readonly [providerModelIdSearchQueryableArtifactProofV4Brand]: true;
+}>;
+
+interface ProviderModelIdSearchQueryableArtifactProofBindingV4 {
+  readonly manifest: TrustedImmutablePublicationManifest;
+  readonly projection: TrustedProviderModelIdSearchProjection;
+  readonly storageProof: ProviderModelIdSearchArtifactProofV1;
+  readonly queryabilityPlan: ProviderModelIdSearchQueryabilityPlanV4;
+}
+
+const trustedProviderModelIdSearchQueryableArtifactProofsV4 = new WeakMap<
+  object,
+  ProviderModelIdSearchQueryableArtifactProofBindingV4
+>();
+
+export const assertProviderModelIdSearchQueryableArtifactProofV4: (
+  value: unknown,
+) => asserts value is ProviderModelIdSearchQueryableArtifactProofV4 = (
+  value,
+) => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !trustedProviderModelIdSearchQueryableArtifactProofsV4.has(value) ||
+    !(providerModelIdSearchQueryableArtifactProofV4Brand in value) ||
+    value[providerModelIdSearchQueryableArtifactProofV4Brand] !== true
+  )
+    throw new TypeError(
+      "provider model ID search queryable artifact proof v4 is not trusted",
+    );
+};
+
+const providerModelIdByteKey = (bytes: readonly number[]): string =>
+  JSON.stringify(bytes);
+
+const providerModelIdCollisionOfferingIds = (
+  rows: readonly ProviderModelIdSearchStorageRowV1[],
+  field: "raw_provider_model_id_utf8" | "normalized_provider_model_id_utf8",
+  bytes: readonly number[],
+): readonly string[] =>
+  Object.freeze(
+    rows
+      .filter(
+        (row) =>
+          providerModelIdByteKey(row[field]) === providerModelIdByteKey(bytes),
+      )
+      .map((row) => row.offering_id)
+      .sort(compareAscii),
+  );
+
+export const projectProviderModelIdSearchQueryabilityPlanV4 = (
+  storageProof: ProviderModelIdSearchArtifactProofV1,
+): ProviderModelIdSearchQueryabilityPlanV4 => {
+  assertProviderModelIdSearchArtifactProofV1(storageProof);
+  const binding =
+    trustedProviderModelIdSearchArtifactProofsV1.get(storageProof);
+  if (binding === undefined)
+    throw new TypeError(
+      "provider model ID search artifact proof v1 is not trusted",
+    );
+  const rows = binding.persistence.rows;
+  const fixedMiss = Object.freeze([255]);
+  const first = rows[0];
+  const rawMatchBytes = first?.raw_provider_model_id_utf8 ?? null;
+  const normalizedMatchBytes = first?.normalized_provider_model_id_utf8 ?? null;
+  return Object.freeze({
+    rawIndexName: PROVIDER_MODEL_ID_SEARCH_RAW_EXACT_INDEX_NAME,
+    rawMatchProviderModelIdUtf8: rawMatchBytes,
+    rawMatchOfferingIds:
+      first === undefined
+        ? Object.freeze([])
+        : providerModelIdCollisionOfferingIds(
+            rows,
+            "raw_provider_model_id_utf8",
+            rawMatchBytes ?? [],
+          ),
+    rawMissProviderModelIdUtf8: fixedMiss,
+    rawMissOfferingIds: Object.freeze([]),
+    normalizedIndexName: PROVIDER_MODEL_ID_SEARCH_NORMALIZED_EXACT_INDEX_NAME,
+    normalizedMatchProviderModelIdUtf8: normalizedMatchBytes,
+    normalizedMatchOfferingIds:
+      first === undefined
+        ? Object.freeze([])
+        : providerModelIdCollisionOfferingIds(
+            rows,
+            "normalized_provider_model_id_utf8",
+            normalizedMatchBytes ?? [],
+          ),
+    normalizedMissProviderModelIdUtf8: fixedMiss,
+    normalizedMissOfferingIds: Object.freeze([]),
+  });
+};
+
+const snapshotProviderModelIdProbeBytes = (
+  value: unknown,
+  expected: readonly number[],
+  label: string,
+): readonly number[] => {
+  const bytes = denseArraySnapshot(
+    value,
+    PROVIDER_MODEL_ID_SEARCH_MAX_NORMALIZED_UTF8_BYTES,
+    label,
+  );
+  if (bytes.length !== expected.length)
+    throw new TypeError(`${label} does not exactly match the trusted probe`);
+  const result = new Array<number>(bytes.length);
+  for (let index = 0; index < bytes.length; index += 1) {
+    const byte: unknown = bytes[index];
+    if (
+      typeof byte !== "number" ||
+      !Number.isSafeInteger(byte) ||
+      byte < 0 ||
+      byte > 255 ||
+      byte !== expected[index]
+    )
+      throw new TypeError(`${label} does not exactly match the trusted probe`);
+    result[index] = byte;
+  }
+  return Object.freeze(result);
+};
+
+const snapshotProviderModelIdProbeOfferingIds = (
+  value: unknown,
+  expected: readonly string[],
+  label: string,
+): readonly string[] => {
+  const values = denseArraySnapshot(
+    value,
+    PROVIDER_MODEL_ID_SEARCH_MAX_RESOURCES,
+    label,
+  );
+  if (values.length !== expected.length)
+    throw new TypeError(`${label} does not exactly match the trusted probe`);
+  const result = new Array<string>(values.length);
+  for (let index = 0; index < values.length; index += 1) {
+    const candidate: unknown = values[index];
+    if (typeof candidate !== "string" || candidate !== expected[index])
+      throw new TypeError(`${label} does not exactly match the trusted probe`);
+    result[index] = candidate;
+  }
+  return Object.freeze(result);
+};
+
+export const projectProviderModelIdSearchQueryableArtifactProofV4 = (input: {
+  readonly storageProof: ProviderModelIdSearchArtifactProofV1;
+  readonly queryability: ProviderModelIdSearchQueryabilityObservationV4;
+}): ProviderModelIdSearchQueryableArtifactProofV4 => {
+  const snapshot = ownDataRecordSnapshot(
+    input,
+    ["queryability", "storageProof"],
+    "provider model ID search queryable artifact proof v4 input",
+  );
+  const storageProof = snapshot.storageProof;
+  assertProviderModelIdSearchArtifactProofV1(storageProof);
+  const binding =
+    trustedProviderModelIdSearchArtifactProofsV1.get(storageProof);
+  if (binding === undefined)
+    throw new TypeError(
+      "provider model ID search artifact proof v1 is not trusted",
+    );
+  const expected = projectProviderModelIdSearchQueryabilityPlanV4(storageProof);
+  const observation = ownDataRecordSnapshot(
+    snapshot.queryability,
+    [
+      "normalizedIndexName",
+      "normalizedMatchOfferingIds",
+      "normalizedMatchProviderModelIdUtf8",
+      "normalizedMissOfferingIds",
+      "normalizedMissProviderModelIdUtf8",
+      "rawIndexName",
+      "rawMatchOfferingIds",
+      "rawMatchProviderModelIdUtf8",
+      "rawMissOfferingIds",
+      "rawMissProviderModelIdUtf8",
+    ],
+    "provider model ID search queryability observation v4",
+  );
+  if (
+    observation.rawIndexName !== expected.rawIndexName ||
+    observation.normalizedIndexName !== expected.normalizedIndexName
+  )
+    throw new TypeError(
+      "provider model ID search queryability observation v4 is invalid",
+    );
+  if (
+    (observation.rawMatchProviderModelIdUtf8 === null) !==
+      (expected.rawMatchProviderModelIdUtf8 === null) ||
+    (observation.normalizedMatchProviderModelIdUtf8 === null) !==
+      (expected.normalizedMatchProviderModelIdUtf8 === null)
+  )
+    throw new TypeError(
+      "provider model ID search queryability observation v4 is invalid",
+    );
+  if (
+    observation.rawMatchProviderModelIdUtf8 !== null &&
+    expected.rawMatchProviderModelIdUtf8 !== null
+  )
+    snapshotProviderModelIdProbeBytes(
+      observation.rawMatchProviderModelIdUtf8,
+      expected.rawMatchProviderModelIdUtf8,
+      "provider model ID indexed raw match bytes",
+    );
+  snapshotProviderModelIdProbeOfferingIds(
+    observation.rawMatchOfferingIds,
+    expected.rawMatchOfferingIds,
+    "provider model ID indexed raw match Offering IDs",
+  );
+  snapshotProviderModelIdProbeBytes(
+    observation.rawMissProviderModelIdUtf8,
+    expected.rawMissProviderModelIdUtf8,
+    "provider model ID indexed raw miss bytes",
+  );
+  snapshotProviderModelIdProbeOfferingIds(
+    observation.rawMissOfferingIds,
+    expected.rawMissOfferingIds,
+    "provider model ID indexed raw miss Offering IDs",
+  );
+  if (
+    observation.normalizedMatchProviderModelIdUtf8 !== null &&
+    expected.normalizedMatchProviderModelIdUtf8 !== null
+  )
+    snapshotProviderModelIdProbeBytes(
+      observation.normalizedMatchProviderModelIdUtf8,
+      expected.normalizedMatchProviderModelIdUtf8,
+      "provider model ID indexed normalized match bytes",
+    );
+  snapshotProviderModelIdProbeOfferingIds(
+    observation.normalizedMatchOfferingIds,
+    expected.normalizedMatchOfferingIds,
+    "provider model ID indexed normalized match Offering IDs",
+  );
+  snapshotProviderModelIdProbeBytes(
+    observation.normalizedMissProviderModelIdUtf8,
+    expected.normalizedMissProviderModelIdUtf8,
+    "provider model ID indexed normalized miss bytes",
+  );
+  snapshotProviderModelIdProbeOfferingIds(
+    observation.normalizedMissOfferingIds,
+    expected.normalizedMissOfferingIds,
+    "provider model ID indexed normalized miss Offering IDs",
+  );
+  const proof = {
+    provider_model_id_projection_version:
+      storageProof.provider_model_id_projection_version,
+    provider_model_id_document_count:
+      storageProof.provider_model_id_document_count,
+    provider_model_id_inventory_hash:
+      storageProof.provider_model_id_inventory_hash,
+    provider_model_id_storage_version:
+      storageProof.provider_model_id_storage_version,
+    provider_model_id_storage_document_count:
+      storageProof.provider_model_id_storage_document_count,
+    provider_model_id_storage_queryable: true as const,
+    provider_model_id_storage_exact_parity:
+      storageProof.provider_model_id_storage_exact_parity,
+  };
+  Object.defineProperty(
+    proof,
+    providerModelIdSearchQueryableArtifactProofV4Brand,
+    {
+      value: true,
+      enumerable: false,
+      configurable: false,
+      writable: false,
+    },
+  );
+  trustedProviderModelIdSearchQueryableArtifactProofsV4.set(
+    proof,
+    Object.freeze({
+      manifest: binding.manifest,
+      projection: binding.projection,
+      storageProof,
+      queryabilityPlan: expected,
+    }),
+  );
+  return Object.freeze(proof) as ProviderModelIdSearchQueryableArtifactProofV4;
+};
+
+export type ProviderModelIdSearchQueryablePersistenceV4 = Readonly<{
+  providerModelIdSearch: ProviderModelIdSearchStagingPersistenceV1;
+  queryabilityPlan: ProviderModelIdSearchQueryabilityPlanV4;
+}>;
+
+export const readProviderModelIdSearchQueryablePersistenceV4 = (
+  proof: ProviderModelIdSearchQueryableArtifactProofV4,
+): ProviderModelIdSearchQueryablePersistenceV4 => {
+  assertProviderModelIdSearchQueryableArtifactProofV4(proof);
+  const binding =
+    trustedProviderModelIdSearchQueryableArtifactProofsV4.get(proof);
+  if (binding === undefined)
+    throw new TypeError(
+      "provider model ID search queryable artifact proof v4 is not trusted",
+    );
+  const storageBinding = trustedProviderModelIdSearchArtifactProofsV1.get(
+    binding.storageProof,
+  );
+  if (storageBinding === undefined)
+    throw new TypeError(
+      "provider model ID search artifact proof v1 is not trusted",
+    );
+  return Object.freeze({
+    providerModelIdSearch: storageBinding.persistence,
+    queryabilityPlan: binding.queryabilityPlan,
+  });
+};
+
+export const providerModelIdSearchProofFieldsV4 = (
+  proof: ProviderModelIdSearchQueryableArtifactProofV4,
+): readonly CanonicalField[] => {
+  assertProviderModelIdSearchQueryableArtifactProofV4(proof);
+  return Object.freeze([
+    field(
+      "provider_model_id_projection_version",
+      "text",
+      proof.provider_model_id_projection_version,
+    ),
+    field(
+      "provider_model_id_document_count",
+      "integer",
+      String(proof.provider_model_id_document_count),
+    ),
+    field(
+      "provider_model_id_inventory_hash",
+      "digest",
+      proof.provider_model_id_inventory_hash,
+    ),
+    field(
+      "provider_model_id_storage_version",
+      "text",
+      proof.provider_model_id_storage_version,
+    ),
+    field(
+      "provider_model_id_storage_document_count",
+      "integer",
+      String(proof.provider_model_id_storage_document_count),
+    ),
+    field(
+      "provider_model_id_storage_queryable",
+      "boolean",
+      String(proof.provider_model_id_storage_queryable),
+    ),
+    field(
+      "provider_model_id_storage_exact_parity",
+      "boolean",
+      String(proof.provider_model_id_storage_exact_parity),
+    ),
+  ]);
 };
 
 /**
@@ -10526,6 +11337,1589 @@ export const classifyServingSwitchRetryV3 = (input: {
   );
   if (cas === undefined)
     throw new TypeError("switch v3 plan lacks its head CAS");
+  if (input.historyAtGeneration === null) {
+    if (input.preflightAtGeneration !== null)
+      return Object.freeze({
+        outcome: rowsExactlyEqual(
+          input.preflightAtGeneration,
+          expected.preflight,
+        )
+          ? "integrity_failure"
+          : "conflict",
+      });
+    if (!headsEqual(input.currentHead, cas.expected))
+      return Object.freeze({ outcome: "stale" });
+    const expectedTarget =
+      expected.history.action === "activate" ? "ready" : "superseded";
+    const expectedFormer =
+      expected.history.from_publication_id === null ? null : "active";
+    if (
+      input.targetState !== expectedTarget ||
+      input.formerState !== expectedFormer
+    )
+      return Object.freeze({ outcome: "integrity_failure" });
+    return Object.freeze({ outcome: "execute" });
+  }
+  if (!rowsExactlyEqual(input.historyAtGeneration, expected.history))
+    return Object.freeze({ outcome: "conflict" });
+  if (input.preflightAtGeneration === null)
+    return Object.freeze({ outcome: "integrity_failure" });
+  if (!rowsExactlyEqual(input.preflightAtGeneration, expected.preflight))
+    return Object.freeze({ outcome: "conflict" });
+  const expectedFormer =
+    expected.history.from_publication_id === null
+      ? null
+      : expected.history.action === "activate"
+        ? "superseded"
+        : "rolled_back";
+  if (
+    !headsEqual(input.currentHead, cas.next) ||
+    input.targetState !== "active" ||
+    input.formerState !== expectedFormer
+  )
+    return Object.freeze({ outcome: "integrity_failure" });
+  return Object.freeze({ outcome: "idempotent_success" });
+};
+
+const readinessReceiptProofV4Brand: unique symbol = Symbol(
+  "ReadinessReceiptProofV4",
+);
+
+export type ReadinessReceiptProofV4 = Readonly<{
+  kind: ReadinessReceipt["kind"];
+  receipt_version: typeof READINESS_RECEIPT_VERSION_V4;
+  receipt_hash: Sha256;
+  publication_id: PublicationId;
+  environment: Exclude<PublicationEnvironment, "test">;
+  closure_hash: Sha256;
+  bundle_hash: Sha256;
+  observed_at_ms: number;
+  readonly [readinessReceiptProofV4Brand]: true;
+}>;
+
+interface ReadinessReceiptProofV4Binding {
+  readonly receipt: ReadinessReceipt;
+  readonly providerProof: ProviderSearchArtifactProofV2 | null;
+  readonly modelVariantNameProof: ModelVariantNameSearchQueryableArtifactProofV3 | null;
+  readonly providerModelIdProof: ProviderModelIdSearchQueryableArtifactProofV4 | null;
+}
+
+const trustedReadinessReceiptProofsV4 = new WeakMap<
+  object,
+  ReadinessReceiptProofV4Binding
+>();
+
+export const assertReadinessReceiptProofV4: (
+  value: unknown,
+) => asserts value is ReadinessReceiptProofV4 = (value) => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !trustedReadinessReceiptProofsV4.has(value) ||
+    !(readinessReceiptProofV4Brand in value) ||
+    value[readinessReceiptProofV4Brand] !== true
+  )
+    throw new TypeError("readiness receipt proof v4 is not trusted");
+};
+
+export const projectReadinessReceiptProofV4 = async (input: {
+  readonly receipt: ReadinessReceipt;
+  readonly providerProof: ProviderSearchArtifactProofV2 | null;
+  readonly modelVariantNameProof: ModelVariantNameSearchQueryableArtifactProofV3 | null;
+  readonly providerModelIdProof: ProviderModelIdSearchQueryableArtifactProofV4 | null;
+}): Promise<ReadinessReceiptProofV4> => {
+  const snapshot = ownDataRecordSnapshot(
+    input,
+    [
+      "modelVariantNameProof",
+      "providerModelIdProof",
+      "providerProof",
+      "receipt",
+    ],
+    "readiness receipt proof v4 input",
+  );
+  const receipt = snapshotReadinessReceipt(snapshot.receipt);
+  const providerProof = snapshot.providerProof;
+  const modelVariantNameProof = snapshot.modelVariantNameProof;
+  const providerModelIdProof = snapshot.providerModelIdProof;
+  if (!SERVING_PUBLICATION_ENVIRONMENTS.has(receipt.binding.environment))
+    throw new TypeError("readiness receipt v4 environment is invalid");
+  let servingFields: readonly CanonicalField[] = [];
+  if (receipt.kind === "serving") {
+    assertProviderSearchArtifactProofV2(providerProof);
+    assertModelVariantNameSearchQueryableArtifactProofV3(modelVariantNameProof);
+    assertProviderModelIdSearchQueryableArtifactProofV4(providerModelIdProof);
+    const providerManifest =
+      trustedProviderSearchArtifactProofsV2.get(providerProof)?.manifest;
+    const modelManifest =
+      trustedModelVariantNameSearchQueryableArtifactProofsV3.get(
+        modelVariantNameProof,
+      )?.manifest;
+    const providerModelIdManifest =
+      trustedProviderModelIdSearchQueryableArtifactProofsV4.get(
+        providerModelIdProof,
+      )?.manifest;
+    if (
+      providerManifest === undefined ||
+      modelManifest === undefined ||
+      providerModelIdManifest === undefined ||
+      providerManifest.publicationId !== modelManifest.publicationId ||
+      providerManifest.closureHash !== modelManifest.closureHash ||
+      providerManifest.publicationId !==
+        providerModelIdManifest.publicationId ||
+      providerManifest.closureHash !== providerModelIdManifest.closureHash ||
+      receipt.binding.publicationId !== providerManifest.publicationId ||
+      receipt.binding.closureHash !== providerManifest.closureHash ||
+      receipt.enabledProviderCount !==
+        providerManifest.enabledProviderIds.length ||
+      receipt.providerSliceCount !== providerManifest.providerSlices.length ||
+      receipt.providerAttributionCount !==
+        providerManifest.providerAttributions.length ||
+      receipt.resourceCount !== providerManifest.resources.length ||
+      receipt.exactDocumentCount !== providerManifest.searchDocuments.length ||
+      receipt.resourceInventoryHash !==
+        providerManifest.resourceInventoryHash ||
+      receipt.exactSearchInventoryHash !==
+        providerManifest.exactSearchInventoryHash
+    )
+      throw new TypeError(
+        "serving receipt v4 does not bind the trusted publication",
+      );
+    servingFields = Object.freeze([
+      ...providerSearchProofFieldsV2(providerProof),
+      ...modelVariantNameSearchProofFieldsV3(modelVariantNameProof),
+      ...providerModelIdSearchProofFieldsV4(providerModelIdProof),
+    ]);
+  } else if (
+    providerProof !== null ||
+    modelVariantNameProof !== null ||
+    providerModelIdProof !== null
+  ) {
+    throw new TypeError("non-serving receipt v4 carries search proof");
+  }
+  if (
+    receipt.kind === "probes" &&
+    receipt.probeSetVersion !== READINESS_PROBE_SET_VERSION_V4
+  )
+    throw new TypeError("readiness receipt v4 probe set is invalid");
+  const proof = {
+    kind: receipt.kind,
+    receipt_version: READINESS_RECEIPT_VERSION_V4,
+    receipt_hash: await readinessReceiptHash(
+      receipt,
+      READINESS_RECEIPT_VERSION_V4,
+      servingFields,
+    ),
+    publication_id: receipt.binding.publicationId,
+    environment: receipt.binding.environment as Exclude<
+      PublicationEnvironment,
+      "test"
+    >,
+    closure_hash: receipt.binding.closureHash,
+    bundle_hash: receipt.binding.bundleHash,
+    observed_at_ms: assertTimestamp(
+      receipt.observedAt,
+      "readiness receipt v4 observation time",
+    ),
+  };
+  Object.defineProperty(proof, readinessReceiptProofV4Brand, {
+    value: true,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  trustedReadinessReceiptProofsV4.set(
+    proof,
+    Object.freeze({
+      receipt,
+      providerProof,
+      modelVariantNameProof,
+      providerModelIdProof,
+    }),
+  );
+  return Object.freeze(proof) as ReadinessReceiptProofV4;
+};
+
+export type ServingReadinessAttestationProjectionV4 = Readonly<{
+  publication_id: PublicationId;
+  environment: Exclude<PublicationEnvironment, "test">;
+  closure_hash: Sha256;
+  bundle_hash: Sha256;
+  evaluator_version: typeof READINESS_EVALUATOR_VERSION_V4;
+  ready_at_ms: number;
+  maximum_receipt_age_ms: number;
+  effective_valid_until_ms: number;
+  archive_observed_at_ms: number;
+  serving_observed_at_ms: number;
+  vector_observed_at_ms: number;
+  probes_observed_at_ms: number;
+  archive_receipt_hash: Sha256;
+  serving_receipt_hash: Sha256;
+  vector_receipt_hash: Sha256;
+  probes_receipt_hash: Sha256;
+  attestation_hash: Sha256;
+}>;
+
+const servingReadinessProofV4Brand: unique symbol = Symbol(
+  "ServingReadinessProofV4",
+);
+const trustedServingReadinessProofsV4 = new WeakSet<object>();
+
+export type ServingReadinessProofV4 = Readonly<{
+  receipts: readonly ReadinessReceiptProofV4[];
+  attestation: ServingReadinessAttestationProjectionV4;
+  readonly [servingReadinessProofV4Brand]: true;
+}>;
+
+export const assertServingReadinessProofV4: (
+  value: unknown,
+) => asserts value is ServingReadinessProofV4 = (value) => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !trustedServingReadinessProofsV4.has(value) ||
+    !(servingReadinessProofV4Brand in value) ||
+    value[servingReadinessProofV4Brand] !== true
+  )
+    throw new TypeError("serving readiness proof v4 is not trusted");
+};
+
+export const projectServingReadinessProofV4 = async (input: {
+  readonly manifest: TrustedImmutablePublicationManifest;
+  readonly receiptProofs: readonly ReadinessReceiptProofV4[];
+  readonly environment: Exclude<PublicationEnvironment, "test">;
+  readonly readyAtMs: number;
+  readonly maximumReceiptAgeMs: number;
+}): Promise<ServingReadinessProofV4> => {
+  const manifest = input.manifest;
+  const environment = input.environment;
+  const readyAtMs = input.readyAtMs;
+  const maximumReceiptAgeMs = input.maximumReceiptAgeMs;
+  assertImmutablePublicationManifest(manifest);
+  const receiptProofInputs = denseArraySnapshot(
+    input.receiptProofs,
+    4,
+    "serving readiness proof v4 receipts",
+  );
+  if (
+    receiptProofInputs.length !== 4 ||
+    !SERVING_PUBLICATION_ENVIRONMENTS.has(environment)
+  )
+    throw new TypeError("serving readiness proof v4 input is invalid");
+  const receiptProofs: ReadinessReceiptProofV4[] = [];
+  for (const proof of receiptProofInputs) {
+    assertReadinessReceiptProofV4(proof);
+    receiptProofs.push(proof);
+  }
+  const byKind = new Map(
+    receiptProofs.map((proof) => [proof.kind, proof] as const),
+  );
+  if (byKind.size !== 4)
+    throw new TypeError("serving readiness proof v4 receipt set is incomplete");
+  const requireProof = (
+    kind: ReadinessReceipt["kind"],
+  ): ReadinessReceiptProofV4 => {
+    const proof = byKind.get(kind);
+    if (proof === undefined)
+      throw new TypeError(`readiness receipt v4 ${kind} is missing`);
+    return proof;
+  };
+  const archive = requireProof("archive");
+  const serving = requireProof("serving");
+  const vectors = requireProof("vectors");
+  const probes = requireProof("probes");
+  if (
+    receiptProofs.some(
+      (proof) =>
+        proof.publication_id !== manifest.publicationId ||
+        proof.closure_hash !== manifest.closureHash ||
+        proof.bundle_hash !== manifest.bundleHash ||
+        proof.environment !== environment,
+    )
+  )
+    throw new TypeError("readiness receipt v4 bindings do not match");
+  const servingBinding = trustedReadinessReceiptProofsV4.get(serving);
+  if (
+    servingBinding?.providerProof === null ||
+    servingBinding?.modelVariantNameProof === null ||
+    servingBinding?.providerModelIdProof === null ||
+    servingBinding === undefined
+  )
+    throw new TypeError("serving readiness proof v4 lacks search evidence");
+  const providerManifest = trustedProviderSearchArtifactProofsV2.get(
+    servingBinding.providerProof,
+  )?.manifest;
+  const modelManifest =
+    trustedModelVariantNameSearchQueryableArtifactProofsV3.get(
+      servingBinding.modelVariantNameProof,
+    )?.manifest;
+  const providerModelIdManifest =
+    trustedProviderModelIdSearchQueryableArtifactProofsV4.get(
+      servingBinding.providerModelIdProof,
+    )?.manifest;
+  if (
+    providerManifest?.publicationId !== manifest.publicationId ||
+    providerManifest.closureHash !== manifest.closureHash ||
+    modelManifest?.publicationId !== manifest.publicationId ||
+    modelManifest.closureHash !== manifest.closureHash ||
+    providerModelIdManifest?.publicationId !== manifest.publicationId ||
+    providerModelIdManifest.closureHash !== manifest.closureHash
+  )
+    throw new TypeError("serving readiness proof v4 uses another manifest");
+  const receipts = receiptProofs.map((proof) => {
+    const binding = trustedReadinessReceiptProofsV4.get(proof);
+    if (binding === undefined)
+      throw new TypeError("readiness receipt proof v4 is not trusted");
+    return binding.receipt;
+  });
+  const evaluationReceipts = receipts.map((receipt): ReadinessReceipt =>
+    receipt.kind === "probes"
+      ? { ...receipt, probeSetVersion: READINESS_PROBE_SET_VERSION }
+      : receipt,
+  );
+  const readyAt = timestampFromMs(readyAtMs, "readiness v4 time");
+  const decision = await evaluateReadiness({
+    manifest,
+    receipts: evaluationReceipts,
+    environment,
+    now: readyAt,
+    maximumReceiptAgeMs,
+  });
+  if (decision.decision === "blocked")
+    throw new TypeError(
+      `serving readiness proof v4 is blocked: ${decision.failureCodes.join(",")}`,
+    );
+  const effectiveValidUntilMs =
+    Math.min(
+      archive.observed_at_ms,
+      serving.observed_at_ms,
+      vectors.observed_at_ms,
+      probes.observed_at_ms,
+    ) + maximumReceiptAgeMs;
+  assertSafeInteger(
+    effectiveValidUntilMs,
+    readyAtMs,
+    "readiness v4 effective validity deadline",
+  );
+  const effectiveValidUntil = timestampFromMs(
+    effectiveValidUntilMs,
+    "readiness v4 effective validity deadline",
+  );
+  const attestationHash = await digest("publication-readiness-attestation", [
+    field("evaluator_version", "text", READINESS_EVALUATOR_VERSION_V4),
+    field("environment", "text", environment),
+    field("publication_id", "identifier", manifest.publicationId),
+    field("closure_hash", "digest", manifest.closureHash),
+    field("bundle_hash", "digest", manifest.bundleHash),
+    field("ready_at", "timestamp", readyAt),
+    field("maximum_receipt_age_ms", "integer", String(maximumReceiptAgeMs)),
+    field("effective_valid_until", "timestamp", effectiveValidUntil),
+    field("archive_receipt_hash", "digest", archive.receipt_hash),
+    field("serving_receipt_hash", "digest", serving.receipt_hash),
+    field("vector_receipt_hash", "digest", vectors.receipt_hash),
+    field("probes_receipt_hash", "digest", probes.receipt_hash),
+  ]);
+  const attestation = Object.freeze({
+    publication_id: manifest.publicationId,
+    environment,
+    closure_hash: manifest.closureHash,
+    bundle_hash: manifest.bundleHash,
+    evaluator_version: READINESS_EVALUATOR_VERSION_V4,
+    ready_at_ms: readyAtMs,
+    maximum_receipt_age_ms: maximumReceiptAgeMs,
+    effective_valid_until_ms: effectiveValidUntilMs,
+    archive_observed_at_ms: archive.observed_at_ms,
+    serving_observed_at_ms: serving.observed_at_ms,
+    vector_observed_at_ms: vectors.observed_at_ms,
+    probes_observed_at_ms: probes.observed_at_ms,
+    archive_receipt_hash: archive.receipt_hash,
+    serving_receipt_hash: serving.receipt_hash,
+    vector_receipt_hash: vectors.receipt_hash,
+    probes_receipt_hash: probes.receipt_hash,
+    attestation_hash: attestationHash,
+  } satisfies ServingReadinessAttestationProjectionV4);
+  const result = {
+    receipts: Object.freeze(receiptProofs),
+    attestation,
+  };
+  Object.defineProperty(result, servingReadinessProofV4Brand, {
+    value: true,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  trustedServingReadinessProofsV4.add(result);
+  return Object.freeze(result) as ServingReadinessProofV4;
+};
+
+export type ServingReceiptRowV4 = Readonly<
+  ServingReceiptRowV3 & {
+    provider_model_id_projection_version: typeof PROVIDER_MODEL_ID_SEARCH_PROJECTION_VERSION;
+    provider_model_id_document_count: number;
+    provider_model_id_inventory_hash: Sha256;
+    provider_model_id_storage_version: typeof PROVIDER_MODEL_ID_SEARCH_STORAGE_VERSION;
+    provider_model_id_storage_document_count: number;
+    provider_model_id_storage_queryable: 1;
+    provider_model_id_storage_exact_parity: 1;
+  }
+>;
+
+export type ServingReadinessReceiptRowsV4 = Readonly<{
+  bindings: readonly ServingReadinessReceiptBindingRow[];
+  archives: readonly ServingArchiveReceiptRow[];
+  servings: readonly ServingReceiptRowV4[];
+  vectors: readonly ServingVectorReceiptRow[];
+  probes: readonly ServingProbeReceiptRow[];
+}>;
+
+export type ServingReadinessCommitPersistenceV4 = Readonly<{
+  providerSearch: ProviderSearchStagingPersistenceV2;
+  modelVariantNameSearch: ModelVariantNameSearchStagingPersistenceV1;
+  providerModelIdSearch: ProviderModelIdSearchStagingPersistenceV1;
+  providerModelIdProof: ProviderModelIdSearchQueryableArtifactProofV4;
+  receiptRows: ServingReadinessReceiptRowsV4;
+  attestation: ServingReadinessAttestationProjectionV4;
+  transition: Readonly<{
+    publication_id: PublicationId;
+    closure_hash: Sha256;
+    expected_state: "building";
+    next_state: "ready";
+    ready_at_ms: number;
+  }>;
+}>;
+
+const servingReadinessCommitProjectionV4Brand: unique symbol = Symbol(
+  "ServingReadinessCommitProjectionV4",
+);
+export type ServingReadinessCommitProjectionV4 = Readonly<{
+  readonly [servingReadinessCommitProjectionV4Brand]: true;
+}>;
+const trustedServingReadinessCommitProjectionsV4 = new WeakMap<
+  object,
+  ServingReadinessCommitPersistenceV4
+>();
+
+export const assertServingReadinessCommitProjectionV4: (
+  value: unknown,
+) => asserts value is ServingReadinessCommitProjectionV4 = (value) => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !trustedServingReadinessCommitProjectionsV4.has(value) ||
+    !(servingReadinessCommitProjectionV4Brand in value) ||
+    value[servingReadinessCommitProjectionV4Brand] !== true
+  )
+    throw new TypeError(
+      "serving readiness commit projection v4 is not trusted",
+    );
+};
+
+const receiptDetailRowsV4 = (
+  proof: ServingReadinessProofV4,
+): ServingReadinessReceiptRowsV4 => {
+  const bindings: ServingReadinessReceiptBindingRow[] = [];
+  const archives: ServingArchiveReceiptRow[] = [];
+  const servings: ServingReceiptRowV4[] = [];
+  const vectors: ServingVectorReceiptRow[] = [];
+  const probes: ServingProbeReceiptRow[] = [];
+  for (const receiptProof of proof.receipts) {
+    const binding = trustedReadinessReceiptProofsV4.get(receiptProof);
+    if (binding === undefined)
+      throw new TypeError("readiness receipt proof v4 is not trusted");
+    const receipt = binding.receipt;
+    bindings.push(
+      Object.freeze({
+        publication_id: receiptProof.publication_id,
+        kind: receipt.kind,
+        receipt_version: receiptProof.receipt_version,
+        receipt_hash: receiptProof.receipt_hash,
+        environment: receiptProof.environment,
+        closure_hash: receiptProof.closure_hash,
+        bundle_hash: receiptProof.bundle_hash,
+        schema_version: receipt.binding.schemaVersion,
+        build_commit: receipt.binding.buildCommit,
+        observed_at_ms: receiptProof.observed_at_ms,
+      }),
+    );
+    switch (receipt.kind) {
+      case "archive":
+        archives.push(
+          Object.freeze({
+            publication_id: receiptProof.publication_id,
+            kind: "archive",
+            retained_bundle_hash: receipt.retainedBundleHash,
+            immutable: receipt.immutable ? 1 : 0,
+          }),
+        );
+        break;
+      case "serving": {
+        const providerProof = binding.providerProof;
+        const modelProof = binding.modelVariantNameProof;
+        const providerModelIdProof = binding.providerModelIdProof;
+        assertProviderSearchArtifactProofV2(providerProof);
+        assertModelVariantNameSearchQueryableArtifactProofV3(modelProof);
+        assertProviderModelIdSearchQueryableArtifactProofV4(
+          providerModelIdProof,
+        );
+        servings.push(
+          Object.freeze({
+            publication_id: receiptProof.publication_id,
+            kind: "serving",
+            enabled_provider_count: receipt.enabledProviderCount,
+            enabled_provider_scope_hash: receipt.enabledProviderScopeHash,
+            provider_slice_count: receipt.providerSliceCount,
+            provider_slice_hash: receipt.providerSliceHash,
+            provider_attribution_count: receipt.providerAttributionCount,
+            provider_attribution_hash: receipt.providerAttributionHash,
+            resource_count: receipt.resourceCount,
+            exact_document_count: receipt.exactDocumentCount,
+            resource_inventory_hash: receipt.resourceInventoryHash,
+            exact_search_inventory_hash: receipt.exactSearchInventoryHash,
+            fts_build_version: receipt.ftsBuildVersion,
+            fts_document_count: receipt.ftsDocumentCount,
+            fts_queryable: receipt.ftsQueryable ? 1 : 0,
+            foreign_keys_valid: receipt.foreignKeysValid ? 1 : 0,
+            content_hashes_valid: receipt.contentHashesValid ? 1 : 0,
+            unavailable_provider_isolation_valid:
+              receipt.unavailableProviderIsolationValid ? 1 : 0,
+            provider_search_projection_version:
+              providerProof.provider_search_projection_version,
+            provider_search_document_count:
+              providerProof.provider_search_document_count,
+            provider_search_inventory_hash:
+              providerProof.provider_search_inventory_hash,
+            provider_search_fts_build_version:
+              providerProof.provider_search_fts_build_version,
+            provider_search_fts_document_count:
+              providerProof.provider_search_fts_document_count,
+            provider_search_fts_queryable: 1,
+            provider_search_exact_parity: 1,
+            model_variant_name_projection_version:
+              modelProof.model_variant_name_projection_version,
+            model_variant_name_document_count:
+              modelProof.model_variant_name_document_count,
+            model_variant_name_inventory_hash:
+              modelProof.model_variant_name_inventory_hash,
+            model_variant_name_storage_version:
+              modelProof.model_variant_name_storage_version,
+            model_variant_name_storage_document_count:
+              modelProof.model_variant_name_storage_document_count,
+            model_variant_name_storage_queryable: 1,
+            model_variant_name_storage_exact_parity: 1,
+            provider_model_id_projection_version:
+              providerModelIdProof.provider_model_id_projection_version,
+            provider_model_id_document_count:
+              providerModelIdProof.provider_model_id_document_count,
+            provider_model_id_inventory_hash:
+              providerModelIdProof.provider_model_id_inventory_hash,
+            provider_model_id_storage_version:
+              providerModelIdProof.provider_model_id_storage_version,
+            provider_model_id_storage_document_count:
+              providerModelIdProof.provider_model_id_storage_document_count,
+            provider_model_id_storage_queryable: 1,
+            provider_model_id_storage_exact_parity: 1,
+          }),
+        );
+        break;
+      }
+      case "vectors":
+        vectors.push(
+          Object.freeze({
+            publication_id: receiptProof.publication_id,
+            kind: "vectors",
+            vector_namespace: receipt.namespace,
+            document_count: receipt.documentCount,
+            verified_document_count: receipt.verifiedDocumentCount,
+            vector_inventory_hash: receipt.vectorInventoryHash,
+            visibility_probe_version: receipt.visibilityProbeVersion,
+            mutation_id: receipt.mutationId,
+            all_ids_present: receipt.allIdsPresent ? 1 : 0,
+            all_namespaces_match: receipt.allNamespacesMatch ? 1 : 0,
+            queryable: receipt.queryable ? 1 : 0,
+          }),
+        );
+        break;
+      case "probes":
+        probes.push(
+          Object.freeze({
+            publication_id: receiptProof.publication_id,
+            kind: "probes",
+            probe_set_version: receipt.probeSetVersion,
+            integrity_passed: receipt.integrityPassed ? 1 : 0,
+            evidence_coverage_passed: receipt.evidenceCoveragePassed ? 1 : 0,
+            exact_search_passed: receipt.exactSearchPassed ? 1 : 0,
+            semantic_search_passed: receipt.semanticSearchPassed ? 1 : 0,
+            structured_filter_passed: receipt.structuredFilterPassed ? 1 : 0,
+            neutrality_passed: receipt.neutralityPassed ? 1 : 0,
+            version_isolation_passed: receipt.versionIsolationPassed ? 1 : 0,
+          }),
+        );
+        break;
+    }
+  }
+  return Object.freeze({
+    bindings: Object.freeze(
+      bindings.sort((left, right) => compareAscii(left.kind, right.kind)),
+    ),
+    archives: Object.freeze(archives),
+    servings: Object.freeze(servings),
+    vectors: Object.freeze(vectors),
+    probes: Object.freeze(probes),
+  });
+};
+
+export const projectServingReadinessCommitV4 = async (input: {
+  readonly proof: ServingReadinessProofV4;
+  readonly closureRows: ServingClosureRows;
+  readonly persistedSeal: ServingClosureSealProjection;
+  readonly persistedProviderSearchDocuments: readonly ProviderSearchDocumentRowV2[];
+  readonly persistedProviderSearchFtsRows: readonly ProviderSearchFtsRowV2[];
+  readonly persistedModelVariantNameRows: readonly ModelVariantNameSearchStorageRowV1[];
+  readonly persistedProviderModelIdRows: readonly ProviderModelIdSearchStorageRowV1[];
+}): Promise<ServingReadinessCommitProjectionV4> => {
+  assertServingReadinessProofV4(input.proof);
+  const observed = structuredClone({
+    closureRows: input.closureRows,
+    persistedSeal: input.persistedSeal,
+    providerDocuments: input.persistedProviderSearchDocuments,
+    providerFtsRows: input.persistedProviderSearchFtsRows,
+    modelRows: input.persistedModelVariantNameRows,
+    providerModelIdRows: input.persistedProviderModelIdRows,
+  });
+  const proof = input.proof;
+  const receiptRows = receiptDetailRowsV4(proof);
+  const servingProof = proof.receipts.find(
+    (receipt) => receipt.kind === "serving",
+  );
+  if (servingProof === undefined)
+    throw new TypeError("serving readiness proof v4 lacks serving evidence");
+  const receiptBinding = trustedReadinessReceiptProofsV4.get(servingProof);
+  const providerProof = receiptBinding?.providerProof;
+  const modelProof = receiptBinding?.modelVariantNameProof;
+  const providerModelIdProof = receiptBinding?.providerModelIdProof;
+  assertProviderSearchArtifactProofV2(providerProof);
+  assertModelVariantNameSearchQueryableArtifactProofV3(modelProof);
+  assertProviderModelIdSearchQueryableArtifactProofV4(providerModelIdProof);
+  const providerBinding =
+    trustedProviderSearchArtifactProofsV2.get(providerProof);
+  const modelBinding =
+    trustedModelVariantNameSearchQueryableArtifactProofsV3.get(modelProof);
+  const providerModelIdBinding =
+    trustedProviderModelIdSearchQueryableArtifactProofsV4.get(
+      providerModelIdProof,
+    );
+  if (
+    providerBinding === undefined ||
+    modelBinding === undefined ||
+    providerModelIdBinding === undefined
+  )
+    throw new TypeError(
+      "serving readiness proof v4 search proof is not trusted",
+    );
+  const providerSearch = providerSearchPersistenceV2(
+    providerBinding.projection,
+    observed.closureRows.stagingRevision,
+  );
+  const modelVariantNameSearch = modelVariantNameSearchStoragePersistenceV1(
+    modelBinding.projection,
+    observed.closureRows.stagingRevision,
+  );
+  const providerModelIdSearch = providerModelIdSearchStoragePersistenceV1(
+    providerModelIdBinding.projection,
+    observed.closureRows.stagingRevision,
+  );
+  const closure = await projectServingClosureSeal(observed.closureRows);
+  const sealErrors = await verifyServingClosureSealProjection(
+    observed.closureRows,
+    observed.persistedSeal,
+  );
+  if (
+    sealErrors.length > 0 ||
+    closure.manifest.publicationId !== proof.attestation.publication_id ||
+    closure.manifest.closureHash !== proof.attestation.closure_hash ||
+    closure.manifest.bundleHash !== proof.attestation.bundle_hash ||
+    providerBinding.manifest.publicationId !== closure.manifest.publicationId ||
+    providerBinding.manifest.closureHash !== closure.manifest.closureHash ||
+    modelBinding.manifest.publicationId !== closure.manifest.publicationId ||
+    modelBinding.manifest.closureHash !== closure.manifest.closureHash ||
+    providerModelIdBinding.manifest.publicationId !==
+      closure.manifest.publicationId ||
+    providerModelIdBinding.manifest.closureHash !==
+      closure.manifest.closureHash ||
+    proof.receipts.some(
+      (receipt) => receipt.observed_at_ms < observed.closureRows.sealedAtMs,
+    ) ||
+    JSON.stringify(observed.providerDocuments) !==
+      JSON.stringify(providerSearch.documents) ||
+    JSON.stringify(observed.providerFtsRows) !==
+      JSON.stringify(providerSearch.ftsRows) ||
+    JSON.stringify(observed.modelRows) !==
+      JSON.stringify(modelVariantNameSearch.rows) ||
+    JSON.stringify(observed.providerModelIdRows) !==
+      JSON.stringify(providerModelIdSearch.rows)
+  )
+    throw new TypeError(
+      "serving readiness commit v4 does not match persisted sealed evidence",
+    );
+  const persistence = Object.freeze({
+    providerSearch,
+    modelVariantNameSearch,
+    providerModelIdSearch,
+    providerModelIdProof,
+    receiptRows,
+    attestation: Object.freeze({ ...proof.attestation }),
+    transition: Object.freeze({
+      publication_id: proof.attestation.publication_id,
+      closure_hash: proof.attestation.closure_hash,
+      expected_state: "building" as const,
+      next_state: "ready" as const,
+      ready_at_ms: proof.attestation.ready_at_ms,
+    }),
+  });
+  const result = {};
+  Object.defineProperty(result, servingReadinessCommitProjectionV4Brand, {
+    value: true,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  trustedServingReadinessCommitProjectionsV4.set(result, persistence);
+  return Object.freeze(result) as ServingReadinessCommitProjectionV4;
+};
+
+export const readServingReadinessCommitPersistenceV4 = (
+  value: ServingReadinessCommitProjectionV4,
+): ServingReadinessCommitPersistenceV4 => {
+  assertServingReadinessCommitProjectionV4(value);
+  const persistence = trustedServingReadinessCommitProjectionsV4.get(value);
+  if (persistence === undefined)
+    throw new TypeError(
+      "serving readiness commit projection v4 is not trusted",
+    );
+  return persistence;
+};
+
+export const classifyServingReadinessCommitRetryV4 = (input: {
+  readonly expected: ServingReadinessCommitProjectionV4;
+  readonly publicationState: PublicationState;
+  readonly publicationReadyAtMs: number | null;
+  readonly publicationClosureHash: string;
+  readonly receiptRows: ServingReadinessReceiptRowsV4;
+  readonly attestation: ServingReadinessAttestationProjectionV4 | null;
+}): ServingReadinessCommitRetryDecision => {
+  const expected = readServingReadinessCommitPersistenceV4(input.expected);
+  const hasRows = !readinessRowsEmpty(input.receiptRows);
+  if (!hasRows && input.attestation === null) {
+    if (input.publicationClosureHash !== expected.transition.closure_hash)
+      return Object.freeze({ outcome: "integrity_failure" });
+    if (
+      input.publicationState === expected.transition.expected_state &&
+      input.publicationReadyAtMs === null
+    )
+      return Object.freeze({ outcome: "execute" });
+    if (
+      input.publicationState === "failed" &&
+      input.publicationReadyAtMs === null
+    )
+      return Object.freeze({ outcome: "stale" });
+    return Object.freeze({ outcome: "integrity_failure" });
+  }
+  if (
+    readinessRowsConflict(input.receiptRows, expected.receiptRows) ||
+    (input.attestation !== null &&
+      JSON.stringify(input.attestation) !==
+        JSON.stringify(expected.attestation))
+  )
+    return Object.freeze({ outcome: "conflict" });
+  if (
+    !exactReadinessRows(input.receiptRows, expected.receiptRows) ||
+    input.attestation === null
+  )
+    return Object.freeze({ outcome: "integrity_failure" });
+  if (
+    !(["ready", "active", "superseded", "rolled_back"] as const).includes(
+      input.publicationState as
+        "ready" | "active" | "superseded" | "rolled_back",
+    ) ||
+    input.publicationReadyAtMs !== expected.transition.ready_at_ms ||
+    input.publicationClosureHash !== expected.transition.closure_hash
+  )
+    return Object.freeze({ outcome: "integrity_failure" });
+  return Object.freeze({ outcome: "idempotent_success" });
+};
+export type ServingSwitchArtifactProofV4 = Omit<
+  ServingSwitchArtifactProof,
+  "probeSetVersion"
+> &
+  Readonly<{ probeSetVersion: typeof READINESS_PROBE_SET_VERSION_V4 }>;
+
+export type ServingSwitchPreflightContextV4 = ServingSwitchPreflightContextV2;
+
+const servingSwitchPreflightProofV4Brand: unique symbol = Symbol(
+  "ServingSwitchPreflightProofV4",
+);
+interface ServingSwitchPreflightProofBindingV4 {
+  readonly manifest: TrustedImmutablePublicationManifest;
+  readonly readinessProof: ServingReadinessProofV4 | null;
+  readonly providerProof: ProviderSearchArtifactProofV2;
+  readonly modelVariantNameProof: ModelVariantNameSearchQueryableArtifactProofV3;
+  readonly providerModelIdProof: ProviderModelIdSearchQueryableArtifactProofV4;
+}
+const trustedServingSwitchPreflightProofsV4 = new WeakMap<
+  object,
+  ServingSwitchPreflightProofBindingV4
+>();
+
+export type ServingSwitchPreflightProofV4 = Readonly<
+  Omit<
+    ServingSwitchPreflightRow,
+    "preflight_version" | "preflight_hash" | "probe_set_version"
+  > & {
+    preflight_version: typeof SERVING_SWITCH_PREFLIGHT_VERSION_V4;
+    preflight_hash: Sha256;
+    probe_set_version: typeof READINESS_PROBE_SET_VERSION_V4;
+    provider_search_projection_version: typeof PROVIDER_SEARCH_PROJECTION_VERSION;
+    provider_search_document_count: number;
+    provider_search_inventory_hash: Sha256;
+    provider_search_fts_build_version: typeof PROVIDER_SEARCH_FTS_BUILD_VERSION;
+    provider_search_fts_document_count: number;
+    provider_search_fts_queryable: 1;
+    provider_search_exact_parity: 1;
+    model_variant_name_projection_version: typeof MODEL_VARIANT_NAME_SEARCH_PROJECTION_VERSION;
+    model_variant_name_document_count: number;
+    model_variant_name_inventory_hash: Sha256;
+    model_variant_name_storage_version: typeof MODEL_VARIANT_NAME_SEARCH_STORAGE_VERSION;
+    model_variant_name_storage_document_count: number;
+    model_variant_name_storage_queryable: 1;
+    model_variant_name_storage_exact_parity: 1;
+    provider_model_id_projection_version: typeof PROVIDER_MODEL_ID_SEARCH_PROJECTION_VERSION;
+    provider_model_id_document_count: number;
+    provider_model_id_inventory_hash: Sha256;
+    provider_model_id_storage_version: typeof PROVIDER_MODEL_ID_SEARCH_STORAGE_VERSION;
+    provider_model_id_storage_document_count: number;
+    provider_model_id_storage_queryable: 1;
+    provider_model_id_storage_exact_parity: 1;
+    readonly [servingSwitchPreflightProofV4Brand]: true;
+  }
+>;
+
+export const assertServingSwitchPreflightProofV4: (
+  value: unknown,
+) => asserts value is ServingSwitchPreflightProofV4 = (value) => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !(servingSwitchPreflightProofV4Brand in value) ||
+    value[servingSwitchPreflightProofV4Brand] !== true ||
+    !trustedServingSwitchPreflightProofsV4.has(value)
+  )
+    throw new TypeError("serving switch preflight proof v4 is not trusted");
+};
+
+export const projectServingSwitchPreflightProofV4 = async (input: {
+  readonly manifest: TrustedImmutablePublicationManifest;
+  readonly providerProof: ProviderSearchArtifactProofV2;
+  readonly modelVariantNameProof: ModelVariantNameSearchQueryableArtifactProofV3;
+  readonly providerModelIdProof: ProviderModelIdSearchQueryableArtifactProofV4;
+  readonly readinessProof: ServingReadinessProofV4 | null;
+  readonly context: ServingSwitchPreflightContextV4;
+  readonly artifactProof: ServingSwitchArtifactProofV4;
+}): Promise<ServingSwitchPreflightProofV4> => {
+  const manifest = input.manifest;
+  const providerProof = input.providerProof;
+  const modelVariantNameProof = input.modelVariantNameProof;
+  const providerModelIdProof = input.providerModelIdProof;
+  const readinessProof = input.readinessProof;
+  const contextInput = input.context;
+  const artifactProofInput = input.artifactProof;
+  assertImmutablePublicationManifest(manifest);
+  assertProviderSearchArtifactProofV2(providerProof);
+  assertModelVariantNameSearchQueryableArtifactProofV3(modelVariantNameProof);
+  assertProviderModelIdSearchQueryableArtifactProofV4(providerModelIdProof);
+  const providerManifest =
+    trustedProviderSearchArtifactProofsV2.get(providerProof)?.manifest;
+  const modelManifest =
+    trustedModelVariantNameSearchQueryableArtifactProofsV3.get(
+      modelVariantNameProof,
+    )?.manifest;
+  const providerModelIdManifest =
+    trustedProviderModelIdSearchQueryableArtifactProofsV4.get(
+      providerModelIdProof,
+    )?.manifest;
+  if (
+    providerManifest?.publicationId !== manifest.publicationId ||
+    providerManifest.closureHash !== manifest.closureHash ||
+    modelManifest?.publicationId !== manifest.publicationId ||
+    modelManifest.closureHash !== manifest.closureHash ||
+    providerModelIdManifest?.publicationId !== manifest.publicationId ||
+    providerModelIdManifest.closureHash !== manifest.closureHash
+  )
+    throw new TypeError("switch preflight v4 uses another search manifest");
+  const proofRecord = inputRecord(
+    artifactProofInput,
+    "switch artifact proof v4",
+  );
+  if (!hasExactKeys(proofRecord, switchArtifactProofKeysV2))
+    throw new TypeError("switch artifact proof v4 shape is invalid");
+  const proof = {
+    environment: proofRecord.environment,
+    observedAtMs: proofRecord.observedAtMs,
+    maximumAgeMs: proofRecord.maximumAgeMs,
+    ftsBuildVersion: proofRecord.ftsBuildVersion,
+    ftsSourceDocumentCount: proofRecord.ftsSourceDocumentCount,
+    ftsIndexDocumentCount: proofRecord.ftsIndexDocumentCount,
+    ftsSourceInventoryHash: proofRecord.ftsSourceInventoryHash,
+    ftsExactParity: proofRecord.ftsExactParity,
+    archiveBundleHash: proofRecord.archiveBundleHash,
+    archiveImmutable: proofRecord.archiveImmutable,
+    vectorNamespace: proofRecord.vectorNamespace,
+    vectorDocumentCount: proofRecord.vectorDocumentCount,
+    vectorVerifiedDocumentCount: proofRecord.vectorVerifiedDocumentCount,
+    vectorInventoryHash: proofRecord.vectorInventoryHash,
+    vectorVisibilityProbeVersion: proofRecord.vectorVisibilityProbeVersion,
+    vectorMutationId: proofRecord.vectorMutationId,
+    vectorAllIdsPresent: proofRecord.vectorAllIdsPresent,
+    vectorAllNamespacesMatch: proofRecord.vectorAllNamespacesMatch,
+    vectorQueryable: proofRecord.vectorQueryable,
+    probeSetVersion: proofRecord.probeSetVersion,
+    integrityPassed: proofRecord.integrityPassed,
+    exactSearchPassed: proofRecord.exactSearchPassed,
+    semanticSearchPassed: proofRecord.semanticSearchPassed,
+    structuredFilterPassed: proofRecord.structuredFilterPassed,
+    neutralityPassed: proofRecord.neutralityPassed,
+    versionIsolationPassed: proofRecord.versionIsolationPassed,
+  };
+  const contextRecord = inputRecord(contextInput, "switch context v4");
+  if (
+    !hasExactKeys(contextRecord, [
+      "switchId",
+      "action",
+      "expectedPriorGeneration",
+      "expectedPriorRollbackCandidatePublicationId",
+      "expectedPriorSwitchedAtMs",
+      "newGeneration",
+      "fromPublicationId",
+      "fromClosureHash",
+      "toPublicationId",
+      "toClosureHash",
+      "switchedAtMs",
+    ])
+  )
+    throw new TypeError("switch context v4 shape is invalid");
+  const context = {
+    switchId: contextRecord.switchId,
+    action: contextRecord.action,
+    expectedPriorGeneration: contextRecord.expectedPriorGeneration,
+    expectedPriorRollbackCandidatePublicationId:
+      contextRecord.expectedPriorRollbackCandidatePublicationId,
+    expectedPriorSwitchedAtMs: contextRecord.expectedPriorSwitchedAtMs,
+    newGeneration: contextRecord.newGeneration,
+    fromPublicationId: contextRecord.fromPublicationId,
+    fromClosureHash: contextRecord.fromClosureHash,
+    toPublicationId: contextRecord.toPublicationId,
+    toClosureHash: contextRecord.toClosureHash,
+    switchedAtMs: contextRecord.switchedAtMs,
+  };
+  if (
+    typeof context.switchId !== "string" ||
+    !isAscii(context.switchId) ||
+    context.switchId.length === 0 ||
+    context.switchId.length > 256 ||
+    (context.action !== "activate" && context.action !== "rollback") ||
+    !isNonnegativeSafeInteger(context.expectedPriorGeneration) ||
+    !isNonnegativeSafeInteger(context.newGeneration) ||
+    context.newGeneration !== context.expectedPriorGeneration + 1 ||
+    context.toPublicationId !== manifest.publicationId ||
+    context.toClosureHash !== manifest.closureHash ||
+    (context.fromPublicationId === null) !==
+      (context.fromClosureHash === null) ||
+    (context.expectedPriorRollbackCandidatePublicationId !== null &&
+      (typeof context.expectedPriorRollbackCandidatePublicationId !==
+        "string" ||
+        !PUBLICATION_ID.test(
+          context.expectedPriorRollbackCandidatePublicationId,
+        ))) ||
+    (context.fromPublicationId !== null &&
+      (typeof context.fromPublicationId !== "string" ||
+        !PUBLICATION_ID.test(context.fromPublicationId))) ||
+    (context.fromClosureHash !== null &&
+      (typeof context.fromClosureHash !== "string" ||
+        !HASH.test(context.fromClosureHash)))
+  )
+    throw new TypeError("switch context v4 is invalid");
+  assertSafeInteger(context.switchedAtMs as number, 0, "switch v4 time");
+  assertSafeInteger(proof.observedAtMs as number, 0, "switch v4 observation");
+  assertSafeInteger(proof.maximumAgeMs as number, 0, "switch v4 maximum age");
+  const switchedAtMs = context.switchedAtMs as number;
+  const observedAtMs = proof.observedAtMs as number;
+  const maximumAgeMs = proof.maximumAgeMs as number;
+  if (observedAtMs > switchedAtMs)
+    throw new TypeError("switch v4 observation follows switch time");
+  const validUntilMs = observedAtMs + maximumAgeMs;
+  assertSafeInteger(validUntilMs, switchedAtMs, "switch v4 validity deadline");
+  if (
+    typeof proof.environment !== "string" ||
+    !SERVING_PUBLICATION_ENVIRONMENTS.has(proof.environment) ||
+    proof.ftsBuildVersion !== READINESS_FTS_BUILD_VERSION ||
+    proof.ftsSourceDocumentCount !== manifest.searchDocuments.length ||
+    proof.ftsIndexDocumentCount !== manifest.searchDocuments.length ||
+    proof.ftsSourceInventoryHash !== manifest.exactSearchInventoryHash ||
+    proof.ftsExactParity !== true ||
+    proof.archiveBundleHash !== manifest.bundleHash ||
+    proof.archiveImmutable !== true ||
+    proof.vectorNamespace !== manifest.publicationId ||
+    proof.vectorDocumentCount !== manifest.vectors.length ||
+    proof.vectorVerifiedDocumentCount !== manifest.vectors.length ||
+    proof.vectorInventoryHash !== manifest.vectorInventoryHash ||
+    proof.vectorVisibilityProbeVersion !== VECTOR_VISIBILITY_PROBE_VERSION ||
+    typeof proof.vectorMutationId !== "string" ||
+    !isAscii(proof.vectorMutationId) ||
+    proof.vectorMutationId.length === 0 ||
+    proof.vectorMutationId.length > 128 ||
+    proof.vectorAllIdsPresent !== true ||
+    proof.vectorAllNamespacesMatch !== true ||
+    proof.vectorQueryable !== true ||
+    proof.probeSetVersion !== READINESS_PROBE_SET_VERSION_V4 ||
+    proof.integrityPassed !== true ||
+    proof.exactSearchPassed !== true ||
+    proof.semanticSearchPassed !== true ||
+    proof.structuredFilterPassed !== true ||
+    proof.neutralityPassed !== true ||
+    proof.versionIsolationPassed !== true
+  )
+    throw new TypeError("switch preflight v4 does not prove serving artifacts");
+  let attestationHash: Sha256 | null = null;
+  if (context.action === "activate") {
+    assertServingReadinessProofV4(readinessProof);
+    const attestation = readinessProof.attestation;
+    if (
+      attestation.publication_id !== manifest.publicationId ||
+      attestation.closure_hash !== manifest.closureHash ||
+      attestation.environment !== proof.environment ||
+      switchedAtMs < attestation.ready_at_ms ||
+      switchedAtMs > attestation.effective_valid_until_ms
+    )
+      throw new TypeError("switch activation v4 attestation is invalid");
+    attestationHash = attestation.attestation_hash;
+  } else if (readinessProof !== null) {
+    throw new TypeError("switch rollback v4 carries readiness attestation");
+  }
+  const expectedPriorSwitchedAt =
+    context.expectedPriorSwitchedAtMs === null
+      ? null
+      : timestampFromMs(
+          context.expectedPriorSwitchedAtMs as number,
+          "expected prior switch v4 time",
+        );
+  const switchedAt = timestampFromMs(switchedAtMs, "switch v4 time");
+  const observedAt = timestampFromMs(observedAtMs, "switch v4 observation");
+  const validUntil = timestampFromMs(validUntilMs, "switch v4 validity");
+  const preflightHash = await digest("publication-switch-preflight", [
+    field("preflight_version", "text", SERVING_SWITCH_PREFLIGHT_VERSION_V4),
+    field("action", "text", context.action),
+    field("environment", "text", proof.environment),
+    field(
+      "expected_prior_generation",
+      "integer",
+      String(context.expectedPriorGeneration),
+    ),
+    nullableCanonical(
+      "expected_prior_rollback_candidate_publication_id",
+      "identifier",
+      context.expectedPriorRollbackCandidatePublicationId,
+    ),
+    expectedPriorSwitchedAt === null
+      ? field("expected_prior_switched_at", "null", "null")
+      : field(
+          "expected_prior_switched_at",
+          "timestamp",
+          expectedPriorSwitchedAt,
+        ),
+    field("new_generation", "integer", String(context.newGeneration)),
+    nullableCanonical(
+      "from_publication_id",
+      "identifier",
+      context.fromPublicationId,
+    ),
+    nullableCanonical("from_closure_hash", "digest", context.fromClosureHash),
+    field("to_publication_id", "identifier", manifest.publicationId),
+    field("to_closure_hash", "digest", manifest.closureHash),
+    nullableCanonical("to_attestation_hash", "digest", attestationHash),
+    field("switched_at", "timestamp", switchedAt),
+    field("observed_at", "timestamp", observedAt),
+    field("maximum_age_ms", "integer", String(maximumAgeMs)),
+    field("valid_until", "timestamp", validUntil),
+    field("fts_build_version", "text", proof.ftsBuildVersion),
+    field(
+      "fts_source_document_count",
+      "integer",
+      String(proof.ftsSourceDocumentCount),
+    ),
+    field(
+      "fts_index_document_count",
+      "integer",
+      String(proof.ftsIndexDocumentCount),
+    ),
+    field("fts_source_inventory_hash", "digest", proof.ftsSourceInventoryHash),
+    field("fts_exact_parity", "boolean", "true"),
+    field("archive_bundle_hash", "digest", proof.archiveBundleHash),
+    field("archive_immutable", "boolean", "true"),
+    field("vector_namespace", "identifier", proof.vectorNamespace),
+    field(
+      "vector_document_count",
+      "integer",
+      String(proof.vectorDocumentCount),
+    ),
+    field(
+      "vector_verified_document_count",
+      "integer",
+      String(proof.vectorVerifiedDocumentCount),
+    ),
+    field("vector_inventory_hash", "digest", proof.vectorInventoryHash),
+    field(
+      "vector_visibility_probe_version",
+      "text",
+      proof.vectorVisibilityProbeVersion,
+    ),
+    field("vector_mutation_id", "text", proof.vectorMutationId),
+    field("vector_all_ids_present", "boolean", "true"),
+    field("vector_all_namespaces_match", "boolean", "true"),
+    field("vector_queryable", "boolean", "true"),
+    field("probe_set_version", "text", READINESS_PROBE_SET_VERSION_V4),
+    field("integrity_passed", "boolean", "true"),
+    field("exact_search_passed", "boolean", "true"),
+    field("semantic_search_passed", "boolean", "true"),
+    field("structured_filter_passed", "boolean", "true"),
+    field("neutrality_passed", "boolean", "true"),
+    field("version_isolation_passed", "boolean", "true"),
+    ...providerSearchProofFieldsV2(providerProof),
+    ...modelVariantNameSearchProofFieldsV3(modelVariantNameProof),
+    ...providerModelIdSearchProofFieldsV4(providerModelIdProof),
+  ]);
+  const result = {
+    switch_id: context.switchId,
+    preflight_version: SERVING_SWITCH_PREFLIGHT_VERSION_V4,
+    preflight_hash: preflightHash,
+    action: context.action,
+    environment: proof.environment as Exclude<PublicationEnvironment, "test">,
+    expected_prior_generation: context.expectedPriorGeneration,
+    expected_prior_rollback_candidate_publication_id:
+      context.expectedPriorRollbackCandidatePublicationId as PublicationId | null,
+    expected_prior_switched_at_ms: context.expectedPriorSwitchedAtMs as
+      number | null,
+    new_generation: context.newGeneration,
+    from_publication_id: context.fromPublicationId as PublicationId | null,
+    from_closure_hash: context.fromClosureHash as Sha256 | null,
+    to_publication_id: manifest.publicationId,
+    to_closure_hash: manifest.closureHash,
+    to_attestation_hash: attestationHash,
+    switched_at_ms: switchedAtMs,
+    observed_at_ms: observedAtMs,
+    maximum_age_ms: maximumAgeMs,
+    valid_until_ms: validUntilMs,
+    fts_build_version: proof.ftsBuildVersion as string,
+    fts_source_document_count: proof.ftsSourceDocumentCount,
+    fts_index_document_count: proof.ftsIndexDocumentCount,
+    fts_source_inventory_hash: proof.ftsSourceInventoryHash,
+    fts_exact_parity: 1 as const,
+    archive_bundle_hash: proof.archiveBundleHash,
+    archive_immutable: 1 as const,
+    vector_namespace: proof.vectorNamespace,
+    vector_document_count: proof.vectorDocumentCount,
+    vector_verified_document_count: proof.vectorVerifiedDocumentCount,
+    vector_inventory_hash: proof.vectorInventoryHash,
+    vector_visibility_probe_version:
+      proof.vectorVisibilityProbeVersion as string,
+    vector_mutation_id: proof.vectorMutationId,
+    vector_all_ids_present: 1 as const,
+    vector_all_namespaces_match: 1 as const,
+    vector_queryable: 1 as const,
+    probe_set_version: READINESS_PROBE_SET_VERSION_V4,
+    integrity_passed: 1 as const,
+    exact_search_passed: 1 as const,
+    semantic_search_passed: 1 as const,
+    structured_filter_passed: 1 as const,
+    neutrality_passed: 1 as const,
+    version_isolation_passed: 1 as const,
+    provider_search_projection_version:
+      providerProof.provider_search_projection_version,
+    provider_search_document_count:
+      providerProof.provider_search_document_count,
+    provider_search_inventory_hash:
+      providerProof.provider_search_inventory_hash,
+    provider_search_fts_build_version:
+      providerProof.provider_search_fts_build_version,
+    provider_search_fts_document_count:
+      providerProof.provider_search_fts_document_count,
+    provider_search_fts_queryable: 1 as const,
+    provider_search_exact_parity: 1 as const,
+    model_variant_name_projection_version:
+      modelVariantNameProof.model_variant_name_projection_version,
+    model_variant_name_document_count:
+      modelVariantNameProof.model_variant_name_document_count,
+    model_variant_name_inventory_hash:
+      modelVariantNameProof.model_variant_name_inventory_hash,
+    model_variant_name_storage_version:
+      modelVariantNameProof.model_variant_name_storage_version,
+    model_variant_name_storage_document_count:
+      modelVariantNameProof.model_variant_name_storage_document_count,
+    model_variant_name_storage_queryable: 1 as const,
+    model_variant_name_storage_exact_parity: 1 as const,
+    provider_model_id_projection_version:
+      providerModelIdProof.provider_model_id_projection_version,
+    provider_model_id_document_count:
+      providerModelIdProof.provider_model_id_document_count,
+    provider_model_id_inventory_hash:
+      providerModelIdProof.provider_model_id_inventory_hash,
+    provider_model_id_storage_version:
+      providerModelIdProof.provider_model_id_storage_version,
+    provider_model_id_storage_document_count:
+      providerModelIdProof.provider_model_id_storage_document_count,
+    provider_model_id_storage_queryable: 1 as const,
+    provider_model_id_storage_exact_parity: 1 as const,
+  };
+  Object.defineProperty(result, servingSwitchPreflightProofV4Brand, {
+    value: true,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  trustedServingSwitchPreflightProofsV4.set(
+    result,
+    Object.freeze({
+      manifest,
+      readinessProof,
+      providerProof,
+      modelVariantNameProof,
+      providerModelIdProof,
+    }),
+  );
+  return Object.freeze(result) as ServingSwitchPreflightProofV4;
+};
+
+export type ServingSwitchPersistenceV4 = Readonly<{
+  plan: HeadSwitchPlan;
+  preflight: ServingSwitchPreflightProofV4;
+  history: ServingSwitchHistoryRow;
+  providerModelIdSearch: ProviderModelIdSearchStagingPersistenceV1;
+  providerModelIdProof: ProviderModelIdSearchQueryableArtifactProofV4;
+}>;
+
+const servingSwitchProjectionV4Brand: unique symbol = Symbol(
+  "ServingSwitchProjectionV4",
+);
+export type ServingSwitchProjectionV4 = Readonly<{
+  readonly [servingSwitchProjectionV4Brand]: true;
+}>;
+const trustedServingSwitchProjectionsV4 = new WeakMap<
+  object,
+  ServingSwitchPersistenceV4
+>();
+
+export const assertServingSwitchProjectionV4: (
+  value: unknown,
+) => asserts value is ServingSwitchProjectionV4 = (value) => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !(servingSwitchProjectionV4Brand in value) ||
+    value[servingSwitchProjectionV4Brand] !== true ||
+    !trustedServingSwitchProjectionsV4.has(value)
+  )
+    throw new TypeError("serving switch projection v4 is not trusted");
+};
+
+export const projectServingSwitchV4 = async (input: {
+  readonly preflight: ServingSwitchPreflightProofV4;
+  readonly target: PublicationRecord;
+  readonly currentHead: StoredPublicationHead | null;
+  readonly currentActive: PublicationRecord | null;
+  readonly authorizedBy: SwitchAuthorization;
+  readonly closureRows: ServingClosureRows;
+  readonly persistedSeal: ServingClosureSealProjection;
+  readonly persistedProviderSearchDocuments: readonly ProviderSearchDocumentRowV2[];
+  readonly persistedProviderSearchFtsRows: readonly ProviderSearchFtsRowV2[];
+  readonly persistedModelVariantNameRows: readonly ModelVariantNameSearchStorageRowV1[];
+  readonly persistedProviderModelIdRows: readonly ProviderModelIdSearchStorageRowV1[];
+  readonly persistedReceiptRows: ServingReadinessReceiptRowsV4 | null;
+  readonly persistedAttestation: ServingReadinessAttestationProjectionV4 | null;
+}): Promise<ServingSwitchProjectionV4> => {
+  const preflight = input.preflight;
+  const targetInput = input.target;
+  const currentHeadInput = input.currentHead;
+  const currentActiveInput = input.currentActive;
+  const authorizedByInput = input.authorizedBy;
+  const closureRowsInput = input.closureRows;
+  const persistedSealInput = input.persistedSeal;
+  const persistedProviderSearchDocumentsInput =
+    input.persistedProviderSearchDocuments;
+  const persistedProviderSearchFtsRowsInput =
+    input.persistedProviderSearchFtsRows;
+  const persistedModelVariantNameRowsInput =
+    input.persistedModelVariantNameRows;
+  const persistedProviderModelIdRowsInput = input.persistedProviderModelIdRows;
+  const persistedReceiptRowsInput = input.persistedReceiptRows;
+  const persistedAttestationInput = input.persistedAttestation;
+  assertServingSwitchPreflightProofV4(preflight);
+  const proofBinding = trustedServingSwitchPreflightProofsV4.get(preflight);
+  if (proofBinding === undefined)
+    throw new TypeError("serving switch preflight proof v4 is not trusted");
+  const observed = structuredClone({
+    target: targetInput,
+    currentHead: currentHeadInput,
+    currentActive: currentActiveInput,
+    authorizedBy: authorizedByInput,
+    closureRows: closureRowsInput,
+    persistedSeal: persistedSealInput,
+    providerDocuments: persistedProviderSearchDocumentsInput,
+    providerFtsRows: persistedProviderSearchFtsRowsInput,
+    modelRows: persistedModelVariantNameRowsInput,
+    providerModelIdRows: persistedProviderModelIdRowsInput,
+    receiptRows: persistedReceiptRowsInput,
+    attestation: persistedAttestationInput,
+  });
+  const closure = await projectServingClosureSeal(observed.closureRows);
+  const sealErrors = await verifyServingClosureSealProjection(
+    observed.closureRows,
+    observed.persistedSeal,
+  );
+  const providerBinding = trustedProviderSearchArtifactProofsV2.get(
+    proofBinding.providerProof,
+  );
+  const modelBinding =
+    trustedModelVariantNameSearchQueryableArtifactProofsV3.get(
+      proofBinding.modelVariantNameProof,
+    );
+  const providerModelIdBinding =
+    trustedProviderModelIdSearchQueryableArtifactProofsV4.get(
+      proofBinding.providerModelIdProof,
+    );
+  if (
+    providerBinding === undefined ||
+    modelBinding === undefined ||
+    providerModelIdBinding === undefined
+  )
+    throw new TypeError("serving switch v4 search proof is not trusted");
+  const providerSearch = providerSearchPersistenceV2(
+    providerBinding.projection,
+    observed.closureRows.stagingRevision,
+  );
+  const modelVariantNameSearch = modelVariantNameSearchStoragePersistenceV1(
+    modelBinding.projection,
+    observed.closureRows.stagingRevision,
+  );
+  const providerModelIdSearch = providerModelIdSearchStoragePersistenceV1(
+    providerModelIdBinding.projection,
+    observed.closureRows.stagingRevision,
+  );
+  if (
+    sealErrors.length > 0 ||
+    closure.manifest.publicationId !== proofBinding.manifest.publicationId ||
+    closure.manifest.closureHash !== proofBinding.manifest.closureHash ||
+    JSON.stringify(observed.providerDocuments) !==
+      JSON.stringify(providerSearch.documents) ||
+    JSON.stringify(observed.providerFtsRows) !==
+      JSON.stringify(providerSearch.ftsRows) ||
+    JSON.stringify(observed.modelRows) !==
+      JSON.stringify(modelVariantNameSearch.rows) ||
+    JSON.stringify(observed.providerModelIdRows) !==
+      JSON.stringify(providerModelIdSearch.rows) ||
+    preflight.observed_at_ms < observed.closureRows.sealedAtMs
+  )
+    throw new TypeError(
+      "serving switch v4 does not match persisted sealed evidence",
+    );
+  if (preflight.action === "activate") {
+    const readinessProof = proofBinding.readinessProof;
+    assertServingReadinessProofV4(readinessProof);
+    const expectedRows = receiptDetailRowsV4(readinessProof);
+    if (
+      observed.receiptRows === null ||
+      observed.attestation === null ||
+      JSON.stringify(observed.receiptRows) !== JSON.stringify(expectedRows) ||
+      JSON.stringify(observed.attestation) !==
+        JSON.stringify(readinessProof.attestation)
+    )
+      throw new TypeError(
+        "serving switch activation v4 lacks persisted readiness",
+      );
+  } else if (observed.receiptRows !== null || observed.attestation !== null) {
+    throw new TypeError(
+      "serving switch rollback v4 carries readiness evidence",
+    );
+  }
+  if (
+    observed.target.publicationId !== proofBinding.manifest.publicationId ||
+    observed.target.closureHash !== proofBinding.manifest.closureHash ||
+    preflight.to_publication_id !== observed.target.publicationId ||
+    preflight.to_closure_hash !== observed.target.closureHash
+  )
+    throw new TypeError("serving switch v4 target does not bind its manifest");
+  const switchedAt = timestampFromMs(
+    preflight.switched_at_ms,
+    "switch v4 time",
+  );
+  const plan =
+    preflight.action === "activate"
+      ? planActivation({
+          candidate: observed.target,
+          currentHead: observed.currentHead,
+          currentActive: observed.currentActive,
+          switchedAt,
+          authorizedBy: observed.authorizedBy,
+        })
+      : (() => {
+          if (observed.currentHead === null || observed.currentActive === null)
+            throw new TypeError("rollback v4 lacks current serving state");
+          return planRollback({
+            currentHead: observed.currentHead,
+            defective: observed.currentActive,
+            target: observed.target,
+            switchedAt,
+            authorizedBy: observed.authorizedBy,
+          });
+        })();
+  const event = switchHistoryStep(plan);
+  if (
+    event.switchId !== preflight.switch_id ||
+    event.action !== preflight.action ||
+    event.expectedPriorGeneration !== preflight.expected_prior_generation ||
+    event.newGeneration !== preflight.new_generation ||
+    event.fromPublicationId !== preflight.from_publication_id ||
+    event.fromClosureHash !== preflight.from_closure_hash ||
+    event.toPublicationId !== preflight.to_publication_id ||
+    event.toClosureHash !== preflight.to_closure_hash ||
+    (observed.currentHead?.rollbackCandidatePublicationId ?? null) !==
+      preflight.expected_prior_rollback_candidate_publication_id ||
+    (observed.currentHead === null
+      ? null
+      : assertTimestamp(
+          observed.currentHead.switchedAt,
+          "prior switch v4 time",
+        )) !== preflight.expected_prior_switched_at_ms
+  )
+    throw new TypeError(
+      "serving switch v4 preflight does not bind its lifecycle plan",
+    );
+  const eventHash = await digest("publication-switch-event", [
+    field("event_version", "text", SERVING_SWITCH_EVENT_VERSION),
+    field("switch_id", "text", event.switchId),
+    field("preflight_hash", "digest", preflight.preflight_hash),
+    field("action", "text", event.action),
+    field(
+      "expected_prior_generation",
+      "integer",
+      String(event.expectedPriorGeneration),
+    ),
+    nullableCanonical(
+      "expected_prior_rollback_candidate_publication_id",
+      "identifier",
+      observed.currentHead?.rollbackCandidatePublicationId ?? null,
+    ),
+    observed.currentHead === null
+      ? field("expected_prior_switched_at", "null", "null")
+      : field(
+          "expected_prior_switched_at",
+          "timestamp",
+          observed.currentHead.switchedAt,
+        ),
+    field("new_generation", "integer", String(event.newGeneration)),
+    nullableCanonical(
+      "from_publication_id",
+      "identifier",
+      event.fromPublicationId,
+    ),
+    nullableCanonical("from_closure_hash", "digest", event.fromClosureHash),
+    field("to_publication_id", "identifier", event.toPublicationId),
+    field("to_closure_hash", "digest", event.toClosureHash),
+    nullableCanonical(
+      "to_attestation_hash",
+      "digest",
+      preflight.to_attestation_hash,
+    ),
+    nullableCanonical(
+      "resulting_rollback_candidate_publication_id",
+      "identifier",
+      event.resultingRollbackCandidatePublicationId,
+    ),
+    field("switched_at", "timestamp", event.switchedAt),
+    field("authorized_by_kind", "text", event.authorizedBy.kind),
+    field("authorized_identity_id", "text", event.authorizedBy.identityId),
+  ]);
+  const history = Object.freeze({
+    switch_id: event.switchId,
+    event_version: SERVING_SWITCH_EVENT_VERSION,
+    event_hash: eventHash,
+    preflight_hash: preflight.preflight_hash,
+    action: event.action,
+    expected_prior_generation: event.expectedPriorGeneration,
+    expected_prior_rollback_candidate_publication_id:
+      observed.currentHead?.rollbackCandidatePublicationId ?? null,
+    expected_prior_switched_at_ms:
+      observed.currentHead === null
+        ? null
+        : assertTimestamp(
+            observed.currentHead.switchedAt,
+            "prior switch v4 time",
+          ),
+    new_generation: event.newGeneration,
+    from_publication_id: event.fromPublicationId,
+    from_closure_hash: event.fromClosureHash,
+    to_publication_id: event.toPublicationId,
+    to_closure_hash: event.toClosureHash,
+    to_attestation_hash: preflight.to_attestation_hash,
+    resulting_rollback_candidate_publication_id:
+      event.resultingRollbackCandidatePublicationId,
+    switched_at_ms: preflight.switched_at_ms,
+    authorized_by_kind: event.authorizedBy.kind,
+    authorized_identity_id: event.authorizedBy.identityId,
+  } satisfies ServingSwitchHistoryRow);
+  const persistence = Object.freeze({
+    plan,
+    preflight,
+    history,
+    providerModelIdSearch,
+    providerModelIdProof: proofBinding.providerModelIdProof,
+  });
+  const result = {};
+  Object.defineProperty(result, servingSwitchProjectionV4Brand, {
+    value: true,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  trustedServingSwitchProjectionsV4.set(result, persistence);
+  return Object.freeze(result) as ServingSwitchProjectionV4;
+};
+
+export const readServingSwitchPersistenceV4 = (
+  value: ServingSwitchProjectionV4,
+): ServingSwitchPersistenceV4 => {
+  assertServingSwitchProjectionV4(value);
+  const persistence = trustedServingSwitchProjectionsV4.get(value);
+  if (persistence === undefined)
+    throw new TypeError("serving switch projection v4 is not trusted");
+  return persistence;
+};
+
+export const classifyServingSwitchRetryV4 = (input: {
+  readonly expected: ServingSwitchProjectionV4;
+  readonly currentHead: StoredPublicationHead | null;
+  readonly preflightAtGeneration: ServingSwitchPreflightProofV4 | null;
+  readonly historyAtGeneration: ServingSwitchHistoryRow | null;
+  readonly targetState: PublicationState;
+  readonly formerState: PublicationState | null;
+}): ServingSwitchRetryDecision => {
+  const expected = readServingSwitchPersistenceV4(input.expected);
+  if (input.currentHead !== null) validateHead(input.currentHead);
+  const cas = expected.plan.steps.find(
+    (
+      step,
+    ): step is Extract<HeadSwitchStep, { kind: "compare_and_swap_head" }> =>
+      step.kind === "compare_and_swap_head",
+  );
+  if (cas === undefined)
+    throw new TypeError("switch v4 plan lacks its head CAS");
   if (input.historyAtGeneration === null) {
     if (input.preflightAtGeneration !== null)
       return Object.freeze({
