@@ -1,15 +1,20 @@
 import {
   checkModelContract,
+  checkOfferingContract,
   checkProviderContract,
   checkVariantContract,
   MODEL_DISPLAY_NAME_MAX_UNICODE_SCALARS,
+  type Model,
+  type Offering,
   PROVIDER_DISPLAY_NAME_MAX_UNICODE_SCALARS,
+  type Variant,
 } from "@quant-clarity/contracts";
 
 import {
   EXACT_SEARCH_NORMALIZATION_VERSION,
   EXACT_SEARCH_NORMALIZATION_MAX_UNICODE_SCALAR_EXPANSION,
   normalizeExactSearchName,
+  normalizeExactSearchNamePreservingEmpty,
 } from "./unicode/exact-search-normalization.js";
 
 export {
@@ -53,6 +58,76 @@ export const MODEL_VARIANT_NAME_SEARCH_MAX_DISPLAY_NAME_UTF8_BYTES =
   MODEL_DISPLAY_NAME_MAX_UNICODE_SCALARS * 4;
 export const MODEL_VARIANT_NAME_SEARCH_MAX_NORMALIZED_NAME_UTF8_BYTES =
   MODEL_VARIANT_NAME_SEARCH_MAX_NORMALIZED_NAME_UNICODE_SCALARS * 4;
+export const PROVIDER_MODEL_ID_SEARCH_PROJECTION_VERSION =
+  "provider-model-id@1" as const;
+export const PROVIDER_MODEL_ID_SEARCH_MAX_RESOURCES = 10_000;
+export const PROVIDER_MODEL_ID_SEARCH_MAX_RESOURCE_BYTES =
+  PUBLICATION_RESOURCE_JSON_MAX_BYTES;
+export const PROVIDER_MODEL_ID_SEARCH_MAX_TOTAL_RESOURCE_BYTES =
+  8 * 1_024 * 1_024;
+export const PROVIDER_MODEL_ID_SEARCH_MAX_INVENTORY_BYTES = 8 * 1_024 * 1_024;
+export const PROVIDER_MODEL_ID_SEARCH_MAX_UNICODE_SCALARS = 256;
+export const PROVIDER_MODEL_ID_SEARCH_MAX_UTF8_BYTES =
+  PROVIDER_MODEL_ID_SEARCH_MAX_UNICODE_SCALARS * 4;
+export const PROVIDER_MODEL_ID_SEARCH_MAX_NORMALIZED_UNICODE_SCALARS =
+  PROVIDER_MODEL_ID_SEARCH_MAX_UNICODE_SCALARS *
+  EXACT_SEARCH_NORMALIZATION_MAX_UNICODE_SCALAR_EXPANSION;
+export const PROVIDER_MODEL_ID_SEARCH_MAX_NORMALIZED_UTF8_BYTES =
+  PROVIDER_MODEL_ID_SEARCH_MAX_NORMALIZED_UNICODE_SCALARS * 4;
+
+export const assertProviderModelIdSearchResourceByteBudget = (
+  resourceByteLengths: readonly number[],
+): void => {
+  const lengths = denseArraySnapshot(
+    resourceByteLengths,
+    PROVIDER_MODEL_ID_SEARCH_MAX_RESOURCES,
+    "provider model ID search resource byte lengths",
+  );
+  let totalResourceBytes = 0;
+  for (const resourceBytes of lengths) {
+    if (
+      typeof resourceBytes !== "number" ||
+      !Number.isSafeInteger(resourceBytes) ||
+      resourceBytes < 0
+    )
+      throw new TypeError(
+        "provider model ID search resource byte length is invalid",
+      );
+    if (resourceBytes > PROVIDER_MODEL_ID_SEARCH_MAX_RESOURCE_BYTES)
+      throw new RangeError(
+        "provider model ID search resource input is too large",
+      );
+    totalResourceBytes += resourceBytes;
+    if (totalResourceBytes > PROVIDER_MODEL_ID_SEARCH_MAX_TOTAL_RESOURCE_BYTES)
+      throw new RangeError(
+        "provider model ID search resource input is too large",
+      );
+  }
+};
+
+export const advanceProviderModelIdSearchRetainedTextByteBudget = (
+  currentBytes: number,
+  rawProviderModelIdBytes: number,
+  normalizedProviderModelIdBytes: number,
+): number => {
+  for (const value of [
+    currentBytes,
+    rawProviderModelIdBytes,
+    normalizedProviderModelIdBytes,
+  ])
+    if (!Number.isSafeInteger(value) || value < 0)
+      throw new TypeError(
+        "provider model ID search retained text byte length is invalid",
+      );
+  const nextBytes =
+    currentBytes + rawProviderModelIdBytes + normalizedProviderModelIdBytes;
+  if (
+    !Number.isSafeInteger(nextBytes) ||
+    nextBytes > PROVIDER_MODEL_ID_SEARCH_MAX_INVENTORY_BYTES
+  )
+    throw new RangeError("provider model ID search inventory is too large");
+  return nextBytes;
+};
 
 export const assertModelVariantNameSearchResourceByteBudget = (
   resourceByteLengths: readonly number[],
@@ -274,9 +349,9 @@ export const assertImmutablePublicationManifest: (
   if (
     typeof value !== "object" ||
     value === null ||
+    !trustedImmutablePublicationManifests.has(value) ||
     !(immutablePublicationManifestBrand in value) ||
-    value[immutablePublicationManifestBrand] !== true ||
-    !trustedImmutablePublicationManifests.has(value)
+    value[immutablePublicationManifestBrand] !== true
   )
     throw new TypeError("immutable publication manifest is not trusted");
 };
@@ -740,6 +815,26 @@ const concatenate = (
   for (const value of values) {
     output.set(value, offset);
     offset += value.length;
+  }
+  return output;
+};
+
+const concatenateRootAndLengthPrefixedRows = (
+  root: Uint8Array<ArrayBuffer>,
+  rows: readonly Uint8Array<ArrayBuffer>[],
+): Uint8Array<ArrayBuffer> => {
+  const size = rows.reduce((total, row) => total + 8 + row.length, root.length);
+  if (!Number.isSafeInteger(size))
+    throw new RangeError("canonical collection is too large");
+  const output = new Uint8Array(size);
+  const view = new DataView(output.buffer);
+  output.set(root, 0);
+  let offset = root.length;
+  for (const row of rows) {
+    view.setBigUint64(offset, BigInt(row.length), false);
+    offset += 8;
+    output.set(row, offset);
+    offset += row.length;
   }
   return output;
 };
@@ -1774,9 +1869,7 @@ const modelVariantNameSearchInventoryHash = async (
       field("resource_content_hash", "digest", document.resourceContentHash),
     ]),
   );
-  return digestBytes(
-    concatenate([root, ...rows.map((row) => lengthPrefixed([row]))]),
-  );
+  return digestBytes(concatenateRootAndLengthPrefixedRows(root, rows));
 };
 
 const snapshotModelVariantNameResource = (
@@ -1981,6 +2074,700 @@ export const projectModelVariantNameSearchProjection = async (
   });
   trustedModelVariantNameSearchProjections.add(projection);
   return Object.freeze(projection) as TrustedModelVariantNameSearchProjection;
+};
+
+export type ProviderModelIdSearchDocumentProjection = Readonly<{
+  projectionVersion: typeof PROVIDER_MODEL_ID_SEARCH_PROJECTION_VERSION;
+  offeringId: string;
+  providerId: string;
+  resourceType: SearchResourceType;
+  resourceId: string;
+  rawProviderModelId: string;
+  normalizedProviderModelId: string;
+  offeringContentHash: Sha256;
+  targetContentHash: Sha256;
+}>;
+
+export type ProviderModelIdSearchProjectionInput = Readonly<{
+  manifest: TrustedImmutablePublicationManifest;
+  resources: readonly ServingResourceClosureRow[];
+}>;
+
+const providerModelIdSearchProjectionBrand: unique symbol = Symbol(
+  "ProviderModelIdSearchProjection",
+);
+const trustedProviderModelIdSearchProjections = new WeakSet<object>();
+
+export type TrustedProviderModelIdSearchProjection = Readonly<{
+  publicationId: PublicationId;
+  closureHash: Sha256;
+  projectionVersion: typeof PROVIDER_MODEL_ID_SEARCH_PROJECTION_VERSION;
+  normalizationVersion: typeof EXACT_SEARCH_NORMALIZATION_VERSION;
+  documents: readonly ProviderModelIdSearchDocumentProjection[];
+  documentCount: number;
+  inventoryHash: Sha256;
+  readonly [providerModelIdSearchProjectionBrand]: true;
+}>;
+
+export const assertProviderModelIdSearchProjection: (
+  value: unknown,
+) => asserts value is TrustedProviderModelIdSearchProjection = (value) => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !trustedProviderModelIdSearchProjections.has(value) ||
+    !(providerModelIdSearchProjectionBrand in value) ||
+    value[providerModelIdSearchProjectionBrand] !== true
+  )
+    throw new TypeError("provider model ID search projection is not trusted");
+};
+
+const providerModelIdSearchInventoryHash = async (
+  documents: readonly ProviderModelIdSearchDocumentProjection[],
+): Promise<Sha256> => {
+  const root = canonicalTuple(
+    "publication-provider-model-id-search-inventory",
+    [
+      field(
+        "provider_model_id_search_documents",
+        "list",
+        String(documents.length),
+      ),
+    ],
+  );
+  const rows = documents.map((document) =>
+    canonicalTuple(
+      "publication-provider-model-id-search-document",
+      providerModelIdSearchDocumentFields(document),
+    ),
+  );
+  return digestBytes(concatenateRootAndLengthPrefixedRows(root, rows));
+};
+
+const providerModelIdSearchDocumentFields = (
+  document: ProviderModelIdSearchDocumentProjection,
+): readonly CanonicalField[] => [
+  field("projection_version", "text", document.projectionVersion),
+  field("offering_id", "identifier", document.offeringId),
+  field("provider_id", "identifier", document.providerId),
+  field("target_resource_type", "text", document.resourceType),
+  field("target_resource_id", "identifier", document.resourceId),
+  field("raw_provider_model_id", "text", document.rawProviderModelId),
+  field(
+    "normalized_provider_model_id",
+    "text",
+    document.normalizedProviderModelId,
+  ),
+  field("offering_content_hash", "digest", document.offeringContentHash),
+  field("target_content_hash", "digest", document.targetContentHash),
+];
+
+const utf8ByteLengthWithoutAllocation = (value: string): number => {
+  let bytes = 0;
+  for (const character of value) {
+    const codePoint = character.codePointAt(0);
+    if (codePoint === undefined || (codePoint >= 0xd800 && codePoint <= 0xdfff))
+      throw new TypeError("canonical tuple contains invalid Unicode");
+    bytes +=
+      codePoint <= 0x7f
+        ? 1
+        : codePoint <= 0x7ff
+          ? 2
+          : codePoint <= 0xffff
+            ? 3
+            : 4;
+    if (!Number.isSafeInteger(bytes))
+      throw new RangeError("canonical tuple is too large");
+  }
+  return bytes;
+};
+
+const canonicalTupleEncodedByteLength = (
+  domain: string,
+  fields: readonly CanonicalField[],
+): number => {
+  assertAscii(domain, "hash domain");
+  const values = [
+    field("hash_domain", "text", domain),
+    field("encoding_version", "integer", "1"),
+    ...fields,
+  ];
+  let bytes = 0;
+  for (const value of values) {
+    validateCanonicalField(value);
+    for (const component of [value.name, value.type, value.value]) {
+      bytes += 8 + utf8ByteLengthWithoutAllocation(component);
+      if (!Number.isSafeInteger(bytes))
+        throw new RangeError("canonical tuple is too large");
+    }
+  }
+  return bytes;
+};
+
+export const assertProviderModelIdSearchInventoryByteBudget = (
+  documents: readonly ProviderModelIdSearchDocumentProjection[],
+): void => {
+  const callerDocuments = denseArraySnapshot(
+    documents,
+    PROVIDER_MODEL_ID_SEARCH_MAX_RESOURCES,
+    "provider model ID search inventory documents",
+  );
+  const snapshotDocuments = callerDocuments.map((value) => {
+    const document = ownDataRecordSnapshot(
+      value,
+      [
+        "normalizedProviderModelId",
+        "offeringContentHash",
+        "offeringId",
+        "projectionVersion",
+        "providerId",
+        "rawProviderModelId",
+        "resourceId",
+        "resourceType",
+        "targetContentHash",
+      ],
+      "provider model ID search inventory document",
+    );
+    const rawProviderModelId = document.rawProviderModelId;
+    const normalizedProviderModelId = document.normalizedProviderModelId;
+    const resourceType = document.resourceType;
+    const resourceId = document.resourceId;
+    if (
+      document.projectionVersion !==
+        PROVIDER_MODEL_ID_SEARCH_PROJECTION_VERSION ||
+      typeof document.offeringId !== "string" ||
+      !new RegExp(`^off_${UUID_V4}$`, "u").test(document.offeringId) ||
+      typeof document.providerId !== "string" ||
+      !new RegExp(`^prv_${UUID_V4}$`, "u").test(document.providerId) ||
+      (resourceType !== "model" && resourceType !== "variant") ||
+      typeof resourceId !== "string" ||
+      !new RegExp(
+        `^${resourceType === "model" ? "mdl" : "var"}_${UUID_V4}$`,
+        "u",
+      ).test(resourceId) ||
+      typeof rawProviderModelId !== "string" ||
+      rawProviderModelId.length === 0 ||
+      invalidUnicodeScalar(rawProviderModelId) ||
+      Array.from(rawProviderModelId).length >
+        PROVIDER_MODEL_ID_SEARCH_MAX_UNICODE_SCALARS ||
+      utf8ByteLengthWithoutAllocation(rawProviderModelId) >
+        PROVIDER_MODEL_ID_SEARCH_MAX_UTF8_BYTES ||
+      typeof normalizedProviderModelId !== "string" ||
+      invalidUnicodeScalar(normalizedProviderModelId) ||
+      Array.from(normalizedProviderModelId).length >
+        PROVIDER_MODEL_ID_SEARCH_MAX_NORMALIZED_UNICODE_SCALARS ||
+      utf8ByteLengthWithoutAllocation(normalizedProviderModelId) >
+        PROVIDER_MODEL_ID_SEARCH_MAX_NORMALIZED_UTF8_BYTES ||
+      typeof document.offeringContentHash !== "string" ||
+      !HASH.test(document.offeringContentHash) ||
+      typeof document.targetContentHash !== "string" ||
+      !HASH.test(document.targetContentHash)
+    )
+      throw new TypeError(
+        "provider model ID search inventory document is invalid",
+      );
+    return Object.freeze({
+      projectionVersion: PROVIDER_MODEL_ID_SEARCH_PROJECTION_VERSION,
+      offeringId: document.offeringId,
+      providerId: document.providerId,
+      resourceType,
+      resourceId,
+      rawProviderModelId,
+      normalizedProviderModelId,
+      offeringContentHash: document.offeringContentHash as Sha256,
+      targetContentHash: document.targetContentHash as Sha256,
+    });
+  });
+  let bytes = canonicalTupleEncodedByteLength(
+    "publication-provider-model-id-search-inventory",
+    [
+      field(
+        "provider_model_id_search_documents",
+        "list",
+        String(snapshotDocuments.length),
+      ),
+    ],
+  );
+  for (const document of snapshotDocuments) {
+    bytes +=
+      8 +
+      canonicalTupleEncodedByteLength(
+        "publication-provider-model-id-search-document",
+        providerModelIdSearchDocumentFields(document),
+      );
+    if (
+      !Number.isSafeInteger(bytes) ||
+      bytes > PROVIDER_MODEL_ID_SEARCH_MAX_INVENTORY_BYTES
+    )
+      throw new RangeError("provider model ID search inventory is too large");
+  }
+};
+
+const ownDataRecordSnapshot = (
+  value: unknown,
+  expectedKeys: readonly string[],
+  label: string,
+): Readonly<Record<string, unknown>> => {
+  if (typeof value !== "object" || value === null || Array.isArray(value))
+    throw new TypeError(`${label} is invalid`);
+  let prototype: object | null;
+  let ownKeys: readonly PropertyKey[];
+  try {
+    prototype = Object.getPrototypeOf(value) as object | null;
+    ownKeys = Reflect.ownKeys(value);
+  } catch {
+    throw new TypeError(`${label} is invalid`);
+  }
+  if (prototype !== Object.prototype && prototype !== null)
+    throw new TypeError(`${label} is invalid`);
+  if (ownKeys.some((key) => typeof key !== "string"))
+    throw new TypeError(`${label} is invalid`);
+  const stringOwnKeys = ownKeys as readonly string[];
+  if (
+    JSON.stringify([...stringOwnKeys].sort(compareAscii)) !==
+    JSON.stringify([...expectedKeys].sort(compareAscii))
+  )
+    throw new TypeError(`${label} is invalid`);
+  const snapshot: Record<string, unknown> = {};
+  for (const key of expectedKeys) {
+    let descriptor: PropertyDescriptor | undefined;
+    try {
+      descriptor = Object.getOwnPropertyDescriptor(value, key);
+    } catch {
+      throw new TypeError(`${label} is invalid`);
+    }
+    if (descriptor === undefined || !("value" in descriptor))
+      throw new TypeError(`${label} is invalid`);
+    snapshot[key] = descriptor.value;
+  }
+  return Object.freeze(snapshot);
+};
+
+const denseArraySnapshot = (
+  value: unknown,
+  maximumItems: number,
+  label: string,
+): readonly unknown[] => {
+  if (!Array.isArray(value))
+    throw new RangeError(`${label} is invalid or too large`);
+  let lengthDescriptor: PropertyDescriptor | undefined;
+  try {
+    lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
+  } catch {
+    throw new TypeError(`${label} is invalid`);
+  }
+  if (
+    lengthDescriptor === undefined ||
+    !("value" in lengthDescriptor) ||
+    typeof lengthDescriptor.value !== "number" ||
+    !Number.isSafeInteger(lengthDescriptor.value) ||
+    lengthDescriptor.value < 0 ||
+    lengthDescriptor.value > maximumItems
+  )
+    throw new RangeError(`${label} is invalid or too large`);
+  const length = lengthDescriptor.value;
+  const snapshot: unknown[] = [];
+  for (let index = 0; index < length; index += 1) {
+    let descriptor: PropertyDescriptor | undefined;
+    try {
+      descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+    } catch {
+      throw new TypeError(`${label} is invalid`);
+    }
+    if (descriptor === undefined || !("value" in descriptor))
+      throw new TypeError(`${label} is invalid`);
+    snapshot.push(descriptor.value);
+  }
+  let ownKeys: readonly PropertyKey[];
+  try {
+    ownKeys = Reflect.ownKeys(value);
+  } catch {
+    throw new TypeError(`${label} is invalid`);
+  }
+  if (
+    ownKeys.length !== length + 1 ||
+    ownKeys.some(
+      (key) =>
+        typeof key !== "string" ||
+        (key !== "length" &&
+          (!/^(?:0|[1-9][0-9]*)$/u.test(key) || Number(key) >= length)),
+    )
+  )
+    throw new TypeError(`${label} is invalid`);
+  return Object.freeze(snapshot);
+};
+
+const invalidUnicodeScalar = (value: string): boolean =>
+  Array.from(value).some((scalar) => {
+    const point = scalar.codePointAt(0);
+    return point !== undefined && point >= 0xd800 && point <= 0xdfff;
+  });
+
+type ProviderModelIdSearchResourceSnapshot = Readonly<{
+  resource_type: "offering" | SearchResourceType;
+  resource_id: string;
+  resource_json: string;
+  content_hash: Sha256;
+  parsed: Offering | Model | Variant;
+  normalized_provider_model_id: string | null;
+}>;
+
+/**
+ * Derives the complete provider-model-ID exact-search projection exclusively
+ * from closure-bound Offering and target model/variant resources. It performs
+ * no persistence and defines no query, status, freshness, or reader policy.
+ */
+export const projectProviderModelIdSearchProjection = async (
+  callerInput: ProviderModelIdSearchProjectionInput,
+): Promise<TrustedProviderModelIdSearchProjection> => {
+  const input = ownDataRecordSnapshot(
+    callerInput,
+    ["manifest", "resources"],
+    "provider model ID search input",
+  );
+  const manifest = input.manifest;
+  assertImmutablePublicationManifest(manifest);
+  const callerResources = denseArraySnapshot(
+    input.resources,
+    PROVIDER_MODEL_ID_SEARCH_MAX_RESOURCES,
+    "provider model ID search resources",
+  );
+
+  // Every caller-owned property, JSON string, Unicode boundary, and contract
+  // is snapshotted and checked before the first asynchronous content hash.
+  const resources: ProviderModelIdSearchResourceSnapshot[] = [];
+  const resourceByteLengths: number[] = [];
+  let totalResourceBytes = 0;
+  let retainedProviderModelIdTextBytes = 0;
+  for (const value of callerResources) {
+    const resource = ownDataRecordSnapshot(
+      value,
+      ["content_hash", "resource_id", "resource_json", "resource_type"],
+      "provider model ID search resource input",
+    );
+    const resourceType = resource.resource_type;
+    const resourceId = resource.resource_id;
+    const resourceJson = resource.resource_json;
+    const contentHash = resource.content_hash;
+    if (
+      (resourceType !== "offering" &&
+        resourceType !== "model" &&
+        resourceType !== "variant") ||
+      typeof resourceId !== "string" ||
+      typeof resourceJson !== "string" ||
+      typeof contentHash !== "string" ||
+      !HASH.test(contentHash)
+    )
+      throw new TypeError("provider model ID search resource input is invalid");
+    const expectedPrefix =
+      resourceType === "offering"
+        ? "off_"
+        : resourceType === "model"
+          ? "mdl_"
+          : "var_";
+    if (!new RegExp(`^${expectedPrefix}${UUID_V4}$`, "u").test(resourceId))
+      throw new TypeError("provider model ID search resource input is invalid");
+    // UTF-16 length is a cheap lower bound for UTF-8 byte length. Reject it
+    // before allocating an encoded copy, then enforce the exact byte budgets
+    // before canonicalization, parsing, contract validation, or hashing.
+    if (resourceJson.length > PROVIDER_MODEL_ID_SEARCH_MAX_RESOURCE_BYTES)
+      throw new RangeError(
+        "provider model ID search resource input is too large",
+      );
+    const resourceBytes = utf8.encode(resourceJson).byteLength;
+    if (resourceBytes > PROVIDER_MODEL_ID_SEARCH_MAX_RESOURCE_BYTES)
+      throw new RangeError(
+        "provider model ID search resource input is too large",
+      );
+    totalResourceBytes += resourceBytes;
+    if (totalResourceBytes > PROVIDER_MODEL_ID_SEARCH_MAX_TOTAL_RESOURCE_BYTES)
+      throw new RangeError(
+        "provider model ID search resource input is too large",
+      );
+    resourceByteLengths.push(resourceBytes);
+    canonicalizePublicationJson(resourceJson, "object");
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(resourceJson) as unknown;
+    } catch {
+      throw new TypeError(
+        "provider model ID search resource is not contract-valid",
+      );
+    }
+    let parsedResource: Offering | Model | Variant;
+    if (resourceType === "offering") {
+      if (!checkOfferingContract(parsed))
+        throw new TypeError(
+          "provider model ID search resource is not contract-valid",
+        );
+      parsedResource = parsed;
+    } else if (resourceType === "model") {
+      if (!checkModelContract(parsed))
+        throw new TypeError(
+          "provider model ID search resource is not contract-valid",
+        );
+      parsedResource = parsed;
+    } else {
+      if (!checkVariantContract(parsed))
+        throw new TypeError(
+          "provider model ID search resource is not contract-valid",
+        );
+      parsedResource = parsed;
+    }
+    const parsedIdentity =
+      resourceType === "offering"
+        ? (parsedResource as Offering).offering_id
+        : resourceType === "model"
+          ? (parsedResource as Model).model_id
+          : (parsedResource as Variant).variant_id;
+    if (parsedIdentity !== resourceId)
+      throw new TypeError(
+        "provider model ID search resource identity does not match",
+      );
+
+    let normalizedProviderModelId: string | null = null;
+    if (resourceType === "offering") {
+      const rawProviderModelId = (parsedResource as Offering).provider_model_id;
+      if (
+        rawProviderModelId.length >
+          PROVIDER_MODEL_ID_SEARCH_MAX_UNICODE_SCALARS * 2 ||
+        invalidUnicodeScalar(rawProviderModelId) ||
+        Array.from(rawProviderModelId).length >
+          PROVIDER_MODEL_ID_SEARCH_MAX_UNICODE_SCALARS
+      )
+        throw new TypeError(
+          "provider model ID search resource has an invalid provider model ID",
+        );
+      const rawProviderModelIdBytes =
+        utf8ByteLengthWithoutAllocation(rawProviderModelId);
+      if (rawProviderModelIdBytes > PROVIDER_MODEL_ID_SEARCH_MAX_UTF8_BYTES)
+        throw new TypeError(
+          "provider model ID search resource has an invalid provider model ID",
+        );
+      try {
+        normalizedProviderModelId =
+          normalizeExactSearchNamePreservingEmpty(rawProviderModelId);
+      } catch {
+        throw new TypeError(
+          "provider model ID search resource has an invalid provider model ID",
+        );
+      }
+      const normalizedProviderModelIdBytes = utf8ByteLengthWithoutAllocation(
+        normalizedProviderModelId,
+      );
+      if (
+        Array.from(normalizedProviderModelId).length >
+          PROVIDER_MODEL_ID_SEARCH_MAX_NORMALIZED_UNICODE_SCALARS ||
+        normalizedProviderModelIdBytes >
+          PROVIDER_MODEL_ID_SEARCH_MAX_NORMALIZED_UTF8_BYTES
+      )
+        throw new Error(
+          "provider model ID search normalization exceeds its pinned Unicode bound",
+        );
+      retainedProviderModelIdTextBytes =
+        advanceProviderModelIdSearchRetainedTextByteBudget(
+          retainedProviderModelIdTextBytes,
+          rawProviderModelIdBytes,
+          normalizedProviderModelIdBytes,
+        );
+    }
+    resources.push(
+      Object.freeze({
+        resource_type: resourceType,
+        resource_id: resourceId,
+        resource_json: resourceJson,
+        content_hash: contentHash as Sha256,
+        parsed: parsedResource,
+        normalized_provider_model_id: normalizedProviderModelId,
+      }),
+    );
+  }
+  assertProviderModelIdSearchResourceByteBudget(resourceByteLengths);
+
+  const resourceKeys = resources.map(
+    (resource) => `${resource.resource_type}:${resource.resource_id}`,
+  );
+  if (new Set(resourceKeys).size !== resourceKeys.length)
+    throw new TypeError(
+      "provider model ID search resources contain a duplicate",
+    );
+  const offeringResources = resources.filter(
+    (
+      resource,
+    ): resource is ProviderModelIdSearchResourceSnapshot & {
+      resource_type: "offering";
+      parsed: Offering;
+      normalized_provider_model_id: string;
+    } => resource.resource_type === "offering",
+  );
+  const manifestOfferingResources = manifest.resources.filter(
+    (resource) => resource.resourceType === "offering",
+  );
+  const manifestOfferingByKey = new Map(
+    manifestOfferingResources.map((resource) => [
+      `offering:${resource.resourceId}`,
+      resource,
+    ]),
+  );
+  if (
+    offeringResources.length !== manifestOfferingByKey.size ||
+    offeringResources.some(
+      (resource) =>
+        manifestOfferingByKey.get(`offering:${resource.resource_id}`)
+          ?.contentHash !== resource.content_hash,
+    )
+  )
+    throw new TypeError(
+      "provider model ID search offering resources do not exactly match the trusted manifest",
+    );
+
+  const manifestResourceByKey = new Map(
+    manifest.resources.map((resource) => [
+      `${resource.resourceType}:${resource.resourceId}`,
+      resource,
+    ]),
+  );
+  const expectedByKey = new Map(manifestOfferingByKey);
+  for (const offering of offeringResources) {
+    const targetType = offering.parsed.model_resource_id.startsWith("mdl_")
+      ? "model"
+      : "variant";
+    const targetKey = `${targetType}:${offering.parsed.model_resource_id}`;
+    const targetDescriptor = manifestResourceByKey.get(targetKey);
+    if (targetDescriptor === undefined)
+      throw new TypeError(
+        "provider model ID search offering target is missing from the trusted manifest",
+      );
+    expectedByKey.set(targetKey, targetDescriptor);
+  }
+  if (resources.length !== expectedByKey.size)
+    throw new TypeError(
+      "provider model ID search resources do not exactly match the trusted manifest",
+    );
+  for (const resource of resources) {
+    const expected = expectedByKey.get(
+      `${resource.resource_type}:${resource.resource_id}`,
+    );
+    if (expected?.contentHash !== resource.content_hash)
+      throw new TypeError(
+        "provider model ID search resource does not match the trusted manifest",
+      );
+  }
+
+  const targetResources = resources.filter(
+    (
+      resource,
+    ): resource is ProviderModelIdSearchResourceSnapshot & {
+      resource_type: SearchResourceType;
+      parsed: Model | Variant;
+    } => resource.resource_type !== "offering",
+  );
+  const targetsById = new Map(
+    targetResources.map((resource) => [resource.resource_id, resource]),
+  );
+  const enabledProviderIds = new Set(manifest.enabledProviderIds);
+  const offeringAttributions = manifest.providerAttributions.filter(
+    (attribution) => attribution.resourceType === "offering",
+  );
+  const attributionByOfferingId = new Map(
+    offeringAttributions.map((attribution) => [
+      attribution.resourceId,
+      attribution,
+    ]),
+  );
+  if (
+    attributionByOfferingId.size !== offeringAttributions.length ||
+    offeringAttributions.length !== offeringResources.length
+  )
+    throw new TypeError(
+      "provider model ID search offering attribution inventory is invalid",
+    );
+  for (const offering of offeringResources) {
+    const attribution = attributionByOfferingId.get(offering.resource_id);
+    if (
+      attribution?.providerId !== offering.parsed.provider_id ||
+      !enabledProviderIds.has(offering.parsed.provider_id)
+    )
+      throw new TypeError(
+        "provider model ID search offering attribution is invalid",
+      );
+    const target = targetsById.get(offering.parsed.model_resource_id);
+    if (target === undefined)
+      throw new TypeError(
+        "provider model ID search offering target is missing",
+      );
+    const targetType = offering.parsed.model_resource_id.startsWith("mdl_")
+      ? "model"
+      : "variant";
+    if (target.resource_type !== targetType)
+      throw new TypeError(
+        "provider model ID search offering target type is invalid",
+      );
+  }
+  const offeringResourceIds = new Set(
+    offeringResources.map((resource) => resource.resource_id),
+  );
+  for (const attribution of offeringAttributions)
+    if (!offeringResourceIds.has(attribution.resourceId))
+      throw new TypeError(
+        "provider model ID search offering attribution lacks its resource",
+      );
+
+  const documents = offeringResources.map((offering) => {
+    const target = targetsById.get(offering.parsed.model_resource_id);
+    if (target === undefined)
+      throw new TypeError(
+        "provider model ID search offering target is missing",
+      );
+    return Object.freeze({
+      projectionVersion: PROVIDER_MODEL_ID_SEARCH_PROJECTION_VERSION,
+      offeringId: offering.resource_id,
+      providerId: offering.parsed.provider_id,
+      resourceType: target.resource_type,
+      resourceId: target.resource_id,
+      rawProviderModelId: offering.parsed.provider_model_id,
+      normalizedProviderModelId: offering.normalized_provider_model_id,
+      offeringContentHash: offering.content_hash,
+      targetContentHash: target.content_hash,
+    });
+  });
+  documents.sort((left, right) =>
+    compareAscii(left.offeringId, right.offeringId),
+  );
+  assertProviderModelIdSearchInventoryByteBudget(documents);
+
+  for (const resource of resources) {
+    const hashValue = await hashPublicationResourceContent({
+      resourceType: resource.resource_type,
+      resourceId: resource.resource_id,
+      resourceJson: resource.resource_json,
+    });
+    if (hashValue !== resource.content_hash)
+      throw new TypeError(
+        "provider model ID search resource content hash does not match",
+      );
+  }
+
+  const frozenDocuments = Object.freeze(documents);
+  const inventoryHash =
+    await providerModelIdSearchInventoryHash(frozenDocuments);
+  const projection = {
+    publicationId: manifest.publicationId,
+    closureHash: manifest.closureHash,
+    projectionVersion: PROVIDER_MODEL_ID_SEARCH_PROJECTION_VERSION,
+    normalizationVersion: EXACT_SEARCH_NORMALIZATION_VERSION,
+    documents: frozenDocuments,
+    documentCount: frozenDocuments.length,
+    inventoryHash,
+  };
+  Object.defineProperty(projection, providerModelIdSearchProjectionBrand, {
+    value: true,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  trustedProviderModelIdSearchProjections.add(projection);
+  return Object.freeze(projection) as TrustedProviderModelIdSearchProjection;
 };
 
 /**

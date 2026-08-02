@@ -258,8 +258,7 @@ const codePointsToString = (codePoints: readonly number[]): string => {
   return chunks.join("");
 };
 
-/** Implements ADR 0021's pinned `exact-search-normalization@1`. */
-export const normalizeExactSearchName = (input: string): string => {
+const normalizeExactSearchNameValue = (input: string): string => {
   assertPairedSurrogates(input);
 
   const mapped: number[] = [];
@@ -283,7 +282,21 @@ export const normalizeExactSearchName = (input: string): string => {
     }
   }
   if (collapsed.at(-1) === 0x20) collapsed.pop();
-  if (collapsed.length === 0)
-    throw new RangeError("Exact-search normalization produced an empty value.");
   return codePointsToString(collapsed);
 };
+
+/** Implements ADR 0021's nonempty pinned `exact-search-normalization@1`. */
+export const normalizeExactSearchName = (input: string): string => {
+  const normalized = normalizeExactSearchNameValue(input);
+  if (normalized.length === 0)
+    throw new RangeError("Exact-search normalization produced an empty value.");
+  return normalized;
+};
+
+/**
+ * Applies the identical pinned mapping while retaining an empty result for a
+ * canonical value whose reader eligibility has not yet been decided.
+ */
+export const normalizeExactSearchNamePreservingEmpty = (
+  input: string,
+): string => normalizeExactSearchNameValue(input);

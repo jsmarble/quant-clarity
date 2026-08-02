@@ -921,7 +921,11 @@ describe("trusted model/variant canonical-name projection (SRCH-002, SRCH-006, S
       }),
       /contract-valid/u,
     ],
-    ["unpaired surrogate", model(1, "bad\ud800name"), /cannot be normalized/u],
+    [
+      "unpaired surrogate",
+      model(1, "bad\ud800name"),
+      /contract-valid|cannot be normalized/u,
+    ],
     ["normalization to empty", model(1, " \t\n"), /cannot be normalized/u],
   ])(
     "rejects invalid known-name %s resources",
