@@ -1,3 +1,18 @@
+import { FormatRegistry, type Static } from "@sinclair/typebox";
+import { Value } from "@sinclair/typebox/value";
+
+import { ProviderSchema } from "@quant-clarity/contracts";
+
+import {
+  EXACT_SEARCH_NORMALIZATION_VERSION,
+  normalizeExactSearchName,
+} from "./unicode/exact-search-normalization.js";
+
+export {
+  EXACT_SEARCH_NORMALIZATION_VERSION,
+  normalizeExactSearchName,
+} from "./unicode/exact-search-normalization.js";
+
 /**
  * Runtime-neutral publication decisions for QuantClarity.
  *
@@ -9,6 +24,8 @@
 
 export type Sha256 = `sha256:${string}`;
 export type PublicationId = `pub_${string}`;
+
+export const PROVIDER_SEARCH_PROJECTION_VERSION = "provider-name@1" as const;
 
 const UUID_V4 =
   "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
@@ -163,6 +180,15 @@ export interface PublicationManifestInput {
   readonly bundleHash: Sha256;
 }
 
+export type PersistedPublicationManifestInput = Omit<
+  PublicationManifestInput,
+  "resources" | "searchDocuments"
+> &
+  Readonly<{
+    resources: readonly PersistedResourceDescriptor[];
+    searchDocuments: readonly PersistedSearchDocumentDescriptor[];
+  }>;
+
 export interface ImmutablePublicationManifest extends PublicationManifestInput {
   readonly resourceInventoryHash: Sha256;
   readonly exactSearchInventoryHash: Sha256;
@@ -174,7 +200,370 @@ export interface ImmutablePublicationManifest extends PublicationManifestInput {
   readonly closureHash: Sha256;
 }
 
+const immutablePublicationManifestBrand: unique symbol = Symbol(
+  "ImmutablePublicationManifest",
+);
+const trustedImmutablePublicationManifests = new WeakSet<object>();
+
+export type TrustedImmutablePublicationManifest = ImmutablePublicationManifest &
+  Readonly<{ readonly [immutablePublicationManifestBrand]: true }>;
+
+export const assertImmutablePublicationManifest: (
+  value: unknown,
+) => asserts value is TrustedImmutablePublicationManifest = (value) => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !(immutablePublicationManifestBrand in value) ||
+    value[immutablePublicationManifestBrand] !== true ||
+    !trustedImmutablePublicationManifests.has(value)
+  )
+    throw new TypeError("immutable publication manifest is not trusted");
+};
+
 const utf8 = new TextEncoder();
+
+const MAX_MANIFEST_COLLECTION_ITEMS = 500_000;
+const MAX_MANIFEST_TOTAL_ITEMS = 1_500_000;
+const MAX_MANIFEST_FIELD_UTF8_BYTES = 1_000_000;
+const MAX_MANIFEST_TOTAL_UTF8_BYTES = 256 * 1_024 * 1_024;
+
+interface InputBudget {
+  bytes: number;
+}
+
+const inputRecord = (
+  value: unknown,
+  label: string,
+): Record<string, unknown> => {
+  if (typeof value !== "object" || value === null || Array.isArray(value))
+    throw new TypeError(`${label} must be an object`);
+  return value as Record<string, unknown>;
+};
+
+const boundedInputString = (
+  value: unknown,
+  label: string,
+  budget: InputBudget,
+): string => {
+  if (typeof value !== "string")
+    throw new TypeError(`${label} must be a string`);
+  const bytes = utf8.encode(value).length;
+  if (bytes > MAX_MANIFEST_FIELD_UTF8_BYTES)
+    throw new RangeError(`${label} exceeds the manifest field byte limit`);
+  budget.bytes += bytes;
+  if (budget.bytes > MAX_MANIFEST_TOTAL_UTF8_BYTES)
+    throw new RangeError("manifest input exceeds the aggregate byte limit");
+  return value;
+};
+
+const manifestCollection = (
+  value: unknown,
+  label: string,
+  itemBudget: { count: number },
+): readonly unknown[] => {
+  if (!Array.isArray(value)) throw new TypeError(`${label} must be an array`);
+  if (value.length > MAX_MANIFEST_COLLECTION_ITEMS)
+    throw new RangeError(`${label} exceeds the manifest item limit`);
+  itemBudget.count += value.length;
+  if (itemBudget.count > MAX_MANIFEST_TOTAL_ITEMS)
+    throw new RangeError("manifest input exceeds the aggregate item limit");
+  return value;
+};
+
+const snapshotPublicationManifestInput = (
+  callerInput: PublicationManifestInput | PersistedPublicationManifestInput,
+  persistedContent: boolean,
+): PublicationManifestInput | PersistedPublicationManifestInput => {
+  const input = inputRecord(callerInput, "manifest input");
+  const itemBudget = { count: 0 };
+  const bytes = { bytes: 0 };
+  const enabledProviderIds = manifestCollection(
+    input.enabledProviderIds,
+    "enabled provider IDs",
+    itemBudget,
+  );
+  const providerSlices = manifestCollection(
+    input.providerSlices,
+    "provider slices",
+    itemBudget,
+  );
+  const providerAttributions = manifestCollection(
+    input.providerAttributions,
+    "provider attributions",
+    itemBudget,
+  );
+  const resources = manifestCollection(
+    input.resources,
+    "resources",
+    itemBudget,
+  );
+  const searchDocuments = manifestCollection(
+    input.searchDocuments,
+    "search documents",
+    itemBudget,
+  );
+  const vectors = manifestCollection(input.vectors, "vectors", itemBudget);
+  const chunks = manifestCollection(input.chunks, "chunks", itemBudget);
+  const versions = inputRecord(input.versions, "manifest versions");
+
+  const snapshot = {
+    contractVersion: boundedInputString(
+      input.contractVersion,
+      "contract version",
+      bytes,
+    ),
+    publicationId: boundedInputString(
+      input.publicationId,
+      "publication ID",
+      bytes,
+    ) as PublicationId,
+    sourceRunId: boundedInputString(input.sourceRunId, "source run ID", bytes),
+    parentPublicationId:
+      input.parentPublicationId === null
+        ? null
+        : (boundedInputString(
+            input.parentPublicationId,
+            "parent publication ID",
+            bytes,
+          ) as PublicationId),
+    generatedAt: boundedInputString(input.generatedAt, "generated at", bytes),
+    versions: {
+      schema: boundedInputString(versions.schema, "schema version", bytes),
+      methodology: boundedInputString(
+        versions.methodology,
+        "methodology version",
+        bytes,
+      ),
+      precisionNormalization: boundedInputString(
+        versions.precisionNormalization,
+        "precision normalization version",
+        bytes,
+      ),
+      precisionDisplayOrder: boundedInputString(
+        versions.precisionDisplayOrder,
+        "precision display order version",
+        bytes,
+      ),
+      pricePolicy: boundedInputString(
+        versions.pricePolicy,
+        "price policy version",
+        bytes,
+      ),
+      sourcePolicy: boundedInputString(
+        versions.sourcePolicy,
+        "source policy version",
+        bytes,
+      ),
+      embedding: boundedInputString(
+        versions.embedding,
+        "embedding version",
+        bytes,
+      ),
+      buildCommit: boundedInputString(
+        versions.buildCommit,
+        "build commit",
+        bytes,
+      ),
+    },
+    enabledProviderScopeVersion: boundedInputString(
+      input.enabledProviderScopeVersion,
+      "enabled provider scope version",
+      bytes,
+    ),
+    enabledProviderIds: enabledProviderIds.map((value) =>
+      boundedInputString(value, "enabled provider ID", bytes),
+    ),
+    providerSlices: providerSlices.map((value) => {
+      const row = inputRecord(value, "provider slice");
+      return {
+        providerId: boundedInputString(row.providerId, "provider ID", bytes),
+        providerSliceId:
+          row.providerSliceId === null
+            ? null
+            : boundedInputString(
+                row.providerSliceId,
+                "provider slice ID",
+                bytes,
+              ),
+        providerRunId: boundedInputString(
+          row.providerRunId,
+          "provider run ID",
+          bytes,
+        ),
+        adapterVersion: boundedInputString(
+          row.adapterVersion,
+          "adapter version",
+          bytes,
+        ),
+        rosterVersion: boundedInputString(
+          row.rosterVersion,
+          "roster version",
+          bytes,
+        ),
+        sourceRegisterVersion: boundedInputString(
+          row.sourceRegisterVersion,
+          "source register version",
+          bytes,
+        ),
+        carriedForward: row.carriedForward as boolean,
+        freshnessState: boundedInputString(
+          row.freshnessState,
+          "freshness state",
+          bytes,
+        ) as ProviderSliceDescriptor["freshnessState"],
+      };
+    }),
+    providerAttributions: providerAttributions.map((value) => {
+      const row = inputRecord(value, "provider attribution");
+      return {
+        resourceType: boundedInputString(
+          row.resourceType,
+          "attribution resource type",
+          bytes,
+        ) as ProviderAttributableResourceType,
+        resourceId: boundedInputString(
+          row.resourceId,
+          "attribution resource ID",
+          bytes,
+        ),
+        providerId: boundedInputString(
+          row.providerId,
+          "attribution provider ID",
+          bytes,
+        ),
+      };
+    }),
+    resources: resources.map((value) => {
+      const row = inputRecord(value, "resource");
+      const descriptor = {
+        resourceType: boundedInputString(
+          row.resourceType,
+          "resource type",
+          bytes,
+        ) as ResourceType,
+        resourceId: boundedInputString(row.resourceId, "resource ID", bytes),
+        contentHash: boundedInputString(
+          row.contentHash,
+          "resource content hash",
+          bytes,
+        ) as Sha256,
+      };
+      return persistedContent
+        ? {
+            ...descriptor,
+            resourceJson: boundedInputString(
+              row.resourceJson,
+              "resource JSON",
+              bytes,
+            ),
+          }
+        : descriptor;
+    }),
+    searchDocuments: searchDocuments.map((value) => {
+      const row = inputRecord(value, "search document");
+      const descriptor = {
+        resourceType: boundedInputString(
+          row.resourceType,
+          "search resource type",
+          bytes,
+        ) as SearchResourceType,
+        resourceId: boundedInputString(
+          row.resourceId,
+          "search resource ID",
+          bytes,
+        ),
+        documentId: boundedInputString(
+          row.documentId,
+          "search document ID",
+          bytes,
+        ),
+        contentHash: boundedInputString(
+          row.contentHash,
+          "search document content hash",
+          bytes,
+        ) as Sha256,
+      };
+      return persistedContent
+        ? {
+            ...descriptor,
+            normalizedName: boundedInputString(
+              row.normalizedName,
+              "normalized name",
+              bytes,
+            ),
+            aliasesJson: boundedInputString(
+              row.aliasesJson,
+              "aliases JSON",
+              bytes,
+            ),
+            publisherName: boundedInputString(
+              row.publisherName,
+              "publisher name",
+              bytes,
+            ),
+            providerModelIdsJson: boundedInputString(
+              row.providerModelIdsJson,
+              "provider model IDs JSON",
+              bytes,
+            ),
+            documentText: boundedInputString(
+              row.documentText,
+              "search document text",
+              bytes,
+            ),
+          }
+        : descriptor;
+    }),
+    vectors: vectors.map((value) => {
+      const row = inputRecord(value, "vector");
+      return {
+        resourceType: boundedInputString(
+          row.resourceType,
+          "vector resource type",
+          bytes,
+        ) as SearchResourceType,
+        resourceId: boundedInputString(
+          row.resourceId,
+          "vector resource ID",
+          bytes,
+        ),
+        vectorId: boundedInputString(row.vectorId, "vector ID", bytes),
+        searchDocumentContentHash: boundedInputString(
+          row.searchDocumentContentHash,
+          "vector search document content hash",
+          bytes,
+        ) as Sha256,
+        embeddingInputHash: boundedInputString(
+          row.embeddingInputHash,
+          "embedding input hash",
+          bytes,
+        ) as Sha256,
+      };
+    }),
+    chunks: chunks.map((value) => {
+      const row = inputRecord(value, "chunk");
+      return {
+        kind: boundedInputString(row.kind, "chunk kind", bytes) as ChunkKind,
+        ordinal: row.ordinal as number,
+        firstKey: boundedInputString(row.firstKey, "chunk first key", bytes),
+        lastKey: boundedInputString(row.lastKey, "chunk last key", bytes),
+        itemCount: row.itemCount as number,
+        contentHash: boundedInputString(
+          row.contentHash,
+          "chunk content hash",
+          bytes,
+        ) as Sha256,
+      };
+    }),
+    bundleHash: boundedInputString(
+      input.bundleHash,
+      "bundle hash",
+      bytes,
+    ) as Sha256,
+  };
+  return snapshot;
+};
 
 const isAscii = (value: string): boolean => /^[\x20-\x7e]*$/u.test(value);
 
@@ -192,6 +581,28 @@ const assertTimestamp = (value: string, label: string): number => {
   )
     throw new TypeError(`${label} must be a canonical UTC timestamp`);
   return parsed;
+};
+
+const isContractTimestamp = (value: string): boolean => {
+  try {
+    assertTimestamp(value, "contract timestamp");
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+type ProviderResource = Static<typeof ProviderSchema>;
+
+const checkProviderContract = (value: unknown): value is ProviderResource => {
+  const previousDateTime = FormatRegistry.Get("date-time");
+  FormatRegistry.Set("date-time", isContractTimestamp);
+  try {
+    return Value.Check(ProviderSchema, value);
+  } finally {
+    if (previousDateTime === undefined) FormatRegistry.Delete("date-time");
+    else FormatRegistry.Set("date-time", previousDateTime);
+  }
 };
 
 const assertSafeInteger = (
@@ -962,8 +1373,9 @@ const validateVectorIdentities = async (
 };
 
 export const buildImmutableManifest = async (
-  input: PublicationManifestInput,
-): Promise<ImmutablePublicationManifest> => {
+  callerInput: PublicationManifestInput,
+): Promise<TrustedImmutablePublicationManifest> => {
+  const input = snapshotPublicationManifestInput(callerInput, false);
   const errors = [
     ...validateManifestInput(input),
     ...(await validateVectorIdentities(input)),
@@ -1012,7 +1424,7 @@ export const buildImmutableManifest = async (
     field("vector_inventory_hash", "digest", roots.vectorInventoryHash),
     field("chunk_root_hash", "digest", roots.chunkRootHash),
   ]);
-  return Object.freeze({
+  const manifest = {
     ...input,
     versions,
     enabledProviderIds: Object.freeze(roots.enabledProviderIds),
@@ -1042,17 +1454,16 @@ export const buildImmutableManifest = async (
     vectorInventoryHash: roots.vectorInventoryHash,
     chunkRootHash: roots.chunkRootHash,
     closureHash,
+  };
+  Object.defineProperty(manifest, immutablePublicationManifestBrand, {
+    value: true,
+    enumerable: false,
+    configurable: false,
+    writable: false,
   });
+  trustedImmutablePublicationManifests.add(manifest);
+  return Object.freeze(manifest) as TrustedImmutablePublicationManifest;
 };
-
-export type PersistedPublicationManifestInput = Omit<
-  PublicationManifestInput,
-  "resources" | "searchDocuments"
-> &
-  Readonly<{
-    resources: readonly PersistedResourceDescriptor[];
-    searchDocuments: readonly PersistedSearchDocumentDescriptor[];
-  }>;
 
 export interface ServingPublicationClosureRow {
   readonly publication_id: string;
@@ -1139,6 +1550,270 @@ export interface ServingClosureRows {
   readonly sealedAtMs: number;
 }
 
+export type ProviderSearchDocumentProjection = Readonly<{
+  projectionVersion: typeof PROVIDER_SEARCH_PROJECTION_VERSION;
+  providerId: string;
+  displayName: string;
+  normalizedName: string;
+  providerResourceContentHash: Sha256;
+}>;
+
+export type ProviderSearchProjectionInput = Readonly<{
+  manifest: TrustedImmutablePublicationManifest;
+  providerResources: readonly ServingResourceClosureRow[];
+}>;
+
+const providerSearchProjectionBrand: unique symbol = Symbol(
+  "ProviderSearchProjection",
+);
+const trustedProviderSearchProjections = new WeakSet<object>();
+
+export type TrustedProviderSearchProjection = Readonly<{
+  publicationId: PublicationId;
+  closureHash: Sha256;
+  projectionVersion: typeof PROVIDER_SEARCH_PROJECTION_VERSION;
+  normalizationVersion: typeof EXACT_SEARCH_NORMALIZATION_VERSION;
+  documents: readonly ProviderSearchDocumentProjection[];
+  documentCount: number;
+  inventoryHash: Sha256;
+  readonly [providerSearchProjectionBrand]: true;
+}>;
+
+export const assertProviderSearchProjection: (
+  value: unknown,
+) => asserts value is TrustedProviderSearchProjection = (value) => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !(providerSearchProjectionBrand in value) ||
+    value[providerSearchProjectionBrand] !== true ||
+    !trustedProviderSearchProjections.has(value)
+  )
+    throw new TypeError("provider search projection is not trusted");
+};
+
+const providerSearchInventoryHash = async (
+  documents: readonly ProviderSearchDocumentProjection[],
+): Promise<Sha256> => {
+  const root = canonicalTuple("publication-provider-search-inventory", [
+    field("provider_search_documents", "list", String(documents.length)),
+  ]);
+  const rows = documents.map((document) =>
+    canonicalTuple("publication-provider-search-document", [
+      field("projection_version", "text", document.projectionVersion),
+      field("provider_id", "identifier", document.providerId),
+      field("display_name", "text", document.displayName),
+      field("normalized_name", "text", document.normalizedName),
+      field(
+        "provider_resource_content_hash",
+        "digest",
+        document.providerResourceContentHash,
+      ),
+    ]),
+  );
+  return digestBytes(
+    concatenate([root, ...rows.map((row) => lengthPrefixed([row]))]),
+  );
+};
+
+/**
+ * Recomputes the provider-name exact-search projection from persisted,
+ * closure-shaped canonical rows. The nominal result is the only shape a D1
+ * writer may accept; caller-supplied rows and hashes never cross that boundary.
+ */
+export const projectProviderSearchProjection = async (
+  callerInput: ProviderSearchProjectionInput,
+): Promise<TrustedProviderSearchProjection> => {
+  assertImmutablePublicationManifest(callerInput.manifest);
+  if (!Array.isArray(callerInput.providerResources))
+    throw new TypeError("provider search resources must be an array");
+  if (callerInput.providerResources.length > 1_000)
+    throw new RangeError(
+      "provider search resource input is invalid or too large",
+    );
+  const manifest = callerInput.manifest;
+  let providerResourceBytes = 0;
+  const providerResources = callerInput.providerResources.map((value) => {
+    const resource = inputRecord(value, "provider search resource");
+    const resourceType = resource.resource_type;
+    const resourceId = resource.resource_id;
+    const resourceJson = resource.resource_json;
+    const contentHash = resource.content_hash;
+    if (
+      resourceType !== "provider" ||
+      typeof resourceId !== "string" ||
+      !new RegExp(`^prv_${UUID_V4}$`, "u").test(resourceId) ||
+      typeof contentHash !== "string" ||
+      !HASH.test(contentHash) ||
+      typeof resourceJson !== "string"
+    )
+      throw new TypeError("provider search resource input is invalid");
+    const resourceJsonBytes = utf8.encode(resourceJson).length;
+    if (resourceJsonBytes > 1_000_000)
+      throw new RangeError("provider search resource input is too large");
+    providerResourceBytes += resourceJsonBytes;
+    if (providerResourceBytes > 16 * 1_024 * 1_024)
+      throw new RangeError("provider search resource input is too large");
+    return {
+      resource_type: resourceType,
+      resource_id: resourceId,
+      resource_json: resourceJson,
+      content_hash: contentHash,
+    } satisfies ServingResourceClosureRow;
+  });
+  if (manifest.providerSlices.length === 0)
+    throw new RangeError("provider search slice inventory is empty");
+
+  const slices = new Map<string, ServingProviderSliceClosureRow>();
+  for (const descriptor of manifest.providerSlices) {
+    if (slices.has(descriptor.providerId))
+      throw new TypeError(
+        "provider search slice inventory contains a duplicate",
+      );
+    const slice: ServingProviderSliceClosureRow = {
+      provider_id: descriptor.providerId,
+      provider_slice_id: descriptor.providerSliceId,
+      provider_run_id: descriptor.providerRunId,
+      adapter_version: descriptor.adapterVersion,
+      roster_version: descriptor.rosterVersion,
+      source_register_version: descriptor.sourceRegisterVersion,
+      carried_forward: descriptor.carriedForward ? 1 : 0,
+      freshness_state: descriptor.freshnessState,
+    };
+    const selected = descriptor.freshnessState !== "unavailable";
+    if (
+      selected !== (descriptor.providerSliceId !== null) ||
+      (descriptor.freshnessState === "fresh" && descriptor.carriedForward) ||
+      (descriptor.freshnessState === "stale" && !descriptor.carriedForward) ||
+      (descriptor.freshnessState === "unavailable" && descriptor.carriedForward)
+    )
+      throw new TypeError("provider search slice disposition is invalid");
+    slices.set(descriptor.providerId, slice);
+  }
+
+  const expectedProviderResources = manifest.resources.filter(
+    (resource) => resource.resourceType === "provider",
+  );
+  if (
+    new Set(providerResources.map((resource) => resource.resource_id)).size !==
+    providerResources.length
+  )
+    throw new TypeError("provider search resources contain a duplicate");
+
+  const providerAttributions = manifest.providerAttributions.filter(
+    (attribution) => attribution.resourceType === "provider",
+  );
+  if (
+    new Set(providerAttributions.map((attribution) => attribution.resourceId))
+      .size !== providerAttributions.length
+  )
+    throw new TypeError("provider search attributions contain a duplicate");
+  const attributions = new Map(
+    providerAttributions.map((attribution) => [
+      attribution.resourceId,
+      attribution,
+    ]),
+  );
+
+  const expectedResourceById = new Map(
+    expectedProviderResources.map((resource) => [
+      resource.resourceId,
+      resource,
+    ]),
+  );
+  if (providerResources.length !== expectedResourceById.size)
+    throw new TypeError(
+      "provider search resources do not exactly match the trusted manifest",
+    );
+  for (const resource of providerResources) {
+    const expected = expectedResourceById.get(resource.resource_id);
+    if (expected?.contentHash !== resource.content_hash)
+      throw new TypeError(
+        "provider search resource does not match the trusted manifest",
+      );
+  }
+
+  const documents: ProviderSearchDocumentProjection[] = [];
+  const resourceIds = new Set(providerResources.map((row) => row.resource_id));
+  for (const slice of slices.values()) {
+    const resource = providerResources.find(
+      (candidate) => candidate.resource_id === slice.provider_id,
+    );
+    if (slice.freshness_state === "unavailable") {
+      if (resource !== undefined || attributions.has(slice.provider_id))
+        throw new TypeError(
+          "unavailable provider has public provider search content",
+        );
+      continue;
+    }
+    if (resource === undefined)
+      throw new TypeError("selected provider lacks its provider resource");
+    const attribution = attributions.get(slice.provider_id);
+    if (
+      attribution?.providerId !== slice.provider_id ||
+      attribution.resourceId !== slice.provider_id
+    )
+      throw new TypeError("provider search resource attribution is invalid");
+    if (!HASH.test(resource.content_hash))
+      throw new TypeError("provider search resource hash is invalid");
+    const computedHash = await hashPublicationResourceContent({
+      resourceType: "provider",
+      resourceId: resource.resource_id,
+      resourceJson: resource.resource_json,
+    });
+    if (computedHash !== resource.content_hash)
+      throw new TypeError(
+        "provider search resource content hash does not match",
+      );
+    const parsed: unknown = JSON.parse(resource.resource_json);
+    if (!checkProviderContract(parsed))
+      throw new TypeError("provider search resource is not contract-valid");
+    if (parsed.provider_id !== slice.provider_id)
+      throw new TypeError("provider search resource identity does not match");
+    if (parsed.display_name.state !== "known") continue;
+    const displayName = parsed.display_name.value;
+    const normalizedName = normalizeExactSearchName(displayName);
+    documents.push(
+      Object.freeze({
+        projectionVersion: PROVIDER_SEARCH_PROJECTION_VERSION,
+        providerId: slice.provider_id,
+        displayName,
+        normalizedName,
+        providerResourceContentHash: computedHash,
+      }),
+    );
+  }
+
+  for (const resourceId of resourceIds)
+    if (!slices.has(resourceId))
+      throw new TypeError("provider search resource is outside provider scope");
+  for (const resourceId of attributions.keys())
+    if (!resourceIds.has(resourceId))
+      throw new TypeError("provider search attribution lacks its resource");
+
+  documents.sort((left, right) =>
+    compareAscii(left.providerId, right.providerId),
+  );
+  const inventoryHash = await providerSearchInventoryHash(documents);
+  const projection = {
+    publicationId: manifest.publicationId,
+    closureHash: manifest.closureHash,
+    projectionVersion: PROVIDER_SEARCH_PROJECTION_VERSION,
+    normalizationVersion: EXACT_SEARCH_NORMALIZATION_VERSION,
+    documents: Object.freeze(documents),
+    documentCount: documents.length,
+    inventoryHash,
+  };
+  Object.defineProperty(projection, providerSearchProjectionBrand, {
+    value: true,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  trustedProviderSearchProjections.add(projection);
+  return Object.freeze(projection) as TrustedProviderSearchProjection;
+};
+
 export interface ServingClosureSealProjection {
   readonly publication_id: PublicationId;
   readonly staging_revision: number;
@@ -1170,8 +1845,12 @@ export interface ServingClosureSealProjection {
  * recomputed from persisted bytes before they can participate in the seal.
  */
 export const buildImmutableManifestFromPersistedContent = async (
-  input: PersistedPublicationManifestInput,
-): Promise<ImmutablePublicationManifest> => {
+  callerInput: PersistedPublicationManifestInput,
+): Promise<TrustedImmutablePublicationManifest> => {
+  const input = snapshotPublicationManifestInput(
+    callerInput,
+    true,
+  ) as PersistedPublicationManifestInput;
   const resources = await Promise.all(
     input.resources.map(async (resource): Promise<ResourceDescriptor> => {
       const contentHash = await hashPublicationResourceContent(resource);
@@ -1315,7 +1994,7 @@ export const projectServingClosureSeal = async (
   rows: ServingClosureRows,
 ): Promise<
   Readonly<{
-    manifest: ImmutablePublicationManifest;
+    manifest: TrustedImmutablePublicationManifest;
     seal: ServingClosureSealProjection;
   }>
 > => {
