@@ -31,6 +31,7 @@ const generatedSchemas = Object.fromEntries(
 const apiSchemaNames = [
   "DatasetMetadata",
   "ErrorEnvelope",
+  "MethodologyDetail",
   "ModelFamilyCollection",
   "ModelFamilyDetail",
   "ModelCollection",
@@ -61,7 +62,7 @@ type CachePolicy =
 const cacheControlExample: Record<CachePolicy, string> = {
   "active-detail": "max-age=0, must-revalidate",
   collection: "private, no-store",
-  contract: "public, max-age=300",
+  contract: "private, no-store",
   error: "no-store",
   metadata: "no-store",
 };
@@ -75,8 +76,17 @@ const publicationPinParameter = {
   schema: { $ref: "#/components/schemas/PublicationId" },
 } as const;
 
-function withPublicationPin(parameters: readonly JsonObject[] = []) {
-  return [publicationPinParameter, ...parameters];
+const conditionalRequestParameter = {
+  name: "If-None-Match",
+  in: "header",
+  required: false,
+  description:
+    "Optional cache validator for the exact selected publication representation.",
+  schema: { type: "string", minLength: 1, maxLength: 256 },
+} as const;
+
+function withReadHeaders(parameters: readonly JsonObject[] = []) {
+  return [publicationPinParameter, conditionalRequestParameter, ...parameters];
 }
 
 function responseHeaders(cachePolicy: CachePolicy) {
@@ -90,7 +100,7 @@ function responseHeaders(cachePolicy: CachePolicy) {
         "Response headers readable by non-credentialed browser clients.",
       schema: {
         type: "string",
-        const: "X-QuantClarity-Publication",
+        const: "ETag, X-QuantClarity-Publication",
       },
     },
     "Cache-Control": {
@@ -130,6 +140,20 @@ function jsonResponse(
   };
 }
 
+function notModifiedResponse(cachePolicy: CachePolicy) {
+  return {
+    description:
+      "The selected publication representation matches If-None-Match; no response body is returned.",
+    headers: responseHeaders(cachePolicy),
+  };
+}
+
+function bodylessResponse(response: JsonObject): JsonObject {
+  const bodyless = { ...response };
+  delete bodyless.content;
+  return bodyless;
+}
+
 function errorResponse(description: string, code: string, message: string) {
   return jsonResponse(description, "ErrorEnvelope", "error", {
     error: { code, message },
@@ -142,11 +166,20 @@ const commonErrors = {
     "invalid_parameter",
     "The request contains an invalid parameter.",
   ),
-  "405": errorResponse(
-    "The request method is not allowed",
-    "method_not_allowed",
-    "Only GET, HEAD, and OPTIONS are supported.",
-  ),
+  "405": {
+    ...errorResponse(
+      "The request method is not allowed",
+      "method_not_allowed",
+      "Only GET, HEAD, and OPTIONS are supported.",
+    ),
+    headers: {
+      ...responseHeaders("error"),
+      Allow: {
+        description: "Methods supported by this read-only resource.",
+        schema: { type: "string", const: "GET, HEAD, OPTIONS" },
+      },
+    },
+  },
   "409": errorResponse(
     "The request's publication snapshot is no longer retained",
     "publication_expired",
@@ -183,12 +216,13 @@ function protocolOperations(
   summary: string,
   parameters: JsonObject[] = [],
   cachePolicy: CachePolicy = "active-detail",
+  includeNotFound = false,
 ) {
   return {
     head: {
       operationId: `${operationId}Head`,
       summary: `${summary} headers`,
-      parameters: withPublicationPin(parameters),
+      parameters: withReadHeaders(parameters),
       responses: {
         "200": {
           description:
@@ -201,8 +235,24 @@ function protocolOperations(
             ETag: { schema: { type: "string" } },
           },
         },
-        "429": commonErrors["429"],
-        "503": commonErrors["503"],
+        "304": notModifiedResponse(cachePolicy),
+        "400": bodylessResponse(commonErrors["400"]),
+        ...(includeNotFound
+          ? {
+              "404": bodylessResponse(
+                errorResponse(
+                  "The requested resource was not found",
+                  "resource_not_found",
+                  "The requested resource does not exist.",
+                ),
+              ),
+            }
+          : {}),
+        "405": bodylessResponse(commonErrors["405"]),
+        "409": bodylessResponse(commonErrors["409"]),
+        "413": bodylessResponse(commonErrors["413"]),
+        "429": bodylessResponse(commonErrors["429"]),
+        "503": bodylessResponse(commonErrors["503"]),
       },
     },
     options: {
@@ -223,13 +273,13 @@ function protocolOperations(
             "Access-Control-Allow-Headers": {
               schema: {
                 type: "string",
-                const: "X-QuantClarity-Publication",
+                const: "If-None-Match, X-QuantClarity-Publication",
               },
             },
             "Access-Control-Expose-Headers": {
               schema: {
                 type: "string",
-                const: "X-QuantClarity-Publication",
+                const: "ETag, X-QuantClarity-Publication",
               },
             },
             "Cache-Control": {
@@ -238,6 +288,7 @@ function protocolOperations(
           },
         },
         "429": commonErrors["429"],
+        "503": commonErrors["503"],
       },
     },
   };
@@ -345,9 +396,10 @@ function collectionOperation(
     get: {
       operationId,
       summary,
-      parameters: withPublicationPin(parameters),
+      parameters: withReadHeaders(parameters),
       responses: {
         "200": jsonResponse(summary, responseSchema, "collection"),
+        "304": notModifiedResponse("collection"),
         ...commonErrors,
       },
     },
@@ -361,22 +413,29 @@ function detailOperation(
   responseSchema: string,
   parameterName: string,
   description: string,
+  parameterSchema: JsonObject = {
+    type: "string",
+    minLength: 1,
+    maxLength: 256,
+  },
 ) {
   return {
     get: {
       operationId,
       summary,
-      parameters: withPublicationPin([
+      parameters: withReadHeaders([
         {
           name: parameterName,
           in: "path",
           required: true,
           description,
-          schema: { type: "string", minLength: 1, maxLength: 256 },
+          schema: parameterSchema,
         },
       ]),
       responses: {
         "200": jsonResponse(summary, responseSchema, "active-detail"),
+        "304": notModifiedResponse("active-detail"),
+        "400": commonErrors["400"],
         "404": errorResponse(
           "The requested resource was not found",
           "resource_not_found",
@@ -384,19 +443,26 @@ function detailOperation(
         ),
         "405": commonErrors["405"],
         "409": commonErrors["409"],
+        "413": commonErrors["413"],
         "429": commonErrors["429"],
         "503": commonErrors["503"],
       },
     },
-    ...protocolOperations(operationId, summary, [
-      {
-        name: parameterName,
-        in: "path",
-        required: true,
-        description,
-        schema: { type: "string", minLength: 1, maxLength: 256 },
-      },
-    ]),
+    ...protocolOperations(
+      operationId,
+      summary,
+      [
+        {
+          name: parameterName,
+          in: "path",
+          required: true,
+          description,
+          schema: parameterSchema,
+        },
+      ],
+      "active-detail",
+      true,
+    ),
   };
 }
 
@@ -421,7 +487,7 @@ const openapi = {
       get: {
         summary: "Get active dataset metadata",
         operationId: "getMetadata",
-        parameters: withPublicationPin(),
+        parameters: withReadHeaders(),
         responses: {
           "200": jsonResponse(
             "Active dataset metadata",
@@ -450,6 +516,7 @@ const openapi = {
               degradation_notices: [],
             },
           ),
+          "304": notModifiedResponse("metadata"),
           ...commonErrors,
         },
       },
@@ -465,6 +532,19 @@ const openapi = {
       "List canonical model families",
       "ModelFamilyCollection",
       "modelFamilies",
+    ),
+    "/methodologies/{version}": detailOperation(
+      "getMethodology",
+      "Get versioned methodology metadata",
+      "MethodologyDetail",
+      "version",
+      "Exact historical methodology version.",
+      {
+        type: "string",
+        minLength: 1,
+        maxLength: 64,
+        pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
+      },
     ),
     "/model-families/{family_id_or_slug}": detailOperation(
       "getModelFamily",
@@ -619,7 +699,7 @@ const openapi = {
       get: {
         operationId: "getOpenApi",
         summary: "Get the OpenAPI contract",
-        parameters: withPublicationPin(),
+        parameters: withReadHeaders(),
         responses: {
           "200": {
             description: "This OpenAPI document",
@@ -628,8 +708,13 @@ const openapi = {
               "application/json": { schema: { type: "object" } },
             },
           },
+          "304": notModifiedResponse("contract"),
+          "400": commonErrors["400"],
           "429": commonErrors["429"],
           "405": commonErrors["405"],
+          "409": commonErrors["409"],
+          "413": commonErrors["413"],
+          "503": commonErrors["503"],
         },
       },
       ...protocolOperations(
@@ -639,12 +724,45 @@ const openapi = {
         "contract",
       ),
     },
+    "/openapi.yaml": {
+      get: {
+        operationId: "getOpenApiYaml",
+        summary: "Get the OpenAPI contract as YAML",
+        parameters: withReadHeaders(),
+        responses: {
+          "200": {
+            description: "This OpenAPI document in YAML 1.2 format",
+            headers: responseHeaders("contract"),
+            content: {
+              "application/yaml": { schema: { type: "object" } },
+            },
+          },
+          "304": notModifiedResponse("contract"),
+          "400": commonErrors["400"],
+          "429": commonErrors["429"],
+          "405": commonErrors["405"],
+          "409": commonErrors["409"],
+          "413": commonErrors["413"],
+          "503": commonErrors["503"],
+        },
+      },
+      ...protocolOperations(
+        "getOpenApiYaml",
+        "Get the OpenAPI contract as YAML",
+        [],
+        "contract",
+      ),
+    },
   },
   components: { schemas: apiSchemas },
 } as const;
 
+const serializedOpenApi = `${JSON.stringify(openapi, null, 2)}\n`;
 const files = new Map<string, string>([
-  ["openapi.json", `${JSON.stringify(openapi, null, 2)}\n`],
+  ["openapi.json", serializedOpenApi],
+  // JSON is a valid YAML 1.2 representation. Keeping one deterministic
+  // serialization prevents the JSON and YAML contract surfaces from drifting.
+  ["openapi.yaml", serializedOpenApi],
   ...Object.entries(generatedSchemas).map(
     ([name, schema]) =>
       [

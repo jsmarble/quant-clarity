@@ -267,6 +267,15 @@ export const DatasetMetadataSchema = Type.Object(
   { $id: "DatasetMetadata", additionalProperties: false },
 );
 
+export const MethodologySchema = Type.Object(
+  {
+    methodology_version: Type.String({ minLength: 1, maxLength: 64 }),
+    methodology_effective_at: timestamp(),
+    methodology_url: Type.String({ format: "uri", maxLength: 2048 }),
+  },
+  { $id: "Methodology", additionalProperties: false },
+);
+
 export const ModelFamilySchema = Type.Object(
   {
     family_id: prefixedId("fam"),
@@ -554,6 +563,11 @@ export const ApiPageSchema = Type.Object(
 );
 
 export const API_ROUTE_POLICIES = {
+  methodologies: {
+    filters: [],
+    sorts: ["version"],
+    defaultSort: ["version"],
+  },
   modelFamilies: {
     filters: ["publisher", "updated_since"],
     sorts: ["name", "model_refresh", "stable_id"],
@@ -764,6 +778,12 @@ export const ModelFamilyCollectionSchema = CollectionSchema(
   "ModelFamilyCollection",
   "model_families",
   API_ROUTE_POLICIES.modelFamilies,
+);
+export const MethodologyDetailSchema = DetailSchema(
+  MethodologySchema,
+  "MethodologyDetail",
+  "methodologies",
+  API_ROUTE_POLICIES.methodologies,
 );
 export const ModelFamilyDetailSchema = DetailSchema(
   ModelFamilySchema,
@@ -2202,6 +2222,8 @@ export const GENERATED_SCHEMAS = {
   FactState: FactStateSchema,
   FixtureMetadata: FixtureMetadataSchema,
   IdPrefix: IdPrefixSchema,
+  Methodology: MethodologySchema,
+  MethodologyDetail: MethodologyDetailSchema,
   Model: ModelSchema,
   ModelCollection: ModelCollectionSchema,
   ModelDetail: ModelDetailSchema,

@@ -16,6 +16,11 @@ function isObject(value: unknown): value is JsonObject {
 const openapi = JSON.parse(
   await readFile(resolve("contracts/generated/openapi.json"), "utf8"),
 ) as JsonObject;
+const openapiYaml = JSON.parse(
+  await readFile(resolve("contracts/generated/openapi.yaml"), "utf8"),
+) as JsonObject;
+if (JSON.stringify(openapiYaml) !== JSON.stringify(openapi))
+  throw new Error("OpenAPI JSON and YAML representations differ.");
 const components = openapi.components;
 if (!isObject(components) || !isObject(components.schemas))
   throw new Error("OpenAPI components.schemas is missing.");
@@ -40,6 +45,7 @@ if (!isObject(paths)) throw new Error("OpenAPI paths is missing.");
 
 const requiredPaths = [
   "/metadata",
+  "/methodologies/{version}",
   "/model-families",
   "/model-families/{family_id_or_slug}",
   "/models",
@@ -61,6 +67,7 @@ const requiredPaths = [
   "/evidence/{evidence_id}",
   "/search",
   "/openapi.json",
+  "/openapi.yaml",
 ];
 for (const requiredPath of requiredPaths)
   if (!(requiredPath in paths)) errors.push(`missing route: ${requiredPath}`);
@@ -92,6 +99,7 @@ for (const [pathName, pathItem] of Object.entries(paths)) {
         ? preflight.headers
         : undefined;
       for (const requiredHeader of [
+        "Allow",
         "Access-Control-Allow-Headers",
         "Access-Control-Expose-Headers",
       ])
@@ -100,6 +108,39 @@ for (const [pathName, pathItem] of Object.entries(paths)) {
           !(requiredHeader in preflightHeaders)
         )
           errors.push(`OPTIONS ${pathName} 204 lacks ${requiredHeader}`);
+      const allow = isObject(preflightHeaders)
+        ? preflightHeaders.Allow
+        : undefined;
+      const allowSchema = isObject(allow) ? allow.schema : undefined;
+      if (!isObject(allowSchema) || allowSchema.const !== "GET, HEAD, OPTIONS")
+        errors.push(`OPTIONS ${pathName} must declare the fixed Allow header`);
+      const allowedHeaders = isObject(preflightHeaders)
+        ? preflightHeaders["Access-Control-Allow-Headers"]
+        : undefined;
+      const allowedHeadersSchema = isObject(allowedHeaders)
+        ? allowedHeaders.schema
+        : undefined;
+      if (
+        !isObject(allowedHeadersSchema) ||
+        allowedHeadersSchema.const !==
+          "If-None-Match, X-QuantClarity-Publication"
+      )
+        errors.push(
+          `OPTIONS ${pathName} must allow only the fixed conditional and publication headers`,
+        );
+      const exposedHeaders = isObject(preflightHeaders)
+        ? preflightHeaders["Access-Control-Expose-Headers"]
+        : undefined;
+      const exposedHeadersSchema = isObject(exposedHeaders)
+        ? exposedHeaders.schema
+        : undefined;
+      if (
+        !isObject(exposedHeadersSchema) ||
+        exposedHeadersSchema.const !== "ETag, X-QuantClarity-Publication"
+      )
+        errors.push(
+          `OPTIONS ${pathName} must expose only ETag and the publication header`,
+        );
     }
     if (method === "get" || method === "head") {
       const parameters: readonly unknown[] = Array.isArray(operation.parameters)
@@ -130,6 +171,25 @@ for (const [pathName, pathItem] of Object.entries(paths)) {
             `${method.toUpperCase()} ${pathName} has an invalid publication-pin header`,
           );
       }
+      const conditionalHeaders = parameters.filter(
+        (parameter) =>
+          isObject(parameter) && parameter.name === "If-None-Match",
+      );
+      if (conditionalHeaders.length !== 1)
+        errors.push(
+          `${method.toUpperCase()} ${pathName} must expose exactly one If-None-Match header`,
+        );
+      else {
+        const conditionalHeader = conditionalHeaders[0];
+        if (
+          !isObject(conditionalHeader) ||
+          conditionalHeader.in !== "header" ||
+          conditionalHeader.required !== false
+        )
+          errors.push(
+            `${method.toUpperCase()} ${pathName} has an invalid If-None-Match header`,
+          );
+      }
       if (
         parameters.some(
           (parameter) =>
@@ -148,12 +208,24 @@ for (const [pathName, pathItem] of Object.entries(paths)) {
           "Access-Control-Allow-Origin",
           "Access-Control-Expose-Headers",
           "Cache-Control",
+          "ETag",
           "X-QuantClarity-Publication",
         ])
           if (!(requiredHeader in success.headers))
             errors.push(
               `${method.toUpperCase()} ${pathName} 200 lacks ${requiredHeader}`,
             );
+        const exposedHeaders = success.headers["Access-Control-Expose-Headers"];
+        const exposedHeadersSchema = isObject(exposedHeaders)
+          ? exposedHeaders.schema
+          : undefined;
+        if (
+          !isObject(exposedHeadersSchema) ||
+          exposedHeadersSchema.const !== "ETag, X-QuantClarity-Publication"
+        )
+          errors.push(
+            `${method.toUpperCase()} ${pathName} 200 exposes the wrong response headers`,
+          );
         const cacheControl = success.headers["Cache-Control"];
         const cacheControlSchema = isObject(cacheControl)
           ? cacheControl.schema
@@ -178,8 +250,45 @@ for (const [pathName, pathItem] of Object.entries(paths)) {
         errors.push(
           `${method.toUpperCase()} ${pathName} 200 lacks response headers`,
         );
+
+      const notModified = operation.responses["304"];
+      const notModifiedHeaders = isObject(notModified)
+        ? notModified.headers
+        : undefined;
+      if (!isObject(notModified) || "content" in notModified)
+        errors.push(
+          `${method.toUpperCase()} ${pathName} must define a bodyless 304 response`,
+        );
+      for (const requiredHeader of [
+        "Cache-Control",
+        "ETag",
+        "X-QuantClarity-Publication",
+      ])
+        if (
+          !isObject(notModifiedHeaders) ||
+          !(requiredHeader in notModifiedHeaders)
+        )
+          errors.push(
+            `${method.toUpperCase()} ${pathName} 304 lacks ${requiredHeader}`,
+          );
     }
     for (const [status, response] of Object.entries(operation.responses)) {
+      if (method === "head" && isObject(response) && "content" in response)
+        errors.push(`HEAD ${pathName} ${status} must not declare a body`);
+      if (status === "405") {
+        const responseHeaders = isObject(response) ? response.headers : null;
+        const allowHeader = isObject(responseHeaders)
+          ? responseHeaders.Allow
+          : null;
+        const allowSchema = isObject(allowHeader) ? allowHeader.schema : null;
+        if (
+          !isObject(allowSchema) ||
+          allowSchema.const !== "GET, HEAD, OPTIONS"
+        )
+          errors.push(
+            `${method.toUpperCase()} ${pathName} 405 lacks the fixed Allow header`,
+          );
+      }
       if (!isObject(response) || !isObject(response.content)) continue;
       const media = response.content["application/json"];
       if (!isObject(media) || !("example" in media) || !isObject(media.schema))
@@ -222,7 +331,46 @@ for (const [pathName, pathItem] of Object.entries(paths)) {
       }
     }
   }
+
+  const getOperation = pathItem.get;
+  const headOperation = pathItem.head;
+  if (
+    isObject(getOperation) &&
+    isObject(getOperation.responses) &&
+    isObject(headOperation) &&
+    isObject(headOperation.responses)
+  ) {
+    const getStatuses = Object.keys(getOperation.responses).sort().join(",");
+    const headStatuses = Object.keys(headOperation.responses).sort().join(",");
+    if (getStatuses !== headStatuses)
+      errors.push(`GET and HEAD ${pathName} response statuses differ`);
+  }
 }
+
+const methodologyPath = paths["/methodologies/{version}"];
+const methodologyGet = isObject(methodologyPath)
+  ? methodologyPath.get
+  : undefined;
+const methodologyParametersValue: unknown = isObject(methodologyGet)
+  ? methodologyGet.parameters
+  : undefined;
+const methodologyParameters: readonly unknown[] = Array.isArray(
+  methodologyParametersValue,
+)
+  ? (methodologyParametersValue as unknown[])
+  : [];
+const methodologyVersion = methodologyParameters.find(
+  (parameter) => isObject(parameter) && parameter.name === "version",
+);
+const methodologyVersionSchema = isObject(methodologyVersion)
+  ? methodologyVersion.schema
+  : undefined;
+if (
+  !isObject(methodologyVersionSchema) ||
+  methodologyVersionSchema.maxLength !== 64 ||
+  methodologyVersionSchema.pattern !== "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+)
+  errors.push("methodology version path grammar differs from the API kernel");
 
 const routePolicies: Record<
   string,

@@ -51,3 +51,4 @@ Accepted ADRs describe implementation choices; they do not amend product require
 - [ADR 0013](0013-publication-consistent-read-transport.md) — publication-consistent read transport and vector IDs
 - [ADR 0014](0014-deterministic-operational-identities.md) — deterministic operational identities
 - [ADR 0015](0015-publication-closure-and-lifecycle.md) — immutable publication closure, lifecycle, search inventory, and deferred pruning
+- [ADR 0016](0016-bounded-local-api-read-protocol.md) — bounded local API decisions, cursors, service envelopes, conditional reads, and cache origin

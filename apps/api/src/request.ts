@@ -22,7 +22,7 @@ function json(
   const headers = new Headers({
     ...SECURITY_HEADERS,
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Expose-Headers": "X-QuantClarity-Publication",
+    "Access-Control-Expose-Headers": "ETag, X-QuantClarity-Publication",
     "Cache-Control": "private, no-store",
   });
   new Headers(extraHeaders).forEach((value, key) => {
@@ -39,129 +39,12 @@ function error(code: string, message: string, status: number): Response {
   return json(body, status);
 }
 
-async function transientActorKey(
-  sourcePrefix: string,
-  secret: unknown,
-  bucket: "read" | "rotation",
-): Promise<string | null> {
-  if (typeof secret !== "string" || secret.length < 32) return null;
-  const key = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(secret),
-    { hash: "SHA-256", name: "HMAC" },
-    false,
-    ["sign"],
-  );
-  const digest = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    new TextEncoder().encode(`ip-v1:${bucket}:${sourcePrefix}`),
-  );
-  return Array.from(new Uint8Array(digest), (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  ).join("");
-}
-
-export async function handleRequest(
-  request: Request,
-  env: Env,
-): Promise<Response> {
-  const url = new URL(request.url);
-  const sourceAddress = request.headers.get("CF-Connecting-IP");
-  const prefixes =
-    sourceAddress === null ? null : sourcePrefixes(sourceAddress);
-  if (prefixes === null)
-    return error(
-      "temporarily_unavailable",
-      "The request cannot be safely rate limited.",
-      503,
-    );
-  let actorKey: string | null;
-  try {
-    actorKey = await transientActorKey(
-      prefixes.primary,
-      env.RATE_LIMIT_HMAC_KEY,
-      "read",
-    );
-  } catch {
-    actorKey = null;
-  }
-  if (actorKey === null)
-    return error(
-      "temporarily_unavailable",
-      "The request cannot be safely rate limited.",
-      503,
-    );
-  let limit: RateLimitOutcome;
-  try {
-    limit = await env.READ_LIMITER.limit({ key: actorKey });
-  } catch {
-    return error(
-      "temporarily_unavailable",
-      "The request cannot be safely rate limited.",
-      503,
-    );
-  }
-  if (!limit.success)
-    return json(
-      { error: { code: "rate_limited", message: "Rate limit exceeded." } },
-      429,
-      { "Retry-After": "60" },
-    );
-  if (prefixes.rotation !== null) {
-    let rotationKey: string | null;
-    try {
-      rotationKey = await transientActorKey(
-        prefixes.rotation,
-        env.RATE_LIMIT_HMAC_KEY,
-        "rotation",
-      );
-    } catch {
-      rotationKey = null;
-    }
-    if (rotationKey === null)
-      return error(
-        "temporarily_unavailable",
-        "The request cannot be safely rate limited.",
-        503,
-      );
-    let rotationLimit: RateLimitOutcome;
-    try {
-      rotationLimit = await env.ROTATION_LIMITER.limit({
-        key: rotationKey,
-      });
-    } catch {
-      return error(
-        "temporarily_unavailable",
-        "The request cannot be safely rate limited.",
-        503,
-      );
-    }
-    if (!rotationLimit.success)
-      return json(
-        { error: { code: "rate_limited", message: "Rate limit exceeded." } },
-        429,
-        { "Retry-After": "60" },
-      );
-  }
-
-  if (request.method === "OPTIONS") {
-    return new Response(null, {
-      status: 204,
-      headers: {
-        ...SECURITY_HEADERS,
-        "Access-Control-Allow-Headers":
-          "Content-Type, If-None-Match, X-QuantClarity-Publication",
-        "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Expose-Headers": "X-QuantClarity-Publication",
-        "Access-Control-Max-Age": "600",
-        "Cache-Control": "private, no-store",
-      },
-    });
-  }
-
-  if (request.method !== "GET" && request.method !== "HEAD") {
+function protocolResponsePlan(request: Request, url: URL): Response {
+  if (
+    request.method !== "GET" &&
+    request.method !== "HEAD" &&
+    request.method !== "OPTIONS"
+  ) {
     return json(
       {
         error: {
@@ -191,19 +74,163 @@ export async function handleRequest(
     );
   }
 
-  let response: Response;
-  if (url.pathname === "/v1/metadata") {
-    response = error(
-      "publication_not_ready",
-      "No public dataset has been published yet.",
-      503,
-    );
-  } else {
-    response = error(
+  if (url.pathname !== "/v1/metadata") {
+    return error(
       "resource_not_found",
       "The requested resource does not exist.",
       404,
     );
   }
-  return request.method === "HEAD" ? new Response(null, response) : response;
+
+  if (request.method === "OPTIONS") {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        ...SECURITY_HEADERS,
+        "Access-Control-Allow-Headers":
+          "If-None-Match, X-QuantClarity-Publication",
+        "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Expose-Headers": "ETag, X-QuantClarity-Publication",
+        "Access-Control-Max-Age": "600",
+        Allow: "GET, HEAD, OPTIONS",
+        "Cache-Control": "private, no-store",
+      },
+    });
+  }
+
+  return error(
+    "publication_not_ready",
+    "No public dataset has been published yet.",
+    503,
+  );
+}
+
+async function transientActorKey(
+  sourcePrefix: string,
+  secret: unknown,
+  bucket: "read" | "rotation",
+): Promise<string | null> {
+  if (typeof secret !== "string" || secret.length < 32) return null;
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { hash: "SHA-256", name: "HMAC" },
+    false,
+    ["sign"],
+  );
+  const digest = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(`ip-v1:${bucket}:${sourcePrefix}`),
+  );
+  return Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
+export async function handleRequest(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  const send = (response: Response) =>
+    request.method === "HEAD" ? new Response(null, response) : response;
+  const url = new URL(request.url);
+  // Select the closed, fixed-size metadata-stub response before any effect. The
+  // response is deliberately withheld until abuse controls succeed; full
+  // bounded routing remains in the unintegrated local api-core slice.
+  const plannedResponse = protocolResponsePlan(request, url);
+  const sourceAddress = request.headers.get("CF-Connecting-IP");
+  const prefixes =
+    sourceAddress === null ? null : sourcePrefixes(sourceAddress);
+  if (prefixes === null)
+    return send(
+      error(
+        "temporarily_unavailable",
+        "The request cannot be safely rate limited.",
+        503,
+      ),
+    );
+  let actorKey: string | null;
+  try {
+    actorKey = await transientActorKey(
+      prefixes.primary,
+      env.RATE_LIMIT_HMAC_KEY,
+      "read",
+    );
+  } catch {
+    actorKey = null;
+  }
+  if (actorKey === null)
+    return send(
+      error(
+        "temporarily_unavailable",
+        "The request cannot be safely rate limited.",
+        503,
+      ),
+    );
+  let limit: RateLimitOutcome;
+  try {
+    limit = await env.READ_LIMITER.limit({ key: actorKey });
+  } catch {
+    return send(
+      error(
+        "temporarily_unavailable",
+        "The request cannot be safely rate limited.",
+        503,
+      ),
+    );
+  }
+  if (!limit.success)
+    return send(
+      json(
+        { error: { code: "rate_limited", message: "Rate limit exceeded." } },
+        429,
+        { "Retry-After": "60" },
+      ),
+    );
+  if (prefixes.rotation !== null) {
+    let rotationKey: string | null;
+    try {
+      rotationKey = await transientActorKey(
+        prefixes.rotation,
+        env.RATE_LIMIT_HMAC_KEY,
+        "rotation",
+      );
+    } catch {
+      rotationKey = null;
+    }
+    if (rotationKey === null)
+      return send(
+        error(
+          "temporarily_unavailable",
+          "The request cannot be safely rate limited.",
+          503,
+        ),
+      );
+    let rotationLimit: RateLimitOutcome;
+    try {
+      rotationLimit = await env.ROTATION_LIMITER.limit({
+        key: rotationKey,
+      });
+    } catch {
+      return send(
+        error(
+          "temporarily_unavailable",
+          "The request cannot be safely rate limited.",
+          503,
+        ),
+      );
+    }
+    if (!rotationLimit.success)
+      return send(
+        json(
+          { error: { code: "rate_limited", message: "Rate limit exceeded." } },
+          429,
+          { "Retry-After": "60" },
+        ),
+      );
+  }
+
+  return send(plannedResponse);
 }

@@ -105,6 +105,7 @@ Trust boundaries are public ingress, frontend-to-API internal calls, API-to-quer
 | `apps/pipeline` | Scheduled Workflow definitions, adapters, validation, anomaly handling, publication, backup, rollback command target | Public route or user-controlled acquisition URL |
 | `packages/domain` | Stable IDs, enums, precision/price/lineage rules, staleness, neutrality, applicability | UI-specific ranking or provider preference |
 | `packages/contracts` | Runtime schemas, OpenAPI source, adapter/publication/search contracts | Separate Model Facts or Offering Facts canonical entities |
+| `packages/api-core` | Pure bounded route, cursor, read-envelope, conditional-response, and cache-eligibility decisions | Cloudflare bindings, storage, network calls, request telemetry, production ceiling defaults |
 | `packages/adapters/*` | One source-specific declaration, retrieval, deterministic parsing, roster, source register | Cross-provider special cases in canonical code |
 | `packages/testing` | Builders, redacted fixtures, golden/search sets, traceability checks | Production credentials or authenticated dumps |
 
