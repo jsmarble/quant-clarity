@@ -2970,12 +2970,13 @@ describe("portable backup manifest validation (BE-010–BE-012, OPS-008)", () =>
     );
   });
 
-  it("rejects reconstructible provider and model search projections from backup inventories", async () => {
+  it("rejects every reconstructible search projection from backup inventories", async () => {
     const manifest = await backup();
     for (const excludedTable of [
       "publication_provider_search_document",
       "fts_publication_provider_name",
       "publication_model_variant_name_search_document",
+      "publication_provider_model_id_search_document",
     ]) {
       const withoutRoot = {
         ...manifest,

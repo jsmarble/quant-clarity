@@ -108,7 +108,13 @@ const withCorruptedReadiness = (
 };
 
 beforeAll(async () => {
-  await applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS);
+  await applyD1Migrations(
+    env.SERVING_DB,
+    env.TEST_MIGRATIONS.filter(
+      (migration) =>
+        migration.name <= "0009_model_variant_name_exact_projection.sql",
+    ),
+  );
 });
 
 describe("schema-1.6 readiness transaction in pinned workerd", () => {

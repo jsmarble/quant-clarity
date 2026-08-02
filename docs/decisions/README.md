@@ -63,3 +63,4 @@ Accepted ADRs describe implementation choices; they do not amend product require
 - [ADR 0025](0025-trusted-model-variant-name-projection.md) — trusted canonical model/variant exact-name projection derived from complete publication resources
 - [ADR 0026](0026-blob-model-variant-exact-search-cutover.md) — UTF-8 BLOB persistence and split durable-proof/query cutover for model/variant exact names
 - [ADR 0027](0027-trusted-provider-model-id-projection.md) — trusted one-row-per-Offering provider-model-ID projection and deferred reader semantics
+- [ADR 0028](0028-provider-model-id-durable-storage-cutover.md) — dual-index UTF-8 BLOB persistence and v4 proof cutover for provider model IDs
