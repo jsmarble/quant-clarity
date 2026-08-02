@@ -82,6 +82,8 @@ Phase 5A first implements the pure, storage-free decision boundary in [ADR 0016]
 
 Phase 5B adds the first internal serving-D1 reader: a fixed SELECT-only, bounded, canonical-rehydrating provider exact-name operation over already selected ADR 0013 hot publications. Its local/runtime evidence and remaining public-integration, hot-inventory, NUL/storage, and release gaps are recorded in [`phase-5b-provider-exact-name-reader.md`](phase-5b-provider-exact-name-reader.md). Traceability remains `Planned`.
 
+Phase 5C resolves only that reader's provider-name U+0000 contract/storage mismatch under [ADR 0022](../decisions/0022-forbid-nul-provider-display-names.md): reject NUL in known canonical provider display names and matching exact-name queries, add fail-closed serving schema `1.5.1` insert guards, and leave `exact-search-normalization@1` and all other Unicode behavior unchanged. The boundary, version distinctions, implementation order, and non-claims are recorded in [`phase-5c-provider-name-nul-boundary.md`](phase-5c-provider-name-nul-boundary.md). No deployment or provisioning is part of this slice. Traceability statuses remain unchanged: existing `Implemented` rows stay `Implemented`, and the other mapped rows remain `Planned`.
+
 1. Implement the non-routable SELECT-only query Worker and storage-free public API Worker with typed service-binding operations.
 2. Implement every collection/detail route, `Fact<T>` provenance, metadata/next-refresh, exact decimals, filters/sorts, authenticated cursors, CORS, ETags, publication pinning, stable errors, and OpenAPI examples.
 3. Enforce method/query/filter/cursor/result/response/CPU/subrequest/semantic-call bounds and rate-limit every request before head/cache resolution.

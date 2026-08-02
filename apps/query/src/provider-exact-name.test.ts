@@ -232,6 +232,18 @@ describe("provider exact-name D1 reader (SRCH-002, SRCH-006, SRCH-008)", () => {
         query: "x".repeat(PROVIDER_EXACT_NAME_MAX_QUERY_UNICODE_SCALARS + 1),
       }),
     ).rejects.toMatchObject({ code: "invalid_input" });
+    for (const nulQuery of [
+      "\u0000Leading",
+      "Embedded\u0000Query",
+      "Trailing\u0000",
+    ]) {
+      await expect(
+        readProviderExactNamePage(database.asD1(), {
+          publicationId: PUBLICATION_ID,
+          query: nulQuery,
+        }),
+      ).rejects.toMatchObject({ code: "invalid_input" });
+    }
     await expect(
       readProviderExactNamePage(database.asD1(), {
         publicationId: PUBLICATION_ID,

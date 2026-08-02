@@ -41271,6 +41271,7 @@
                         "value": {
                           "minLength": 1,
                           "maxLength": 200,
+                          "pattern": "^[^\\u0000]*$",
                           "type": "string"
                         },
                         "observed_at": {
@@ -41911,6 +41912,7 @@
                       "value": {
                         "minLength": 1,
                         "maxLength": 200,
+                        "pattern": "^[^\\u0000]*$",
                         "type": "string"
                       },
                       "observed_at": {

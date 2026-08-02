@@ -202,6 +202,7 @@ const validateInput = (
     typeof input.publicationId !== "string" ||
     !PUBLICATION_ID.test(input.publicationId) ||
     typeof input.query !== "string" ||
+    input.query.includes("\u0000") ||
     Array.from(input.query).length >
       PROVIDER_EXACT_NAME_MAX_QUERY_UNICODE_SCALARS ||
     utf8.encode(input.query).length > PROVIDER_EXACT_NAME_MAX_QUERY_BYTES

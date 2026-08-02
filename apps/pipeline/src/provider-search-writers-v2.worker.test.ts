@@ -2,7 +2,10 @@ import { env } from "cloudflare:workers";
 import { applyD1Migrations } from "cloudflare:test";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { PROVIDER_SEARCH_NORMALIZED_NAME_MAX_UNICODE_SCALARS } from "@quant-clarity/publication-core";
+import {
+  canonicalizePublicationJson,
+  PROVIDER_SEARCH_NORMALIZED_NAME_MAX_UNICODE_SCALARS,
+} from "@quant-clarity/publication-core";
 
 import { applyProviderSearchStagingV2 } from "./provider-search-staging.js";
 import { applyReadinessCommitV2 } from "./readiness-commit-v2.js";
@@ -23,6 +26,10 @@ const PUBLICATION_C = "pub_aaaaaaaa-0000-4000-8000-000000000001" as const;
 const PUBLICATION_D = "pub_aaaaaaaa-0000-4000-8000-000000000002" as const;
 const PUBLICATION_E = "pub_aaaaaaaa-0000-4000-8000-000000000003" as const;
 const PUBLICATION_F = "pub_aaaaaaaa-0000-4000-8000-000000000004" as const;
+const PUBLICATION_G = "pub_aaaaaaaa-0000-4000-8000-000000000005" as const;
+const PUBLICATION_H = "pub_aaaaaaaa-0000-4000-8000-000000000006" as const;
+const PUBLICATION_I = "pub_aaaaaaaa-0000-4000-8000-000000000007" as const;
+const PUBLICATION_J = "pub_aaaaaaaa-0000-4000-8000-000000000008" as const;
 
 const withAbortAfter = (
   database: D1Database,
@@ -68,7 +75,31 @@ beforeAll(async () => {
   await applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS);
 });
 
-describe("schema-1.5 provider publication flow in workerd (PIPE-050–PIPE-053, QA-006)", () => {
+describe("schema-1.5.1 provider publication flow in workerd (PIPE-050–PIPE-053, QA-006)", () => {
+  it("applies the physical 1.5.1 schema and NUL guard in real D1", async () => {
+    const schema = await one<{
+      schema_version: string;
+      guard_count: number;
+      guard_sql: string;
+    }>(
+      env.SERVING_DB,
+      `SELECT metadata.schema_version,
+          count(schema.name) AS guard_count,
+          max(schema.sql) AS guard_sql
+        FROM serving_schema_metadata AS metadata
+        LEFT JOIN sqlite_schema AS schema
+          ON schema.type = 'trigger'
+         AND schema.name = 'publication_provider_search_document_nul_insert_guard'
+        WHERE metadata.singleton = 1
+        GROUP BY metadata.schema_version`,
+    );
+    expect(schema).toMatchObject({
+      schema_version: "1.5.1",
+      guard_count: 1,
+    });
+    expect(schema.guard_sql).toContain("$.display_name.value");
+  });
+
   it("stages the 200-astral-scalar ProviderSchema boundary in real D1", async () => {
     const generatedAt = Math.floor(Date.now() / 1_000) * 1_000 - 21 * 60_000;
     const displayName = "\u{1f642}".repeat(200);
@@ -127,6 +158,94 @@ describe("schema-1.5 provider publication flow in workerd (PIPE-050–PIPE-053, 
       normalized_length: PROVIDER_SEARCH_NORMALIZED_NAME_MAX_UNICODE_SCALARS,
       indexed_display_name: displayName,
     });
+  });
+
+  it("rejects leading and embedded U+0000 bytes at the real D1 insert boundary", async () => {
+    await expect(
+      one<{ leading: number; embedded: number }>(
+        env.SERVING_DB,
+        "SELECT instr(CAST(char(0) || 'A' AS BLOB), CAST(char(0) AS BLOB)) AS leading, instr(CAST('A' || char(0) || 'B' AS BLOB), CAST(char(0) AS BLOB)) AS embedded",
+      ),
+    ).resolves.toEqual({ leading: 1, embedded: 2 });
+
+    const cases = [
+      {
+        publicationId: PUBLICATION_G,
+        displayName: "\u0000Leading",
+        normalizedName: "leading",
+      },
+      {
+        publicationId: PUBLICATION_H,
+        displayName: "Embedded\u0000Name",
+        normalizedName: "embedded name",
+      },
+      {
+        publicationId: PUBLICATION_I,
+        displayName: "Leading",
+        normalizedName: "\u0000leading",
+      },
+      {
+        publicationId: PUBLICATION_J,
+        displayName: "Embedded Name",
+        normalizedName: "embedded\u0000name",
+      },
+    ] as const;
+
+    for (const [ordinal, testCase] of cases.entries()) {
+      const generatedAt =
+        Math.floor(Date.now() / 1_000) * 1_000 - (19 - ordinal) * 60_000;
+      const fixture = await createReadyPublicationFixture(
+        testCase.publicationId,
+        generatedAt,
+      );
+      const rows = {
+        ...fixture.rows,
+        resources: fixture.rows.resources.map((resource) => {
+          if (resource.resource_type !== "provider") return resource;
+          const parsed = JSON.parse(resource.resource_json) as {
+            display_name: { value: string };
+          };
+          parsed.display_name.value = testCase.displayName;
+          return {
+            ...resource,
+            resource_json: canonicalizePublicationJson(
+              JSON.stringify(parsed),
+              "object",
+            ),
+          };
+        }),
+      };
+      await seedBuildingPublicationV2(env.SERVING_DB, {
+        ...fixture,
+        rows,
+      });
+      const providerResource = rows.resources.find(
+        (resource) => resource.resource_type === "provider",
+      );
+      if (providerResource === undefined)
+        throw new Error("expected provider resource fixture");
+
+      await expect(
+        env.SERVING_DB.prepare(
+          "INSERT INTO publication_provider_search_document VALUES (?, ?, 'provider-name@1', ?, ?, ?)",
+        )
+          .bind(
+            testCase.publicationId,
+            providerResource.resource_id,
+            testCase.displayName,
+            testCase.normalizedName,
+            providerResource.content_hash,
+          )
+          .run(),
+      ).rejects.toThrow();
+      await expect(
+        one<{ count: number }>(
+          env.SERVING_DB,
+          "SELECT count(*) AS count FROM publication_provider_search_document WHERE publication_id = ?",
+          testCase.publicationId,
+        ),
+      ).resolves.toEqual({ count: 0 });
+    }
   });
 
   it("stages, seals, readies, activates twice, then rolls back exactly", async () => {
