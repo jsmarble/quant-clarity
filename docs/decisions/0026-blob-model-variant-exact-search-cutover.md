@@ -9,6 +9,7 @@
 
 ## Clarification history
 
+- **2026-08-01:** Closed the Phase 5G-B internal reader/RPC boundary: default known-active model/variant eligibility, stable-resource-ID collision order, canonical-only output, a third named local RPC method, and a tier-local keyset that remains distinct from the unresolved merged public cursor. This clarification changes no product requirement and makes no public route, service-binding, provider-model-ID, complete-search, resource, or deployment claim.
 - **2026-08-02:** Froze the initial A2 operational envelope, separated per-publication runtime queryability from workerd semantic gold coverage, and defined the backup-v1 restore-source transformation used by the local rebuild seam. This clarification narrows implementation choices within the accepted design; it changes no product requirement and makes no backup, restore, backend, release, resource, or deployment claim.
 
 ## Context
@@ -99,6 +100,10 @@ Phase 5G is split into three reviewable boundaries:
 - **5G-B:** a bounded SELECT-only indexed equality reader, canonical rehydration, bookmark-continuous query RPC method, and internal API adapter seam.
 
 5G-B does not create `/v1/search`, configure a service binding, define the merged multi-tier cursor, add provider-model-ID search, or claim complete search. The reader binds normalized query UTF-8 as a BLOB, fetches by the exact index, orders by stable resource ID within the equality tier, revalidates canonical resource bytes and status, and returns facts from canonical JSON only.
+
+The function reader accepts an exact publication, bounded query, nullable `model|variant` selector, nullable stable-resource-ID keyset, and limit `1..20`. Its tier-local `afterResourceId` is usable only with the identical publication, normalized query, selector, and limit; it is not an ADR 0016 token or a merged-search continuation. The RPC and API seams remain first-page-only, require `continuation=null`, and issue no public cursor. Default results require canonical `status.state=known` and `status.value=active`; every other or non-known status remains retained but absent from this operation.
+
+The named local catalog-query entrypoint adds only `readModelVariantExactNameTierV1` to ADR 0023's Phase-5D surface. It accepts the same version, audience, protected environment, live-only bookmark, and closed search envelope; permits no filter or exactly `record_type=model|variant`; resumes a D1 Session from that bookmark; and calls only the fixed model/variant reader. The reader returns a tier-1 canonical-name candidate with stable ID and canonical display-name Fact, but no normalized projection bytes/key, score, provider fact, provider count, offering fact, or affiliate state. The separately reviewed acceptance contract is [Phase 5G-B](../design/phase-5g-b-model-variant-exact-reader.md).
 
 No visitor-derived value is persisted, logged, traced, measured, cached, or added to proof state. A live query exists only long enough to validate, normalize, bind, and return the read result. Every query-string response remains `private, no-store` at the later public boundary.
 

@@ -42,13 +42,32 @@ export type ServingV3Fixture = Readonly<{
 export const createServingV3Fixture = async (
   publicationId: `pub_${string}`,
   generatedAtMs: number,
+  options: Readonly<{
+    modelDisplayName?: string | readonly string[];
+    includeVariant?: boolean;
+    modelStatus?:
+      | "active"
+      | "inactive"
+      | "unavailable"
+      | "deleted"
+      | null
+      | readonly ("active" | "inactive" | "unavailable" | "deleted" | null)[];
+    neutrality?: Readonly<{
+      modelPublisher?: string;
+      providerAffiliateRelationshipPresent?: boolean;
+      providerOfficialSite?: string;
+      providerPrecisionKnownCount?: number;
+    }>;
+  }> = {},
 ): Promise<ServingV3Fixture> => {
   const base = await createModelVariantNameSearchFixture(
     publicationId,
     generatedAtMs,
-    "Älpha Model",
-    false,
+    options.modelDisplayName ?? "Älpha Model",
+    options.includeVariant ?? false,
     true,
+    options.modelStatus === undefined ? "active" : options.modelStatus,
+    options.neutrality,
   );
   const { manifest, closureRows } = base;
   const { seal } = await projectServingClosureSeal(closureRows);

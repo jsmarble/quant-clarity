@@ -1,8 +1,10 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
 
 import {
+  readModelVariantExactNameTierV1,
   readProviderExactNameTierV1,
   resolvePublicationV1,
+  type ReadModelVariantExactNameTierV1Outcome,
   type ReadProviderExactNameTierV1Outcome,
   type ResolvePublicationV1Outcome,
 } from "./catalog-query-rpc.js";
@@ -44,6 +46,16 @@ export class CatalogQueryService extends WorkerEntrypoint<CatalogQueryEnv> {
     input: unknown,
   ): Promise<ReadProviderExactNameTierV1Outcome> {
     return readProviderExactNameTierV1(
+      this.env.SERVING_DB,
+      this.env.DEPLOYMENT_ENVIRONMENT,
+      input,
+    );
+  }
+
+  readModelVariantExactNameTierV1(
+    input: unknown,
+  ): Promise<ReadModelVariantExactNameTierV1Outcome> {
+    return readModelVariantExactNameTierV1(
       this.env.SERVING_DB,
       this.env.DEPLOYMENT_ENVIRONMENT,
       input,

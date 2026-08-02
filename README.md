@@ -54,7 +54,7 @@ Accepted product decisions and later approved amendments belong in [`docs/produc
 
 ## Current delivery focus
 
-Implementation follows [`docs/design/implementation-plan.md`](docs/design/implementation-plan.md): machine contracts and canonical rules first, then one lawful structured-provider slice through atomic publication, API, and web delivery. ADR 0012 resolves the former Pages conflict: the web runtime uses current Astro SSR on Cloudflare Workers with Static Assets while preserving the separate API/query boundaries.
+Implementation follows [`docs/design/implementation-plan.md`](docs/design/implementation-plan.md): machine contracts and canonical rules first, then one lawful structured-provider slice through atomic publication, API, and web delivery. The current locally implemented query slice is the bounded, non-public [Phase 5G-B model/variant exact-name reader and RPC seam](docs/design/phase-5g-b-model-variant-exact-reader.md). It does not yet create a service binding, public route, merged cursor, or complete search. ADR 0012 resolves the former Pages conflict: the web runtime uses current Astro SSR on Cloudflare Workers with Static Assets while preserving the separate API/query boundaries.
 
 ## Open as a Codex project
 
