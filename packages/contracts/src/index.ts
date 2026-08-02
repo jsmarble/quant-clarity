@@ -2,6 +2,7 @@ import {
   FormatRegistry,
   Type,
   type Static,
+  type TProperties,
   type TSchema,
 } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
@@ -773,16 +774,20 @@ const ApiFilterValueSchema = Type.Union([
   Type.Boolean(),
 ]);
 
-function ApiMetaFor(
+type EmptySchemaProperties = Record<never, never>;
+
+function ApiMetaFor<TExtra extends TProperties = EmptySchemaProperties>(
   resource: string,
   policy: ApiRoutePolicy,
   schemaId: string,
+  extraProperties: TExtra = {} as TExtra,
 ) {
   const filterProperties = Object.fromEntries(
     policy.filters.map((name) => [name, Type.Optional(ApiFilterValueSchema)]),
   );
   return Type.Object(
     {
+      ...extraProperties,
       resource: Type.Literal(resource),
       publication_id: publicationId(),
       schema_version: Type.String({ pattern: SEMVER }),
@@ -807,12 +812,16 @@ export const ApiMetaSchema = ApiMetaFor(
   "ApiMeta",
 );
 
-function CollectionSchema<T extends TSchema>(
+function CollectionSchema<
+  T extends TSchema,
+  TMetaExtra extends TProperties = EmptySchemaProperties,
+>(
   item: T,
   id: string,
   resource: string,
   policy: ApiRoutePolicy,
   maximum = 100,
+  metaExtra: TMetaExtra = {} as TMetaExtra,
 ) {
   return Type.Object(
     {
@@ -827,7 +836,7 @@ function CollectionSchema<T extends TSchema>(
         },
         { additionalProperties: false },
       ),
-      meta: ApiMetaFor(resource, policy, `${id}Meta`),
+      meta: ApiMetaFor(resource, policy, `${id}Meta`, metaExtra),
     },
     { $id: id, additionalProperties: false },
   );
@@ -948,9 +957,43 @@ export const EvidenceSummaryDetailSchema = DetailSchema(
   API_ROUTE_POLICIES.evidence,
 );
 
+/** Open vocabulary with a concrete TypeBox kind for Worker-safe Value.Check. */
+function checkableExtensibleString(
+  knownValues: readonly string[],
+  description?: string,
+) {
+  return Type.String({
+    type: "string",
+    minLength: 1,
+    maxLength: 128,
+    "x-extensible-enum": knownValues,
+    ...(description === undefined ? {} : { description }),
+  });
+}
+
+const SEARCH_SEMANTIC_DEGRADATION_VALUES = [
+  "none",
+  "disabled",
+  "eligibility_limit",
+  "temporarily_unavailable",
+] as const;
+
+const SEARCH_SEMANTIC_DEGRADATION_MEANINGS =
+  "Known values: none means the applicable semantic plan completed; disabled means applicable semantic work was intentionally not attempted; eligibility_limit means complete eligibility exceeded the bounded plan and no incomplete subset was queried; temporarily_unavailable means a semantic dependency failed and partial semantic candidates were discarded. This required non-null open string has no default.";
+
+export const SearchSemanticDegradationSchema = checkableExtensibleString(
+  SEARCH_SEMANTIC_DEGRADATION_VALUES,
+  `${SEARCH_SEMANTIC_DEGRADATION_MEANINGS} On a result this is a compatibility mirror that must exactly equal the authoritative collection metadata value.`,
+);
+
+const SearchCollectionSemanticDegradationSchema = checkableExtensibleString(
+  SEARCH_SEMANTIC_DEGRADATION_VALUES,
+  `${SEARCH_SEMANTIC_DEGRADATION_MEANINGS} This collection metadata field is authoritative for every result, including an empty collection. Known fallback states contain no semantic match_kind results.`,
+);
+
 const SearchResultProperties = {
   display_name: StringFact("SearchResultDisplayNameFact", 200),
-  match_kind: extensibleString([
+  match_kind: checkableExtensibleString([
     "canonical_name",
     "alias",
     "publisher_name",
@@ -958,12 +1001,7 @@ const SearchResultProperties = {
     "provider_model_id",
     "semantic",
   ]),
-  semantic_degraded: extensibleString([
-    "none",
-    "disabled",
-    "eligibility_limit",
-    "temporarily_unavailable",
-  ]),
+  semantic_degraded: SearchSemanticDegradationSchema,
 };
 
 export const SearchResultSchema = Type.Union([
@@ -998,7 +1036,139 @@ export const SearchCollectionSchema = CollectionSchema(
   "search",
   API_ROUTE_POLICIES.search,
   20,
+  { semantic_degraded: SearchCollectionSemanticDegradationSchema },
 );
+
+export type SearchCollection = Static<typeof SearchCollectionSchema>;
+
+const SEARCH_FALLBACK_ONLY_STATES = new Set<string>([
+  "disabled",
+  "eligibility_limit",
+  "temporarily_unavailable",
+]);
+
+const workerSafeBoundedUnicodeString = (
+  value: unknown,
+  maximumUnicodeScalars: number,
+): unknown => {
+  if (typeof value !== "string") return value;
+  const scalarLength = Array.from(value).length;
+  if (scalarLength > maximumUnicodeScalars || scalarLength === value.length)
+    return value;
+  return "x".repeat(scalarLength);
+};
+
+const searchCollectionWorkerValidationCandidate = (value: unknown): unknown => {
+  if (typeof value !== "object" || value === null || Array.isArray(value))
+    return value;
+  const collection = value as Record<string, unknown>;
+
+  const data = Array.isArray(collection.data)
+    ? (collection.data as unknown[]).map((result) => {
+        if (
+          typeof result !== "object" ||
+          result === null ||
+          Array.isArray(result)
+        )
+          return result;
+        const record = result as Record<string, unknown>;
+        const displayName = record.display_name;
+        return {
+          ...record,
+          match_kind: workerSafeBoundedUnicodeString(record.match_kind, 128),
+          semantic_degraded: workerSafeBoundedUnicodeString(
+            record.semantic_degraded,
+            128,
+          ),
+          ...(typeof displayName === "object" &&
+          displayName !== null &&
+          !Array.isArray(displayName)
+            ? {
+                display_name: {
+                  ...(displayName as Record<string, unknown>),
+                  value: workerSafeBoundedUnicodeString(
+                    (displayName as Record<string, unknown>).value,
+                    200,
+                  ),
+                },
+              }
+            : {}),
+        };
+      })
+    : collection.data;
+
+  const page = collection.page;
+  const normalizedPage =
+    typeof page === "object" && page !== null && !Array.isArray(page)
+      ? {
+          ...(page as Record<string, unknown>),
+          next_cursor: workerSafeBoundedUnicodeString(
+            (page as Record<string, unknown>).next_cursor,
+            4096,
+          ),
+        }
+      : page;
+
+  const meta = collection.meta;
+  let normalizedMeta = meta;
+  if (typeof meta === "object" && meta !== null && !Array.isArray(meta)) {
+    const metaRecord = meta as Record<string, unknown>;
+    const filters = metaRecord.filters;
+    normalizedMeta = {
+      ...metaRecord,
+      semantic_degraded: workerSafeBoundedUnicodeString(
+        metaRecord.semantic_degraded,
+        128,
+      ),
+      ...(typeof filters === "object" &&
+      filters !== null &&
+      !Array.isArray(filters)
+        ? {
+            filters: Object.fromEntries(
+              Object.entries(filters).map(([name, filterValue]) => [
+                name,
+                workerSafeBoundedUnicodeString(filterValue, 512),
+              ]),
+            ),
+          }
+        : {}),
+    };
+  }
+
+  return { ...collection, data, page: normalizedPage, meta: normalizedMeta };
+};
+
+/**
+ * Validates the complete search collection schema and the API-017
+ * compatibility mirror between collection metadata and every result item.
+ * JSON Schema counts Unicode scalars for maxLength; the validation candidate
+ * preserves that behavior without mutating the caller's object.
+ */
+export const checkSearchCollectionContract = (
+  value: unknown,
+): value is SearchCollection => {
+  const previousDateTime = FormatRegistry.Get("date-time");
+  FormatRegistry.Set("date-time", isCanonicalContractTimestamp);
+  try {
+    if (
+      !Value.Check(
+        SearchCollectionSchema,
+        searchCollectionWorkerValidationCandidate(value),
+      )
+    )
+      return false;
+  } finally {
+    if (previousDateTime === undefined) FormatRegistry.Delete("date-time");
+    else FormatRegistry.Set("date-time", previousDateTime);
+  }
+  const collection = value as SearchCollection;
+  return collection.data.every(
+    (result) =>
+      result.semantic_degraded === collection.meta.semantic_degraded &&
+      (!SEARCH_FALLBACK_ONLY_STATES.has(collection.meta.semantic_degraded) ||
+        result.match_kind !== "semantic"),
+  );
+};
 
 const ScopeBase = {
   subject_resource_id: resourceId(),

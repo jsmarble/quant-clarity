@@ -40,6 +40,17 @@ const errors: string[] = [];
 const info = openapi.info;
 if (isObject(info) && "license" in info)
   errors.push("public API must not inherit the source-code license");
+if (
+  !isObject(info) ||
+  typeof info.description !== "string" ||
+  !info.description.includes(
+    "recursively ignore additive unknown object fields",
+  ) ||
+  !info.description.includes("tolerate bounded unknown values")
+)
+  errors.push(
+    "public API description lacks the API-016 additive-field and extensible-value client rule",
+  );
 const paths = openapi.paths;
 if (!isObject(paths)) throw new Error("OpenAPI paths is missing.");
 
@@ -146,6 +157,9 @@ for (const [pathName, pathItem] of Object.entries(paths)) {
       const parameters: readonly unknown[] = Array.isArray(operation.parameters)
         ? operation.parameters
         : [];
+      const hasQueryParameters = parameters.some(
+        (parameter) => isObject(parameter) && parameter.in === "query",
+      );
       const publicationPins = parameters.filter(
         (parameter) =>
           isObject(parameter) &&
@@ -226,30 +240,29 @@ for (const [pathName, pathItem] of Object.entries(paths)) {
           errors.push(
             `${method.toUpperCase()} ${pathName} 200 exposes the wrong response headers`,
           );
-        const cacheControl = success.headers["Cache-Control"];
-        const cacheControlSchema = isObject(cacheControl)
-          ? cacheControl.schema
-          : undefined;
-        const cacheControlExample = isObject(cacheControlSchema)
-          ? cacheControlSchema.example
-          : undefined;
-        const hasQueryParameters =
-          Array.isArray(operation.parameters) &&
-          operation.parameters.some(
-            (parameter) => isObject(parameter) && parameter.in === "query",
-          );
-        if (
-          method === "get" &&
-          hasQueryParameters &&
-          cacheControlExample !== "private, no-store"
-        )
-          errors.push(
-            `GET ${pathName} has query parameters without private, no-store`,
-          );
       } else
         errors.push(
           `${method.toUpperCase()} ${pathName} 200 lacks response headers`,
         );
+
+      if (hasQueryParameters) {
+        for (const [status, response] of Object.entries(operation.responses)) {
+          const headers = isObject(response) ? response.headers : undefined;
+          const cacheControl = isObject(headers)
+            ? headers["Cache-Control"]
+            : undefined;
+          const cacheControlSchema = isObject(cacheControl)
+            ? cacheControl.schema
+            : undefined;
+          if (
+            !isObject(cacheControlSchema) ||
+            cacheControlSchema.const !== "private, no-store"
+          )
+            errors.push(
+              `${method.toUpperCase()} ${pathName} ${status} has query parameters without private, no-store`,
+            );
+        }
+      }
 
       const notModified = operation.responses["304"];
       const notModifiedHeaders = isObject(notModified)
@@ -473,6 +486,69 @@ if (
 )
   errors.push(
     "precision format is not an extensible enum that forbids unknown",
+  );
+
+const searchCollection = generatedSchemaObjects.get(
+  "SearchCollection.schema.json",
+);
+const searchProperties = isObject(searchCollection)
+  ? searchCollection.properties
+  : undefined;
+const searchMeta = isObject(searchProperties)
+  ? searchProperties.meta
+  : undefined;
+const searchMetaProperties = isObject(searchMeta)
+  ? searchMeta.properties
+  : undefined;
+const authoritativeDegradation = isObject(searchMetaProperties)
+  ? searchMetaProperties.semantic_degraded
+  : undefined;
+const knownDegradationValues = [
+  "none",
+  "disabled",
+  "eligibility_limit",
+  "temporarily_unavailable",
+];
+if (
+  !isObject(authoritativeDegradation) ||
+  authoritativeDegradation.type !== "string" ||
+  authoritativeDegradation.minLength !== 1 ||
+  authoritativeDegradation.maxLength !== 128 ||
+  "default" in authoritativeDegradation ||
+  !Array.isArray(authoritativeDegradation["x-extensible-enum"]) ||
+  JSON.stringify(authoritativeDegradation["x-extensible-enum"]) !==
+    JSON.stringify(knownDegradationValues) ||
+  typeof authoritativeDegradation.description !== "string" ||
+  !authoritativeDegradation.description.includes("authoritative") ||
+  !authoritativeDegradation.description.includes("no default")
+)
+  errors.push(
+    "SearchCollection metadata lacks the documented authoritative bounded degradation contract",
+  );
+
+const searchData = isObject(searchProperties)
+  ? searchProperties.data
+  : undefined;
+const searchItems = isObject(searchData) ? searchData.items : undefined;
+const searchVariants = isObject(searchItems) ? searchItems.anyOf : undefined;
+if (
+  !Array.isArray(searchVariants) ||
+  searchVariants.length === 0 ||
+  searchVariants.some((variant) => {
+    const properties = isObject(variant) ? variant.properties : undefined;
+    const mirror = isObject(properties)
+      ? properties.semantic_degraded
+      : undefined;
+    return (
+      !isObject(mirror) ||
+      typeof mirror.description !== "string" ||
+      !mirror.description.includes("compatibility mirror") ||
+      !mirror.description.includes("exactly equal")
+    );
+  })
+)
+  errors.push(
+    "SearchCollection results lack the documented degradation compatibility mirror",
   );
 
 const publicContract = JSON.stringify(openapi);

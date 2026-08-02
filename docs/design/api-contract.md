@@ -56,6 +56,28 @@ Collection envelope:
 }
 ```
 
+Search collections additionally require `meta.semantic_degraded`. It is the authoritative response-wide state and has no default. Known values are `none` when the applicable semantic plan completed without degradation, `disabled` when applicable semantic work was intentionally not attempted and exact/structured discovery is the fallback, `eligibility_limit` when complete eligibility exceeded the bounded semantic plan and no incomplete semantic subset was queried, and `temporarily_unavailable` when a semantic dependency failed transiently, partial semantic candidates were discarded, and exact/structured discovery is the fallback. The existing `SearchResult.semantic_degraded` remains a required `/v1` compatibility mirror and must equal the metadata value for every item. Known fallback-only states cannot contain a `semantic` match kind.
+
+An empty degraded collection means exact/structured fallback completed with no matching records; it does not claim that semantic retrieval found no matches. If exact/structured fallback cannot safely satisfy the request, the API returns its bounded error rather than a misleading collection. Both locations use the same bounded extensible-string contract. Clients recursively ignore additive unknown fields and tolerate bounded unknown enum values. There is no implicit `none`, and the prelaunch additive correction does not change OpenAPI version `1.0.0`. Provider-only semantic applicability, including whether a future `not_applicable` value is appropriate, remains deferred with complete search composition.
+
+```json
+{
+  "data": [],
+  "page": {
+    "next_cursor": null,
+    "limit": 20
+  },
+  "meta": {
+    "resource": "search",
+    "publication_id": "pub_00000000-0000-4000-8000-000000000001",
+    "schema_version": "1.0.0",
+    "sort": ["relevance", "stable_id"],
+    "filters": {},
+    "semantic_degraded": "disabled"
+  }
+}
+```
+
 Detail envelope uses the same `meta` and a single object in `data`. Offering-bearing responses also include the exact active neutral sort and filters; they never contain a recommendation, winner, score, rank, or affiliate commission value.
 
 Evidence summary:
@@ -145,7 +167,7 @@ Vector grain is one document per canonical model or explicit variant per publica
 | freshness/stale | D1 timestamp/stale predicate | D1 emits the complete eligible model-ID set |
 | currency, price role/class/range | D1 exact-decimal price predicate | D1 emits the complete eligible model-ID set |
 
-Eligible IDs are encoded into deterministic Vectorize `$in` batches below the 2,048-byte filter limit. A batch contains at most 40 prefixed UUID IDs including JSON/operator overhead, returns at most ten candidates, and the service merges at most 80 candidates by similarity and stable ID with one score per model. Limits are eight batches and 320 eligible IDs. If the complete set exceeds either, the API returns exact/structured results plus `semantic_degraded=eligibility_limit`; it never silently post-filters an incomplete top-K. Acceptance fixtures put valid records below unfiltered rank 50 and vary offerings-per-model to prove recall and provider-count neutrality.
+Eligible IDs are encoded into deterministic Vectorize `$in` batches below the 2,048-byte filter limit. A batch contains at most 40 prefixed UUID IDs including JSON/operator overhead, returns at most ten candidates, and the service merges at most 80 by similarity and stable ID with one score per model. Limits are eight batches and 320 eligible IDs. If the complete set exceeds either, the API returns exact/structured results with `SearchCollection.meta.semantic_degraded=eligibility_limit`; it never silently post-filters an incomplete top-K. Acceptance fixtures put valid records below unfiltered rank 50 and vary offerings-per-model to prove recall and provider-count neutrality.
 
 ## Publication-pinned caching
 

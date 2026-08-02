@@ -4,7 +4,7 @@
   "info": {
     "title": "QuantClarity public API",
     "version": "1.0.0",
-    "description": "Anonymous, read-only, neutral inference-provider facts. Unknowns are explicit, prices are never currency-converted or blended, and no visitor telemetry is retained."
+    "description": "Anonymous, read-only, neutral inference-provider facts. Unknowns are explicit, prices are never currency-converted or blended, and no visitor telemetry is retained. Within /v1, clients recursively ignore additive unknown object fields and tolerate bounded unknown values in extensible string vocabularies."
   },
   "security": [],
   "servers": [
@@ -179,7 +179,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -236,7 +236,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -300,7 +300,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -357,7 +357,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -414,7 +414,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -478,7 +478,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -649,7 +649,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -693,7 +693,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -744,7 +744,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -788,7 +788,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -832,7 +832,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -883,7 +883,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -975,7 +975,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -1039,7 +1039,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -1183,7 +1183,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -1234,7 +1234,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -1278,7 +1278,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -1335,7 +1335,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -1399,7 +1399,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -1456,7 +1456,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -1513,7 +1513,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -1577,7 +1577,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -1719,7 +1719,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -1761,7 +1761,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -1805,7 +1805,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -1849,7 +1849,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -1900,7 +1900,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -1944,7 +1944,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -1988,7 +1988,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -2039,7 +2039,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -2131,7 +2131,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -2195,7 +2195,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -2389,7 +2389,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -2446,7 +2446,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -2503,7 +2503,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -2567,7 +2567,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -2624,7 +2624,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -2681,7 +2681,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -2745,7 +2745,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -2928,7 +2928,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -2972,7 +2972,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -3016,7 +3016,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -3067,7 +3067,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -3111,7 +3111,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -3155,7 +3155,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -3206,7 +3206,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -3311,7 +3311,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -3375,7 +3375,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -3568,7 +3568,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -3625,7 +3625,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -3682,7 +3682,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -3746,7 +3746,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -3803,7 +3803,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -3860,7 +3860,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -3924,7 +3924,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -4106,7 +4106,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -4150,7 +4150,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -4194,7 +4194,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -4245,7 +4245,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -4289,7 +4289,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -4333,7 +4333,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -4384,7 +4384,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -4488,7 +4488,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -4552,7 +4552,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -4749,7 +4749,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -4800,7 +4800,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -4844,7 +4844,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -4901,7 +4901,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -4965,7 +4965,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -5022,7 +5022,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -5079,7 +5079,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -5143,7 +5143,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -5338,7 +5338,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -5380,7 +5380,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -5424,7 +5424,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -5468,7 +5468,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -5519,7 +5519,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -5563,7 +5563,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -5607,7 +5607,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -5658,7 +5658,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -5750,7 +5750,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -5814,7 +5814,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -6007,7 +6007,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -6064,7 +6064,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -6121,7 +6121,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -6185,7 +6185,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -6242,7 +6242,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -6299,7 +6299,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -6363,7 +6363,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -6545,7 +6545,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -6589,7 +6589,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -6633,7 +6633,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -6684,7 +6684,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -6728,7 +6728,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -6772,7 +6772,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -6823,7 +6823,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -6927,7 +6927,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -6991,7 +6991,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -7264,7 +7264,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -7315,7 +7315,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -7359,7 +7359,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -7416,7 +7416,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -7480,7 +7480,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -7537,7 +7537,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -7594,7 +7594,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -7658,7 +7658,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -7929,7 +7929,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -7971,7 +7971,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -8015,7 +8015,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -8059,7 +8059,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -8110,7 +8110,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -8154,7 +8154,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -8198,7 +8198,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -8249,7 +8249,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -8350,7 +8350,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -8414,7 +8414,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -8611,7 +8611,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -8662,7 +8662,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -8706,7 +8706,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -8763,7 +8763,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -8827,7 +8827,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -8884,7 +8884,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -8941,7 +8941,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -9005,7 +9005,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -9200,7 +9200,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -9242,7 +9242,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -9286,7 +9286,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -9330,7 +9330,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -9381,7 +9381,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -9425,7 +9425,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -9469,7 +9469,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -9520,7 +9520,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -9612,7 +9612,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -9676,7 +9676,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -9869,7 +9869,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -9926,7 +9926,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -9983,7 +9983,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -10047,7 +10047,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -10104,7 +10104,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -10161,7 +10161,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -10225,7 +10225,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -10407,7 +10407,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -10451,7 +10451,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -10495,7 +10495,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -10546,7 +10546,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -10590,7 +10590,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -10634,7 +10634,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -10685,7 +10685,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -10789,7 +10789,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -10853,7 +10853,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -11126,7 +11126,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -11177,7 +11177,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -11221,7 +11221,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -11278,7 +11278,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -11342,7 +11342,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -11399,7 +11399,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -11456,7 +11456,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -11520,7 +11520,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -11791,7 +11791,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -11833,7 +11833,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -11877,7 +11877,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -11921,7 +11921,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -11972,7 +11972,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -12016,7 +12016,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -12060,7 +12060,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -12111,7 +12111,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -12212,7 +12212,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -12276,7 +12276,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -12420,7 +12420,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -12471,7 +12471,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -12515,7 +12515,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -12572,7 +12572,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -12636,7 +12636,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -12693,7 +12693,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -12750,7 +12750,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -12814,7 +12814,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -12956,7 +12956,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -12998,7 +12998,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -13042,7 +13042,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -13086,7 +13086,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -13137,7 +13137,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -13181,7 +13181,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -13225,7 +13225,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -13276,7 +13276,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -13368,7 +13368,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -13432,7 +13432,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -13625,7 +13625,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -13682,7 +13682,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -13739,7 +13739,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -13803,7 +13803,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -13860,7 +13860,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -13917,7 +13917,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -13981,7 +13981,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -14163,7 +14163,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -14207,7 +14207,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -14251,7 +14251,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -14302,7 +14302,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -14346,7 +14346,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -14390,7 +14390,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -14441,7 +14441,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -14545,7 +14545,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -14609,7 +14609,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -14882,7 +14882,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -14933,7 +14933,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -14977,7 +14977,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -15034,7 +15034,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -15098,7 +15098,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -15155,7 +15155,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -15212,7 +15212,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -15276,7 +15276,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -15547,7 +15547,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -15589,7 +15589,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -15633,7 +15633,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -15677,7 +15677,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -15728,7 +15728,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -15772,7 +15772,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -15816,7 +15816,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -15867,7 +15867,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -15968,7 +15968,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -16032,7 +16032,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -16297,7 +16297,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -16348,7 +16348,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -16392,7 +16392,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -16449,7 +16449,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -16513,7 +16513,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -16570,7 +16570,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -16627,7 +16627,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -16691,7 +16691,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -16954,7 +16954,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -16996,7 +16996,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -17040,7 +17040,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -17084,7 +17084,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -17135,7 +17135,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -17179,7 +17179,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -17223,7 +17223,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -17274,7 +17274,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -17366,7 +17366,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -17430,7 +17430,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -17623,7 +17623,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -17680,7 +17680,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -17737,7 +17737,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -17801,7 +17801,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -17858,7 +17858,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -17915,7 +17915,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -17979,7 +17979,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -18161,7 +18161,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -18205,7 +18205,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -18249,7 +18249,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -18300,7 +18300,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -18344,7 +18344,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -18388,7 +18388,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -18439,7 +18439,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -18543,7 +18543,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -18607,7 +18607,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -18830,7 +18830,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -18881,7 +18881,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -18925,7 +18925,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -18982,7 +18982,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -19046,7 +19046,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -19103,7 +19103,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -19160,7 +19160,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -19224,7 +19224,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -19445,7 +19445,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -19487,7 +19487,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -19531,7 +19531,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -19575,7 +19575,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -19626,7 +19626,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -19670,7 +19670,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -19714,7 +19714,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -19765,7 +19765,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -19857,7 +19857,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -19921,7 +19921,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -20114,7 +20114,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -20171,7 +20171,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -20228,7 +20228,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -20292,7 +20292,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -20349,7 +20349,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -20406,7 +20406,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -20470,7 +20470,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -20652,7 +20652,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -20696,7 +20696,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -20740,7 +20740,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -20791,7 +20791,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -20835,7 +20835,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -20879,7 +20879,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -20930,7 +20930,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -21034,7 +21034,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -21098,7 +21098,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -21286,7 +21286,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -21337,7 +21337,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -21381,7 +21381,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -21438,7 +21438,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -21502,7 +21502,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -21559,7 +21559,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -21616,7 +21616,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -21680,7 +21680,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -21866,7 +21866,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -21908,7 +21908,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -21952,7 +21952,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -21996,7 +21996,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -22047,7 +22047,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -22091,7 +22091,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -22135,7 +22135,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -22186,7 +22186,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -22278,7 +22278,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -22342,7 +22342,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -22535,7 +22535,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -22592,7 +22592,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -22649,7 +22649,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -22713,7 +22713,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -22770,7 +22770,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -22827,7 +22827,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -22891,7 +22891,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -23073,7 +23073,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -23117,7 +23117,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -23161,7 +23161,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -23212,7 +23212,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -23256,7 +23256,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -23300,7 +23300,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -23351,7 +23351,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -23455,7 +23455,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -23519,7 +23519,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -23695,7 +23695,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -23746,7 +23746,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -23790,7 +23790,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -23847,7 +23847,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -23911,7 +23911,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -23968,7 +23968,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -24025,7 +24025,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -24089,7 +24089,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -24263,7 +24263,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -24305,7 +24305,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -24349,7 +24349,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -24393,7 +24393,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -24444,7 +24444,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -24488,7 +24488,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -24532,7 +24532,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -24583,7 +24583,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -24675,7 +24675,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -24739,7 +24739,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -24932,7 +24932,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -24989,7 +24989,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -25046,7 +25046,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -25110,7 +25110,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -25167,7 +25167,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -25224,7 +25224,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -25288,7 +25288,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -25470,7 +25470,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -25514,7 +25514,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -25558,7 +25558,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -25609,7 +25609,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -25653,7 +25653,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -25697,7 +25697,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -25748,7 +25748,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -25852,7 +25852,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -25916,7 +25916,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -26171,7 +26171,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -26197,6 +26197,24 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SearchCollection"
+                },
+                "example": {
+                  "data": [],
+                  "page": {
+                    "next_cursor": null,
+                    "limit": 20
+                  },
+                  "meta": {
+                    "semantic_degraded": "disabled",
+                    "resource": "search",
+                    "publication_id": "pub_00000000-0000-4000-8000-000000000001",
+                    "schema_version": "1.0.0",
+                    "sort": [
+                      "relevance",
+                      "stable_id"
+                    ],
+                    "filters": {}
+                  }
                 }
               }
             }
@@ -26222,7 +26240,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -26266,7 +26284,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -26323,7 +26341,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -26387,7 +26405,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -26444,7 +26462,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -26501,7 +26519,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -26565,7 +26583,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -26818,7 +26836,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -26860,7 +26878,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -26904,7 +26922,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -26948,7 +26966,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -26999,7 +27017,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -27043,7 +27061,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -27087,7 +27105,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -27138,7 +27156,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -27230,7 +27248,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -27294,7 +27312,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -27476,7 +27494,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -27533,7 +27551,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -27597,7 +27615,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -27654,7 +27672,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -27711,7 +27729,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -27775,7 +27793,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -27946,7 +27964,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -27990,7 +28008,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -28041,7 +28059,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -28085,7 +28103,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -28129,7 +28147,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -28180,7 +28198,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -28272,7 +28290,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -28336,7 +28354,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -28518,7 +28536,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -28575,7 +28593,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -28639,7 +28657,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -28696,7 +28714,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -28753,7 +28771,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -28817,7 +28835,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -28988,7 +29006,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -29032,7 +29050,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -29083,7 +29101,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -29127,7 +29145,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -29171,7 +29189,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -29222,7 +29240,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -29314,7 +29332,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -29378,7 +29396,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -47114,7 +47132,8 @@
                         "disabled",
                         "eligibility_limit",
                         "temporarily_unavailable"
-                      ]
+                      ],
+                      "description": "Known values: none means the applicable semantic plan completed; disabled means applicable semantic work was intentionally not attempted; eligibility_limit means complete eligibility exceeded the bounded plan and no incomplete subset was queried; temporarily_unavailable means a semantic dependency failed and partial semantic candidates were discarded. This required non-null open string has no default. On a result this is a compatibility mirror that must exactly equal the authoritative collection metadata value."
                     }
                   }
                 },
@@ -47248,7 +47267,8 @@
                         "disabled",
                         "eligibility_limit",
                         "temporarily_unavailable"
-                      ]
+                      ],
+                      "description": "Known values: none means the applicable semantic plan completed; disabled means applicable semantic work was intentionally not attempted; eligibility_limit means complete eligibility exceeded the bounded plan and no incomplete subset was queried; temporarily_unavailable means a semantic dependency failed and partial semantic candidates were discarded. This required non-null open string has no default. On a result this is a compatibility mirror that must exactly equal the authoritative collection metadata value."
                     }
                   }
                 },
@@ -47382,7 +47402,8 @@
                         "disabled",
                         "eligibility_limit",
                         "temporarily_unavailable"
-                      ]
+                      ],
+                      "description": "Known values: none means the applicable semantic plan completed; disabled means applicable semantic work was intentionally not attempted; eligibility_limit means complete eligibility exceeded the bounded plan and no incomplete subset was queried; temporarily_unavailable means a semantic dependency failed and partial semantic candidates were discarded. This required non-null open string has no default. On a result this is a compatibility mirror that must exactly equal the authoritative collection metadata value."
                     }
                   }
                 }
@@ -47420,6 +47441,7 @@
             "additionalProperties": false,
             "type": "object",
             "required": [
+              "semantic_degraded",
               "resource",
               "publication_id",
               "schema_version",
@@ -47427,6 +47449,18 @@
               "filters"
             ],
             "properties": {
+              "semantic_degraded": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "x-extensible-enum": [
+                  "none",
+                  "disabled",
+                  "eligibility_limit",
+                  "temporarily_unavailable"
+                ],
+                "description": "Known values: none means the applicable semantic plan completed; disabled means applicable semantic work was intentionally not attempted; eligibility_limit means complete eligibility exceeded the bounded plan and no incomplete subset was queried; temporarily_unavailable means a semantic dependency failed and partial semantic candidates were discarded. This required non-null open string has no default. This collection metadata field is authoritative for every result, including an empty collection. Known fallback states contain no semantic match_kind results."
+              },
               "resource": {
                 "const": "search",
                 "type": "string"
