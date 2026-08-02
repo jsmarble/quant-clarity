@@ -18,13 +18,33 @@ function id(prefix: string, sequence: number): string {
   return `${prefix}_${sequence.toString(16).padStart(8, "0")}-0000-4000-8000-000000000001`;
 }
 
-function applyMigrations(directory: "canonical" | "serving"): DatabaseSync {
+function applyMigrations(
+  directory: "canonical" | "serving",
+  through?: string,
+): DatabaseSync {
   const database = new DatabaseSync(":memory:");
   database.exec("PRAGMA foreign_keys = ON");
   const migrationDirectory = resolve("migrations", directory);
-  for (const filename of readdirSync(migrationDirectory).sort())
+  for (const filename of readdirSync(migrationDirectory).sort()) {
+    if (through !== undefined && filename > through) continue;
     database.exec(readFileSync(resolve(migrationDirectory, filename), "utf8"));
+  }
   return database;
+}
+
+function applyServingProviderDispositionMigration(
+  database: DatabaseSync,
+): void {
+  database.exec(
+    readFileSync(
+      resolve(
+        "migrations",
+        "serving",
+        "0003_publication_provider_dispositions.sql",
+      ),
+      "utf8",
+    ),
+  );
 }
 
 function expectConstraint(action: () => unknown, message?: string): void {
@@ -917,22 +937,745 @@ describe("serving publication migrations (PIPE-050–PIPE-056)", () => {
     publicationId: string,
     counts = { resources: 1, exactDocuments: 1, vectorDocuments: 1 },
     parentPublicationId: string | null = null,
+    generatedAtMs = 1,
   ): void {
     database
       .prepare(
-        "INSERT INTO publication VALUES (?, 'building', '1.0.0', '1.0.0', 'precision@1', 'display@1', 'price@1', 'source@1', 'embedding@1', 'commit', ?, ?, 1, NULL, NULL, ?, ?, ?, ?, 'vector@1', ?, '[]', 1)",
+        "INSERT INTO publication VALUES (?, 'building', '1.0.0', '1.0.0', 'precision@1', 'display@1', 'price@1', 'source@1', 'embedding@1', 'commit', ?, ?, ?, NULL, NULL, ?, ?, ?, ?, 'vector@1', ?, '[]', ?)",
       )
       .run(
         publicationId,
         id("run", 200),
         parentPublicationId,
+        generatedAtMs,
         counts.resources,
         counts.exactDocuments,
         counts.vectorDocuments,
         HASH,
         OTHER_HASH,
+        generatedAtMs,
       );
   }
+
+  it("upgrades selected and unavailable legacy dispositions without inventing identity", () => {
+    const database = applyMigrations(
+      "serving",
+      "0002_publication_integrity.sql",
+    );
+    const selectedPublicationId = id("pub", 180);
+    const unavailablePublicationId = id("pub", 181);
+    insertBuildingPublication(database, selectedPublicationId, {
+      resources: 0,
+      exactDocuments: 0,
+      vectorDocuments: 0,
+    });
+    insertBuildingPublication(database, unavailablePublicationId, {
+      resources: 0,
+      exactDocuments: 0,
+      vectorDocuments: 0,
+    });
+    const selectedSliceId = id("prn", 182);
+    const fictitiousUnavailableSliceId = id("prn", 183);
+    database
+      .prepare(
+        "INSERT INTO publication_provider_slice (provider_slice_id, publication_id, provider_id, provider_run_id, carried_forward, freshness_state) VALUES (?, ?, ?, ?, 0, 'fresh')",
+      )
+      .run(
+        selectedSliceId,
+        selectedPublicationId,
+        id("prv", 184),
+        id("pvr", 185),
+      );
+    database
+      .prepare(
+        "INSERT INTO publication_provider_slice VALUES (?, ?, ?, ?, 0, 'unavailable')",
+      )
+      .run(
+        fictitiousUnavailableSliceId,
+        unavailablePublicationId,
+        id("prv", 186),
+        id("pvr", 187),
+      );
+
+    applyServingProviderDispositionMigration(database);
+
+    expect(
+      database
+        .prepare(
+          "SELECT provider_slice_id, publication_id, provider_id, provider_run_id, carried_forward, freshness_state FROM publication_provider_slice ORDER BY publication_id",
+        )
+        .all(),
+    ).toEqual([
+      {
+        provider_slice_id: selectedSliceId,
+        publication_id: selectedPublicationId,
+        provider_id: id("prv", 184),
+        provider_run_id: id("pvr", 185),
+        carried_forward: 0,
+        freshness_state: "fresh",
+      },
+      {
+        provider_slice_id: null,
+        publication_id: unavailablePublicationId,
+        provider_id: id("prv", 186),
+        provider_run_id: id("pvr", 187),
+        carried_forward: 0,
+        freshness_state: "unavailable",
+      },
+    ]);
+    expect(
+      database
+        .prepare(
+          "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+        )
+        .get(),
+    ).toEqual({ schema_version: "1.1.0" });
+    expect(database.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+    expect(
+      (
+        database
+          .prepare("PRAGMA index_list('publication_provider_slice')")
+          .all() as { name: string; partial: number }[]
+      ).some(
+        (index) =>
+          index.name === "publication_provider_slice_identity_idx" &&
+          index.partial === 1,
+      ),
+    ).toBe(true);
+    expect(
+      database
+        .prepare(
+          "SELECT count(*) AS count FROM sqlite_master WHERE type = 'trigger' AND sql LIKE '%publication_provider_slice_v2%'",
+        )
+        .get(),
+    ).toEqual({ count: 0 });
+  });
+
+  it("rejects a legacy active empty head before mutating its schema", () => {
+    const database = applyMigrations(
+      "serving",
+      "0002_publication_integrity.sql",
+    );
+    const publicationId = id("pub", 175);
+    insertBuildingPublication(
+      database,
+      publicationId,
+      { resources: 0, exactDocuments: 0, vectorDocuments: 0 },
+      null,
+      1,
+    );
+    database
+      .prepare(
+        "INSERT INTO publication_provider_slice VALUES (?, ?, ?, ?, 0, 'unavailable')",
+      )
+      .run(id("prn", 176), publicationId, id("prv", 177), id("pvr", 178));
+    database
+      .prepare(
+        "UPDATE publication SET state = 'ready', ready_at_ms = 2 WHERE publication_id = ?",
+      )
+      .run(publicationId);
+    database
+      .prepare(
+        "UPDATE publication SET state = 'active', activated_at_ms = 3 WHERE publication_id = ?",
+      )
+      .run(publicationId);
+    database
+      .prepare("INSERT INTO publication_head VALUES (1, ?, NULL, 3, 1)")
+      .run(publicationId);
+
+    expect(() => {
+      applyServingProviderDispositionMigration(database);
+    }).toThrow();
+
+    expect(
+      database
+        .prepare(
+          "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+        )
+        .get(),
+    ).toEqual({ schema_version: "1.0.0" });
+    expect(
+      database
+        .prepare(
+          "SELECT active_publication_id, generation FROM publication_head WHERE singleton = 1",
+        )
+        .get(),
+    ).toEqual({ active_publication_id: publicationId, generation: 1 });
+    expect(
+      (
+        database
+          .prepare(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'publication_provider_slice'",
+          )
+          .get() as { sql: string }
+      ).sql,
+    ).toContain("TEXT PRIMARY KEY");
+  });
+
+  it("rejects unprovable legacy carried lineage before mutating its schema", () => {
+    const database = applyMigrations(
+      "serving",
+      "0002_publication_integrity.sql",
+    );
+    const publicationId = id("pub", 179);
+    insertBuildingPublication(database, publicationId, {
+      resources: 0,
+      exactDocuments: 0,
+      vectorDocuments: 0,
+    });
+    database
+      .prepare(
+        "INSERT INTO publication_provider_slice VALUES (?, ?, ?, ?, 1, 'fresh')",
+      )
+      .run(id("prn", 180), publicationId, id("prv", 181), id("pvr", 182));
+
+    expect(() => {
+      applyServingProviderDispositionMigration(database);
+    }).toThrow();
+
+    expect(
+      database
+        .prepare(
+          "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+        )
+        .get(),
+    ).toEqual({ schema_version: "1.0.0" });
+    expect(
+      database
+        .prepare(
+          "SELECT carried_forward, freshness_state FROM publication_provider_slice WHERE publication_id = ?",
+        )
+        .get(publicationId),
+    ).toEqual({ carried_forward: 1, freshness_state: "fresh" });
+  });
+
+  it("rejects unexpected legacy schema metadata before rebuilding tables", () => {
+    const database = applyMigrations(
+      "serving",
+      "0002_publication_integrity.sql",
+    );
+    database
+      .prepare(
+        "UPDATE serving_schema_metadata SET schema_version = 'unexpected' WHERE singleton = 1",
+      )
+      .run();
+
+    expect(() => {
+      applyServingProviderDispositionMigration(database);
+    }).toThrow();
+
+    expect(
+      (
+        database
+          .prepare(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'publication_provider_slice'",
+          )
+          .get() as { sql: string }
+      ).sql,
+    ).toContain("TEXT PRIMARY KEY");
+    expect(
+      database
+        .prepare(
+          "SELECT count(*) AS count FROM sqlite_master WHERE type = 'table' AND name = 'publication_provider_slice_v2'",
+        )
+        .get(),
+    ).toEqual({ count: 0 });
+  });
+
+  it("rejects malformed legacy identities before rebuilding tables", () => {
+    const database = applyMigrations(
+      "serving",
+      "0002_publication_integrity.sql",
+    );
+    const publicationId = id("pub", 183);
+    insertBuildingPublication(database, publicationId, {
+      resources: 0,
+      exactDocuments: 0,
+      vectorDocuments: 0,
+    });
+    database
+      .prepare(
+        "INSERT INTO publication_provider_slice VALUES (?, ?, ?, ?, 0, 'fresh')",
+      )
+      .run(
+        id("prn", 184),
+        publicationId,
+        "prv_00000000-0000-5000-8000-000000000001",
+        id("pvr", 185),
+      );
+
+    expect(() => {
+      applyServingProviderDispositionMigration(database);
+    }).toThrow();
+
+    expect(
+      database
+        .prepare(
+          "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+        )
+        .get(),
+    ).toEqual({ schema_version: "1.0.0" });
+    expect(
+      database
+        .prepare(
+          "SELECT count(*) AS count FROM sqlite_master WHERE type = 'table' AND name = 'publication_provider_slice_v2'",
+        )
+        .get(),
+    ).toEqual({ count: 0 });
+  });
+
+  it("persists an unavailable disposition but rejects an empty candidate as ready", () => {
+    const database = applyMigrations("serving");
+    const activePublicationId = id("pub", 170);
+    const activeModelId = id("mdl", 171);
+    insertBuildingPublication(database, activePublicationId);
+    database
+      .prepare(
+        "INSERT INTO publication_provider_slice (provider_slice_id, publication_id, provider_id, provider_run_id, carried_forward, freshness_state) VALUES (?, ?, ?, ?, 0, 'fresh')",
+      )
+      .run(id("prn", 172), activePublicationId, id("prv", 173), id("pvr", 174));
+    database
+      .prepare(
+        "INSERT INTO publication_resource VALUES (?, 'model', ?, '{}', ?)",
+      )
+      .run(activePublicationId, activeModelId, HASH);
+    database
+      .prepare(
+        "INSERT INTO publication_search_document VALUES (?, ?, 'model', ?, 'active', '[]', '', '[]', 'active model', ?)",
+      )
+      .run(activePublicationId, VECTOR_ID, activeModelId, HASH);
+    database
+      .prepare(
+        "UPDATE publication SET state = 'ready', ready_at_ms = 2 WHERE publication_id = ?",
+      )
+      .run(activePublicationId);
+    database
+      .prepare(
+        "UPDATE publication SET state = 'active', activated_at_ms = 3 WHERE publication_id = ?",
+      )
+      .run(activePublicationId);
+    database
+      .prepare("INSERT INTO publication_head VALUES (1, ?, NULL, 3, 1)")
+      .run(activePublicationId);
+
+    const publicationId = id("pub", 188);
+    const providerId = id("prv", 189);
+    const providerRunId = id("pvr", 190);
+    insertBuildingPublication(database, publicationId, {
+      resources: 0,
+      exactDocuments: 0,
+      vectorDocuments: 0,
+    });
+    database
+      .prepare(
+        "INSERT INTO publication_provider_slice (provider_slice_id, publication_id, provider_id, provider_run_id, carried_forward, freshness_state) VALUES (NULL, ?, ?, ?, 0, 'unavailable')",
+      )
+      .run(publicationId, providerId, providerRunId);
+    expectConstraint(() =>
+      database
+        .prepare(
+          "INSERT INTO publication_provider_slice (provider_slice_id, publication_id, provider_id, provider_run_id, carried_forward, freshness_state) VALUES (NULL, ?, ?, ?, 0, 'unavailable')",
+        )
+        .run(publicationId, providerId, id("pvr", 191)),
+    );
+    expectConstraint(
+      () =>
+        database
+          .prepare(
+            "UPDATE publication_provider_slice SET provider_run_id = ? WHERE publication_id = ? AND provider_id = ?",
+          )
+          .run(id("pvr", 192), publicationId, providerId),
+      "publication provider slice is immutable",
+    );
+    expectConstraint(
+      () =>
+        database
+          .prepare(
+            "DELETE FROM publication_provider_slice WHERE publication_id = ? AND provider_id = ?",
+          )
+          .run(publicationId, providerId),
+      "publication provider slice cannot be deleted",
+    );
+    expectConstraint(
+      () =>
+        database
+          .prepare(
+            "UPDATE publication SET state = 'ready', ready_at_ms = 2 WHERE publication_id = ?",
+          )
+          .run(publicationId),
+      "publication closure counts are incomplete",
+    );
+
+    expect(
+      database
+        .prepare(
+          "SELECT provider_slice_id, provider_run_id, carried_forward, freshness_state FROM publication_provider_slice WHERE publication_id = ?",
+        )
+        .get(publicationId),
+    ).toEqual({
+      provider_slice_id: null,
+      provider_run_id: providerRunId,
+      carried_forward: 0,
+      freshness_state: "unavailable",
+    });
+    expect(
+      database
+        .prepare("SELECT state FROM publication WHERE publication_id = ?")
+        .get(publicationId),
+    ).toEqual({ state: "building" });
+    expect(
+      database
+        .prepare(
+          "SELECT active_publication_id, generation FROM publication_head WHERE singleton = 1",
+        )
+        .get(),
+    ).toEqual({
+      active_publication_id: activePublicationId,
+      generation: 1,
+    });
+  });
+
+  it.each([
+    ["unavailable with a slice", id("prn", 191), 0, "unavailable"],
+    ["carried unavailable", null, 1, "unavailable"],
+    ["fresh without a slice", null, 0, "fresh"],
+    ["stale without a slice", null, 1, "stale"],
+    ["non-carried stale", id("prn", 192), 0, "stale"],
+  ])("rejects %s", (_case, providerSliceId, carriedForward, freshnessState) => {
+    const database = applyMigrations("serving");
+    const publicationId = id("pub", 193);
+    insertBuildingPublication(database, publicationId, {
+      resources: 0,
+      exactDocuments: 0,
+      vectorDocuments: 0,
+    });
+    expectConstraint(() =>
+      database
+        .prepare(
+          "INSERT INTO publication_provider_slice (provider_slice_id, publication_id, provider_id, provider_run_id, carried_forward, freshness_state) VALUES (?, ?, ?, ?, ?, ?)",
+        )
+        .run(
+          providerSliceId,
+          publicationId,
+          id("prv", 194),
+          id("pvr", 195),
+          carriedForward,
+          freshnessState,
+        ),
+    );
+  });
+
+  it.each([
+    [
+      "slice UUID version",
+      "prn_00000000-0000-5000-8000-000000000001",
+      id("prv", 194),
+      id("pvr", 195),
+    ],
+    [
+      "provider UUID variant",
+      id("prn", 194),
+      "prv_00000000-0000-4000-7000-000000000001",
+      id("pvr", 195),
+    ],
+    [
+      "provider-run hexadecimal grammar",
+      id("prn", 194),
+      id("prv", 194),
+      "pvr_0000000g-0000-4000-8000-000000000001",
+    ],
+  ])("rejects malformed %s", (_case, sliceId, providerId, providerRunId) => {
+    const database = applyMigrations("serving");
+    const publicationId = id("pub", 195);
+    insertBuildingPublication(database, publicationId, {
+      resources: 0,
+      exactDocuments: 0,
+      vectorDocuments: 0,
+    });
+    expectConstraint(() =>
+      database
+        .prepare(
+          "INSERT INTO publication_provider_slice (provider_slice_id, publication_id, provider_id, provider_run_id, carried_forward, freshness_state) VALUES (?, ?, ?, ?, 0, 'fresh')",
+        )
+        .run(sliceId, publicationId, providerId, providerRunId),
+    );
+  });
+
+  it("reuses selected content only with identical provider/run lineage", () => {
+    const database = applyMigrations("serving");
+    const providerSliceId = id("prn", 196);
+    const providerId = id("prv", 197);
+    const providerRunId = id("pvr", 198);
+    const firstPublicationId = id("pub", 199);
+    const secondPublicationId = id("pub", 200);
+    const thirdPublicationId = id("pub", 201);
+    const fourthPublicationId = id("pub", 202);
+    insertBuildingPublication(database, firstPublicationId, {
+      resources: 1,
+      exactDocuments: 1,
+      vectorDocuments: 1,
+    });
+    for (const [publicationId, generatedAtMs] of [
+      [secondPublicationId, 4],
+      [thirdPublicationId, 5],
+      [fourthPublicationId, 6],
+    ] as const)
+      insertBuildingPublication(
+        database,
+        publicationId,
+        { resources: 0, exactDocuments: 0, vectorDocuments: 0 },
+        null,
+        generatedAtMs,
+      );
+    database
+      .prepare(
+        "INSERT INTO publication_provider_slice (provider_slice_id, publication_id, provider_id, provider_run_id, carried_forward, freshness_state) VALUES (?, ?, ?, ?, 0, 'fresh')",
+      )
+      .run(providerSliceId, firstPublicationId, providerId, providerRunId);
+    expectConstraint(
+      () =>
+        database
+          .prepare(
+            "INSERT INTO publication_provider_slice (provider_slice_id, publication_id, provider_id, provider_run_id, carried_forward, freshness_state) VALUES (?, ?, ?, ?, 1, 'fresh')",
+          )
+          .run(providerSliceId, secondPublicationId, providerId, providerRunId),
+      "carried provider slice lacks a queryable prior publication",
+    );
+    const modelId = id("mdl", 204);
+    database
+      .prepare(
+        "INSERT INTO publication_resource VALUES (?, 'model', ?, '{}', ?)",
+      )
+      .run(firstPublicationId, modelId, HASH);
+    database
+      .prepare(
+        "INSERT INTO publication_search_document VALUES (?, ?, 'model', ?, 'lineage', '[]', '', '[]', 'lineage model', ?)",
+      )
+      .run(firstPublicationId, VECTOR_ID, modelId, HASH);
+    database
+      .prepare(
+        "UPDATE publication SET state = 'ready', ready_at_ms = 2 WHERE publication_id = ?",
+      )
+      .run(firstPublicationId);
+    database
+      .prepare(
+        "UPDATE publication SET state = 'active', activated_at_ms = 3 WHERE publication_id = ?",
+      )
+      .run(firstPublicationId);
+    database
+      .prepare(
+        "INSERT INTO publication_provider_slice (provider_slice_id, publication_id, provider_id, provider_run_id, carried_forward, freshness_state) VALUES (?, ?, ?, ?, 1, 'stale')",
+      )
+      .run(providerSliceId, secondPublicationId, providerId, providerRunId);
+    expectConstraint(
+      () =>
+        database
+          .prepare(
+            "INSERT INTO publication_provider_slice (provider_slice_id, publication_id, provider_id, provider_run_id, carried_forward, freshness_state) VALUES (?, ?, ?, ?, 0, 'fresh')",
+          )
+          .run(providerSliceId, thirdPublicationId, providerId, providerRunId),
+      "reused provider slice must be carried forward",
+    );
+    expectConstraint(
+      () =>
+        database
+          .prepare(
+            "INSERT INTO publication_provider_slice (provider_slice_id, publication_id, provider_id, provider_run_id, carried_forward, freshness_state) VALUES (?, ?, ?, ?, 1, 'fresh')",
+          )
+          .run(
+            providerSliceId,
+            thirdPublicationId,
+            id("prv", 202),
+            providerRunId,
+          ),
+      "provider slice lineage is inconsistent",
+    );
+    expectConstraint(
+      () =>
+        database
+          .prepare(
+            "INSERT INTO publication_provider_slice (provider_slice_id, publication_id, provider_id, provider_run_id, carried_forward, freshness_state) VALUES (?, ?, ?, ?, 1, 'fresh')",
+          )
+          .run(providerSliceId, thirdPublicationId, providerId, id("pvr", 203)),
+      "provider slice lineage is inconsistent",
+    );
+    database
+      .prepare(
+        "INSERT INTO publication_provider_slice (provider_slice_id, publication_id, provider_id, provider_run_id, carried_forward, freshness_state) VALUES (?, ?, ?, ?, 1, 'fresh')",
+      )
+      .run(providerSliceId, fourthPublicationId, providerId, providerRunId);
+    expect(
+      database
+        .prepare(
+          "SELECT count(*) AS count FROM publication_provider_slice WHERE provider_slice_id = ?",
+        )
+        .get(providerSliceId),
+    ).toEqual({ count: 3 });
+  });
+
+  it("allows failed/building retries and fences both overlapping-build races", () => {
+    const database = applyMigrations("serving");
+    const providerSliceId = id("prn", 214);
+    const providerId = id("prv", 215);
+    const providerRunId = id("pvr", 216);
+    const failedPublicationId = id("pub", 217);
+    const winningPublicationId = id("pub", 218);
+    const competingPublicationId = id("pub", 219);
+    insertBuildingPublication(
+      database,
+      failedPublicationId,
+      { resources: 0, exactDocuments: 0, vectorDocuments: 0 },
+      null,
+      1,
+    );
+    database
+      .prepare(
+        "INSERT INTO publication_provider_slice (provider_slice_id, publication_id, provider_id, provider_run_id, carried_forward, freshness_state) VALUES (?, ?, ?, ?, 0, 'fresh')",
+      )
+      .run(providerSliceId, failedPublicationId, providerId, providerRunId);
+    database
+      .prepare(
+        "UPDATE publication SET state = 'failed', failure_codes_json = '[\"candidate_failed\"]' WHERE publication_id = ?",
+      )
+      .run(failedPublicationId);
+
+    for (const [publicationId, generatedAtMs] of [
+      [winningPublicationId, 1],
+      [competingPublicationId, 2],
+    ] as const) {
+      insertBuildingPublication(
+        database,
+        publicationId,
+        { resources: 1, exactDocuments: 1, vectorDocuments: 1 },
+        null,
+        generatedAtMs,
+      );
+      database
+        .prepare(
+          "INSERT INTO publication_provider_slice (provider_slice_id, publication_id, provider_id, provider_run_id, carried_forward, freshness_state) VALUES (?, ?, ?, ?, 0, 'fresh')",
+        )
+        .run(providerSliceId, publicationId, providerId, providerRunId);
+      const modelId =
+        publicationId === winningPublicationId
+          ? id("mdl", 220)
+          : id("mdl", 221);
+      database
+        .prepare(
+          "INSERT INTO publication_resource VALUES (?, 'model', ?, '{}', ?)",
+        )
+        .run(publicationId, modelId, HASH);
+      database
+        .prepare(
+          "INSERT INTO publication_search_document VALUES (?, ?, 'model', ?, 'retry', '[]', '', '[]', 'retry model', ?)",
+        )
+        .run(
+          publicationId,
+          publicationId === winningPublicationId
+            ? "e".repeat(64)
+            : "f".repeat(64),
+          modelId,
+          HASH,
+        );
+    }
+
+    database
+      .prepare(
+        "UPDATE publication SET state = 'ready', ready_at_ms = 3 WHERE publication_id = ?",
+      )
+      .run(winningPublicationId);
+    expectConstraint(
+      () =>
+        database
+          .prepare(
+            "UPDATE publication SET state = 'ready', ready_at_ms = 3 WHERE publication_id = ?",
+          )
+          .run(competingPublicationId),
+      "publication closure counts are incomplete",
+    );
+    expect(
+      database
+        .prepare("SELECT state FROM publication WHERE publication_id = ?")
+        .get(competingPublicationId),
+    ).toEqual({ state: "building" });
+    database
+      .prepare(
+        "UPDATE publication SET state = 'active', activated_at_ms = 4 WHERE publication_id = ?",
+      )
+      .run(winningPublicationId);
+    expectConstraint(
+      () =>
+        database
+          .prepare(
+            "UPDATE publication SET state = 'ready', ready_at_ms = 5 WHERE publication_id = ?",
+          )
+          .run(competingPublicationId),
+      "publication closure counts are incomplete",
+    );
+    expect(
+      database
+        .prepare("SELECT state FROM publication WHERE publication_id = ?")
+        .get(competingPublicationId),
+    ).toEqual({ state: "building" });
+  });
+
+  it("rejects a slice occurrence from a future publication", () => {
+    const database = applyMigrations("serving");
+    const olderCandidateId = id("pub", 222);
+    const futurePublicationId = id("pub", 223);
+    const providerSliceId = id("prn", 224);
+    const providerId = id("prv", 225);
+    const providerRunId = id("pvr", 226);
+    insertBuildingPublication(
+      database,
+      olderCandidateId,
+      { resources: 0, exactDocuments: 0, vectorDocuments: 0 },
+      null,
+      1,
+    );
+    insertBuildingPublication(
+      database,
+      futurePublicationId,
+      { resources: 1, exactDocuments: 1, vectorDocuments: 1 },
+      null,
+      100,
+    );
+    database
+      .prepare(
+        "INSERT INTO publication_provider_slice (provider_slice_id, publication_id, provider_id, provider_run_id, carried_forward, freshness_state) VALUES (?, ?, ?, ?, 0, 'fresh')",
+      )
+      .run(providerSliceId, futurePublicationId, providerId, providerRunId);
+    const modelId = id("mdl", 227);
+    database
+      .prepare(
+        "INSERT INTO publication_resource VALUES (?, 'model', ?, '{}', ?)",
+      )
+      .run(futurePublicationId, modelId, HASH);
+    database
+      .prepare(
+        "INSERT INTO publication_search_document VALUES (?, ?, 'model', ?, 'future', '[]', '', '[]', 'future model', ?)",
+      )
+      .run(futurePublicationId, "1".repeat(64), modelId, HASH);
+    database
+      .prepare(
+        "UPDATE publication SET state = 'ready', ready_at_ms = 101 WHERE publication_id = ?",
+      )
+      .run(futurePublicationId);
+    database
+      .prepare(
+        "UPDATE publication SET state = 'active', activated_at_ms = 102 WHERE publication_id = ?",
+      )
+      .run(futurePublicationId);
+
+    expectConstraint(
+      () =>
+        database
+          .prepare(
+            "INSERT INTO publication_provider_slice (provider_slice_id, publication_id, provider_id, provider_run_id, carried_forward, freshness_state) VALUES (?, ?, ?, ?, 1, 'fresh')",
+          )
+          .run(providerSliceId, olderCandidateId, providerId, providerRunId),
+      "provider slice occurrence chronology is inconsistent",
+    );
+  });
 
   it("requires complete closure before a head can select a publication", () => {
     const database = applyMigrations("serving");
@@ -975,6 +1718,15 @@ describe("serving publication migrations (PIPE-050–PIPE-056)", () => {
         "UPDATE publication SET state = 'ready', ready_at_ms = 2 WHERE publication_id = ?",
       )
       .run(publicationId);
+    expectConstraint(
+      () =>
+        database
+          .prepare(
+            "INSERT INTO publication_provider_slice (provider_slice_id, publication_id, provider_id, provider_run_id, carried_forward, freshness_state) VALUES (?, ?, ?, ?, 0, 'fresh')",
+          )
+          .run(id("prn", 211), publicationId, id("prv", 212), id("pvr", 213)),
+      "provider slices may be staged only while building",
+    );
     expectConstraint(
       () =>
         database
