@@ -23,21 +23,21 @@ export type AcceptedBoundPublicationRecoveryFixture = Readonly<{
   rows: ServingClosureRows;
 }>;
 
+export type MaximumObjectPublicationRecoveryFixture =
+  AcceptedBoundPublicationRecoveryFixture;
+
 const evidenceId = (ordinal: number): string =>
   `evd_00000000-0000-4000-8000-${ordinal.toString(16).padStart(12, "0")}`;
 
 const PROVIDER_EVIDENCE_ID =
   "evd_cccccccc-cccc-4ccc-8ccc-cccccccccccc" as const;
 
-/**
- * Produces exactly 50,000 B1 source rows while keeping all bytes inside the
- * canonical publication and serving-closure contracts. Evidence summaries are
- * not provider-attributable and their inert canonical JSON is padded so the
- * resulting archive also exercises the 24 MiB admission dimension.
- */
-export const createAcceptedBoundPublicationRecoveryFixture = async (
+/** Builds contract-valid recovery rows with a caller-selected evidence set. */
+const createPublicationRecoveryFixture = async (
   publicationId: `pub_${string}`,
   generatedAtMs: number,
+  evidenceResourceCount: number,
+  evidencePaddingCharacters: number,
 ): Promise<AcceptedBoundPublicationRecoveryFixture> => {
   const base = await createReadyPublicationFixture(
     publicationId,
@@ -84,9 +84,9 @@ export const createAcceptedBoundPublicationRecoveryFixture = async (
       contentHash: await hashPublicationResourceContent(retainedProviderInput),
     },
   ];
-  const padding = "x".repeat(EVIDENCE_PADDING_CHARACTERS);
+  const padding = "x".repeat(evidencePaddingCharacters);
   const providerId = providerResource.resource_id;
-  for (let ordinal = 1; ordinal <= EVIDENCE_RESOURCE_COUNT; ordinal += 1) {
+  for (let ordinal = 1; ordinal <= evidenceResourceCount; ordinal += 1) {
     const resourceId =
       ordinal === 1 ? PROVIDER_EVIDENCE_ID : evidenceId(ordinal - 1);
     const evidenceSummary = {
@@ -248,3 +248,31 @@ export const createAcceptedBoundPublicationRecoveryFixture = async (
   });
   return Object.freeze({ manifest, rows });
 };
+
+/**
+ * Produces exactly 50,000 B1 source rows while keeping all bytes inside the
+ * canonical publication and serving-closure contracts. Evidence summaries are
+ * not provider-attributable and their inert canonical JSON is padded so the
+ * resulting archive also exercises the 24 MiB admission dimension.
+ */
+export const createAcceptedBoundPublicationRecoveryFixture = (
+  publicationId: `pub_${string}`,
+  generatedAtMs: number,
+): Promise<AcceptedBoundPublicationRecoveryFixture> =>
+  createPublicationRecoveryFixture(
+    publicationId,
+    generatedAtMs,
+    EVIDENCE_RESOURCE_COUNT,
+    EVIDENCE_PADDING_CHARACTERS,
+  );
+
+/**
+ * Produces exactly 64 contract-valid B1 source rows. Tests can canonically
+ * repack those rows as either 63 or 64 source objects without changing the
+ * publication authority, proving both sides of the total-object boundary.
+ */
+export const createMaximumObjectPublicationRecoveryFixture = (
+  publicationId: `pub_${string}`,
+  generatedAtMs: number,
+): Promise<MaximumObjectPublicationRecoveryFixture> =>
+  createPublicationRecoveryFixture(publicationId, generatedAtMs, 29, 0);
