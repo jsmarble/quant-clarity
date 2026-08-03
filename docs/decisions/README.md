@@ -75,3 +75,4 @@ Accepted ADRs describe implementation choices; they do not amend product require
 - [ADR 0037](0037-stale-offering-eligibility-filtering.md) — explicit stale Offering eligibility across exact Model/Variant search without provider-derived ordering
 - [ADR 0038](0038-publication-pinned-model-detail-read-seam.md) — publication-pinned stable-ID Model detail read seam without public routing
 - [ADR 0039](0039-publication-model-slug-projection-core.md) — schema-neutral publication Model-slug ownership and proof derivation
+- [ADR 0040](0040-canonical-model-slug-history-capture.md) — drained canonical Model-slug history capture and saga handoff

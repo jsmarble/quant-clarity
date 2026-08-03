@@ -603,19 +603,19 @@ CREATE TRIGGER model_claim_pointers_insert
 BEFORE INSERT ON model
 BEGIN
   SELECT CASE WHEN EXISTS (
-    SELECT 1 FROM (
-      SELECT NEW.publisher_claim_id AS claim_id, 'publisher' AS field_name UNION ALL
-      SELECT NEW.release_claim_id, 'release_date' UNION ALL
-      SELECT NEW.modality_claim_id, 'modalities' UNION ALL
-      SELECT NEW.context_claim_id, 'context_window_tokens' UNION ALL
-      SELECT NEW.output_limit_claim_id, 'maximum_output_tokens' UNION ALL
-      SELECT NEW.license_claim_id, 'license' UNION ALL
-      SELECT NEW.architecture_claim_id, 'architecture'
-    ) pointer
-    WHERE pointer.claim_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM json_each(json_object(
+      'publisher', NEW.publisher_claim_id,
+      'release_date', NEW.release_claim_id,
+      'modalities', NEW.modality_claim_id,
+      'context_window_tokens', NEW.context_claim_id,
+      'maximum_output_tokens', NEW.output_limit_claim_id,
+      'license', NEW.license_claim_id,
+      'architecture', NEW.architecture_claim_id
+    )) pointer
+    WHERE pointer.value IS NOT NULL AND NOT EXISTS (
       SELECT 1 FROM field_claim c JOIN claim_scope s ON s.scope_id = c.scope_id
-      WHERE c.claim_id = pointer.claim_id AND c.subject_resource_id = NEW.model_id
-        AND c.field_name = pointer.field_name AND c.verification_state = 'verified'
+      WHERE c.claim_id = pointer.value AND c.subject_resource_id = NEW.model_id
+        AND c.field_name = pointer.key AND c.verification_state = 'verified'
         AND c.value_state = 'known' AND s.scope_kind = 'model'
     )
   ) THEN RAISE(ABORT, 'model claim pointer mismatch') END;
@@ -624,19 +624,19 @@ CREATE TRIGGER model_claim_pointers_update
 BEFORE UPDATE OF publisher_claim_id, release_claim_id, modality_claim_id, context_claim_id, output_limit_claim_id, license_claim_id, architecture_claim_id ON model
 BEGIN
   SELECT CASE WHEN EXISTS (
-    SELECT 1 FROM (
-      SELECT NEW.publisher_claim_id AS claim_id, 'publisher' AS field_name UNION ALL
-      SELECT NEW.release_claim_id, 'release_date' UNION ALL
-      SELECT NEW.modality_claim_id, 'modalities' UNION ALL
-      SELECT NEW.context_claim_id, 'context_window_tokens' UNION ALL
-      SELECT NEW.output_limit_claim_id, 'maximum_output_tokens' UNION ALL
-      SELECT NEW.license_claim_id, 'license' UNION ALL
-      SELECT NEW.architecture_claim_id, 'architecture'
-    ) pointer
-    WHERE pointer.claim_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM json_each(json_object(
+      'publisher', NEW.publisher_claim_id,
+      'release_date', NEW.release_claim_id,
+      'modalities', NEW.modality_claim_id,
+      'context_window_tokens', NEW.context_claim_id,
+      'maximum_output_tokens', NEW.output_limit_claim_id,
+      'license', NEW.license_claim_id,
+      'architecture', NEW.architecture_claim_id
+    )) pointer
+    WHERE pointer.value IS NOT NULL AND NOT EXISTS (
       SELECT 1 FROM field_claim c JOIN claim_scope s ON s.scope_id = c.scope_id
-      WHERE c.claim_id = pointer.claim_id AND c.subject_resource_id = NEW.model_id
-        AND c.field_name = pointer.field_name AND c.verification_state = 'verified'
+      WHERE c.claim_id = pointer.value AND c.subject_resource_id = NEW.model_id
+        AND c.field_name = pointer.key AND c.verification_state = 'verified'
         AND c.value_state = 'known' AND s.scope_kind = 'model'
     )
   ) THEN RAISE(ABORT, 'model claim pointer mismatch') END;
@@ -679,18 +679,18 @@ CREATE TRIGGER checkpoint_claim_pointers_insert
 BEFORE INSERT ON checkpoint
 BEGIN
   SELECT CASE WHEN EXISTS (
-    SELECT 1 FROM (
-      SELECT NEW.repository_id_claim_id AS claim_id, 'repository_id' AS field_name UNION ALL
-      SELECT NEW.revision_claim_id, 'revision' UNION ALL
-      SELECT NEW.publication_time_claim_id, 'published_at' UNION ALL
-      SELECT NEW.declared_weight_format_claim_id, 'declared_weight_format' UNION ALL
-      SELECT NEW.quantization_claim_id, 'quantization' UNION ALL
-      SELECT NEW.file_format_claim_id, 'file_format'
-    ) pointer
-    WHERE pointer.claim_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM json_each(json_object(
+      'repository_id', NEW.repository_id_claim_id,
+      'revision', NEW.revision_claim_id,
+      'published_at', NEW.publication_time_claim_id,
+      'declared_weight_format', NEW.declared_weight_format_claim_id,
+      'quantization', NEW.quantization_claim_id,
+      'file_format', NEW.file_format_claim_id
+    )) pointer
+    WHERE pointer.value IS NOT NULL AND NOT EXISTS (
       SELECT 1 FROM field_claim c JOIN claim_scope s ON s.scope_id = c.scope_id
-      WHERE c.claim_id = pointer.claim_id AND c.subject_resource_id = NEW.checkpoint_id
-        AND c.field_name = pointer.field_name AND c.verification_state = 'verified'
+      WHERE c.claim_id = pointer.value AND c.subject_resource_id = NEW.checkpoint_id
+        AND c.field_name = pointer.key AND c.verification_state = 'verified'
         AND c.value_state = 'known' AND s.scope_kind = 'checkpoint'
     )
   ) THEN RAISE(ABORT, 'checkpoint claim pointer mismatch') END;
@@ -699,18 +699,18 @@ CREATE TRIGGER checkpoint_claim_pointers_update
 BEFORE UPDATE OF repository_id_claim_id, revision_claim_id, publication_time_claim_id, declared_weight_format_claim_id, quantization_claim_id, file_format_claim_id ON checkpoint
 BEGIN
   SELECT CASE WHEN EXISTS (
-    SELECT 1 FROM (
-      SELECT NEW.repository_id_claim_id AS claim_id, 'repository_id' AS field_name UNION ALL
-      SELECT NEW.revision_claim_id, 'revision' UNION ALL
-      SELECT NEW.publication_time_claim_id, 'published_at' UNION ALL
-      SELECT NEW.declared_weight_format_claim_id, 'declared_weight_format' UNION ALL
-      SELECT NEW.quantization_claim_id, 'quantization' UNION ALL
-      SELECT NEW.file_format_claim_id, 'file_format'
-    ) pointer
-    WHERE pointer.claim_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM json_each(json_object(
+      'repository_id', NEW.repository_id_claim_id,
+      'revision', NEW.revision_claim_id,
+      'published_at', NEW.publication_time_claim_id,
+      'declared_weight_format', NEW.declared_weight_format_claim_id,
+      'quantization', NEW.quantization_claim_id,
+      'file_format', NEW.file_format_claim_id
+    )) pointer
+    WHERE pointer.value IS NOT NULL AND NOT EXISTS (
       SELECT 1 FROM field_claim c JOIN claim_scope s ON s.scope_id = c.scope_id
-      WHERE c.claim_id = pointer.claim_id AND c.subject_resource_id = NEW.checkpoint_id
-        AND c.field_name = pointer.field_name AND c.verification_state = 'verified'
+      WHERE c.claim_id = pointer.value AND c.subject_resource_id = NEW.checkpoint_id
+        AND c.field_name = pointer.key AND c.verification_state = 'verified'
         AND c.value_state = 'known' AND s.scope_kind = 'checkpoint'
     )
   ) THEN RAISE(ABORT, 'checkpoint claim pointer mismatch') END;
