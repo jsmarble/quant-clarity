@@ -169,7 +169,7 @@ describe("provider exact-name D1 reader (SRCH-002, SRCH-006, SRCH-008)", () => {
     expect(database.calls).toEqual([
       {
         sql: PROVIDER_EXACT_NAME_SELECT_SQL,
-        values: [PUBLICATION_ID, "fixture provider", "", 1_000_000, 6],
+        values: [PUBLICATION_ID, "fixture provider", "", 1_000_000, 6, null],
       },
     ]);
   });

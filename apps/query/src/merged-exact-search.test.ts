@@ -218,6 +218,7 @@ describe("merged exact search (SRCH-002, SRCH-006, API-007, PRIV-006)", () => {
         resourceId: MODEL_1,
       },
       limit: 20,
+      requiredAvailableUntilMs: null,
     });
   });
 

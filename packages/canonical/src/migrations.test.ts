@@ -147,16 +147,50 @@ function applyServingProviderModelIdMigration(database: DatabaseSync): void {
   );
 }
 
+function applyServingRetainedHotPublicationMigration(
+  database: DatabaseSync,
+): void {
+  applyAtomicMigration(
+    database,
+    readFileSync(
+      resolve("migrations", "serving", "0011_retained_hot_publications.sql"),
+      "utf8",
+    ),
+  );
+}
+
 function splitMigrationStatements(sql: string): readonly string[] {
   const statements: string[] = [];
   let current = "";
   let trigger = false;
+  let inSingleQuotedLiteral = false;
   for (const line of sql.split("\n")) {
     current += `${line}\n`;
-    if (/^CREATE TRIGGER\b/u.test(line)) trigger = true;
+    let structuralLine = "";
+    for (let index = 0; index < line.length; index += 1) {
+      const character = line.charAt(index);
+      if (
+        !inSingleQuotedLiteral &&
+        character === "-" &&
+        line[index + 1] === "-"
+      )
+        break;
+      if (character === "'") {
+        if (inSingleQuotedLiteral && line[index + 1] === "'") {
+          index += 1;
+        } else {
+          inSingleQuotedLiteral = !inSingleQuotedLiteral;
+        }
+        structuralLine += " ";
+      } else {
+        structuralLine += inSingleQuotedLiteral ? " " : character;
+      }
+    }
+    if (/^CREATE TRIGGER\b/u.test(structuralLine)) trigger = true;
     if (
-      (trigger && /^END;\s*$/u.test(line)) ||
-      (!trigger && /;\s*$/u.test(line))
+      !inSingleQuotedLiteral &&
+      ((trigger && /^END;\s*$/u.test(structuralLine)) ||
+        (!trigger && /;\s*$/u.test(structuralLine)))
     ) {
       statements.push(current);
       current = "";
@@ -4760,7 +4794,10 @@ describe("serving publication migrations (PIPE-050–PIPE-056)", () => {
   });
 
   it("adds the STRICT provider-model-ID projection and exact closed v4 schemas in 1.7.0", () => {
-    const database = applyMigrations("serving");
+    const database = applyMigrations(
+      "serving",
+      "0010_provider_model_id_exact_projection.sql",
+    );
     expect(
       database
         .prepare(
@@ -5844,6 +5881,215 @@ describe("serving publication migrations (PIPE-050–PIPE-056)", () => {
           )
           .get(),
       ).toEqual({ schema_version: "1.7.0" });
+      database.close();
+    }
+  });
+
+  it("adds exact partial covering retained-hot history indexes in schema 1.8.0", () => {
+    const database = applyMigrations("serving");
+    expect(
+      database
+        .prepare(
+          "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+        )
+        .get(),
+    ).toEqual({ schema_version: "1.8.0" });
+
+    const expected = [
+      {
+        name: "publication_switch_history_from_retained_hot_idx",
+        firstColumn: "from_publication_id",
+        predicate: "WHERE from_publication_id IS NOT NULL",
+      },
+      {
+        name: "publication_switch_history_prior_rollback_retained_hot_idx",
+        firstColumn: "expected_prior_rollback_candidate_publication_id",
+        predicate:
+          "WHERE expected_prior_rollback_candidate_publication_id IS NOT NULL",
+      },
+    ] as const;
+    const indexList = database
+      .prepare("PRAGMA index_list(publication_switch_history)")
+      .all() as {
+      name: string;
+      origin: string;
+      partial: number;
+      unique: number;
+    }[];
+    for (const index of expected) {
+      expect(indexList).toContainEqual(
+        expect.objectContaining({
+          name: index.name,
+          origin: "c",
+          partial: 1,
+          unique: 0,
+        }),
+      );
+      const keyColumns = database
+        .prepare(`PRAGMA index_xinfo(${index.name})`)
+        .all()
+        .filter((row) => row.key === 1)
+        .map((row) => ({
+          name: row.name,
+          descending: row.desc,
+          collation: row.coll,
+        }));
+      expect(keyColumns).toEqual([
+        { name: index.firstColumn, descending: 0, collation: "BINARY" },
+        { name: "switched_at_ms", descending: 1, collation: "BINARY" },
+        { name: "new_generation", descending: 1, collation: "BINARY" },
+      ]);
+      const schema = database
+        .prepare(
+          "SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?",
+        )
+        .get(index.name) as { sql: string };
+      expect(schema.sql).toContain(index.predicate);
+    }
+    expect(database.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+    expect(database.prepare("PRAGMA integrity_check").get()).toEqual({
+      integrity_check: "ok",
+    });
+  });
+
+  it("requires exact clean schema 1.7.0 and rejects retained-hot object collisions before mutation", () => {
+    const wrongVersion = applyMigrations(
+      "serving",
+      "0009_model_variant_name_exact_projection.sql",
+    );
+    expect(() => {
+      applyServingRetainedHotPublicationMigration(wrongVersion);
+    }).toThrow();
+    expect(
+      wrongVersion
+        .prepare(
+          "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+        )
+        .get(),
+    ).toEqual({ schema_version: "1.6.0" });
+
+    const dirty = applyMigrations(
+      "serving",
+      "0010_provider_model_id_exact_projection.sql",
+    );
+    const immutableTrigger = dirty
+      .prepare(
+        "SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = 'publication_switch_history_immutable_update'",
+      )
+      .get() as { sql: string };
+    dirty.exec("DROP TRIGGER publication_switch_history_immutable_update");
+    expect(() => {
+      applyServingRetainedHotPublicationMigration(dirty);
+    }).toThrow();
+    expect(
+      dirty
+        .prepare(
+          "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+        )
+        .get(),
+    ).toEqual({ schema_version: "1.7.0" });
+    dirty.exec(immutableTrigger.sql);
+
+    dirty.exec("DROP TRIGGER publication_switch_history_immutable_update");
+    dirty.exec(`CREATE TRIGGER publication_switch_history_immutable_update
+      BEFORE UPDATE ON publication_switch_history WHEN 0
+      BEGIN SELECT RAISE(ABORT, 'switch history is append-only'); END`);
+    expect(() => {
+      applyServingRetainedHotPublicationMigration(dirty);
+    }).toThrow();
+    expect(
+      dirty
+        .prepare(
+          "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+        )
+        .get(),
+    ).toEqual({ schema_version: "1.7.0" });
+    dirty.exec("DROP TRIGGER publication_switch_history_immutable_update");
+    dirty.exec(immutableTrigger.sql);
+
+    const applyTrigger = dirty
+      .prepare(
+        "SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = 'publication_switch_history_apply'",
+      )
+      .get() as { sql: string };
+    dirty.exec("DROP TRIGGER publication_switch_history_apply");
+    const spoofedApplyPrefix = `CREATE TRIGGER publication_switch_history_apply
+      AFTER INSERT ON publication_switch_history BEGIN
+      SELECT 'update publication_head rollback_candidate_publication_id = new.resulting_rollback_candidate_publication_id';`;
+    const spoofedApply = `${spoofedApplyPrefix}${" ".repeat(
+      1067 - spoofedApplyPrefix.length - " END".length,
+    )} END`;
+    expect(spoofedApply).toHaveLength(1067);
+    dirty.exec(spoofedApply);
+    expect(() => {
+      applyServingRetainedHotPublicationMigration(dirty);
+    }).toThrow();
+    dirty.exec("DROP TRIGGER publication_switch_history_apply");
+    dirty.exec(applyTrigger.sql);
+
+    dirty.exec(
+      "CREATE TABLE publication_switch_history_from_retained_hot_idx(fake INTEGER)",
+    );
+    expect(() => {
+      applyServingRetainedHotPublicationMigration(dirty);
+    }).toThrow();
+    expect(
+      dirty
+        .prepare(
+          `SELECT schema_version,
+             (SELECT count(*) FROM sqlite_master
+              WHERE type = 'index' AND name LIKE 'publication_switch_history_%_retained_hot_idx') AS retained_hot_index_count
+           FROM serving_schema_metadata WHERE singleton = 1`,
+        )
+        .get(),
+    ).toEqual({ schema_version: "1.7.0", retained_hot_index_count: 0 });
+    dirty.exec("DROP TABLE publication_switch_history_from_retained_hot_idx");
+    applyServingRetainedHotPublicationMigration(dirty);
+    expect(
+      dirty
+        .prepare(
+          "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+        )
+        .get(),
+    ).toEqual({ schema_version: "1.8.0" });
+  });
+
+  it("rolls back after every migration 0011 statement boundary and remains retryable", () => {
+    const migration = readFileSync(
+      resolve("migrations", "serving", "0011_retained_hot_publications.sql"),
+      "utf8",
+    );
+    const statements = splitMigrationStatements(migration);
+    expect(statements).toHaveLength(7);
+    for (let boundary = 1; boundary <= statements.length; boundary += 1) {
+      const database = applyMigrations(
+        "serving",
+        "0010_provider_model_id_exact_projection.sql",
+      );
+      expect(() => {
+        applyAtomicMigration(
+          database,
+          `${statements.slice(0, boundary).join("\n")}\nSELECT * FROM __injected_migration_failure__;`,
+        );
+      }).toThrow();
+      expect(
+        database
+          .prepare(
+            `SELECT schema_version,
+               (SELECT count(*) FROM sqlite_master
+                WHERE type = 'index' AND name LIKE 'publication_switch_history_%_retained_hot_idx') AS retained_hot_index_count
+             FROM serving_schema_metadata WHERE singleton = 1`,
+          )
+          .get(),
+      ).toEqual({ schema_version: "1.7.0", retained_hot_index_count: 0 });
+      applyServingRetainedHotPublicationMigration(database);
+      expect(
+        database
+          .prepare(
+            "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+          )
+          .get(),
+      ).toEqual({ schema_version: "1.8.0" });
       database.close();
     }
   });

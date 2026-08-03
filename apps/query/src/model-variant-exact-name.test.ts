@@ -318,7 +318,7 @@ describe("model/variant exact-name D1 reader (SRCH-002, SRCH-006, SRCH-008, SRCH
     expect(Array.from(new Uint8Array(values?.[1] as ArrayBuffer))).toEqual(
       Array.from(utf8.encode(normalizeExactSearchName(" ALPHA\u0000MODEL "))),
     );
-    expect(values?.slice(2)).toEqual([null, "", 1_000_000, 6]);
+    expect(values?.slice(2)).toEqual([null, "", 1_000_000, 6, null]);
     expect(Object.keys(page.results[0] ?? {})).not.toContain(
       "display_name_utf8",
     );

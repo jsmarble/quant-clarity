@@ -15,6 +15,15 @@ import {
   PUBLICATION_RESOURCE_JSON_MAX_BYTES,
 } from "@quant-clarity/publication-core";
 
+import {
+  RETAINED_HOT_PUBLICATION_CLOCK_SKEW_MS,
+  RETAINED_HOT_PUBLICATION_MAX_HORIZON_MS,
+  RETAINED_HOT_PUBLICATION_MAX_SWITCH_FUTURE_MS,
+  RETAINED_HOT_PUBLICATION_WINDOW_MS,
+  RETAINED_HOT_REFERENCE_CTE_SQL,
+  validRequiredAvailableUntilMs,
+} from "./retained-hot-publication.js";
+
 const UUID_V4 =
   "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
 const PUBLICATION_ID = new RegExp(`^pub_${UUID_V4}$`, "u");
@@ -41,16 +50,35 @@ export const PROVIDER_MODEL_ID_EXACT_MAX_TRANSFER_BYTES =
  * record-type filters. Targets are deduplicated before the page limit.
  */
 export const PROVIDER_MODEL_ID_EXACT_CANDIDATE_SELECT_SQL = `
-WITH eligible_publication AS (
+WITH ${RETAINED_HOT_REFERENCE_CTE_SQL}, eligible_publication AS (
   SELECT publication.publication_id
   FROM publication_head AS head
   JOIN publication AS publication ON publication.publication_id = ?1
+  CROSS JOIN retained_reference AS retained
   WHERE head.singleton = 1
+    AND (
+      ?13 IS NULL OR (
+        ?13 > CAST(strftime('%s', 'now') AS INTEGER) * 1000 -
+          ${String(RETAINED_HOT_PUBLICATION_CLOCK_SKEW_MS)}
+        AND ?13 <= CAST(strftime('%s', 'now') AS INTEGER) * 1000 +
+          ${String(RETAINED_HOT_PUBLICATION_MAX_HORIZON_MS)}
+      )
+    )
     AND (
       (head.active_publication_id = publication.publication_id AND publication.state = 'active')
       OR
       (head.rollback_candidate_publication_id = publication.publication_id
         AND publication.state IN ('superseded', 'rolled_back'))
+      OR (
+        ?13 IS NOT NULL
+        AND publication.state IN ('superseded', 'rolled_back')
+        AND retained.latest_head_reference_ms BETWEEN 0 AND
+          CAST(strftime('%s', 'now') AS INTEGER) * 1000 +
+            ${String(RETAINED_HOT_PUBLICATION_MAX_SWITCH_FUTURE_MS)}
+        AND retained.latest_head_reference_ms >
+          ?13 + ${String(RETAINED_HOT_PUBLICATION_CLOCK_SKEW_MS)} -
+            ${String(RETAINED_HOT_PUBLICATION_WINDOW_MS)}
+      )
     )
 ), matches AS (
   SELECT
@@ -219,16 +247,35 @@ ORDER BY row_ordinal ASC, match_mode ASC,
 
 /** Canonical targets are fetched separately to stay below D1's row-size cap. */
 export const PROVIDER_MODEL_ID_EXACT_TARGET_SELECT_SQL = `
-WITH eligible_publication AS (
+WITH ${RETAINED_HOT_REFERENCE_CTE_SQL}, eligible_publication AS (
   SELECT publication.publication_id
   FROM publication_head AS head
   JOIN publication AS publication ON publication.publication_id = ?1
+  CROSS JOIN retained_reference AS retained
   WHERE head.singleton = 1
+    AND (
+      ?4 IS NULL OR (
+        ?4 > CAST(strftime('%s', 'now') AS INTEGER) * 1000 -
+          ${String(RETAINED_HOT_PUBLICATION_CLOCK_SKEW_MS)}
+        AND ?4 <= CAST(strftime('%s', 'now') AS INTEGER) * 1000 +
+          ${String(RETAINED_HOT_PUBLICATION_MAX_HORIZON_MS)}
+      )
+    )
     AND (
       (head.active_publication_id = publication.publication_id AND publication.state = 'active')
       OR
       (head.rollback_candidate_publication_id = publication.publication_id
         AND publication.state IN ('superseded', 'rolled_back'))
+      OR (
+        ?4 IS NOT NULL
+        AND publication.state IN ('superseded', 'rolled_back')
+        AND retained.latest_head_reference_ms BETWEEN 0 AND
+          CAST(strftime('%s', 'now') AS INTEGER) * 1000 +
+            ${String(RETAINED_HOT_PUBLICATION_MAX_SWITCH_FUTURE_MS)}
+        AND retained.latest_head_reference_ms >
+          ?4 + ${String(RETAINED_HOT_PUBLICATION_CLOCK_SKEW_MS)} -
+            ${String(RETAINED_HOT_PUBLICATION_WINDOW_MS)}
+      )
     )
 ), requested AS (
   SELECT
@@ -273,6 +320,7 @@ export type ProviderModelIdExactInput = Readonly<{
   recordType: "model" | "variant" | null;
   continuation: ProviderModelIdExactContinuation | null;
   limit: number;
+  requiredAvailableUntilMs?: number | null;
 }>;
 
 export type MergedProviderModelIdExactContinuation = Readonly<{
@@ -347,6 +395,7 @@ type ValidatedInput = Readonly<{
   afterNormalizedBytes: ArrayBuffer;
   afterResourceId: string;
   limit: number;
+  requiredAvailableUntilMs: number | null;
 }>;
 
 const candidateKeys = [
@@ -495,6 +544,9 @@ const validateInput = (
       "publicationId",
       "query",
       "recordType",
+      ...(Object.hasOwn(input, "requiredAvailableUntilMs")
+        ? ["requiredAvailableUntilMs"]
+        : []),
     ]) ||
     typeof input.publicationId !== "string" ||
     !PUBLICATION_ID.test(input.publicationId) ||
@@ -517,6 +569,14 @@ const validateInput = (
     input.limit < 1 ||
     input.limit > PROVIDER_MODEL_ID_EXACT_MAX_PAGE_SIZE
   )
+    return invalid();
+  const requiredAvailableUntilMs = Object.hasOwn(
+    input,
+    "requiredAvailableUntilMs",
+  )
+    ? input.requiredAvailableUntilMs
+    : null;
+  if (!validRequiredAvailableUntilMs(requiredAvailableUntilMs))
     return invalid();
   let normalizedQuery = "";
   try {
@@ -591,6 +651,7 @@ const validateInput = (
     afterNormalizedBytes: bytes(afterNormalizedName),
     afterResourceId,
     limit: input.limit,
+    requiredAvailableUntilMs,
   };
 };
 
@@ -835,6 +896,7 @@ const readProviderModelIdExactPageInternal = async (
         PROVIDER_MODEL_ID_EXACT_MAX_RESOURCE_BYTES,
         excludeCanonicalExactMatch ? 1 : 0,
         stableIdOrdering ? 1 : 0,
+        valid.requiredAvailableUntilMs,
       )
       .all();
     candidateValues = rows(result, valid.limit + 2);
@@ -967,6 +1029,7 @@ const readProviderModelIdExactPageInternal = async (
         valid.publicationId,
         requested,
         PROVIDER_MODEL_ID_EXACT_MAX_RESOURCE_BYTES,
+        valid.requiredAvailableUntilMs,
       )
       .all();
     targetValues = rows(result, candidates.length + 1);

@@ -12,9 +12,9 @@ const MODEL_INDEX = "publication_model_variant_name_exact_idx";
 const PROVIDER_INDEX = "publication_provider_search_exact_idx";
 const PUBLICATION_ID = "pub_fefefefe-0000-4000-8000-000000000001" as const;
 
-describe("serving migration 0010 retained-index preflight", () => {
+describe("serving migrations 0010 and 0011 structural preflights", () => {
   it("rejects portable semantic corruption and accepts exact repair", async () => {
-    await applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS.slice(0, -1));
+    await applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS.slice(0, -2));
     const originals = new Map<string, string>();
     for (const indexName of [MODEL_INDEX, PROVIDER_INDEX]) {
       const row = await env.SERVING_DB.prepare(
@@ -54,7 +54,7 @@ describe("serving migration 0010 retained-index preflight", () => {
       await env.SERVING_DB.prepare(corruption.sql).run();
 
       await expect(
-        applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS.slice(-1)),
+        applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS.slice(-2, -1)),
       ).rejects.toThrow();
       await expect(
         env.SERVING_DB.prepare(
@@ -81,7 +81,7 @@ describe("serving migration 0010 retained-index preflight", () => {
       expect(original).not.toBeNull();
       await env.SERVING_DB.exec(`DROP TRIGGER ${triggerName}`);
       await expect(
-        applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS.slice(-1)),
+        applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS.slice(-2, -1)),
       ).rejects.toThrow();
       await expect(
         env.SERVING_DB.prepare(
@@ -119,7 +119,7 @@ describe("serving migration 0010 retained-index preflight", () => {
       BEGIN SELECT RAISE(ABORT, 'model/variant name search document is immutable'); END`,
     ).run();
 
-    await applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS.slice(-1));
+    await applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS.slice(-2, -1));
     await expect(
       env.SERVING_DB.prepare(
         "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
@@ -141,5 +141,107 @@ describe("serving migration 0010 retained-index preflight", () => {
         .bind(PUBLICATION_ID)
         .run(),
     ).rejects.toThrow("model/variant name search document is immutable");
+
+    const historyTrigger =
+      "publication_switch_history_immutable_update" as const;
+    const canonicalHistoryTrigger = await env.SERVING_DB.prepare(
+      "SELECT sql FROM sqlite_schema WHERE type = 'trigger' AND name = ?",
+    )
+      .bind(historyTrigger)
+      .first<{ sql: string }>();
+    expect(canonicalHistoryTrigger).not.toBeNull();
+    await env.SERVING_DB.exec(`DROP TRIGGER ${historyTrigger}`);
+    await expect(
+      applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS.slice(-1)),
+    ).rejects.toThrow();
+    await expect(
+      env.SERVING_DB.prepare(
+        `SELECT schema_version,
+          (SELECT count(*) FROM sqlite_schema
+           WHERE type = 'index' AND name LIKE 'publication_switch_history_%_retained_hot_idx') AS retained_hot_index_count
+         FROM serving_schema_metadata WHERE singleton = 1`,
+      ).first(),
+    ).resolves.toEqual({
+      schema_version: "1.7.0",
+      retained_hot_index_count: 0,
+    });
+    await env.SERVING_DB.prepare(canonicalHistoryTrigger!.sql).run();
+
+    await env.SERVING_DB.exec(`DROP TRIGGER ${historyTrigger}`);
+    await env.SERVING_DB.prepare(
+      `CREATE TRIGGER ${historyTrigger}
+      BEFORE UPDATE ON publication BEGIN SELECT 1; END`,
+    ).run();
+    await expect(
+      applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS.slice(-1)),
+    ).rejects.toThrow();
+    await env.SERVING_DB.exec(`DROP TRIGGER ${historyTrigger}`);
+    await env.SERVING_DB.prepare(
+      `CREATE TRIGGER ${historyTrigger}
+      BEFORE UPDATE ON publication_switch_history WHEN 0
+      BEGIN SELECT RAISE(ABORT, 'switch history is append-only'); END`,
+    ).run();
+    await expect(
+      applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS.slice(-1)),
+    ).rejects.toThrow();
+    await env.SERVING_DB.exec(`DROP TRIGGER ${historyTrigger}`);
+    await env.SERVING_DB.prepare(canonicalHistoryTrigger!.sql).run();
+
+    await expect(
+      env.SERVING_DB.prepare(
+        `SELECT schema_version,
+          (SELECT count(*) FROM sqlite_schema
+           WHERE type = 'index' AND name LIKE 'publication_switch_history_%_retained_hot_idx') AS retained_hot_index_count
+         FROM serving_schema_metadata WHERE singleton = 1`,
+      ).first(),
+    ).resolves.toEqual({
+      schema_version: "1.7.0",
+      retained_hot_index_count: 0,
+    });
+
+    await env.SERVING_DB.exec(
+      "CREATE TABLE publication_switch_history_from_retained_hot_idx(fake INTEGER)",
+    );
+    await expect(
+      applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS.slice(-1)),
+    ).rejects.toThrow();
+    await expect(
+      env.SERVING_DB.prepare(
+        "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+      ).first(),
+    ).resolves.toEqual({ schema_version: "1.7.0" });
+    await env.SERVING_DB.exec(
+      "DROP TABLE publication_switch_history_from_retained_hot_idx",
+    );
+
+    await applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS.slice(-1));
+    await expect(
+      env.SERVING_DB.prepare(
+        "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+      ).first(),
+    ).resolves.toEqual({ schema_version: "1.8.0" });
+    const indexes = await env.SERVING_DB.prepare(
+      `SELECT name, "unique" AS is_unique, origin, partial
+       FROM pragma_index_list('publication_switch_history')
+       WHERE name IN (
+         'publication_switch_history_from_retained_hot_idx',
+         'publication_switch_history_prior_rollback_retained_hot_idx'
+       )
+       ORDER BY name`,
+    ).all();
+    expect(indexes.results).toEqual([
+      {
+        name: "publication_switch_history_from_retained_hot_idx",
+        is_unique: 0,
+        origin: "c",
+        partial: 1,
+      },
+      {
+        name: "publication_switch_history_prior_rollback_retained_hot_idx",
+        is_unique: 0,
+        origin: "c",
+        partial: 1,
+      },
+    ]);
   });
 });

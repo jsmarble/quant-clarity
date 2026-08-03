@@ -251,6 +251,24 @@ beforeAll(async () => {
         migration.name <= "0009_model_variant_name_exact_projection.sql",
     ),
   );
+  await env.SERVING_DB.prepare(
+    `
+    CREATE INDEX publication_switch_history_from_retained_hot_idx
+    ON publication_switch_history(
+      from_publication_id, switched_at_ms DESC, new_generation DESC
+    ) WHERE from_publication_id IS NOT NULL
+  `,
+  ).run();
+  await env.SERVING_DB.prepare(
+    `
+    CREATE INDEX publication_switch_history_prior_rollback_retained_hot_idx
+    ON publication_switch_history(
+      expected_prior_rollback_candidate_publication_id,
+      switched_at_ms DESC,
+      new_generation DESC
+    ) WHERE expected_prior_rollback_candidate_publication_id IS NOT NULL
+  `,
+  ).run();
   fixture = await createServingV3Fixture(PUBLICATION, GENERATED_AT, {
     modelDisplayName: [
       "\u0000Leading Model",
@@ -343,6 +361,7 @@ describe("model/variant exact-name reader in pinned workerd/D1 (SRCH-002, SRCH-0
         "",
         MODEL_VARIANT_EXACT_NAME_MAX_RESOURCE_BYTES,
         21,
+        null,
       )
       .all<{ detail: string }>();
     expect(plan.success).toBe(true);

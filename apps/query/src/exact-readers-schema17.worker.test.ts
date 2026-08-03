@@ -9,9 +9,12 @@ import {
   readProviderModelIdSearchStagingPersistenceV1,
   readProviderSearchStagingPersistenceV2,
   readServingReadinessCommitPersistenceV4,
+  type PublicationRecord,
   type ServingSwitchProjectionV4,
+  type StoredPublicationHead,
 } from "@quant-clarity/publication-core";
 import type * as PublicationCoreModule from "@quant-clarity/publication-core";
+import type { QueryServiceEnvelope } from "@quant-clarity/api-core";
 
 import { applyModelVariantNameSearchStagingV1 } from "../../pipeline/src/model-variant-name-search-staging.js";
 import { applyProviderModelIdSearchStagingV1 } from "../../pipeline/src/provider-model-id-search-staging.js";
@@ -25,6 +28,7 @@ import {
   sealServingV4Fixture,
   type ServingV4Fixture,
 } from "../../pipeline/test/serving-switch-v4-fixture.js";
+import { RESOLVE_PUBLICATION_V2_SELECT_SQL } from "./catalog-query-rpc.js";
 import { readModelVariantExactNamePage } from "./model-variant-exact-name.js";
 import {
   EXACT_PROVIDER_MODEL_ID_RAW_MARKER,
@@ -35,6 +39,13 @@ import {
   PROVIDER_MODEL_ID_EXACT_CANDIDATE_SELECT_SQL,
   readProviderModelIdExactPage,
 } from "./provider-model-id-exact.js";
+import {
+  RETAINED_HOT_FROM_INDEX,
+  RETAINED_HOT_PUBLICATION_CLOCK_SKEW_MS,
+  RETAINED_HOT_PUBLICATION_MAX_HORIZON_MS,
+  RETAINED_HOT_PUBLICATION_WINDOW_MS,
+  RETAINED_HOT_ROLLBACK_INDEX,
+} from "./retained-hot-publication.js";
 
 vi.mock("@quant-clarity/publication-core", async (importOriginal) => {
   const actual = await importOriginal<typeof PublicationCoreModule>();
@@ -96,14 +107,16 @@ vi.mock(
 );
 
 const PUBLICATION = "pub_17171717-0000-4000-8000-000000000001" as const;
+const PUBLICATION_B = "pub_17171717-0000-4000-8000-000000000002" as const;
+const PUBLICATION_C = "pub_17171717-0000-4000-8000-000000000003" as const;
 const NOW = Math.floor(Date.now() / 1_000) * 1_000;
 const GENERATED_AT = NOW - 20 * 60_000;
 const SWITCHED_AT = NOW - 60_000;
 let fixture: ServingV4Fixture;
 
-const artifactProof = (value: ServingV4Fixture) => ({
+const artifactProof = (value: ServingV4Fixture, switchedAtMs: number) => ({
   environment: "local" as const,
-  observedAtMs: SWITCHED_AT - 1_000,
+  observedAtMs: switchedAtMs - 1_000,
   maximumAgeMs: 60 * 60 * 1_000,
   ftsBuildVersion: "fts5-unicode61@1",
   ftsSourceDocumentCount: value.base.manifest.searchDocuments.length,
@@ -132,6 +145,9 @@ const artifactProof = (value: ServingV4Fixture) => ({
 
 const activation = async (
   value: ServingV4Fixture,
+  switchedAtMs = SWITCHED_AT,
+  currentHead: StoredPublicationHead | null = null,
+  currentActive: PublicationRecord | null = null,
 ): Promise<ServingSwitchProjectionV4> => {
   const provider = readProviderSearchStagingPersistenceV2(
     value.providerStaging,
@@ -142,6 +158,7 @@ const activation = async (
   const readiness = readServingReadinessCommitPersistenceV4(
     value.readinessCommit,
   );
+  const generation = (currentHead?.generation ?? 0) + 1;
   const preflight = await projectServingSwitchPreflightProofV4({
     manifest: value.base.manifest,
     providerProof: value.providerProof,
@@ -149,33 +166,27 @@ const activation = async (
     providerModelIdProof: value.providerModelIdProof,
     readinessProof: value.readinessProof,
     context: {
-      switchId: `publication-switch|activate|1|${value.base.manifest.publicationId}|${value.base.manifest.closureHash}`,
+      switchId: `publication-switch|activate|${String(generation)}|${value.base.manifest.publicationId}|${value.base.manifest.closureHash}`,
       action: "activate",
-      expectedPriorGeneration: 0,
-      expectedPriorRollbackCandidatePublicationId: null,
-      expectedPriorSwitchedAtMs: null,
-      newGeneration: 1,
-      fromPublicationId: null,
-      fromClosureHash: null,
+      expectedPriorGeneration: currentHead?.generation ?? 0,
+      expectedPriorRollbackCandidatePublicationId:
+        currentHead?.rollbackCandidatePublicationId ?? null,
+      expectedPriorSwitchedAtMs:
+        currentHead === null ? null : Date.parse(currentHead.switchedAt),
+      newGeneration: generation,
+      fromPublicationId: currentActive?.publicationId ?? null,
+      fromClosureHash: currentActive?.closureHash ?? null,
       toPublicationId: value.base.manifest.publicationId,
       toClosureHash: value.base.manifest.closureHash,
-      switchedAtMs: SWITCHED_AT,
+      switchedAtMs,
     },
-    artifactProof: artifactProof(value),
+    artifactProof: artifactProof(value, switchedAtMs),
   });
   return projectServingSwitchV4({
     preflight,
-    target: {
-      publicationId: value.base.manifest.publicationId,
-      closureHash: value.base.manifest.closureHash,
-      state: "ready",
-      generatedAt: value.base.manifest.generatedAt,
-      readyAt: new Date(readiness.transition.ready_at_ms).toISOString(),
-      firstActivatedAt: null,
-      lastHeadReferencedAt: null,
-    },
-    currentHead: null,
-    currentActive: null,
+    target: publicationRecord(value),
+    currentHead,
+    currentActive,
     authorizedBy: {
       kind: "pipeline",
       identityId: "pipeline.query-schema17-reader",
@@ -191,6 +202,68 @@ const activation = async (
   });
 };
 
+const publicationRecord = (
+  value: ServingV4Fixture,
+  state: PublicationRecord["state"] = "ready",
+  firstActivatedAt: string | null = null,
+  lastHeadReferencedAt: string | null = firstActivatedAt,
+): PublicationRecord => {
+  const readiness = readServingReadinessCommitPersistenceV4(
+    value.readinessCommit,
+  );
+  return {
+    publicationId: value.base.manifest.publicationId,
+    closureHash: value.base.manifest.closureHash,
+    state,
+    generatedAt: value.base.manifest.generatedAt,
+    readyAt: new Date(readiness.transition.ready_at_ms).toISOString(),
+    firstActivatedAt,
+    lastHeadReferencedAt,
+  };
+};
+
+const publish = async (value: ServingV4Fixture): Promise<void> => {
+  await seedModelVariantNameSearchBuildingPublication(
+    env.SERVING_DB,
+    value.base,
+  );
+  await applyProviderSearchStagingV2(env.SERVING_DB, value.providerStaging);
+  await applyModelVariantNameSearchStagingV1(
+    env.SERVING_DB,
+    value.base.staging,
+  );
+  await applyProviderModelIdSearchStagingV1(
+    env.SERVING_DB,
+    value.providerModelIdStaging,
+  );
+  await sealServingV4Fixture(env.SERVING_DB, value);
+  await applyReadinessCommitV4(env.SERVING_DB, value.readinessCommit);
+};
+
+const rpcEnvelope = (
+  publicationId: string,
+  query: string,
+): QueryServiceEnvelope => ({
+  version: 1,
+  audience: "quantclarity-catalog-query-v1",
+  environment: "local",
+  operation: { kind: "search" },
+  publicationId,
+  filters: {},
+  sort: ["relevance", "stable_id"],
+  limit: 20,
+  continuation: null,
+  searchPlan: {
+    kind: "exact_structured",
+    query,
+    filters: {},
+    limit: 20,
+    semanticCandidates: 0,
+    semanticCalls: 0,
+    semanticDegraded: "disabled",
+  },
+});
+
 beforeAll(async () => {
   await applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS);
   fixture = await createServingV4Fixture(PUBLICATION, GENERATED_AT, [
@@ -202,25 +275,11 @@ beforeAll(async () => {
     { rawProviderModelId: "ACCOUNTS/ALPHA" },
     { rawProviderModelId: "Schema 17\u0000Model" },
   ]);
-  await seedModelVariantNameSearchBuildingPublication(
-    env.SERVING_DB,
-    fixture.base,
-  );
-  await applyProviderSearchStagingV2(env.SERVING_DB, fixture.providerStaging);
-  await applyModelVariantNameSearchStagingV1(
-    env.SERVING_DB,
-    fixture.base.staging,
-  );
-  await applyProviderModelIdSearchStagingV1(
-    env.SERVING_DB,
-    fixture.providerModelIdStaging,
-  );
-  await sealServingV4Fixture(env.SERVING_DB, fixture);
-  await applyReadinessCommitV4(env.SERVING_DB, fixture.readinessCommit);
+  await publish(fixture);
   await applyServingSwitchV4(env.SERVING_DB, await activation(fixture));
 });
 
-describe("schema-1.7 current exact readers (SRCH-002, SRCH-006, SRCH-009, QA-005, QA-006)", () => {
+describe("schema-1.8 current exact readers (SRCH-002, SRCH-006, SRCH-009, QA-005, QA-006)", () => {
   it("orders normalized-name BLOBs by unsigned UTF-8 bytes across BMP and supplementary planes", async () => {
     const bmp = new TextEncoder().encode("\uE000");
     const supplementary = new TextEncoder().encode("\u{10000}");
@@ -246,7 +305,7 @@ describe("schema-1.7 current exact readers (SRCH-002, SRCH-006, SRCH-009, QA-005
       env.SERVING_DB.prepare(
         "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
       ).first(),
-    ).resolves.toEqual({ schema_version: "1.7.0" });
+    ).resolves.toEqual({ schema_version: "1.8.0" });
     await expect(
       exports.CatalogQueryService.resolvePublicationV1({
         version: 1,
@@ -396,6 +455,7 @@ describe("schema-1.7 current exact readers (SRCH-002, SRCH-006, SRCH-009, QA-005
           1_048_576,
           0,
           0,
+          null,
         )
         .all();
 
@@ -585,5 +645,279 @@ describe("schema-1.7 current exact readers (SRCH-002, SRCH-006, SRCH-009, QA-005
         results: [{ tierMarker: EXACT_PROVIDER_MODEL_ID_RAW_MARKER }],
       },
     });
+  });
+
+  it("retains a displaced rollback candidate across A-to-B-to-C for v2 and fails closed after retention", async () => {
+    const fixtureB = await createServingV4Fixture(
+      PUBLICATION_B,
+      NOW - 15 * 60_000,
+    );
+    const fixtureC = await createServingV4Fixture(
+      PUBLICATION_C,
+      NOW - 10 * 60_000,
+    );
+    await publish(fixtureB);
+    await publish(fixtureC);
+
+    const firstActivatedAtA = new Date(SWITCHED_AT).toISOString();
+    const headA: StoredPublicationHead = {
+      activePublicationId: PUBLICATION,
+      rollbackCandidatePublicationId: null,
+      switchedAt: firstActivatedAtA,
+      generation: 1,
+    };
+    const switchedAtB = NOW - 50_000;
+    await applyServingSwitchV4(
+      env.SERVING_DB,
+      await activation(
+        fixtureB,
+        switchedAtB,
+        headA,
+        publicationRecord(fixture, "active", firstActivatedAtA),
+      ),
+    );
+
+    const requiredAvailableUntilMs = NOW + 5 * 60_000;
+    await expect(
+      exports.CatalogQueryService.resolvePublicationV2({
+        version: 2,
+        audience: "quantclarity-catalog-query-v1",
+        environment: "local",
+        requestedPublicationId: PUBLICATION,
+        requiredAvailableUntilMs,
+      }),
+    ).resolves.toMatchObject({
+      outcome: "selected",
+      publicationId: PUBLICATION,
+      requiredAvailableUntilMs,
+    });
+
+    const firstActivatedAtB = new Date(switchedAtB).toISOString();
+    const headB: StoredPublicationHead = {
+      activePublicationId: PUBLICATION_B,
+      rollbackCandidatePublicationId: PUBLICATION,
+      switchedAt: firstActivatedAtB,
+      generation: 2,
+    };
+    const switchedAtC = NOW - 40_000;
+    await applyServingSwitchV4(
+      env.SERVING_DB,
+      await activation(
+        fixtureC,
+        switchedAtC,
+        headB,
+        publicationRecord(fixtureB, "active", firstActivatedAtB),
+      ),
+    );
+
+    const plan = await env.SERVING_DB.prepare(
+      `EXPLAIN QUERY PLAN ${RESOLVE_PUBLICATION_V2_SELECT_SQL}`,
+    )
+      .bind(PUBLICATION, requiredAvailableUntilMs)
+      .all<{ detail: string }>();
+    const planDetails = plan.results.map((row) => row.detail).join("\n");
+    expect(planDetails).toContain(RETAINED_HOT_FROM_INDEX);
+    expect(planDetails).toContain(RETAINED_HOT_ROLLBACK_INDEX);
+
+    const retained = await exports.CatalogQueryService.resolvePublicationV2({
+      version: 2,
+      audience: "quantclarity-catalog-query-v1",
+      environment: "local",
+      requestedPublicationId: PUBLICATION,
+      requiredAvailableUntilMs,
+    });
+    expect(retained).toMatchObject({
+      outcome: "selected",
+      publicationId: PUBLICATION,
+      requiredAvailableUntilMs,
+    });
+    if (retained.outcome !== "selected")
+      throw new Error("retained publication selection failed");
+    await expect(
+      exports.CatalogQueryService.readMergedExactSearchV2({
+        version: 2,
+        audience: "quantclarity-catalog-query-v1",
+        environment: "local",
+        bookmark: retained.bookmark,
+        requiredAvailableUntilMs,
+        envelope: rpcEnvelope(PUBLICATION, "Schema 17\u0000Model"),
+      }),
+    ).resolves.toMatchObject({
+      outcome: "page",
+      page: {
+        publicationId: PUBLICATION,
+        results: [{ tierMarker: "exact-v1:c" }],
+      },
+    });
+
+    await expect(
+      exports.CatalogQueryService.resolvePublicationV1({
+        version: 1,
+        audience: "quantclarity-catalog-query-v1",
+        environment: "local",
+        requestedPublicationId: PUBLICATION,
+      }),
+    ).resolves.toEqual({
+      outcome: "publication_expired",
+      currentPublicationId: PUBLICATION_C,
+    });
+    await expect(
+      exports.CatalogQueryService.readMergedExactSearchV1({
+        version: 1,
+        audience: "quantclarity-catalog-query-v1",
+        environment: "local",
+        bookmark: retained.bookmark,
+        envelope: rpcEnvelope(PUBLICATION, "Schema 17\u0000Model"),
+      }),
+    ).resolves.toEqual({ outcome: "integrity_failure" });
+
+    await expect(
+      exports.CatalogQueryService.resolvePublicationV2({
+        version: 2,
+        audience: "quantclarity-catalog-query-v1",
+        environment: "local",
+        requestedPublicationId: PUBLICATION,
+        requiredAvailableUntilMs:
+          NOW + RETAINED_HOT_PUBLICATION_MAX_HORIZON_MS + 60_000,
+      }),
+    ).resolves.toEqual({ outcome: "integrity_failure" });
+
+    await expect(
+      exports.CatalogQueryService.readMergedExactSearchV2({
+        version: 2,
+        audience: "quantclarity-catalog-query-v1",
+        environment: "local",
+        bookmark: retained.bookmark,
+        requiredAvailableUntilMs: 0,
+        envelope: rpcEnvelope(PUBLICATION, "Schema 17\u0000Model"),
+      }),
+    ).resolves.toEqual({ outcome: "integrity_failure" });
+
+    // Workerd's SQLite clock cannot be advanced. Rewrite only the two immutable
+    // reference facts under test, restoring the canonical guard before reads.
+    const immutableTrigger = await env.SERVING_DB.prepare(
+      `SELECT sql FROM sqlite_schema
+       WHERE type = 'trigger'
+         AND name = 'publication_switch_history_immutable_update'`,
+    ).first<{ sql: string }>();
+    if (immutableTrigger === null)
+      throw new Error("switch-history immutable trigger missing");
+    const rewriteReferences = async (
+      activeDepartureMs: number,
+      rollbackDepartureMs: number,
+    ): Promise<void> => {
+      await env.SERVING_DB.exec(
+        "DROP TRIGGER publication_switch_history_immutable_update",
+      );
+      await env.SERVING_DB.prepare(
+        `UPDATE publication_switch_history
+         SET switched_at_ms = ?1
+         WHERE new_generation = 2 AND from_publication_id = ?2`,
+      )
+        .bind(activeDepartureMs, PUBLICATION)
+        .run();
+      await env.SERVING_DB.prepare(
+        `UPDATE publication_switch_history
+         SET switched_at_ms = ?1
+         WHERE new_generation = 3
+           AND expected_prior_rollback_candidate_publication_id = ?2`,
+      )
+        .bind(rollbackDepartureMs, PUBLICATION)
+        .run();
+      await env.SERVING_DB.prepare(immutableTrigger.sql).run();
+    };
+    const resolveA = () =>
+      exports.CatalogQueryService.resolvePublicationV2({
+        version: 2,
+        audience: "quantclarity-catalog-query-v1",
+        environment: "local",
+        requestedPublicationId: PUBLICATION,
+        requiredAvailableUntilMs,
+      });
+    const cutoffReferenceMs =
+      requiredAvailableUntilMs +
+      RETAINED_HOT_PUBLICATION_CLOCK_SKEW_MS -
+      RETAINED_HOT_PUBLICATION_WINDOW_MS;
+
+    await rewriteReferences(cutoffReferenceMs - 1, cutoffReferenceMs + 1);
+    await expect(resolveA()).resolves.toMatchObject({ outcome: "selected" });
+    await rewriteReferences(cutoffReferenceMs + 1, cutoffReferenceMs - 1);
+    await expect(resolveA()).resolves.toMatchObject({ outcome: "selected" });
+    await rewriteReferences(cutoffReferenceMs, cutoffReferenceMs);
+    await expect(resolveA()).resolves.toMatchObject({
+      outcome: "publication_expired",
+    });
+    await rewriteReferences(cutoffReferenceMs + 1, cutoffReferenceMs + 1);
+    await expect(resolveA()).resolves.toMatchObject({ outcome: "selected" });
+    await rewriteReferences(cutoffReferenceMs - 1, cutoffReferenceMs - 1);
+    await expect(
+      env.SERVING_DB.prepare(
+        `UPDATE publication_switch_history
+         SET switched_at_ms = switched_at_ms
+         WHERE from_publication_id = ?1`,
+      )
+        .bind(PUBLICATION)
+        .run(),
+    ).rejects.toThrow("switch history is append-only");
+
+    await expect(
+      exports.CatalogQueryService.resolvePublicationV2({
+        version: 2,
+        audience: "quantclarity-catalog-query-v1",
+        environment: "local",
+        requestedPublicationId: PUBLICATION,
+        requiredAvailableUntilMs,
+      }),
+    ).resolves.toEqual({
+      outcome: "publication_expired",
+      currentPublicationId: PUBLICATION_C,
+    });
+    const current = await exports.CatalogQueryService.resolvePublicationV2({
+      version: 2,
+      audience: "quantclarity-catalog-query-v1",
+      environment: "local",
+      requestedPublicationId: null,
+      requiredAvailableUntilMs,
+    });
+    if (current.outcome !== "selected")
+      throw new Error("current publication selection failed");
+    expect(current.requiredAvailableUntilMs).toBe(requiredAvailableUntilMs);
+    await expect(
+      exports.CatalogQueryService.readMergedExactSearchV2({
+        version: 2,
+        audience: "quantclarity-catalog-query-v1",
+        environment: "local",
+        bookmark: current.bookmark,
+        requiredAvailableUntilMs,
+        envelope: rpcEnvelope(PUBLICATION, "Schema 17\u0000Model"),
+      }),
+    ).resolves.toEqual({ outcome: "integrity_failure" });
+    await expect(
+      exports.CatalogQueryService.readMergedExactSearchV2({
+        version: 2,
+        audience: "quantclarity-catalog-query-v1",
+        environment: "local",
+        bookmark: retained.bookmark,
+        requiredAvailableUntilMs,
+        envelope: rpcEnvelope(PUBLICATION, "Schema 17\u0000Model"),
+      }),
+    ).resolves.toEqual({ outcome: "integrity_failure" });
+
+    await env.SERVING_DB.exec(`DROP INDEX ${RETAINED_HOT_FROM_INDEX}`);
+    await expect(
+      exports.CatalogQueryService.resolvePublicationV2({
+        version: 2,
+        audience: "quantclarity-catalog-query-v1",
+        environment: "local",
+        requestedPublicationId: null,
+        requiredAvailableUntilMs,
+      }),
+    ).resolves.toEqual({ outcome: "read_failure" });
+    await env.SERVING_DB.prepare(
+      `CREATE INDEX ${RETAINED_HOT_FROM_INDEX}
+      ON publication_switch_history(
+        from_publication_id, switched_at_ms DESC, new_generation DESC
+      ) WHERE from_publication_id IS NOT NULL`,
+    ).run();
   });
 });

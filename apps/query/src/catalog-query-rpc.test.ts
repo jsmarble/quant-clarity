@@ -2,18 +2,35 @@ import { describe, expect, it } from "vitest";
 
 import {
   RESOLVE_PUBLICATION_SELECT_SQL,
+  RESOLVE_PUBLICATION_V2_SELECT_SQL,
   readProviderExactNameTierV1,
   resolvePublicationV1,
+  resolvePublicationV2,
 } from "./catalog-query-rpc.js";
+import {
+  RETAINED_HOT_FROM_INDEX,
+  RETAINED_HOT_PUBLICATION_WINDOW_MS,
+  RETAINED_HOT_ROLLBACK_INDEX,
+} from "./retained-hot-publication.js";
 
 const PUBLICATION = "pub_11111111-1111-4111-8111-111111111111";
 const CURRENT_PUBLICATION = "pub_22222222-2222-4222-8222-222222222222";
+const NOW_MS = 2_000_000_000_000;
+const HORIZON_MS = NOW_MS + 10 * 60 * 1000;
 
 const resolveInput = (requestedPublicationId: string | null = null) => ({
   version: 1,
   audience: "quantclarity-catalog-query-v1",
   environment: "test",
   requestedPublicationId,
+});
+
+const resolveV2Input = (requestedPublicationId: string | null = null) => ({
+  version: 2,
+  audience: "quantclarity-catalog-query-v1",
+  environment: "test",
+  requestedPublicationId,
+  requiredAvailableUntilMs: HORIZON_MS,
 });
 
 const envelope = {
@@ -45,6 +62,7 @@ class FakeDatabase {
     private readonly rows: readonly unknown[],
     private readonly success = true,
     private readonly bookmark: string | null = "bookmark-test-only",
+    private readonly expectedSql = RESOLVE_PUBLICATION_SELECT_SQL,
   ) {}
 
   asD1(): D1Database {
@@ -54,8 +72,7 @@ class FakeDatabase {
         return {
           getBookmark: () => this.bookmark,
           prepare: (sql: string) => {
-            if (sql !== RESOLVE_PUBLICATION_SELECT_SQL)
-              throw new Error("unexpected query");
+            if (sql !== this.expectedSql) throw new Error("unexpected query");
             return {
               bind: (...values: unknown[]) => {
                 this.binds.push(values);
@@ -82,6 +99,13 @@ const activeRow = {
   rollback_candidate_publication_id: null,
   selected_publication_id: CURRENT_PUBLICATION,
   selected_publication_state: "active",
+};
+
+const activeV2Row = {
+  ...activeRow,
+  database_now_ms: NOW_MS,
+  horizon_valid: 1,
+  selected_latest_head_reference_ms: null,
 };
 
 describe("catalog query RPC boundary (API-003, CF-020, PRIV-006)", () => {
@@ -265,6 +289,170 @@ describe("catalog query RPC boundary (API-003, CF-020, PRIV-006)", () => {
     expect(RESOLVE_PUBLICATION_SELECT_SQL).toMatch(/^\s*SELECT\b/u);
     expect(RESOLVE_PUBLICATION_SELECT_SQL).toContain("?1");
     expect(RESOLVE_PUBLICATION_SELECT_SQL).not.toMatch(
+      /\b(?:INSERT|UPDATE|DELETE|REPLACE|DROP|ALTER|CREATE|PRAGMA|ATTACH)\b/iu,
+    );
+  });
+});
+
+describe("retained-hot publication resolver v2 (API-003, PRIV-006)", () => {
+  const database = (rows: readonly unknown[], success = true) =>
+    new FakeDatabase(
+      rows,
+      success,
+      "bookmark-test-only",
+      RESOLVE_PUBLICATION_V2_SELECT_SQL,
+    );
+
+  it("selects active, rollback, and retained superseded publications", async () => {
+    await expect(
+      resolvePublicationV2(
+        database([activeV2Row]).asD1(),
+        "test",
+        resolveV2Input(),
+      ),
+    ).resolves.toEqual({
+      outcome: "selected",
+      publicationId: CURRENT_PUBLICATION,
+      bookmark: "bookmark-test-only",
+      requiredAvailableUntilMs: HORIZON_MS,
+    });
+
+    await expect(
+      resolvePublicationV2(
+        database([
+          {
+            ...activeV2Row,
+            rollback_candidate_publication_id: PUBLICATION,
+            selected_publication_id: PUBLICATION,
+            selected_publication_state: "rolled_back",
+          },
+        ]).asD1(),
+        "test",
+        resolveV2Input(PUBLICATION),
+      ),
+    ).resolves.toMatchObject({
+      outcome: "selected",
+      publicationId: PUBLICATION,
+      requiredAvailableUntilMs: HORIZON_MS,
+    });
+
+    await expect(
+      resolvePublicationV2(
+        database([
+          {
+            ...activeV2Row,
+            selected_publication_id: PUBLICATION,
+            selected_publication_state: "superseded",
+            selected_latest_head_reference_ms: NOW_MS,
+          },
+        ]).asD1(),
+        "test",
+        resolveV2Input(PUBLICATION),
+      ),
+    ).resolves.toMatchObject({
+      outcome: "selected",
+      publicationId: PUBLICATION,
+      requiredAvailableUntilMs: HORIZON_MS,
+    });
+  });
+
+  it("collapses unavailable retained pins to the same generic expiry outcome", async () => {
+    await expect(
+      resolvePublicationV2(
+        database([
+          {
+            ...activeV2Row,
+            selected_publication_id: null,
+            selected_publication_state: null,
+          },
+        ]).asD1(),
+        "test",
+        resolveV2Input(PUBLICATION),
+      ),
+    ).resolves.toEqual({
+      outcome: "publication_expired",
+      currentPublicationId: CURRENT_PUBLICATION,
+    });
+  });
+
+  it("fails closed for invalid horizons and contradictory retention evidence", async () => {
+    await expect(
+      resolvePublicationV2(
+        database([{ ...activeV2Row, horizon_valid: 0 }]).asD1(),
+        "test",
+        resolveV2Input(),
+      ),
+    ).resolves.toEqual({ outcome: "integrity_failure" });
+
+    await expect(
+      resolvePublicationV2(
+        database([
+          {
+            ...activeV2Row,
+            selected_publication_id: PUBLICATION,
+            selected_publication_state: "superseded",
+            selected_latest_head_reference_ms:
+              HORIZON_MS - RETAINED_HOT_PUBLICATION_WINDOW_MS,
+          },
+        ]).asD1(),
+        "test",
+        resolveV2Input(PUBLICATION),
+      ),
+    ).resolves.toEqual({ outcome: "integrity_failure" });
+
+    await expect(
+      resolvePublicationV2(
+        database([
+          {
+            ...activeV2Row,
+            selected_publication_id: PUBLICATION,
+            selected_publication_state: "superseded",
+            selected_latest_head_reference_ms: Number.MAX_SAFE_INTEGER,
+          },
+        ]).asD1(),
+        "test",
+        resolveV2Input(PUBLICATION),
+      ),
+    ).resolves.toEqual({ outcome: "integrity_failure" });
+  });
+
+  it("snapshots exact own data properties and rejects hostile or malformed input before D1", async () => {
+    const fake = database([activeV2Row]);
+    let reads = 0;
+    const hostile = { ...resolveV2Input() } as Record<string, unknown>;
+    Object.defineProperty(hostile, "requiredAvailableUntilMs", {
+      enumerable: true,
+      get: () => {
+        reads += 1;
+        return HORIZON_MS;
+      },
+    });
+    for (const input of [
+      hostile,
+      { ...resolveV2Input(), extra: true },
+      { ...resolveV2Input(), requiredAvailableUntilMs: Number.MAX_VALUE },
+      { ...resolveV2Input(), environment: "preview" },
+    ]) {
+      await expect(
+        resolvePublicationV2(fake.asD1(), "test", input),
+      ).resolves.toEqual({ outcome: "integrity_failure" });
+    }
+    expect(reads).toBe(0);
+    expect(fake.sessionInputs).toEqual([]);
+  });
+
+  it("uses first-primary, one bound statement, and both immutable history indexes", async () => {
+    const fake = database([activeV2Row]);
+    await resolvePublicationV2(fake.asD1(), "test", resolveV2Input());
+    expect(fake.sessionInputs).toEqual(["first-primary"]);
+    expect(fake.binds).toEqual([[null, HORIZON_MS]]);
+    expect(RESOLVE_PUBLICATION_V2_SELECT_SQL).toContain(
+      `INDEXED BY ${RETAINED_HOT_FROM_INDEX}`,
+    );
+    expect(RESOLVE_PUBLICATION_V2_SELECT_SQL).toContain(
+      `INDEXED BY ${RETAINED_HOT_ROLLBACK_INDEX}`,
+    );
+    expect(RESOLVE_PUBLICATION_V2_SELECT_SQL).not.toMatch(
       /\b(?:INSERT|UPDATE|DELETE|REPLACE|DROP|ALTER|CREATE|PRAGMA|ATTACH)\b/iu,
     );
   });
