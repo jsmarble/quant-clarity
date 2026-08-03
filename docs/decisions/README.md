@@ -70,3 +70,4 @@ Accepted ADRs describe implementation choices; they do not amend product require
 - [ADR 0032](0032-local-named-query-service-binding.md) — local API-to-query named service binding and actual multi-Worker JSRPC proof
 - [ADR 0033](0033-provider-eligibility-filtering.md) — model/variant search membership filtered by independent active non-stale provider eligibility
 - [ADR 0034](0034-canonical-family-filtering.md) — model/variant exact-search membership filtered by canonical family identity without a schema change
+- [ADR 0035](0035-canonical-family-model-variant-publication-closure.md) — bounded persisted-publication closure for ModelFamily, Model, and Variant relationships

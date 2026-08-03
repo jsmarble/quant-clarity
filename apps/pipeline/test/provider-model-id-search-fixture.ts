@@ -204,12 +204,13 @@ export const createProviderModelIdSearchFixture = async (
   offerings: readonly ProviderModelIdOfferingFixture[] = [
     { rawProviderModelId: "accounts/provider/models/Alpha\u0000Model" },
   ],
+  includeVariant = false,
 ): Promise<ProviderModelIdSearchFixture> => {
   const base = await createModelVariantNameSearchFixture(
     publicationId,
     generatedAtMs,
     "Alpha Model",
-    false,
+    includeVariant,
     true,
   );
   const observedAt = new Date(generatedAtMs).toISOString();
@@ -561,7 +562,8 @@ export const createProviderModelIdSearchFixture = async (
         resource.resource_type === "offering" ||
         (offeringResources.length > 0 &&
           (resource.resource_type === "model" ||
-            resource.resource_type === "variant")),
+            resource.resource_type === "variant") &&
+          resource.resource_id === targetResource.resourceId),
     ),
   });
   const staging = await projectProviderModelIdSearchStagingV1({

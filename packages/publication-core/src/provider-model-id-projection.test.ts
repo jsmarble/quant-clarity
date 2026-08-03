@@ -24,6 +24,7 @@ import {
   assertProviderModelIdSearchQueryableArtifactProofV4,
   assertProviderModelIdSearchResourceByteBudget,
   assertProviderModelIdSearchStagingProjectionV1,
+  buildImmutableManifest,
   buildImmutableManifestFromPersistedContent,
   canonicalizePublicationJson,
   derivePublicationVectorId,
@@ -137,6 +138,21 @@ function variant(sequence: number, overrides: Record<string, unknown> = {}) {
     variant_id: id("var", sequence),
     variant_kind: known("publisher_variant", sequence + 31),
     ...overrides,
+  };
+}
+
+function modelFamily(
+  familyId: string,
+  modelIds: readonly string[],
+  sequence: number,
+) {
+  return {
+    display_name: known(`Family ${String(sequence)}`, sequence + 200),
+    family_id: familyId,
+    last_model_data_refresh: known(observedAt, sequence + 201),
+    model_ids: [...modelIds].sort(compareAscii),
+    publisher: known("Synthetic Publisher", sequence + 202),
+    slug: known(`family-${String(sequence)}`, sequence + 203),
   };
 }
 
@@ -270,6 +286,7 @@ type FixtureOptions = Readonly<{
   contextVersion?: 1 | 2;
   attributionProviderId?: string;
   enabledProviderIds?: readonly string[];
+  descriptorOnlyManifest?: boolean;
 }>;
 
 type Fixture = ProviderModelIdSearchProjectionInput &
@@ -292,14 +309,74 @@ async function makeFixture(options: FixtureOptions = {}): Promise<Fixture> {
     spec("offering", id("off", 2), offering(2, id("mdl", 1), "ACME/Model-One")),
     spec("offering", id("off", 1), offering(1, id("var", 1), "acme model_one")),
   ];
-  const unrelatedTargets = options.unrelatedTargets ?? [
+  const configuredUnrelatedTargets = options.unrelatedTargets ?? [
     spec("model", id("mdl", 9), model(9)),
   ];
+  const configuredCanonicalTargets = [
+    ...targets,
+    ...configuredUnrelatedTargets,
+  ];
+  const modelIds = new Set(
+    configuredCanonicalTargets
+      .filter((resource) => resource.resourceType === "model")
+      .map((resource) => resource.resourceId),
+  );
+  const missingVariantModels = new Map<string, string>();
+  for (const resource of configuredCanonicalTargets) {
+    if (resource.resourceType !== "variant") continue;
+    const modelId = resource.value.model_id;
+    const familyId = resource.value.family_id;
+    if (
+      typeof modelId === "string" &&
+      typeof familyId === "string" &&
+      !modelIds.has(modelId)
+    ) {
+      missingVariantModels.set(modelId, familyId);
+      modelIds.add(modelId);
+    }
+  }
+  const variantBackingModels = [...missingVariantModels].map(
+    ([modelId, familyId], index) =>
+      spec(
+        "model",
+        modelId,
+        model(10_000 + index, { family_id: familyId, model_id: modelId }),
+      ),
+  );
+  const unrelatedTargets = [
+    ...configuredUnrelatedTargets,
+    ...variantBackingModels,
+  ];
+  const canonicalTargets = [...targets, ...unrelatedTargets];
+  const modelIdsByFamily = new Map<string, string[]>();
+  for (const resource of canonicalTargets) {
+    if (resource.resourceType !== "model") continue;
+    const familyId = resource.value.family_id;
+    if (typeof familyId !== "string") continue;
+    const familyModelIds = modelIdsByFamily.get(familyId) ?? [];
+    familyModelIds.push(resource.resourceId);
+    modelIdsByFamily.set(familyId, familyModelIds);
+  }
+  const families = [...modelIdsByFamily]
+    .sort(([left], [right]) => compareAscii(left, right))
+    .map(([familyId, familyModelIds], index) =>
+      spec(
+        "model_family",
+        familyId,
+        modelFamily(familyId, familyModelIds, index + 1),
+      ),
+    );
   const context =
     options.contextVersion === undefined || offerings.length === 0
       ? []
       : contextResources(options.contextVersion, offerings[0]!.resourceId);
-  const source = [...targets, ...offerings, ...unrelatedTargets, ...context];
+  const source = [
+    ...families,
+    ...targets,
+    ...offerings,
+    ...unrelatedTargets,
+    ...context,
+  ];
   const persistedResources: PersistedResourceDescriptor[] = [];
   for (const resource of source) {
     const resourceJson = canonicalizePublicationJson(
@@ -417,7 +494,7 @@ async function makeFixture(options: FixtureOptions = {}): Promise<Fixture> {
     rosterVersion: "roster@1",
     sourceRegisterVersion: "sources@1",
   }));
-  const manifest = await buildImmutableManifestFromPersistedContent({
+  const manifestInput = {
     bundleHash: `sha256:${"b".repeat(64)}`,
     chunks,
     contractVersion: "1.0.0",
@@ -442,7 +519,27 @@ async function makeFixture(options: FixtureOptions = {}): Promise<Fixture> {
       schema: "1.6.0",
       sourcePolicy: "1.0.0",
     },
-  });
+  } as const;
+  const manifest = options.descriptorOnlyManifest
+    ? await buildImmutableManifest({
+        ...manifestInput,
+        resources: persistedResources.map(
+          ({ resourceType, resourceId, contentHash }) => ({
+            resourceType,
+            resourceId,
+            contentHash,
+          }),
+        ),
+        searchDocuments: searchDocuments.map(
+          ({ resourceType, resourceId, documentId, contentHash }) => ({
+            resourceType,
+            resourceId,
+            documentId,
+            contentHash,
+          }),
+        ),
+      })
+    : await buildImmutableManifestFromPersistedContent(manifestInput);
   const allRows = sortedResources.map(
     (resource): ServingResourceClosureRow => ({
       content_hash: resource.contentHash,
@@ -1071,6 +1168,7 @@ describe("trusted provider-model-ID projection", () => {
     ).rejects.toThrow(/contract-valid/u);
 
     const invalidTarget = await makeFixture({
+      descriptorOnlyManifest: true,
       offerings: [
         spec(
           "offering",

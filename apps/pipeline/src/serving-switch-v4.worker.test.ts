@@ -3,12 +3,17 @@ import { applyD1Migrations } from "cloudflare:test";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import {
+  hashPublicationResourceChunk,
+  hashPublicationResourceContent,
+  projectServingClosureSeal,
   projectServingSwitchPreflightProofV4,
   projectServingSwitchV4,
   readProviderModelIdSearchStagingPersistenceV1,
   readProviderSearchStagingPersistenceV2,
   readServingReadinessCommitPersistenceV4,
   type PublicationRecord,
+  type ResourceDescriptor,
+  type ServingClosureRows,
   type ServingSwitchProjectionV4,
   type StoredPublicationHead,
 } from "@quant-clarity/publication-core";
@@ -31,6 +36,7 @@ const PUBLICATION_C = "pub_cccccccc-0000-4000-8000-000000000003" as const;
 const PUBLICATION_D = "pub_cccccccc-0000-4000-8000-000000000004" as const;
 const PUBLICATION_E = "pub_cccccccc-0000-4000-8000-000000000005" as const;
 const PUBLICATION_F = "pub_cccccccc-0000-4000-8000-000000000006" as const;
+const PUBLICATION_G = "pub_cccccccc-0000-4000-8000-000000000007" as const;
 
 const artifactProof = (
   fixture: ServingV4Fixture,
@@ -196,8 +202,14 @@ const rollback = async (
 const prepareReady = async (
   publicationId: `pub_${string}`,
   generatedAtMs: number,
+  includeVariant = false,
 ): Promise<ServingV4Fixture> => {
-  const fixture = await createServingV4Fixture(publicationId, generatedAtMs);
+  const fixture = await createServingV4Fixture(
+    publicationId,
+    generatedAtMs,
+    undefined,
+    includeVariant,
+  );
   await seedModelVariantNameSearchBuildingPublication(
     env.SERVING_DB,
     fixture.base,
@@ -214,6 +226,59 @@ const prepareReady = async (
   await sealServingV4Fixture(env.SERVING_DB, fixture);
   await applyReadinessCommitV4(env.SERVING_DB, fixture.readinessCommit);
   return fixture;
+};
+
+const corruptFamilyMembership = async (
+  fixture: ServingV4Fixture,
+): Promise<ServingClosureRows> => {
+  const rows = fixture.base.closureRows;
+  const family = rows.resources.find(
+    (resource) => resource.resource_type === "model_family",
+  );
+  if (family === undefined) throw new Error("fixture lacks a ModelFamily");
+  const resourceJson = family.resource_json.replace(
+    /"model_ids":\[[^\]]+\]/u,
+    '"model_ids":[]',
+  );
+  if (resourceJson === family.resource_json)
+    throw new Error("fixture ModelFamily has no membership to corrupt");
+  const contentHash = await hashPublicationResourceContent({
+    resourceType: "model_family",
+    resourceId: family.resource_id,
+    resourceJson,
+  });
+  const resources = rows.resources.map((resource) =>
+    resource === family
+      ? { ...resource, resource_json: resourceJson, content_hash: contentHash }
+      : resource,
+  );
+  const descriptors = resources
+    .map((resource): ResourceDescriptor => ({
+      resourceType:
+        resource.resource_type as ResourceDescriptor["resourceType"],
+      resourceId: resource.resource_id,
+      contentHash: resource.content_hash as ResourceDescriptor["contentHash"],
+    }))
+    .sort((left, right) => {
+      const leftKey = `${left.resourceType}:${left.resourceId}`;
+      const rightKey = `${right.resourceType}:${right.resourceId}`;
+      return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
+    });
+  const resourceChunks = rows.chunks.filter(
+    (chunk) => chunk.kind === "resources",
+  );
+  if (resourceChunks.length !== 1)
+    throw new Error("fixture requires one resource inventory chunk");
+  const resourceChunkHash = await hashPublicationResourceChunk(descriptors);
+  return {
+    ...rows,
+    resources,
+    chunks: rows.chunks.map((chunk) =>
+      chunk.kind === "resources"
+        ? { ...chunk, content_hash: resourceChunkHash }
+        : chunk,
+    ),
+  };
 };
 
 const withAbortAt = (database: D1Database, ordinal: number): D1Database => {
@@ -372,7 +437,7 @@ let pendingProjection: ServingSwitchProjectionV4;
 describe("schema-1.7 serving switch v4 in pinned workerd", () => {
   it("activates, replaces, and immediately rolls back while preserving last-known-good head", async () => {
     const now = Math.floor(Date.now() / 1_000) * 1_000;
-    const fixtureA = await prepareReady(PUBLICATION_A, now - 25 * 60_000);
+    const fixtureA = await prepareReady(PUBLICATION_A, now - 25 * 60_000, true);
     await expect(
       one<{
         document_count: number;
@@ -418,6 +483,65 @@ describe("schema-1.7 serving switch v4 in pinned workerd", () => {
     await expect(
       applyServingSwitchV4(withLostResponse(env.SERVING_DB), first),
     ).resolves.toMatchObject({ outcome: "idempotent_success", generation: 1 });
+    await expect(
+      one<{
+        family_count: number;
+        model_count: number;
+        variant_count: number;
+        broken_model_family_count: number;
+        extra_family_member_count: number;
+        broken_variant_count: number;
+      }>(
+        `SELECT
+          (SELECT count(*) FROM publication_resource
+             WHERE publication_id = '${PUBLICATION_A}' AND resource_type = 'model_family') AS family_count,
+          (SELECT count(*) FROM publication_resource
+             WHERE publication_id = '${PUBLICATION_A}' AND resource_type = 'model') AS model_count,
+          (SELECT count(*) FROM publication_resource
+             WHERE publication_id = '${PUBLICATION_A}' AND resource_type = 'variant') AS variant_count,
+          (SELECT count(*)
+             FROM publication_resource AS model
+             LEFT JOIN publication_resource AS family
+               ON family.publication_id = model.publication_id
+              AND family.resource_type = 'model_family'
+              AND family.resource_id = json_extract(model.resource_json, '$.family_id')
+            WHERE model.publication_id = '${PUBLICATION_A}'
+              AND model.resource_type = 'model'
+              AND (family.resource_id IS NULL OR NOT EXISTS (
+                SELECT 1 FROM json_each(family.resource_json, '$.model_ids') AS member
+                WHERE member.value = model.resource_id
+              ))) AS broken_model_family_count,
+          (SELECT count(*)
+             FROM publication_resource AS family,
+                  json_each(family.resource_json, '$.model_ids') AS member
+             LEFT JOIN publication_resource AS model
+               ON model.publication_id = family.publication_id
+              AND model.resource_type = 'model'
+              AND model.resource_id = member.value
+            WHERE family.publication_id = '${PUBLICATION_A}'
+              AND family.resource_type = 'model_family'
+              AND (model.resource_id IS NULL OR
+                   json_extract(model.resource_json, '$.family_id') <> family.resource_id)) AS extra_family_member_count,
+          (SELECT count(*)
+             FROM publication_resource AS variant
+             LEFT JOIN publication_resource AS model
+               ON model.publication_id = variant.publication_id
+              AND model.resource_type = 'model'
+              AND model.resource_id = json_extract(variant.resource_json, '$.model_id')
+            WHERE variant.publication_id = '${PUBLICATION_A}'
+              AND variant.resource_type = 'variant'
+              AND (model.resource_id IS NULL OR
+                   json_extract(variant.resource_json, '$.family_id') <>
+                   json_extract(model.resource_json, '$.family_id'))) AS broken_variant_count`,
+      ),
+    ).resolves.toEqual({
+      family_count: 1,
+      model_count: 1,
+      variant_count: 1,
+      broken_model_family_count: 0,
+      extra_family_member_count: 0,
+      broken_variant_count: 0,
+    });
 
     const fixtureB = await prepareReady(PUBLICATION_B, now - 18 * 60_000);
     const headA: StoredPublicationHead = {
@@ -477,6 +601,40 @@ describe("schema-1.7 serving switch v4 in pinned workerd", () => {
       rollback_candidate_publication_id: PUBLICATION_B,
       generation: 3,
     });
+  });
+
+  it("rejects corrupt canonical family membership before activation and preserves the head", async () => {
+    const now = Math.floor(Date.now() / 1_000) * 1_000;
+    type HeadRow = Readonly<{
+      active_publication_id: string;
+      rollback_candidate_publication_id: string | null;
+      generation: number;
+    }>;
+    const headBefore = await env.SERVING_DB.prepare(
+      "SELECT active_publication_id, rollback_candidate_publication_id, generation FROM publication_head WHERE singleton = 1",
+    ).first<HeadRow>();
+    const fixture = await createServingV4Fixture(
+      PUBLICATION_G,
+      now - 15 * 60_000,
+      undefined,
+      true,
+    );
+    await expect(
+      corruptFamilyMembership(fixture).then((rows) =>
+        projectServingClosureSeal(rows),
+      ),
+    ).rejects.toThrow(/family model membership does not close/u);
+    await expect(
+      one<{ count: number }>(
+        `SELECT count(*) AS count FROM publication
+         WHERE publication_id = '${PUBLICATION_G}'`,
+      ),
+    ).resolves.toEqual({ count: 0 });
+    await expect(
+      env.SERVING_DB.prepare(
+        "SELECT active_publication_id, rollback_candidate_publication_id, generation FROM publication_head WHERE singleton = 1",
+      ).first<HeadRow>(),
+    ).resolves.toEqual(headBefore);
   });
 
   it("rolls back the whole transaction at every failure position", async () => {

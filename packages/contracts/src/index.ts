@@ -296,6 +296,8 @@ export const ModelFamilySchema = Type.Object(
   { $id: "ModelFamily", additionalProperties: false },
 );
 
+export type ModelFamily = Static<typeof ModelFamilySchema>;
+
 export const MODEL_DISPLAY_NAME_MAX_UNICODE_SCALARS = 200;
 
 export const ModelSchema = Type.Object(
@@ -465,6 +467,145 @@ const workerSafeStringFact = (value: unknown, maximum: number): unknown => {
   };
 };
 
+const ownDataRecordSnapshot = (
+  value: unknown,
+  expectedKeys: readonly string[],
+): Readonly<Record<string, unknown>> | null => {
+  if (typeof value !== "object" || value === null || Array.isArray(value))
+    return null;
+  let prototype: object | null;
+  let ownKeys: readonly PropertyKey[];
+  try {
+    prototype = Object.getPrototypeOf(value) as object | null;
+    ownKeys = Reflect.ownKeys(value);
+  } catch {
+    return null;
+  }
+  if (prototype !== Object.prototype && prototype !== null) return null;
+  if (
+    ownKeys.length !== expectedKeys.length ||
+    ownKeys.some(
+      (key) => typeof key !== "string" || !expectedKeys.includes(key),
+    )
+  )
+    return null;
+
+  const snapshot: Record<string, unknown> = {};
+  for (const key of expectedKeys) {
+    let descriptor: PropertyDescriptor | undefined;
+    try {
+      descriptor = Object.getOwnPropertyDescriptor(value, key);
+    } catch {
+      return null;
+    }
+    if (
+      descriptor === undefined ||
+      !("value" in descriptor) ||
+      descriptor.enumerable !== true
+    )
+      return null;
+    snapshot[key] = descriptor.value;
+  }
+  return Object.freeze(snapshot);
+};
+
+const denseOwnDataArraySnapshot = (
+  value: unknown,
+): readonly unknown[] | null => {
+  if (!Array.isArray(value)) return null;
+  let prototype: object | null;
+  let ownKeys: readonly PropertyKey[];
+  let lengthDescriptor: PropertyDescriptor | undefined;
+  try {
+    prototype = Object.getPrototypeOf(value) as object | null;
+    ownKeys = Reflect.ownKeys(value);
+    lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
+  } catch {
+    return null;
+  }
+  if (
+    prototype !== Array.prototype ||
+    lengthDescriptor === undefined ||
+    !("value" in lengthDescriptor) ||
+    typeof lengthDescriptor.value !== "number" ||
+    !Number.isSafeInteger(lengthDescriptor.value) ||
+    lengthDescriptor.value < 0
+  )
+    return null;
+  const length = lengthDescriptor.value;
+  if (
+    ownKeys.length !== length + 1 ||
+    ownKeys.some(
+      (key) =>
+        typeof key !== "string" ||
+        (key !== "length" &&
+          (!/^(?:0|[1-9][0-9]*)$/u.test(key) || Number(key) >= length)),
+    )
+  )
+    return null;
+
+  const snapshot: unknown[] = [];
+  for (let index = 0; index < length; index += 1) {
+    let descriptor: PropertyDescriptor | undefined;
+    try {
+      descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+    } catch {
+      return null;
+    }
+    if (
+      descriptor === undefined ||
+      !("value" in descriptor) ||
+      descriptor.enumerable !== true
+    )
+      return null;
+    snapshot.push(descriptor.value);
+  }
+  return Object.freeze(snapshot);
+};
+
+const workerSafeModelFamilyFact = (value: unknown): unknown => {
+  const fact = ownDataRecordSnapshot(value, [
+    "state",
+    "value",
+    "observed_at",
+    "evidence_ids",
+  ]);
+  if (fact === null) return Object.freeze({ invalidFact: true });
+  const evidenceIds = denseOwnDataArraySnapshot(fact.evidence_ids);
+  if (evidenceIds === null)
+    return Object.freeze({ ...fact, evidence_ids: null });
+  return Object.freeze({ ...fact, evidence_ids: evidenceIds });
+};
+
+const workerSafeModelFamilyCandidate = (value: unknown): unknown => {
+  const family = ownDataRecordSnapshot(value, [
+    "family_id",
+    "slug",
+    "display_name",
+    "publisher",
+    "model_ids",
+    "last_model_data_refresh",
+  ]);
+  if (family === null) return Object.freeze({ invalidModelFamily: true });
+  const modelIds = denseOwnDataArraySnapshot(family.model_ids);
+  return Object.freeze({
+    ...family,
+    slug: workerSafeModelFamilyFact(family.slug),
+    display_name: workerSafeStringFact(
+      workerSafeModelFamilyFact(family.display_name),
+      200,
+    ),
+    publisher: workerSafeStringFact(
+      workerSafeModelFamilyFact(family.publisher),
+      200,
+    ),
+    model_ids: modelIds,
+    last_model_data_refresh: workerSafeModelFamilyFact(
+      family.last_model_data_refresh,
+    ),
+  });
+};
+
 const workerSafeStringArrayFact = (
   value: unknown,
   maximum: number,
@@ -632,6 +773,25 @@ const checkContractSchema = (schema: TSchema, value: unknown): boolean => {
     else FormatRegistry.Set("date", previousDate);
     if (previousDateTime === undefined) FormatRegistry.Delete("date-time");
     else FormatRegistry.Set("date-time", previousDateTime);
+  }
+};
+
+/**
+ * Complete Worker-safe ModelFamily validation with JSON Schema Unicode-scalar
+ * maxLength semantics. Caller-owned objects are snapshotted through own data
+ * descriptors, so accessors are rejected without invocation and input is not
+ * mutated.
+ */
+export const checkModelFamilyContract = (
+  value: unknown,
+): value is ModelFamily => {
+  try {
+    return checkContractSchema(
+      ModelFamilySchema,
+      workerSafeModelFamilyCandidate(value),
+    );
+  } catch {
+    return false;
   }
 };
 

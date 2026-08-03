@@ -1,4 +1,5 @@
 import {
+  checkModelFamilyContract,
   checkModelContract,
   checkOfferingContract,
   checkProviderContract,
@@ -58,6 +59,8 @@ export const MODEL_VARIANT_NAME_SEARCH_MAX_DISPLAY_NAME_UTF8_BYTES =
   MODEL_DISPLAY_NAME_MAX_UNICODE_SCALARS * 4;
 export const MODEL_VARIANT_NAME_SEARCH_MAX_NORMALIZED_NAME_UTF8_BYTES =
   MODEL_VARIANT_NAME_SEARCH_MAX_NORMALIZED_NAME_UNICODE_SCALARS * 4;
+export const MODEL_FAMILY_CLOSURE_MAX_RELEVANT_RESOURCES = 100_000;
+export const MODEL_FAMILY_CLOSURE_MAX_MEMBERSHIP_EDGES = 100_000;
 export const PROVIDER_MODEL_ID_SEARCH_PROJECTION_VERSION =
   "provider-model-id@1" as const;
 export const PROVIDER_MODEL_ID_SEARCH_MAX_RESOURCES = 10_000;
@@ -166,6 +169,23 @@ export const assertModelVariantNameSearchResourceByteBudget = (
         "model/variant name search resource input is too large",
       );
   }
+};
+
+export const assertModelFamilyClosureCapacity = (
+  relevantResourceCount: number,
+  familyMembershipEdgeCount: number,
+): void => {
+  if (
+    !Number.isSafeInteger(relevantResourceCount) ||
+    relevantResourceCount < 0 ||
+    !Number.isSafeInteger(familyMembershipEdgeCount) ||
+    familyMembershipEdgeCount < 0
+  )
+    throw new TypeError("model family closure capacity is invalid");
+  if (relevantResourceCount > MODEL_FAMILY_CLOSURE_MAX_RELEVANT_RESOURCES)
+    throw new RangeError("model family closure resource input is too large");
+  if (familyMembershipEdgeCount > MODEL_FAMILY_CLOSURE_MAX_MEMBERSHIP_EDGES)
+    throw new RangeError("model family closure membership input is too large");
 };
 
 const UUID_V4 =
@@ -1635,9 +1655,9 @@ const validateVectorIdentities = async (
   return errors;
 };
 
-export const buildImmutableManifest = async (
+const buildImmutableManifestDescriptor = async (
   callerInput: PublicationManifestInput,
-): Promise<TrustedImmutablePublicationManifest> => {
+): Promise<ImmutablePublicationManifest> => {
   const input = snapshotPublicationManifestInput(callerInput, false);
   const errors = [
     ...validateManifestInput(input),
@@ -1718,6 +1738,12 @@ export const buildImmutableManifest = async (
     chunkRootHash: roots.chunkRootHash,
     closureHash,
   };
+  return manifest;
+};
+
+const trustImmutablePublicationManifest = (
+  manifest: ImmutablePublicationManifest,
+): TrustedImmutablePublicationManifest => {
   Object.defineProperty(manifest, immutablePublicationManifestBrand, {
     value: true,
     enumerable: false,
@@ -1727,6 +1753,13 @@ export const buildImmutableManifest = async (
   trustedImmutablePublicationManifests.add(manifest);
   return Object.freeze(manifest) as TrustedImmutablePublicationManifest;
 };
+
+export const buildImmutableManifest = async (
+  callerInput: PublicationManifestInput,
+): Promise<TrustedImmutablePublicationManifest> =>
+  trustImmutablePublicationManifest(
+    await buildImmutableManifestDescriptor(callerInput),
+  );
 
 export interface ServingPublicationClosureRow {
   readonly publication_id: string;
@@ -4523,6 +4556,105 @@ export interface ServingClosureSealProjection {
   readonly sealed_at_ms: number;
 }
 
+const assertPersistedModelFamilyClosure = (
+  resources: readonly PersistedResourceDescriptor[],
+): void => {
+  const familyModelIds = new Map<string, readonly string[]>();
+  const modelFamilyIds = new Map<string, string>();
+  const variantRelationships: Readonly<{
+    modelId: string;
+    familyId: string;
+  }>[] = [];
+  let relevantResourceCount = 0;
+  let familyMembershipEdgeCount = 0;
+
+  for (const resource of resources) {
+    if (
+      resource.resourceType !== "model_family" &&
+      resource.resourceType !== "model" &&
+      resource.resourceType !== "variant"
+    )
+      continue;
+    relevantResourceCount += 1;
+    assertModelFamilyClosureCapacity(
+      relevantResourceCount,
+      familyMembershipEdgeCount,
+    );
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(resource.resourceJson) as unknown;
+    } catch {
+      throw new TypeError("persisted model graph resource JSON is invalid");
+    }
+    if (resource.resourceType === "model_family") {
+      if (!checkModelFamilyContract(parsed))
+        throw new TypeError(
+          "persisted model family resource is not contract-valid",
+        );
+      if (parsed.family_id !== resource.resourceId)
+        throw new TypeError(
+          "persisted model family resource identity does not match",
+        );
+      familyMembershipEdgeCount += parsed.model_ids.length;
+      assertModelFamilyClosureCapacity(
+        relevantResourceCount,
+        familyMembershipEdgeCount,
+      );
+      familyModelIds.set(parsed.family_id, parsed.model_ids);
+      continue;
+    }
+    if (resource.resourceType === "model") {
+      if (!checkModelContract(parsed))
+        throw new TypeError("persisted model resource is not contract-valid");
+      if (parsed.model_id !== resource.resourceId)
+        throw new TypeError("persisted model resource identity does not match");
+      modelFamilyIds.set(parsed.model_id, parsed.family_id);
+      continue;
+    }
+    if (!checkVariantContract(parsed))
+      throw new TypeError("persisted variant resource is not contract-valid");
+    if (parsed.variant_id !== resource.resourceId)
+      throw new TypeError("persisted variant resource identity does not match");
+    variantRelationships.push({
+      modelId: parsed.model_id,
+      familyId: parsed.family_id,
+    });
+  }
+
+  const actualModelIdsByFamily = new Map<string, Set<string>>();
+  for (const [modelId, familyId] of modelFamilyIds) {
+    if (!familyModelIds.has(familyId))
+      throw new TypeError("persisted model references a missing family");
+    const modelIds = actualModelIdsByFamily.get(familyId);
+    if (modelIds === undefined)
+      actualModelIdsByFamily.set(familyId, new Set([modelId]));
+    else modelIds.add(modelId);
+  }
+  for (const [familyId, listedModelIds] of familyModelIds) {
+    const actualModelIds = actualModelIdsByFamily.get(familyId);
+    if (actualModelIds === undefined) {
+      if (listedModelIds.length !== 0)
+        throw new TypeError("persisted family model membership does not close");
+      continue;
+    }
+    if (
+      listedModelIds.length !== actualModelIds.size ||
+      listedModelIds.some((modelId) => !actualModelIds.has(modelId))
+    )
+      throw new TypeError("persisted family model membership does not close");
+  }
+  for (const variant of variantRelationships) {
+    const familyId = modelFamilyIds.get(variant.modelId);
+    if (familyId === undefined)
+      throw new TypeError("persisted variant references a missing model");
+    if (variant.familyId !== familyId)
+      throw new TypeError(
+        "persisted variant family does not match its canonical model",
+      );
+  }
+};
+
 /**
  * Controlled-writer boundary for a serving closure. Content digests are
  * recomputed from persisted bytes before they can participate in the seal.
@@ -4534,6 +4666,16 @@ export const buildImmutableManifestFromPersistedContent = async (
     callerInput,
     true,
   ) as PersistedPublicationManifestInput;
+  let relevantResourceCount = 0;
+  for (const resource of input.resources) {
+    if (
+      resource.resourceType === "model_family" ||
+      resource.resourceType === "model" ||
+      resource.resourceType === "variant"
+    )
+      relevantResourceCount += 1;
+  }
+  assertModelFamilyClosureCapacity(relevantResourceCount, 0);
   const resources = await Promise.all(
     input.resources.map(async (resource): Promise<ResourceDescriptor> => {
       const contentHash = await hashPublicationResourceContent(resource);
@@ -4564,11 +4706,13 @@ export const buildImmutableManifestFromPersistedContent = async (
       },
     ),
   );
-  return buildImmutableManifest({
+  const manifest = await buildImmutableManifestDescriptor({
     ...input,
     resources,
     searchDocuments,
   });
+  assertPersistedModelFamilyClosure(input.resources);
+  return trustImmutablePublicationManifest(manifest);
 };
 
 const closedString = <T extends string>(
