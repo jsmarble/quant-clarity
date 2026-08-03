@@ -35,6 +35,7 @@ class PrivateObjectStore {
   throwAfterNextWrite = false;
   throwOnNextGet = false;
   readonly bodylessKeys = new Set<string>();
+  readonly streamChunkCounts = new Map<string, number>();
 
   readonly writer = {
     put: (
@@ -95,10 +96,19 @@ class PrivateObjectStore {
       const bytes = Uint8Array.from(stored.bytes);
       if (this.bodylessKeys.has(key))
         return Promise.resolve(this.metadata(key, stored) as R2ObjectBody);
+      const streamChunkCount = this.streamChunkCounts.get(key) ?? 1;
       const object = Object.assign(this.metadata(key, stored), {
         body: new ReadableStream<Uint8Array>({
           start(controller) {
-            controller.enqueue(bytes);
+            for (let index = 0; index < streamChunkCount; index += 1) {
+              const start = Math.floor(
+                (index * bytes.byteLength) / streamChunkCount,
+              );
+              const end = Math.floor(
+                ((index + 1) * bytes.byteLength) / streamChunkCount,
+              );
+              controller.enqueue(bytes.slice(start, end));
+            }
             controller.close();
           },
         }),
@@ -831,5 +841,39 @@ describe("publication-recovery-base@1", () => {
       ),
     ).rejects.toEqual(errorCode("configuration_invalid"));
     expect(duplicateStore.putCalls).toBe(0);
+  });
+
+  it("accepts exactly 1,024 nonempty body chunks and fails closed at 1,025", async () => {
+    const source = await fixture();
+    const setup = async () => {
+      const store = new PrivateObjectStore();
+      const locator = await archivePublicationRecoveryBase(
+        store.writer,
+        store.reader,
+        "local",
+        source.manifest,
+        source.rows,
+      );
+      const chunkKey = [...store.objects.keys()].find(
+        (key) =>
+          key.endsWith(".bin") &&
+          (store.objects.get(key)?.bytes.byteLength ?? 0) >= 1_025,
+      );
+      if (chunkKey === undefined)
+        throw new Error("stream-bound fixture chunk is too small");
+      return { chunkKey, locator, store };
+    };
+
+    const accepted = await setup();
+    accepted.store.streamChunkCounts.set(accepted.chunkKey, 1_024);
+    await expect(
+      verifyPublicationRecoveryBase(accepted.store.reader, accepted.locator),
+    ).resolves.toBeDefined();
+
+    const rejected = await setup();
+    rejected.store.streamChunkCounts.set(rejected.chunkKey, 1_025);
+    await expect(
+      verifyPublicationRecoveryBase(rejected.store.reader, rejected.locator),
+    ).rejects.toEqual(errorCode("integrity_failure"));
   });
 });
