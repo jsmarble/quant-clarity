@@ -888,14 +888,21 @@ type ParsedMergedExactSearchInput = Readonly<{
   publicationId: string;
   query: string;
   recordType: "model" | "variant" | "provider" | null;
+  eligibilityProviderId: string | null;
   continuation: MergedExactSearchContinuation | null;
   limit: number;
   requiredAvailableUntilMs: number | null;
 }>;
 
-const mergedRecordTypeFilter = (
+const mergedFilters = (
   value: unknown,
-): "model" | "variant" | "provider" | null | undefined => {
+):
+  | Readonly<{
+      canonical: Readonly<Record<string, string>>;
+      eligibilityProviderId: string | null;
+      recordType: "model" | "variant" | "provider" | null;
+    }>
+  | undefined => {
   try {
     if (typeof value !== "object" || value === null || Array.isArray(value))
       return undefined;
@@ -906,13 +913,35 @@ const mergedRecordTypeFilter = (
     const filter = ownDataRecord(value, ownKeys as string[]);
     if (filter === null) return undefined;
     const keys = Object.keys(filter);
-    if (keys.length === 0) return null;
-    if (keys.length !== 1 || keys[0] !== "record_type") return undefined;
-    return filter.record_type === "model" ||
-      filter.record_type === "variant" ||
-      filter.record_type === "provider"
-      ? filter.record_type
-      : undefined;
+    if (keys.some((key) => key !== "provider" && key !== "record_type"))
+      return undefined;
+    const hasProvider = Object.hasOwn(filter, "provider");
+    const hasRecordType = Object.hasOwn(filter, "record_type");
+    const provider = filter.provider;
+    const recordType = filter.record_type;
+    if (
+      (hasProvider &&
+        (typeof provider !== "string" || !PROVIDER_ID.test(provider))) ||
+      (hasRecordType &&
+        recordType !== "model" &&
+        recordType !== "variant" &&
+        recordType !== "provider") ||
+      (hasProvider && recordType === "provider")
+    )
+      return undefined;
+    const canonical: Record<string, string> = {};
+    if (typeof provider === "string") canonical.provider = provider;
+    if (typeof recordType === "string") canonical.record_type = recordType;
+    return Object.freeze({
+      canonical: Object.freeze(canonical),
+      eligibilityProviderId: typeof provider === "string" ? provider : null,
+      recordType:
+        recordType === "model" ||
+        recordType === "variant" ||
+        recordType === "provider"
+          ? recordType
+          : null,
+    });
   } catch {
     return undefined;
   }
@@ -1003,7 +1032,7 @@ const parseMergedExactSearchInput = (
     envelope.limit > 20
   )
     return null;
-  const recordType = mergedRecordTypeFilter(envelope.filters);
+  const filters = mergedFilters(envelope.filters);
   const continuation = mergedContinuation(envelope.continuation);
   const operation = ownDataRecord(envelope.operation, ["kind"]);
   const sort = ownDataArray(envelope.sort, 2);
@@ -1016,9 +1045,9 @@ const parseMergedExactSearchInput = (
     "semanticCandidates",
     "semanticDegraded",
   ]);
-  const planRecordType = mergedRecordTypeFilter(plan?.filters);
+  const planFilters = mergedFilters(plan?.filters);
   if (
-    recordType === undefined ||
+    filters === undefined ||
     continuation === undefined ||
     operation?.kind !== "search" ||
     sort?.[0] !== "relevance" ||
@@ -1029,7 +1058,8 @@ const parseMergedExactSearchInput = (
     plan.semanticCalls !== 0 ||
     plan.semanticCandidates !== 0 ||
     plan.semanticDegraded !== "disabled" ||
-    planRecordType !== recordType
+    planFilters === undefined ||
+    JSON.stringify(planFilters.canonical) !== JSON.stringify(filters.canonical)
   )
     return null;
   const marker = continuation?.tierMarker;
@@ -1040,15 +1070,17 @@ const parseMergedExactSearchInput = (
     if (!(error instanceof RangeError)) return null;
   }
   if (
-    (recordType === "provider" &&
+    (filters.recordType === "provider" &&
       marker !== undefined &&
       marker !== EXACT_PROVIDER_MARKER) ||
-    ((recordType === "model" || recordType === "variant") &&
+    (filters.eligibilityProviderId !== null &&
       marker === EXACT_PROVIDER_MARKER) ||
-    (recordType === "model" &&
+    ((filters.recordType === "model" || filters.recordType === "variant") &&
+      marker === EXACT_PROVIDER_MARKER) ||
+    (filters.recordType === "model" &&
       continuation !== null &&
       !MODEL_ID.test(continuation.resourceId)) ||
-    (recordType === "variant" &&
+    (filters.recordType === "variant" &&
       continuation !== null &&
       !VARIANT_ID.test(continuation.resourceId)) ||
     ((marker === EXACT_CANONICAL_MARKER ||
@@ -1063,7 +1095,8 @@ const parseMergedExactSearchInput = (
     bookmark: outer.bookmark,
     publicationId: envelope.publicationId,
     query: plan.query,
-    recordType,
+    recordType: filters.recordType,
+    eligibilityProviderId: filters.eligibilityProviderId,
     continuation,
     limit: envelope.limit,
     requiredAvailableUntilMs,
@@ -1405,6 +1438,7 @@ export const readMergedExactSearchV1 = async (
       publicationId: parsed.publicationId,
       query: parsed.query,
       recordType: parsed.recordType,
+      eligibilityProviderId: parsed.eligibilityProviderId,
       continuation: parsed.continuation,
       limit: parsed.limit,
       requiredAvailableUntilMs: null,
@@ -1438,6 +1472,7 @@ export const readMergedExactSearchV2 = async (
       publicationId: parsed.publicationId,
       query: parsed.query,
       recordType: parsed.recordType,
+      eligibilityProviderId: parsed.eligibilityProviderId,
       continuation: parsed.continuation,
       limit: parsed.limit,
       requiredAvailableUntilMs: parsed.requiredAvailableUntilMs,

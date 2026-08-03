@@ -207,6 +207,7 @@ const canonicalTimestamp = (value: string): boolean => {
 type ParsedRequest = Readonly<{
   request: NormalizedRequest;
   recordType: SearchResourceType | null;
+  providerId: string | null;
 }>;
 
 const parseRequest = (value: unknown): ParsedRequest | null => {
@@ -250,18 +251,35 @@ const parseRequest = (value: unknown): ParsedRequest | null => {
     const routeOperation = snapshotOwnRecord(route?.operation, ["kind"]);
     const filters = snapshotOwnRecord(request.filters, []);
     let recordType: SearchResourceType | null = null;
+    let providerId: string | null = null;
     let safeFilters: Readonly<Record<string, string>> = {};
     if (filters === null) {
-      const typed = snapshotOwnRecord(request.filters, ["record_type"]);
+      const typed =
+        snapshotOwnRecord(request.filters, ["record_type"]) ??
+        snapshotOwnRecord(request.filters, ["provider"]) ??
+        snapshotOwnRecord(request.filters, ["provider", "record_type"]);
       if (
         typed === null ||
-        (typed.record_type !== "model" &&
+        (Object.hasOwn(typed, "record_type") &&
+          typed.record_type !== "model" &&
           typed.record_type !== "variant" &&
-          typed.record_type !== "provider")
+          typed.record_type !== "provider") ||
+        (Object.hasOwn(typed, "provider") &&
+          (typeof typed.provider !== "string" ||
+            !PROVIDER_ID.test(typed.provider)))
       )
         return null;
-      recordType = typed.record_type;
-      safeFilters = { record_type: recordType };
+      recordType = Object.hasOwn(typed, "record_type")
+        ? (typed.record_type as SearchResourceType)
+        : null;
+      providerId = Object.hasOwn(typed, "provider")
+        ? (typed.provider as string)
+        : null;
+      if (providerId !== null && recordType === "provider") return null;
+      safeFilters = {
+        ...(providerId === null ? {} : { provider: providerId }),
+        ...(recordType === null ? {} : { record_type: recordType }),
+      };
     }
     const sort = snapshotArray(request.sort, 2);
     if (
@@ -274,6 +292,7 @@ const parseRequest = (value: unknown): ParsedRequest | null => {
     )
       return null;
     return {
+      providerId,
       recordType,
       request: {
         cursor: request.cursor,
@@ -526,6 +545,7 @@ const classifyPage = (
   publicationId: string,
   limit: number,
   recordType: SearchResourceType | null,
+  providerId: string | null,
   incomingContinuation: Readonly<{
     tierMarker: ExactTierMarker;
     resourceId: string;
@@ -600,6 +620,7 @@ const classifyPage = (
         !validMarkerResult(tierMarker, resourceType, matchKind) ||
         displayName === null ||
         (recordType !== null && resourceType !== recordType) ||
+        (providerId !== null && resourceType === "provider") ||
         seen.has(result.resourceId) ||
         (priorMarker !== null &&
           (markerIndex(tierMarker) < markerIndex(priorMarker) ||
@@ -779,6 +800,8 @@ export const readMergedExactSearchFromQueryV1 = async (
       const inherited = parseRequest(request);
       if (inherited === null) return { success: false, code: "invalid_cursor" };
       if (
+        (inherited.providerId !== null &&
+          continuation.lastSortTuple[0] === "exact-v1:p") ||
         (inherited.recordType === "provider" &&
           continuation.lastSortTuple[0] !== "exact-v1:p") ||
         ((inherited.recordType === "model" ||
@@ -854,11 +877,16 @@ export const readMergedExactSearchFromQueryV1 = async (
       typeof request.filters.record_type === "string"
         ? (request.filters.record_type as SearchResourceType)
         : null;
+    const effectiveProviderId =
+      typeof request.filters.provider === "string"
+        ? request.filters.provider
+        : null;
     const page = classifyPage(
       pageValue,
       resolution.publicationId,
       request.limit,
       effectiveRecordType,
+      effectiveProviderId,
       continuation === null
         ? null
         : {

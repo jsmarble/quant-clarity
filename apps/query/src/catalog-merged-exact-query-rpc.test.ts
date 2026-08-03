@@ -113,6 +113,7 @@ describe("merged exact-search RPC (SRCH-002, API-003, API-007, CF-020)", () => {
       publicationId: PUBLICATION,
       query: "Fixture",
       recordType: "model",
+      eligibilityProviderId: null,
       continuation: {
         tierMarker: EXACT_PROVIDER_MODEL_ID_RAW_MARKER,
         resourceId: MODEL,
@@ -145,7 +146,9 @@ describe("merged exact-search RPC (SRCH-002, API-003, API-007, CF-020)", () => {
     hostileNested.envelope.filters = hostileFilter;
     hostileNested.envelope.searchPlan.filters = hostileFilter;
     const candidates = [
-      input({ provider: "prv_11111111-1111-4111-8111-111111111111" }),
+      input({ provider: "prv_invalid" }),
+      input({ provider: undefined as unknown as string }),
+      input({ record_type: undefined as unknown as string }),
       input({ record_type: "offering" }),
       input(
         {},
@@ -215,7 +218,61 @@ describe("merged exact-search RPC (SRCH-002, API-003, API-007, CF-020)", () => {
       continuation: null,
       limit: 20,
       requiredAvailableUntilMs: horizon,
+      eligibilityProviderId: null,
     });
+  });
+
+  it("passes an exact provider eligibility filter while keeping it independent of match witnesses", async () => {
+    const page = {
+      publicationId: PUBLICATION,
+      results: [],
+      nextContinuation: null,
+      semanticDegraded: "disabled",
+    } as const;
+    const provider = "prv_11111111-1111-4111-8111-111111111111";
+    mocked.readPage.mockResolvedValue(page);
+    const database = new FakeDatabase();
+    await expect(
+      readMergedExactSearchV1(
+        database.asD1(),
+        "test",
+        input({ provider, record_type: "model" }),
+      ),
+    ).resolves.toEqual({ outcome: "page", page });
+    expect(mocked.readPage).toHaveBeenCalledWith(
+      database.session,
+      expect.objectContaining({
+        recordType: "model",
+        eligibilityProviderId: provider,
+      }),
+    );
+  });
+
+  it("rejects mismatched provider filters, provider records, and provider cursors before D1", async () => {
+    const provider = "prv_11111111-1111-4111-8111-111111111111";
+    const mismatched = input({ provider });
+    mismatched.envelope.searchPlan.filters = {};
+    const candidates = [
+      mismatched,
+      input({ provider, record_type: "provider" }),
+      input(
+        { provider },
+        {
+          lastSortTuple: [
+            "exact-v1:p",
+            "prv_22222222-2222-4222-8222-222222222222",
+          ],
+          stableId: "prv_22222222-2222-4222-8222-222222222222",
+        },
+      ),
+    ];
+    const database = new FakeDatabase();
+    for (const candidate of candidates)
+      await expect(
+        readMergedExactSearchV1(database.asD1(), "test", candidate),
+      ).resolves.toEqual({ outcome: "integrity_failure" });
+    expect(database.sessionInputs).toEqual([]);
+    expect(mocked.readPage).not.toHaveBeenCalled();
   });
 
   it("rejects malformed or accessor-backed v2 horizons before opening D1", async () => {

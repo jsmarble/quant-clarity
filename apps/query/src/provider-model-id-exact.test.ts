@@ -8,6 +8,7 @@ import {
 
 import {
   PROVIDER_MODEL_ID_EXACT_CANDIDATE_SELECT_SQL,
+  PROVIDER_MODEL_ID_EXACT_ELIGIBILITY_CANDIDATE_SELECT_SQL,
   PROVIDER_MODEL_ID_EXACT_MAX_QUERY_BYTES,
   PROVIDER_MODEL_ID_EXACT_TARGET_SELECT_SQL,
   ProviderModelIdExactError,
@@ -304,11 +305,31 @@ describe("provider-model-ID exact reader (SRCH-002, SRCH-006, SRCH-008, SRCH-009
     expect(PROVIDER_MODEL_ID_EXACT_CANDIDATE_SELECT_SQL).toContain(
       "PARTITION BY target_resource_type, target_resource_id",
     );
+    expect(PROVIDER_MODEL_ID_EXACT_CANDIDATE_SELECT_SQL).not.toContain(
+      "publication_provider_model_id_eligibility_idx",
+    );
+    expect(PROVIDER_MODEL_ID_EXACT_ELIGIBILITY_CANDIDATE_SELECT_SQL).toContain(
+      "INDEXED BY publication_provider_model_id_eligibility_idx",
+    );
+    expect(PROVIDER_MODEL_ID_EXACT_ELIGIBILITY_CANDIDATE_SELECT_SQL).toContain(
+      "eligibility.offering_content_hash = eligibility_offering.content_hash",
+    );
+    expect(
+      PROVIDER_MODEL_ID_EXACT_ELIGIBILITY_CANDIDATE_SELECT_SQL.match(
+        /eligibility\.projection_version = 'provider-model-id@1'/gu,
+      ),
+    ).toHaveLength(2);
+    expect(
+      PROVIDER_MODEL_ID_EXACT_ELIGIBILITY_CANDIDATE_SELECT_SQL.match(
+        /eligibility\.target_content_hash = document\.target_content_hash/gu,
+      ),
+    ).toHaveLength(2);
     expect(PROVIDER_MODEL_ID_EXACT_TARGET_SELECT_SQL).toContain(
       "FROM json_each(?2)",
     );
     for (const sql of [
       PROVIDER_MODEL_ID_EXACT_CANDIDATE_SELECT_SQL,
+      PROVIDER_MODEL_ID_EXACT_ELIGIBILITY_CANDIDATE_SELECT_SQL,
       PROVIDER_MODEL_ID_EXACT_TARGET_SELECT_SQL,
     ]) {
       expect(sql).not.toMatch(/\b(?:INSERT|UPDATE|DELETE|MATCH)\b/u);
@@ -368,9 +389,15 @@ describe("provider-model-ID exact reader (SRCH-002, SRCH-006, SRCH-008, SRCH-009
     const merged = new FakeDatabase(
       await fixtureResults("fixture-id", 0, undefined, "fixture-id", true),
     );
-    await readMergedProviderModelIdExactPage(
-      merged.asD1(),
-      input("fixture-id"),
+    await readMergedProviderModelIdExactPage(merged.asD1(), {
+      ...input("fixture-id"),
+      eligibilityProviderId: null,
+    });
+    expect(standalone.calls[0]?.sql).toBe(
+      PROVIDER_MODEL_ID_EXACT_CANDIDATE_SELECT_SQL,
+    );
+    expect(merged.calls[0]?.sql).toBe(
+      PROVIDER_MODEL_ID_EXACT_CANDIDATE_SELECT_SQL,
     );
     expect(standalone.calls[0]?.values.slice(10, 12)).toEqual([0, 0]);
     expect(merged.calls[0]?.values.slice(10, 12)).toEqual([1, 1]);
@@ -379,6 +406,45 @@ describe("provider-model-ID exact reader (SRCH-002, SRCH-006, SRCH-008, SRCH-009
         /name\.normalized_name_utf8 <> \?3/gu,
       ),
     ).toHaveLength(2);
+    expect(
+      PROVIDER_MODEL_ID_EXACT_ELIGIBILITY_CANDIDATE_SELECT_SQL.match(
+        /name\.normalized_name_utf8 <> \?3/gu,
+      ),
+    ).toHaveLength(2);
+  });
+
+  it("binds merged eligibility independently from the matching provider witness", async () => {
+    const database = new FakeDatabase(
+      await fixtureResults("fixture-id", 0, undefined, "fixture-id", true),
+    );
+    await readMergedProviderModelIdExactPage(database.asD1(), {
+      ...input("fixture-id"),
+      eligibilityProviderId: PROVIDER_ID,
+    });
+    expect(database.calls[0]?.sql).toBe(
+      PROVIDER_MODEL_ID_EXACT_ELIGIBILITY_CANDIDATE_SELECT_SQL,
+    );
+    expect(database.calls[0]?.values[3]).toBeNull();
+    expect(database.calls[0]?.values[13]).toBe(PROVIDER_ID);
+  });
+
+  it("validates merged eligibility while preserving the standalone closed input", async () => {
+    const merged = new FakeDatabase([]);
+    await expect(
+      readMergedProviderModelIdExactPage(merged.asD1(), {
+        ...input("fixture-id"),
+        eligibilityProviderId: "prv_invalid",
+      }),
+    ).rejects.toMatchObject({ code: "invalid_input" });
+    const standalone = new FakeDatabase([]);
+    await expect(
+      readProviderModelIdExactPage(standalone.asD1(), {
+        ...input("fixture-id"),
+        eligibilityProviderId: PROVIDER_ID,
+      } as never),
+    ).rejects.toMatchObject({ code: "invalid_input" });
+    expect(merged.calls).toEqual([]);
+    expect(standalone.calls).toEqual([]);
   });
 
   it("maps a normalized-only Variant witness to its exact canonical Variant", async () => {

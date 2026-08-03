@@ -12,9 +12,9 @@ const MODEL_INDEX = "publication_model_variant_name_exact_idx";
 const PROVIDER_INDEX = "publication_provider_search_exact_idx";
 const PUBLICATION_ID = "pub_fefefefe-0000-4000-8000-000000000001" as const;
 
-describe("serving migrations 0010 and 0011 structural preflights", () => {
+describe("serving migrations 0010 through 0012 structural preflights", () => {
   it("rejects portable semantic corruption and accepts exact repair", async () => {
-    await applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS.slice(0, -2));
+    await applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS.slice(0, -3));
     const originals = new Map<string, string>();
     for (const indexName of [MODEL_INDEX, PROVIDER_INDEX]) {
       const row = await env.SERVING_DB.prepare(
@@ -54,7 +54,7 @@ describe("serving migrations 0010 and 0011 structural preflights", () => {
       await env.SERVING_DB.prepare(corruption.sql).run();
 
       await expect(
-        applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS.slice(-2, -1)),
+        applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS.slice(-3, -2)),
       ).rejects.toThrow();
       await expect(
         env.SERVING_DB.prepare(
@@ -81,7 +81,7 @@ describe("serving migrations 0010 and 0011 structural preflights", () => {
       expect(original).not.toBeNull();
       await env.SERVING_DB.exec(`DROP TRIGGER ${triggerName}`);
       await expect(
-        applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS.slice(-2, -1)),
+        applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS.slice(-3, -2)),
       ).rejects.toThrow();
       await expect(
         env.SERVING_DB.prepare(
@@ -119,7 +119,7 @@ describe("serving migrations 0010 and 0011 structural preflights", () => {
       BEGIN SELECT RAISE(ABORT, 'model/variant name search document is immutable'); END`,
     ).run();
 
-    await applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS.slice(-2, -1));
+    await applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS.slice(-3, -2));
     await expect(
       env.SERVING_DB.prepare(
         "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
@@ -152,7 +152,7 @@ describe("serving migrations 0010 and 0011 structural preflights", () => {
     expect(canonicalHistoryTrigger).not.toBeNull();
     await env.SERVING_DB.exec(`DROP TRIGGER ${historyTrigger}`);
     await expect(
-      applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS.slice(-1)),
+      applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS.slice(-2, -1)),
     ).rejects.toThrow();
     await expect(
       env.SERVING_DB.prepare(
@@ -173,7 +173,7 @@ describe("serving migrations 0010 and 0011 structural preflights", () => {
       BEFORE UPDATE ON publication BEGIN SELECT 1; END`,
     ).run();
     await expect(
-      applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS.slice(-1)),
+      applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS.slice(-2, -1)),
     ).rejects.toThrow();
     await env.SERVING_DB.exec(`DROP TRIGGER ${historyTrigger}`);
     await env.SERVING_DB.prepare(
@@ -182,7 +182,7 @@ describe("serving migrations 0010 and 0011 structural preflights", () => {
       BEGIN SELECT RAISE(ABORT, 'switch history is append-only'); END`,
     ).run();
     await expect(
-      applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS.slice(-1)),
+      applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS.slice(-2, -1)),
     ).rejects.toThrow();
     await env.SERVING_DB.exec(`DROP TRIGGER ${historyTrigger}`);
     await env.SERVING_DB.prepare(canonicalHistoryTrigger!.sql).run();
@@ -203,7 +203,7 @@ describe("serving migrations 0010 and 0011 structural preflights", () => {
       "CREATE TABLE publication_switch_history_from_retained_hot_idx(fake INTEGER)",
     );
     await expect(
-      applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS.slice(-1)),
+      applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS.slice(-2, -1)),
     ).rejects.toThrow();
     await expect(
       env.SERVING_DB.prepare(
@@ -214,7 +214,7 @@ describe("serving migrations 0010 and 0011 structural preflights", () => {
       "DROP TABLE publication_switch_history_from_retained_hot_idx",
     );
 
-    await applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS.slice(-1));
+    await applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS.slice(-2, -1));
     await expect(
       env.SERVING_DB.prepare(
         "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
@@ -242,6 +242,68 @@ describe("serving migrations 0010 and 0011 structural preflights", () => {
         origin: "c",
         partial: 1,
       },
+    ]);
+  });
+
+  it("adds the exact provider eligibility index and rejects corrupt substrate before mutation", async () => {
+    await applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS.slice(0, -1));
+    const original = await env.SERVING_DB.prepare(
+      "SELECT sql FROM sqlite_schema WHERE type = 'trigger' AND name = 'publication_provider_model_id_search_document_insert_guard'",
+    ).first<{ sql: string }>();
+    expect(original).not.toBeNull();
+    await env.SERVING_DB.exec(
+      "DROP TRIGGER publication_provider_model_id_search_document_insert_guard",
+    );
+    await expect(
+      applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS.slice(-1)),
+    ).rejects.toThrow();
+    await expect(
+      env.SERVING_DB.prepare(
+        `SELECT schema_version,
+          (SELECT count(*) FROM sqlite_schema
+           WHERE name IN (
+             'publication_provider_model_id_eligibility_idx',
+             'publication_switch_history_provider_eligibility_index_guard'
+           )) AS eligibility_object_count
+         FROM serving_schema_metadata WHERE singleton = 1`,
+      ).first(),
+    ).resolves.toEqual({
+      schema_version: "1.8.0",
+      eligibility_object_count: 0,
+    });
+    await env.SERVING_DB.prepare(original!.sql).run();
+
+    await env.SERVING_DB.exec(
+      "CREATE TABLE publication_provider_model_id_eligibility_idx(fake INTEGER)",
+    );
+    await expect(
+      applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS.slice(-1)),
+    ).rejects.toThrow();
+    await env.SERVING_DB.exec(
+      "DROP TABLE publication_provider_model_id_eligibility_idx",
+    );
+
+    await applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS.slice(-1));
+    await expect(
+      env.SERVING_DB.prepare(
+        "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+      ).first(),
+    ).resolves.toEqual({ schema_version: "1.9.0" });
+    const index = await env.SERVING_DB.prepare(
+      `SELECT "unique" AS is_unique, origin, partial
+       FROM pragma_index_list('publication_provider_model_id_search_document')
+       WHERE name = 'publication_provider_model_id_eligibility_idx'`,
+    ).first();
+    expect(index).toEqual({ is_unique: 0, origin: "c", partial: 0 });
+    const columns = await env.SERVING_DB.prepare(
+      "SELECT seqno, name FROM pragma_index_info('publication_provider_model_id_eligibility_idx') ORDER BY seqno",
+    ).all();
+    expect(columns.results).toEqual([
+      { seqno: 0, name: "publication_id" },
+      { seqno: 1, name: "provider_id" },
+      { seqno: 2, name: "target_resource_type" },
+      { seqno: 3, name: "target_resource_id" },
+      { seqno: 4, name: "offering_id" },
     ]);
   });
 });

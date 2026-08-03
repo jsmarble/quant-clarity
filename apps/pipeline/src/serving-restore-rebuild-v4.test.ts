@@ -258,7 +258,7 @@ describe("serving restore rebuild v4", () => {
     const profile = await profileFor(fixture);
     expect(profile.backupFormatVersion).toBe("1.0.0");
     expect(profile.materialization).toMatchObject({
-      destinationSchemaVersion: "1.8.0",
+      destinationSchemaVersion: "1.9.0",
       publicationState: "building",
       closureSealImported: false,
       stagingRevisionImported: false,
@@ -296,7 +296,7 @@ describe("serving restore rebuild v4", () => {
     expect(calls).toEqual(RESTORE_REBUILD_PHASES_V4);
     expect(run.transcript).toMatchObject({
       transcriptVersion: "serving-restore-rebuild@4",
-      destinationSchemaVersion: "1.8.0",
+      destinationSchemaVersion: "1.9.0",
       syntheticProbeIds: RESTORE_SYNTHETIC_PROBE_IDS_V4,
     });
     expect(run.transcript.phases.map((phase) => phase.phase)).not.toContain(

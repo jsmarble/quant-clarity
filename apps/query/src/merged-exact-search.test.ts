@@ -88,6 +88,7 @@ const input = (overrides: Record<string, unknown> = {}) => ({
   publicationId: PUBLICATION,
   query: "Fixture",
   recordType: null,
+  eligibilityProviderId: null,
   continuation: null,
   limit: 20,
   ...overrides,
@@ -212,6 +213,7 @@ describe("merged exact search (SRCH-002, SRCH-006, API-007, PRIV-006)", () => {
       publicationId: PUBLICATION,
       query: "Fixture",
       providerId: null,
+      eligibilityProviderId: null,
       recordType: null,
       continuation: {
         matchMode: "raw",
@@ -310,6 +312,89 @@ describe("merged exact search (SRCH-002, SRCH-006, API-007, PRIV-006)", () => {
     expect(mocked.providerModelId).not.toHaveBeenCalled();
   });
 
+  it("applies provider eligibility independently to target tiers and skips the provider tier", async () => {
+    mocked.model.mockResolvedValue({
+      publicationId: PUBLICATION,
+      results: [canonical()],
+      nextAfterResourceId: null,
+    });
+    mocked.providerModelId.mockResolvedValue({
+      publicationId: PUBLICATION,
+      results: [providerModelId(MODEL_2)],
+      matchModes: ["raw"],
+      nextContinuation: null,
+    });
+    const database = { prepare: vi.fn() };
+    const page = await readMergedExactSearchPage(
+      database,
+      input({ eligibilityProviderId: PROVIDER }),
+    );
+    expect(page.results.map((result) => result.resourceType)).toEqual([
+      "model",
+      "model",
+    ]);
+    expect(page.results.map((result) => result.resourceId)).toEqual([
+      MODEL_1,
+      MODEL_2,
+    ]);
+    expect(mocked.model).toHaveBeenCalledWith(
+      database,
+      expect.objectContaining({ eligibilityProviderId: PROVIDER }),
+    );
+    expect(mocked.providerModelId).toHaveBeenCalledWith(
+      database,
+      expect.objectContaining({
+        providerId: null,
+        eligibilityProviderId: PROVIDER,
+      }),
+    );
+    expect(mocked.provider).not.toHaveBeenCalled();
+  });
+
+  it("keeps provider eligibility on every filtered page without entering the provider tier", async () => {
+    mocked.providerModelId.mockResolvedValueOnce({
+      publicationId: PUBLICATION,
+      results: [providerModelId(MODEL_1)],
+      matchModes: ["raw"],
+      nextContinuation: { matchMode: "raw", resourceId: MODEL_1 },
+    });
+    const database = { prepare: vi.fn() };
+    const first = await readMergedExactSearchPage(
+      database,
+      input({ eligibilityProviderId: PROVIDER, limit: 1 }),
+    );
+    expect(first.nextContinuation).toEqual({
+      tierMarker: EXACT_PROVIDER_MODEL_ID_RAW_MARKER,
+      resourceId: MODEL_1,
+    });
+    expect(mocked.providerModelId).toHaveBeenLastCalledWith(
+      database,
+      expect.objectContaining({ eligibilityProviderId: PROVIDER }),
+    );
+
+    mocked.providerModelId.mockResolvedValueOnce({
+      publicationId: PUBLICATION,
+      results: [providerModelId(MODEL_2)],
+      matchModes: ["normalized"],
+      nextContinuation: null,
+    });
+    const second = await readMergedExactSearchPage(
+      database,
+      input({
+        eligibilityProviderId: PROVIDER,
+        continuation: first.nextContinuation,
+        limit: 1,
+      }),
+    );
+    expect(second.results).toHaveLength(1);
+    expect(second.results[0]?.resourceId).toBe(MODEL_2);
+    expect(mocked.providerModelId).toHaveBeenLastCalledWith(
+      database,
+      expect.objectContaining({ eligibilityProviderId: PROVIDER }),
+    );
+    expect(mocked.provider).not.toHaveBeenCalled();
+  });
+
   it("keeps raw-only provider-model IDs searchable when normalization is empty", async () => {
     mocked.providerModelId.mockResolvedValue({
       publicationId: PUBLICATION,
@@ -350,6 +435,15 @@ describe("merged exact search (SRCH-002, SRCH-006, API-007, PRIV-006)", () => {
       input({ query: " padded " }),
       input({ query: "\ud800" }),
       input({ limit: 21 }),
+      input({ eligibilityProviderId: "prv_invalid" }),
+      input({ eligibilityProviderId: PROVIDER, recordType: "provider" }),
+      input({
+        eligibilityProviderId: PROVIDER,
+        continuation: {
+          tierMarker: EXACT_PROVIDER_MARKER,
+          resourceId: PROVIDER,
+        },
+      }),
     ];
     for (const candidate of candidates)
       await expect(

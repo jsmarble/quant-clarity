@@ -50,6 +50,7 @@ const canonicalJson = (value: unknown): string => {
 
 export type ProviderModelIdOfferingFixture = Readonly<{
   rawProviderModelId: string;
+  providerSequence?: number;
   status?: "active" | "inactive" | "unavailable" | null;
   stale?: boolean;
 }>;
@@ -213,13 +214,141 @@ export const createProviderModelIdSearchFixture = async (
   );
   const observedAt = new Date(generatedAtMs).toISOString();
   const provider = base.closureRows.providerSlices[0];
+  const providerResource = base.closureRows.resources.find(
+    (resource) => resource.resource_type === "provider",
+  );
   const target = base.closureRows.resources.find(
     (resource) => resource.resource_type === "model",
   );
-  if (provider === undefined || target === undefined)
+  if (
+    provider === undefined ||
+    providerResource === undefined ||
+    target === undefined
+  )
     throw new Error("provider model ID fixture base is incomplete");
+  const providerSequences = [
+    ...new Set([
+      1,
+      ...offerings.map((offering) => offering.providerSequence ?? 1),
+    ]),
+  ].sort((left, right) => left - right);
+  if (
+    providerSequences.some(
+      (sequence) => !Number.isSafeInteger(sequence) || sequence < 1,
+    )
+  )
+    throw new Error("provider model ID fixture provider sequence is invalid");
+  const providerFixtures = await Promise.all(
+    providerSequences.map(async (sequence) => {
+      if (sequence === 1)
+        return {
+          providerId: provider.provider_id,
+          resource: {
+            resourceType: "provider" as const,
+            resourceId: providerResource.resource_id,
+            resourceJson: providerResource.resource_json,
+            contentHash: providerResource.content_hash as Sha256,
+          },
+          slice: provider,
+        };
+      const providerId = id("prv", sequence);
+      const providerValue = JSON.parse(
+        providerResource.resource_json,
+      ) as Record<string, unknown>;
+      const displayName = providerValue.display_name as Record<string, unknown>;
+      const slug = providerValue.slug as Record<string, unknown>;
+      const officialSite = providerValue.official_site as Record<
+        string,
+        unknown
+      >;
+      const resourceJson = canonicalizePublicationJson(
+        canonicalJson({
+          ...providerValue,
+          display_name: {
+            ...displayName,
+            value: `Fixture Provider ${String(sequence)}`,
+          },
+          official_site: {
+            ...officialSite,
+            value: `https://provider-${String(sequence)}.example`,
+          },
+          provider_id: providerId,
+          slug: { ...slug, value: `fixture-provider-${String(sequence)}` },
+        }),
+        "object",
+      );
+      return {
+        providerId,
+        resource: {
+          resourceType: "provider" as const,
+          resourceId: providerId,
+          resourceJson,
+          contentHash: await hashPublicationResourceContent({
+            resourceType: "provider",
+            resourceId: providerId,
+            resourceJson,
+          }),
+        },
+        slice: {
+          ...provider,
+          provider_id: providerId,
+          provider_slice_id: id("prn", sequence),
+          provider_run_id: id("pvr", sequence),
+        },
+      };
+    }),
+  );
+  const providerBySequence = new Map(
+    providerSequences.map((sequence, index) => {
+      const entry = providerFixtures[index];
+      if (entry === undefined)
+        throw new Error("provider model ID fixture provider map is incomplete");
+      return [sequence, entry] as const;
+    }),
+  );
+  const catalogedProviderCount = new Set(
+    offerings
+      .filter(
+        (offering) =>
+          (offering.status === undefined || offering.status === "active") &&
+          offering.stale !== true,
+      )
+      .map((offering) => offering.providerSequence ?? 1),
+  ).size;
+  const targetValue = JSON.parse(target.resource_json) as Record<
+    string,
+    unknown
+  >;
+  const catalogedProviderCountValue = targetValue.cataloged_provider_count as
+    Record<string, unknown> | undefined;
+  const targetResourceJson = canonicalizePublicationJson(
+    canonicalJson({
+      ...targetValue,
+      cataloged_provider_count: {
+        ...catalogedProviderCountValue,
+        observed_at: observedAt,
+        value: catalogedProviderCount,
+      },
+    }),
+    "object",
+  );
+  const targetResource = {
+    resourceType: "model" as const,
+    resourceId: target.resource_id,
+    resourceJson: targetResourceJson,
+    contentHash: await hashPublicationResourceContent({
+      resourceType: "model",
+      resourceId: target.resource_id,
+      resourceJson: targetResourceJson,
+    }),
+  };
   const offeringResources = await Promise.all(
     offerings.map(async (offering, index) => {
+      const offeringProvider = providerBySequence.get(
+        offering.providerSequence ?? 1,
+      );
+      if (offeringProvider === undefined)
+        throw new Error("provider model ID fixture provider is missing");
       const offeringId = id("off", index + 1);
       const status =
         offering.status === null
@@ -247,11 +376,11 @@ export const createProviderModelIdSearchFixture = async (
             100 + index,
           ),
           material_region_key: "",
-          model_resource_id: target.resource_id,
+          model_resource_id: targetResource.resourceId,
           offering_id: offeringId,
           precision_observation_ids: [],
           price_ids: [],
-          provider_id: provider.provider_id,
+          provider_id: offeringProvider.providerId,
           provider_model_id: offering.rawProviderModelId,
           source_locator: knownFact(
             "https://provider.example/catalog",
@@ -280,19 +409,28 @@ export const createProviderModelIdSearchFixture = async (
     }),
   );
   const baseResources: PersistedResourceDescriptor[] =
-    base.closureRows.resources.map((resource) => ({
-      resourceType: resource.resource_type,
-      resourceId: resource.resource_id,
-      resourceJson: resource.resource_json,
-      contentHash: resource.content_hash,
-    })) as PersistedResourceDescriptor[];
-  const resources = [...baseResources, ...offeringResources].sort(
-    (left, right) => {
-      const leftKey = `${left.resourceType}:${left.resourceId}`;
-      const rightKey = `${right.resourceType}:${right.resourceId}`;
-      return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
-    },
-  );
+    base.closureRows.resources
+      .filter((resource) => resource.resource_type !== "provider")
+      .map((resource) =>
+        resource.resource_type === "model" &&
+        resource.resource_id === targetResource.resourceId
+          ? targetResource
+          : {
+              resourceType: resource.resource_type,
+              resourceId: resource.resource_id,
+              resourceJson: resource.resource_json,
+              contentHash: resource.content_hash,
+            },
+      ) as PersistedResourceDescriptor[];
+  const resources = [
+    ...baseResources,
+    ...providerFixtures.map((entry) => entry.resource),
+    ...offeringResources,
+  ].sort((left, right) => {
+    const leftKey = `${left.resourceType}:${left.resourceId}`;
+    const rightKey = `${right.resourceType}:${right.resourceId}`;
+    return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
+  });
   const resourceKeys = resources.map(
     (resource) => `${resource.resourceType}:${resource.resourceId}`,
   );
@@ -321,16 +459,17 @@ export const createProviderModelIdSearchFixture = async (
         },
   );
   const providerAttributions: ProviderAttributionDescriptor[] = [
-    ...base.closureRows.providerAttributions.map((row) => ({
-      resourceType:
-        row.resource_type as ProviderAttributionDescriptor["resourceType"],
-      resourceId: row.resource_id,
-      providerId: row.provider_id,
+    ...providerFixtures.map((entry) => ({
+      resourceType: "provider" as const,
+      resourceId: entry.providerId,
+      providerId: entry.providerId,
     })),
-    ...offeringResources.map((resource) => ({
+    ...offeringResources.map((resource, index) => ({
       resourceType: "offering" as const,
       resourceId: resource.resourceId,
-      providerId: provider.provider_id,
+      providerId:
+        providerBySequence.get(offerings[index]?.providerSequence ?? 1)
+          ?.providerId ?? provider.provider_id,
     })),
   ];
   const searchDocuments: PersistedSearchDocumentDescriptor[] =
@@ -360,20 +499,18 @@ export const createProviderModelIdSearchFixture = async (
     generatedAt: observedAt,
     versions: base.manifest.versions,
     enabledProviderScopeVersion: base.manifest.enabledProviderScopeVersion,
-    enabledProviderIds: [provider.provider_id],
-    providerSlices: base.closureRows.providerSlices.map(
-      (row): ProviderSliceDescriptor => ({
-        providerId: row.provider_id,
-        providerSliceId: row.provider_slice_id,
-        providerRunId: row.provider_run_id,
-        adapterVersion: row.adapter_version,
-        rosterVersion: row.roster_version,
-        sourceRegisterVersion: row.source_register_version,
-        carriedForward: row.carried_forward === 1,
-        freshnessState:
-          row.freshness_state as ProviderSliceDescriptor["freshnessState"],
-      }),
-    ),
+    enabledProviderIds: providerFixtures.map((entry) => entry.providerId),
+    providerSlices: providerFixtures.map((entry): ProviderSliceDescriptor => ({
+      providerId: entry.slice.provider_id,
+      providerSliceId: entry.slice.provider_slice_id,
+      providerRunId: entry.slice.provider_run_id,
+      adapterVersion: entry.slice.adapter_version,
+      rosterVersion: entry.slice.roster_version,
+      sourceRegisterVersion: entry.slice.source_register_version,
+      carriedForward: entry.slice.carried_forward === 1,
+      freshnessState: entry.slice
+        .freshness_state as ProviderSliceDescriptor["freshnessState"],
+    })),
     providerAttributions,
     resources,
     searchDocuments,
@@ -386,7 +523,7 @@ export const createProviderModelIdSearchFixture = async (
       ...base.closureRows.publication,
       closure_hash: manifest.closureHash,
     },
-    providerSlices: base.closureRows.providerSlices,
+    providerSlices: providerFixtures.map((entry) => entry.slice),
     providerAttributions: providerAttributions.map((row) => ({
       resource_type: row.resourceType,
       resource_id: row.resourceId,
@@ -412,7 +549,9 @@ export const createProviderModelIdSearchFixture = async (
     enabledProviderScopeVersion: base.closureRows.enabledProviderScopeVersion,
     bundleHash: base.closureRows.bundleHash,
     stagingRevision:
-      base.closureRows.stagingRevision + offeringResources.length * 2,
+      base.closureRows.stagingRevision +
+      offeringResources.length * 2 +
+      (providerFixtures.length - 1) * 4,
     sealedAtMs: base.closureRows.sealedAtMs,
   };
   const projection = await projectProviderModelIdSearchProjection({
