@@ -7,6 +7,7 @@ import {
   findContentViolations,
   findControlledPipelineContentViolations,
   findGeneratedArtifactViolations,
+  validateApiWorkerConfig,
   validateGeneratedFrontendConfig,
   validatePublicWorkerConfig,
 } from "./privacy-policy.js";
@@ -35,6 +36,35 @@ function safeGeneratedConfig(): Record<string, unknown> {
     services: [{ binding: "API", service: "quant-clarity-api-local" }],
     ratelimits: [{ name: "READ_LIMITER" }, { name: "ROTATION_LIMITER" }],
     vars: { DEPLOYMENT_ENV: "local" },
+  };
+}
+
+function safeApiConfig(): Record<string, unknown> {
+  return {
+    $schema: "../../node_modules/wrangler/config-schema.json",
+    name: "quant-clarity-api-local",
+    main: "src/index.ts",
+    compatibility_date: "2026-08-01",
+    ...safeConfig(),
+    services: [
+      {
+        binding: "CATALOG_QUERY",
+        service: "quant-clarity-query-local",
+        entrypoint: "CatalogQueryService",
+      },
+    ],
+    ratelimits: [
+      {
+        name: "READ_LIMITER",
+        namespace_id: "1001",
+        simple: { limit: 120, period: 60 },
+      },
+      {
+        name: "ROTATION_LIMITER",
+        namespace_id: "1002",
+        simple: { limit: 600, period: 60 },
+      },
+    ],
   };
 }
 
@@ -120,6 +150,126 @@ describe("zero-visitor-data static policy (GATE-zero-visitor-data)", () => {
 
   it("accepts the complete explicit zero-data configuration", () => {
     expect(validatePublicWorkerConfig(safeConfig(), true)).toEqual([]);
+  });
+
+  it("allows only the named query service and two limiters on the public API", () => {
+    expect(validateApiWorkerConfig(safeApiConfig())).toEqual([]);
+
+    const directD1 = safeApiConfig();
+    directD1.d1_databases = [
+      { binding: "SERVING_DB", database_id: "not-a-real-id" },
+    ];
+    expect(validateApiWorkerConfig(directD1)).toContain(
+      "d1_databases is not an allowlisted public API configuration field",
+    );
+
+    for (const [key, value] of [
+      ["r2_buckets", [{ binding: "PRIVATE" }]],
+      ["vectorize", [{ binding: "SEARCH" }]],
+      ["pipelines", [{ binding: "EVENTS" }]],
+      ["workflows", [{ binding: "CONTROL" }]],
+    ] as const) {
+      const capability = safeApiConfig();
+      capability[key] = value;
+      expect(validateApiWorkerConfig(capability)).toContain(
+        `${key} is not an allowlisted public API configuration field`,
+      );
+    }
+
+    const privateQuery = safeConfig();
+    privateQuery.d1_databases = [{ binding: "SERVING_DB" }];
+    expect(validatePublicWorkerConfig(privateQuery, true)).toEqual([]);
+  });
+
+  it("rejects wrong or multiple public API service bindings", () => {
+    const wrong = safeApiConfig();
+    wrong.services = [
+      {
+        binding: "CATALOG_QUERY",
+        service: "quant-clarity-query-local",
+        entrypoint: "WrongEntrypoint",
+      },
+    ];
+    expect(validateApiWorkerConfig(wrong)).toContain(
+      "services must contain only the local CATALOG_QUERY CatalogQueryService binding",
+    );
+
+    const multiple = safeApiConfig();
+    multiple.services = [
+      ...(multiple.services as unknown[]),
+      { binding: "PIPELINE", service: "quant-clarity-pipeline-local" },
+    ];
+    expect(validateApiWorkerConfig(multiple)).toContain(
+      "services must contain only the local CATALOG_QUERY CatalogQueryService binding",
+    );
+  });
+
+  it("rejects alternate and unknown API root surfaces automatically", () => {
+    for (const [key, value] of [
+      ["env", { preview: {} }],
+      ["previews", { enabled: true }],
+      ["unsafe", { bindings: [{ name: "ESCAPE" }] }],
+      ["routes", [{ pattern: "api.example.test/*" }]],
+      ["route", "api.example.test/*"],
+      ["streaming_tail_consumers", [{ service: "sink" }]],
+      ["secrets", { API_KEY: "placeholder" }],
+      ["cache", { binding: "CACHE" }],
+      ["websearch", { binding: "SEARCH" }],
+      ["stream", { binding: "STREAM" }],
+      ["media", { binding: "MEDIA" }],
+      ["version_metadata", { binding: "VERSION" }],
+      ["text_blobs", { PAYLOAD: "payload.txt" }],
+      ["data_blobs", { PAYLOAD: "payload.bin" }],
+      ["wasm_modules", { MODULE: "module.wasm" }],
+      ["rules", [{ type: "Text", globs: ["**/*.txt"] }]],
+      ["future_capability", { binding: "UNKNOWN" }],
+    ] as const) {
+      const candidate = safeApiConfig();
+      candidate[key] = value;
+      expect(validateApiWorkerConfig(candidate), key).toContain(
+        `${key} is not an allowlisted public API configuration field`,
+      );
+    }
+  });
+
+  it("rejects missing roots and nested service, limiter, or observability bypasses", () => {
+    const missingMain = safeApiConfig();
+    delete missingMain.main;
+    expect(validateApiWorkerConfig(missingMain)).toContain(
+      "main is required in the public API configuration",
+    );
+
+    const remoteService = safeApiConfig();
+    const services = remoteService.services as Record<string, unknown>[];
+    const service = services[0];
+    if (service === undefined) throw new Error("safe API service is missing");
+    service.remote = false;
+    expect(validateApiWorkerConfig(remoteService)).toContain(
+      "services must contain only the local CATALOG_QUERY CatalogQueryService binding",
+    );
+
+    const alternateLimiter = safeApiConfig();
+    const rateLimits = alternateLimiter.ratelimits as Record<string, unknown>[];
+    const rateLimit = rateLimits[0];
+    if (rateLimit === undefined)
+      throw new Error("safe API rate limiter is missing");
+    const simple = rateLimit.simple as Record<string, unknown>;
+    simple.limit = 121;
+    simple.extra = false;
+    expect(validateApiWorkerConfig(alternateLimiter)).toContain(
+      "ratelimits must exactly match the local READ_LIMITER and ROTATION_LIMITER definitions",
+    );
+
+    const nestedObservability = safeApiConfig();
+    const observability = nestedObservability.observability as Record<
+      string,
+      unknown
+    >;
+    const logs = observability.logs as Record<string, unknown>;
+    logs.head_sampling_rate = 0;
+    expect(validateApiWorkerConfig(nestedObservability)).toContain(
+      "observability must contain only the exact disabled logs and traces configuration",
+    );
   });
 
   it("audits normalized framework config without treating empty bindings as active", () => {

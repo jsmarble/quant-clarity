@@ -67,6 +67,15 @@ function isObject(value: unknown): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function hasExactKeys(value: JsonObject, expected: readonly string[]): boolean {
+  const actual = Object.keys(value).sort();
+  const sortedExpected = [...expected].sort();
+  return (
+    actual.length === sortedExpected.length &&
+    actual.every((key, index) => key === sortedExpected[index])
+  );
+}
+
 function labelsFor(
   contents: string,
   rules: readonly (readonly [string, RegExp])[],
@@ -146,6 +155,141 @@ export function validatePublicWorkerConfig(
     errors.push(
       "AI binding is prohibited until the public-query privacy gate is approved",
     );
+  return errors;
+}
+
+const apiRootKeys = [
+  "$schema",
+  "compatibility_date",
+  "main",
+  "name",
+  "observability",
+  "preview_urls",
+  "ratelimits",
+  "services",
+  "workers_dev",
+] as const;
+
+function isExactApiObservability(value: unknown): boolean {
+  if (
+    !isObject(value) ||
+    !hasExactKeys(value, ["enabled", "logs", "traces"]) ||
+    value.enabled !== false
+  )
+    return false;
+  const logs = value.logs;
+  const traces = value.traces;
+  return (
+    isObject(logs) &&
+    hasExactKeys(logs, [
+      "destinations",
+      "enabled",
+      "invocation_logs",
+      "persist",
+    ]) &&
+    logs.enabled === false &&
+    logs.invocation_logs === false &&
+    logs.persist === false &&
+    Array.isArray(logs.destinations) &&
+    logs.destinations.length === 0 &&
+    isObject(traces) &&
+    hasExactKeys(traces, ["destinations", "enabled", "persist"]) &&
+    traces.enabled === false &&
+    traces.persist === false &&
+    Array.isArray(traces.destinations) &&
+    traces.destinations.length === 0
+  );
+}
+
+function isExactApiService(value: unknown): boolean {
+  return (
+    isObject(value) &&
+    hasExactKeys(value, ["binding", "entrypoint", "service"]) &&
+    value.binding === "CATALOG_QUERY" &&
+    value.service === "quant-clarity-query-local" &&
+    value.entrypoint === "CatalogQueryService"
+  );
+}
+
+function isExactApiRateLimit(
+  value: unknown,
+  expected: Readonly<{
+    name: string;
+    namespaceId: string;
+    limit: number;
+  }>,
+): boolean {
+  if (
+    !isObject(value) ||
+    !hasExactKeys(value, ["name", "namespace_id", "simple"]) ||
+    value.name !== expected.name ||
+    value.namespace_id !== expected.namespaceId
+  )
+    return false;
+  const simple = value.simple;
+  return (
+    isObject(simple) &&
+    hasExactKeys(simple, ["limit", "period"]) &&
+    simple.limit === expected.limit &&
+    simple.period === 60
+  );
+}
+
+export function validateApiWorkerConfig(value: unknown): string[] {
+  const errors = validatePublicWorkerConfig(value, true);
+  if (!isObject(value)) return errors;
+
+  const allowedKeys = new Set<string>(apiRootKeys);
+  for (const key of Object.keys(value))
+    if (!allowedKeys.has(key))
+      errors.push(
+        `${key} is not an allowlisted public API configuration field`,
+      );
+  for (const key of apiRootKeys)
+    if (!(key in value))
+      errors.push(`${key} is required in the public API configuration`);
+
+  if (value.$schema !== "../../node_modules/wrangler/config-schema.json")
+    errors.push("$schema must reference the pinned local Wrangler schema");
+  if (value.name !== "quant-clarity-api-local")
+    errors.push("name must be quant-clarity-api-local");
+  if (value.main !== "src/index.ts") errors.push("main must be src/index.ts");
+  if (value.compatibility_date !== "2026-08-01")
+    errors.push("compatibility_date must be 2026-08-01");
+  if (!isExactApiObservability(value.observability))
+    errors.push(
+      "observability must contain only the exact disabled logs and traces configuration",
+    );
+
+  const services = value.services;
+  if (
+    !Array.isArray(services) ||
+    services.length !== 1 ||
+    !isExactApiService((services as unknown[])[0])
+  )
+    errors.push(
+      "services must contain only the local CATALOG_QUERY CatalogQueryService binding",
+    );
+
+  const rateLimits = value.ratelimits;
+  if (
+    !Array.isArray(rateLimits) ||
+    rateLimits.length !== 2 ||
+    !isExactApiRateLimit((rateLimits as unknown[])[0], {
+      name: "READ_LIMITER",
+      namespaceId: "1001",
+      limit: 120,
+    }) ||
+    !isExactApiRateLimit((rateLimits as unknown[])[1], {
+      name: "ROTATION_LIMITER",
+      namespaceId: "1002",
+      limit: 600,
+    })
+  )
+    errors.push(
+      "ratelimits must exactly match the local READ_LIMITER and ROTATION_LIMITER definitions",
+    );
+
   return errors;
 }
 

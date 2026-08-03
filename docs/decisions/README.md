@@ -67,3 +67,4 @@ Accepted ADRs describe implementation choices; they do not amend product require
 - [ADR 0029](0029-provider-model-id-exact-reader.md) — literal raw-first provider-model-ID equality mapped to canonical Model or Variant targets
 - [ADR 0030](0030-composed-exact-search-and-compact-cursor.md) — composed exact tiers with a compact authenticated cursor and no visitor state
 - [ADR 0031](0031-retained-hot-publication-continuity.md) — retained-hot publication continuity from indexed immutable head history
+- [ADR 0032](0032-local-named-query-service-binding.md) — local API-to-query named service binding and actual multi-Worker JSRPC proof

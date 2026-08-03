@@ -21,14 +21,31 @@ import {
   validateAndNormalizeRequest,
   verifyCursor,
   type ApiLimits,
+  type CatalogQueryRpcV2,
   type CursorKeyring,
   type CursorPayload,
   type NormalizedRequest,
 } from "./index.js";
 
+const catalogQueryRpcV2Surface = {
+  resolvePublicationV2: (input: unknown): Promise<unknown> =>
+    Promise.resolve(input),
+  readMergedExactSearchV2: (input: unknown): Promise<unknown> =>
+    Promise.resolve(input),
+} satisfies CatalogQueryRpcV2;
+
 const PUBLICATION = "pub_00000000-0000-4000-8000-000000000001";
 const MODEL = "mdl_00000000-0000-4000-8000-000000000002";
 const PROVIDER = "prv_00000000-0000-4000-8000-000000000003";
+
+describe("shared catalog query RPC contract", () => {
+  it("contains only the accepted hostile-boundary V2 methods", () => {
+    expect(Object.keys(catalogQueryRpcV2Surface).sort()).toEqual([
+      "readMergedExactSearchV2",
+      "resolvePublicationV2",
+    ]);
+  });
+});
 
 const limits: ApiLimits = {
   defaultPageSize: 25,

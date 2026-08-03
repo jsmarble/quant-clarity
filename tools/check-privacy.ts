@@ -8,6 +8,7 @@ import {
   findContentViolations,
   findControlledPipelineContentViolations,
   findGeneratedArtifactViolations,
+  validateApiWorkerConfig,
   validateGeneratedFrontendConfig,
   validatePublicWorkerConfig,
 } from "./privacy-policy.js";
@@ -105,7 +106,10 @@ for (const root of publicRoots) {
     );
     continue;
   }
-  for (const label of validatePublicWorkerConfig(parsed, true))
+  const configurationLabels = root.endsWith("/apps/api")
+    ? validateApiWorkerConfig(parsed)
+    : validatePublicWorkerConfig(parsed, true);
+  for (const label of configurationLabels)
     violations.push(`${relative(process.cwd(), configurationPath)}: ${label}`);
 
   if (!root.endsWith("/apps/web")) {
