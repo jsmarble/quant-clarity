@@ -277,6 +277,10 @@ export const createModelVariantNameSearchFixture = async (
             ? unknownFact()
             : knownFact(modelDisplayName, observedAt),
         model_id: resourceId,
+        slug:
+          index === 0
+            ? commonValue.slug
+            : knownFact(`alpha-model-${String(index + 1)}`, observedAt, 5),
         status: statusFact(modelStatusAt(index)),
       },
     };

@@ -139,12 +139,14 @@ class FixtureServingDatabase {
   sessionFailure?: Error;
   reconciliationFailure?: Error;
   readonly sql: string[] = [];
+  sessionCount = 0;
 
   constructor(private readonly archive: TrustedModelSlugHistoryArchiveProof) {}
 
   readonly binding = {
     withSession: (constraint?: D1SessionConstraint) => {
       void constraint;
+      this.sessionCount += 1;
       if (this.sessionFailure !== undefined) throw this.sessionFailure;
       return {
         prepare: (sql: string) => this.statement({ sql, values: [] }),
@@ -195,6 +197,17 @@ class FixtureServingDatabase {
     }
     return Promise.resolve(
       statements.map((statement) => {
+        if (statement.sql.includes("AS indexes_valid"))
+          return d1Result([{ indexes_valid: 1 }]);
+        if (statement.sql.includes("current_model_idx")) {
+          const modelId = String(statement.values[1]);
+          const row = [...this.mappings.values()].find(
+            (candidate) =>
+              candidate.model_id === modelId &&
+              candidate.resolution === "current",
+          );
+          return d1Result(row === undefined ? [] : [row]);
+        }
         const slug = String(statement.values[1]);
         const row = this.mappings.get(slug);
         return d1Result(row === undefined ? [] : [row]);
@@ -204,6 +217,10 @@ class FixtureServingDatabase {
 
   private all(statement: CapturedStatement): Promise<D1Result> {
     this.sql.push(statement.sql);
+    if (statement.sql.startsWith("SELECT schema_version"))
+      return Promise.resolve(d1Result([{ schema_version: "1.13.0" }]));
+    if (statement.sql.includes("AS indexes_valid"))
+      return Promise.resolve(d1Result([{ indexes_valid: 1 }]));
     const cursor = String(statement.values[1]);
     const rows = [...this.mappings.values()]
       .filter((row) => String(row.slug) > cursor)
@@ -264,12 +281,18 @@ class FixtureServingDatabase {
 }
 
 let archive: TrustedModelSlugHistoryArchiveProof;
+let pagedArchive: TrustedModelSlugHistoryArchiveProof;
 
 beforeAll(async () => {
   const candidate = await createModelSlugHistoryCandidateFixture();
   archive = await archiveModelSlugHistoryCandidate(
     new FixtureArchiveBucket().binding,
     candidate,
+  );
+  const pagedCandidate = await createModelSlugHistoryCandidateFixture(300);
+  pagedArchive = await archiveModelSlugHistoryCandidate(
+    new FixtureArchiveBucket().binding,
+    pagedCandidate,
   );
 });
 
@@ -288,6 +311,18 @@ const expectStaticError = async (
 };
 
 describe("Model slug-history serving staging", () => {
+  it("uses one bookmark-continuous session for a complete paged readback", async () => {
+    const database = new FixtureServingDatabase(pagedArchive);
+    await stageModelSlugHistoryArchive(database.binding, pagedArchive);
+    database.sessionCount = 0;
+
+    await expect(
+      stageModelSlugHistoryArchive(database.binding, pagedArchive),
+    ).resolves.toMatchObject({ outcome: "idempotent_success" });
+
+    expect(database.sessionCount).toBe(2);
+  });
+
   it("applies exact rows, proves forced-index hit/miss, and retries idempotently", async () => {
     const database = new FixtureServingDatabase(archive);
     const applied = await stageModelSlugHistoryArchive(

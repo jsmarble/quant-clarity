@@ -305,6 +305,7 @@ export const createVerifiedRestoreSourceProfileV1 = async (
   let detachedExpected: BackupClosureExpectation;
   try {
     detachedExpected = Object.freeze({
+      servingSchemaVersion: expectedClosure.servingSchemaVersion,
       publicationId: expectedClosure.publicationId,
       closureHash: expectedClosure.closureHash,
       providerSliceCount: expectedClosure.providerSliceCount,

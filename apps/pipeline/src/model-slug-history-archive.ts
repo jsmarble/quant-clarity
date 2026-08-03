@@ -5,14 +5,20 @@ import {
   type ModelSlugHistoryArtifact,
 } from "@quant-clarity/contracts";
 import {
+  MODEL_SLUG_MAX_MODELS,
+  assertImmutablePublicationManifest,
+  assertModelSlugArchiveArtifactProofV5,
   assertModelSlugProjection,
   projectModelSlugProjection,
+  type ModelSlugArchiveArtifactProofV5,
+  type ServingResourceClosureRow,
   type Sha256,
+  type TrustedImmutablePublicationManifest,
   type TrustedModelSlugProjection,
 } from "@quant-clarity/publication-core";
 
 import {
-  type MODEL_SLUG_HISTORY_ACQUISITION_VERSION,
+  MODEL_SLUG_HISTORY_ACQUISITION_VERSION,
   assertModelSlugHistoryCandidateCapture,
   type TrustedModelSlugHistoryCandidateCapture,
 } from "./model-slug-history-acquisition.js";
@@ -72,8 +78,22 @@ const staticFailure = (
 
 const archiveProofBrand: unique symbol = Symbol("ModelSlugHistoryArchiveProof");
 const trustedArchiveProofs = new WeakSet<object>();
+const freshRollbackProofBrand: unique symbol = Symbol(
+  "FreshModelSlugRollbackProof",
+);
 
 export type ModelSlugHistoryArchiveBucket = Pick<R2Bucket, "get" | "put">;
+export type ModelSlugHistoryArchiveReadBucket = Pick<R2Bucket, "get">;
+
+export type ModelSlugHistoryRollbackBase = Readonly<{
+  manifest: TrustedImmutablePublicationManifest;
+  resources: readonly ServingResourceClosureRow[];
+}>;
+
+export type ModelSlugHistoryRollbackFreshness = Readonly<{
+  observedAtMs: number;
+  maximumAgeMs: number;
+}>;
 
 export type TrustedModelSlugHistoryArchiveProof = Readonly<{
   artifactVersion: typeof MODEL_SLUG_HISTORY_ARTIFACT_VERSION;
@@ -88,6 +108,19 @@ export type TrustedModelSlugHistoryArchiveProof = Readonly<{
   readonly [archiveProofBrand]: true;
 }>;
 
+export type TrustedFreshModelSlugRollbackProof = Readonly<{
+  archiveProof: TrustedModelSlugHistoryArchiveProof;
+  observedAtMs: number;
+  maximumAgeMs: number;
+  readonly [freshRollbackProofBrand]: true;
+}>;
+
+const trustedFreshRollbackProofs = new WeakMap<
+  object,
+  ModelSlugHistoryRollbackFreshness &
+    Readonly<{ archiveProof: TrustedModelSlugHistoryArchiveProof }>
+>();
+
 export const assertModelSlugHistoryArchiveProof: (
   value: unknown,
 ) => asserts value is TrustedModelSlugHistoryArchiveProof = (value) => {
@@ -101,10 +134,168 @@ export const assertModelSlugHistoryArchiveProof: (
     throw new TypeError("Model slug history archive proof is not trusted");
 };
 
+export const assertFreshModelSlugRollbackProof: (
+  value: unknown,
+) => asserts value is TrustedFreshModelSlugRollbackProof = (value) => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !trustedFreshRollbackProofs.has(value) ||
+    !(freshRollbackProofBrand in value) ||
+    value[freshRollbackProofBrand] !== true
+  )
+    throw new TypeError("Fresh Model slug rollback proof is not trusted");
+};
+
+export const readFreshModelSlugRollbackProof = (
+  value: TrustedFreshModelSlugRollbackProof,
+): ModelSlugHistoryRollbackFreshness &
+  Readonly<{ archiveProof: TrustedModelSlugHistoryArchiveProof }> => {
+  assertFreshModelSlugRollbackProof(value);
+  const binding = trustedFreshRollbackProofs.get(value);
+  if (binding === undefined)
+    throw new TypeError("Fresh Model slug rollback proof is not trusted");
+  return binding;
+};
+
 export const modelSlugHistoryArchiveKey = (digest: unknown): string => {
   if (typeof digest !== "string" || !SHA256.test(digest))
     throw staticFailure("configuration_invalid");
   return `${ARCHIVE_KEY_PREFIX}${digest.slice("sha256:".length)}.json`;
+};
+
+const ownDataRecordSnapshot = (
+  value: unknown,
+  expectedKeys: readonly string[],
+): Readonly<Record<string, unknown>> => {
+  try {
+    if (typeof value !== "object" || value === null || Array.isArray(value))
+      throw staticFailure("configuration_invalid");
+    const prototype: unknown = Reflect.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null)
+      throw staticFailure("configuration_invalid");
+    const keys = Reflect.ownKeys(value);
+    if (
+      keys.length !== expectedKeys.length ||
+      keys.some((key) => typeof key !== "string")
+    )
+      throw staticFailure("configuration_invalid");
+    const expected = [...expectedKeys].sort();
+    const actual = [...(keys as string[])].sort();
+    const snapshot: Record<string, unknown> = {};
+    for (let index = 0; index < expected.length; index += 1) {
+      const key = expected[index];
+      if (key === undefined || actual[index] !== key)
+        throw staticFailure("configuration_invalid");
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (
+        descriptor?.enumerable !== true ||
+        !("value" in descriptor) ||
+        descriptor.writable === undefined
+      )
+        throw staticFailure("configuration_invalid");
+      snapshot[key] = descriptor.value;
+    }
+    return Object.freeze(snapshot);
+  } catch {
+    throw staticFailure("configuration_invalid");
+  }
+};
+
+const denseOwnDataArraySnapshot = (
+  value: unknown,
+  maximumItems: number,
+): readonly unknown[] => {
+  try {
+    if (!Array.isArray(value)) throw staticFailure("configuration_invalid");
+    const lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
+    const length: unknown = lengthDescriptor?.value;
+    if (
+      typeof length !== "number" ||
+      !Number.isSafeInteger(length) ||
+      length < 0 ||
+      length > maximumItems
+    )
+      throw staticFailure("configuration_invalid");
+    const keys = Reflect.ownKeys(value);
+    if (
+      keys.length !== length + 1 ||
+      keys.some(
+        (key) =>
+          key !== "length" &&
+          (typeof key !== "string" ||
+            !/^(?:0|[1-9][0-9]*)$/u.test(key) ||
+            Number(key) >= length),
+      )
+    )
+      throw staticFailure("configuration_invalid");
+    const snapshot: unknown[] = [];
+    for (let index = 0; index < length; index += 1) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+      if (descriptor?.enumerable !== true || !("value" in descriptor))
+        throw staticFailure("configuration_invalid");
+      snapshot.push(descriptor.value);
+    }
+    return Object.freeze(snapshot);
+  } catch {
+    throw staticFailure("configuration_invalid");
+  }
+};
+
+const snapshotRollbackBase = (value: unknown): ModelSlugHistoryRollbackBase => {
+  const record = ownDataRecordSnapshot(value, ["manifest", "resources"]);
+  try {
+    assertImmutablePublicationManifest(record.manifest);
+  } catch {
+    throw staticFailure("configuration_invalid");
+  }
+  const resources = denseOwnDataArraySnapshot(
+    record.resources,
+    MODEL_SLUG_MAX_MODELS,
+  ).map((value) => {
+    const resource = ownDataRecordSnapshot(value, [
+      "content_hash",
+      "resource_id",
+      "resource_json",
+      "resource_type",
+    ]);
+    if (
+      resource.resource_type !== "model" ||
+      typeof resource.resource_id !== "string" ||
+      typeof resource.resource_json !== "string" ||
+      typeof resource.content_hash !== "string"
+    )
+      throw staticFailure("configuration_invalid");
+    return Object.freeze({
+      resource_type: "model" as const,
+      resource_id: resource.resource_id,
+      resource_json: resource.resource_json,
+      content_hash: resource.content_hash as Sha256,
+    });
+  });
+  return Object.freeze({
+    manifest: record.manifest,
+    resources: Object.freeze(resources),
+  });
+};
+
+const snapshotRollbackFreshness = (
+  value: unknown,
+): ModelSlugHistoryRollbackFreshness => {
+  const record = ownDataRecordSnapshot(value, ["maximumAgeMs", "observedAtMs"]);
+  const observedAtMs = record.observedAtMs;
+  const maximumAgeMs = record.maximumAgeMs;
+  if (
+    typeof observedAtMs !== "number" ||
+    !Number.isSafeInteger(observedAtMs) ||
+    observedAtMs < 0 ||
+    typeof maximumAgeMs !== "number" ||
+    !Number.isSafeInteger(maximumAgeMs) ||
+    maximumAgeMs < 0 ||
+    !Number.isSafeInteger(observedAtMs + maximumAgeMs)
+  )
+    throw staticFailure("configuration_invalid");
+  return Object.freeze({ observedAtMs, maximumAgeMs });
 };
 
 const artifactFromCandidate = (
@@ -312,6 +503,136 @@ const admitsRetainedHeap = (
     )
       return false;
   return estimate <= MODEL_SLUG_HISTORY_ARCHIVE_RETAINED_HEAP_BUDGET;
+};
+
+const admitsRollbackRetainedHeap = (
+  base: ModelSlugHistoryRollbackBase,
+  expected: ModelSlugArchiveArtifactProofV5,
+): boolean => {
+  let estimate =
+    RETAINED_HEAP_FIXED_RESERVE +
+    expected.artifact_byte_count * RETAINED_HEAP_ARTIFACT_MULTIPLIER;
+  const add = (bytes: number): boolean => {
+    estimate += bytes;
+    return (
+      Number.isSafeInteger(estimate) &&
+      estimate <= MODEL_SLUG_HISTORY_ARCHIVE_RETAINED_HEAP_BUDGET
+    );
+  };
+  const addString = (value: string): boolean => add(value.length * 2);
+  const addRow = (...values: readonly string[]): boolean =>
+    add(RETAINED_HEAP_OBJECT_OVERHEAD) && values.every(addString);
+
+  if (
+    !Number.isSafeInteger(estimate) ||
+    estimate > MODEL_SLUG_HISTORY_ARCHIVE_RETAINED_HEAP_BUDGET
+  )
+    return false;
+  for (const resource of base.resources)
+    if (
+      !addRow(
+        resource.resource_id,
+        resource.resource_type,
+        resource.resource_json,
+        resource.content_hash,
+      )
+    )
+      return false;
+  const manifest = base.manifest;
+  if (
+    !addRow(
+      manifest.contractVersion,
+      manifest.publicationId,
+      manifest.sourceRunId,
+      manifest.parentPublicationId ?? "",
+      manifest.generatedAt,
+      manifest.enabledProviderScopeVersion,
+      manifest.bundleHash,
+      manifest.resourceInventoryHash,
+      manifest.exactSearchInventoryHash,
+      manifest.vectorInventoryHash,
+      manifest.enabledProviderScopeHash,
+      manifest.providerSliceHash,
+      manifest.providerAttributionHash,
+      manifest.chunkRootHash,
+      manifest.closureHash,
+      manifest.versions.schema,
+      manifest.versions.methodology,
+      manifest.versions.precisionNormalization,
+      manifest.versions.precisionDisplayOrder,
+      manifest.versions.pricePolicy,
+      manifest.versions.sourcePolicy,
+      manifest.versions.embedding,
+      manifest.versions.buildCommit,
+    )
+  )
+    return false;
+  for (const providerId of manifest.enabledProviderIds)
+    if (!addRow(providerId)) return false;
+  for (const slice of manifest.providerSlices)
+    if (
+      !addRow(
+        slice.providerId,
+        slice.providerSliceId ?? "",
+        slice.providerRunId,
+        slice.adapterVersion,
+        slice.rosterVersion,
+        slice.sourceRegisterVersion,
+        slice.freshnessState,
+      )
+    )
+      return false;
+  for (const attribution of manifest.providerAttributions)
+    if (
+      !addRow(
+        attribution.resourceType,
+        attribution.resourceId,
+        attribution.providerId,
+      )
+    )
+      return false;
+  for (const resource of manifest.resources)
+    if (
+      !addRow(resource.resourceType, resource.resourceId, resource.contentHash)
+    )
+      return false;
+  for (const document of manifest.searchDocuments)
+    if (
+      !addRow(
+        document.resourceType,
+        document.resourceId,
+        document.documentId,
+        document.contentHash,
+      )
+    )
+      return false;
+  for (const vector of manifest.vectors)
+    if (
+      !addRow(
+        vector.resourceType,
+        vector.resourceId,
+        vector.vectorId,
+        vector.searchDocumentContentHash,
+        vector.embeddingInputHash,
+      )
+    )
+      return false;
+  for (const chunk of manifest.chunks)
+    if (!addRow(chunk.kind, chunk.firstKey, chunk.lastKey, chunk.contentHash))
+      return false;
+  return (
+    addRow(
+      expected.publication_id,
+      expected.closure_hash,
+      expected.base_bundle_hash,
+      expected.artifact_version,
+      expected.acquisition_version,
+      expected.projection_version,
+      expected.artifact_digest,
+      expected.source_history_hash,
+      expected.mapping_inventory_hash,
+    ) && estimate <= MODEL_SLUG_HISTORY_ARCHIVE_RETAINED_HEAP_BUDGET
+  );
 };
 
 const conservativeArtifactByteUpperBound = (
@@ -735,6 +1056,238 @@ const verifyArtifactMeaning = async (
   return replayed;
 };
 
+const compareAscii = (left: string, right: string): number =>
+  left === right ? 0 : left < right ? -1 : 1;
+
+const compareArchivedHistoryRows = (
+  left: ModelSlugHistoryArtifact["history_rows"][number],
+  right: ModelSlugHistoryArtifact["history_rows"][number],
+): number => {
+  const modelOrder = compareAscii(left.resource_id, right.resource_id);
+  if (modelOrder !== 0) return modelOrder;
+  if (left.valid_from_ms !== right.valid_from_ms)
+    return left.valid_from_ms < right.valid_from_ms ? -1 : 1;
+  if (left.valid_to_ms !== right.valid_to_ms) {
+    if (left.valid_to_ms === null) return 1;
+    if (right.valid_to_ms === null) return -1;
+    return left.valid_to_ms < right.valid_to_ms ? -1 : 1;
+  }
+  const slugOrder = compareAscii(left.slug, right.slug);
+  return slugOrder === 0
+    ? compareAscii(left.slug_history_id, right.slug_history_id)
+    : slugOrder;
+};
+
+const verifyRollbackArtifactMeaning = async (
+  text: string,
+  base: ModelSlugHistoryRollbackBase,
+  expected: ModelSlugArchiveArtifactProofV5,
+): Promise<TrustedModelSlugProjection> => {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text) as unknown;
+  } catch {
+    throw staticFailure("integrity_failure");
+  }
+  if (!checkModelSlugHistoryArtifactContract(parsed))
+    throw staticFailure("integrity_failure");
+  const artifact = parsed;
+  if (
+    serializeArtifact(artifact) !== text ||
+    artifact.publication_id !== expected.publication_id ||
+    artifact.closure_hash !== expected.closure_hash ||
+    artifact.base_bundle_hash !== expected.base_bundle_hash ||
+    artifact.publication_boundary_ms !== expected.publication_boundary_ms ||
+    artifact.model_count !== expected.model_count ||
+    artifact.source_history_count !== expected.source_history_count ||
+    artifact.source_history_hash !== expected.source_history_hash ||
+    artifact.mapping_count !== expected.mapping_count ||
+    artifact.current_mapping_count !== expected.current_mapping_count ||
+    artifact.historical_mapping_count !== expected.historical_mapping_count ||
+    artifact.mapping_inventory_hash !== expected.mapping_inventory_hash
+  )
+    throw staticFailure("integrity_failure");
+  for (let index = 1; index < artifact.canonical_models.length; index += 1) {
+    const previous = artifact.canonical_models[index - 1];
+    const current = artifact.canonical_models[index];
+    if (
+      previous === undefined ||
+      current === undefined ||
+      compareAscii(previous.resource_id, current.resource_id) >= 0
+    )
+      throw staticFailure("integrity_failure");
+  }
+  for (let index = 1; index < artifact.history_rows.length; index += 1) {
+    const previous = artifact.history_rows[index - 1];
+    const current = artifact.history_rows[index];
+    if (
+      previous === undefined ||
+      current === undefined ||
+      compareArchivedHistoryRows(previous, current) >= 0
+    )
+      throw staticFailure("integrity_failure");
+  }
+  let replayed: TrustedModelSlugProjection;
+  try {
+    replayed = await projectModelSlugProjection({
+      manifest: base.manifest,
+      resources: base.resources,
+      historyRows: artifact.history_rows,
+    });
+    assertModelSlugProjection(replayed);
+  } catch {
+    throw staticFailure("integrity_failure");
+  }
+  if (
+    replayed.publicationId !== expected.publication_id ||
+    replayed.closureHash !== expected.closure_hash ||
+    replayed.publicationBoundaryMs !== expected.publication_boundary_ms ||
+    replayed.modelCount !== expected.model_count ||
+    replayed.sourceHistoryCount !== expected.source_history_count ||
+    replayed.sourceHistoryHash !== expected.source_history_hash ||
+    replayed.mappingCount !== expected.mapping_count ||
+    replayed.currentMappingCount !== expected.current_mapping_count ||
+    replayed.historicalMappingCount !== expected.historical_mapping_count ||
+    replayed.mappingInventoryHash !== expected.mapping_inventory_hash
+  )
+    throw staticFailure("integrity_failure");
+  const currentMappings = replayed.mappings.filter(
+    (mapping) => mapping.resolution === "current",
+  );
+  const currentByModel = new Map(
+    currentMappings.map((mapping) => [mapping.modelId, mapping.slug]),
+  );
+  if (
+    currentByModel.size !== artifact.canonical_models.length ||
+    artifact.canonical_models.some(
+      (model) => currentByModel.get(model.resource_id) !== model.slug,
+    )
+  )
+    throw staticFailure("integrity_failure");
+  return replayed;
+};
+
+const readRollbackObject = async (
+  bucket: ModelSlugHistoryArchiveReadBucket,
+  expected: ModelSlugArchiveArtifactProofV5,
+): Promise<string> => {
+  const key = modelSlugHistoryArchiveKey(expected.artifact_digest);
+  let object: R2ObjectBody | null;
+  try {
+    object = await bucket.get(key);
+  } catch {
+    throw staticFailure("outcome_unknown");
+  }
+  if (object === null) throw staticFailure("integrity_failure");
+  if (
+    object.key !== key ||
+    !Number.isSafeInteger(object.size) ||
+    object.size !== expected.artifact_byte_count ||
+    object.size < 1 ||
+    object.size > MODEL_SLUG_HISTORY_ARTIFACT_MAX_BYTES ||
+    !exactHttpMetadata(object.httpMetadata)
+  )
+    throw staticFailure("integrity_failure");
+
+  const reader = object.body.getReader();
+  const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
+  const textParts: string[] = [];
+  const rawDigest = createDigestAccumulator();
+  const artifactDigest = createDigestAccumulator();
+  const prefix: number[] = [];
+  let total = 0;
+  let chunkCount = 0;
+  try {
+    await artifactDigest.write(ARTIFACT_DIGEST_DOMAIN);
+    let reading = true;
+    while (reading) {
+      const result = await reader.read();
+      if (result.done) {
+        reading = false;
+        continue;
+      }
+      const chunk: unknown = result.value as unknown;
+      if (!(chunk instanceof Uint8Array) || chunk.byteLength === 0)
+        throw staticFailure("integrity_failure");
+      chunkCount += 1;
+      const nextTotal = total + chunk.byteLength;
+      if (
+        !Number.isSafeInteger(chunkCount) ||
+        chunkCount > MAX_ARCHIVE_STREAM_CHUNKS ||
+        !Number.isSafeInteger(nextTotal) ||
+        nextTotal > object.size ||
+        nextTotal > MODEL_SLUG_HISTORY_ARTIFACT_MAX_BYTES
+      )
+        throw staticFailure("integrity_failure");
+      for (
+        let index = 0;
+        index < chunk.byteLength && prefix.length < 3;
+        index += 1
+      ) {
+        const value = chunk[index];
+        if (value === undefined) throw staticFailure("integrity_failure");
+        prefix.push(value);
+      }
+      if (
+        prefix.length === 3 &&
+        prefix[0] === 0xef &&
+        prefix[1] === 0xbb &&
+        prefix[2] === 0xbf
+      )
+        throw staticFailure("integrity_failure");
+      await Promise.all([rawDigest.write(chunk), artifactDigest.write(chunk)]);
+      textParts.push(decoder.decode(chunk, { stream: true }));
+      total = nextTotal;
+    }
+  } catch (error) {
+    try {
+      await reader.cancel();
+    } catch {
+      // Preserve the static verifier failure below.
+    }
+    if (typeof error === "object" && error !== null) {
+      const code = trustedFailureCodes.get(error);
+      if (code !== undefined) throw staticFailure(code);
+    }
+    throw staticFailure("integrity_failure");
+  }
+  if (total !== object.size) throw staticFailure("integrity_failure");
+  let trailingText: string;
+  try {
+    trailingText = decoder.decode();
+  } catch {
+    throw staticFailure("integrity_failure");
+  }
+  if (trailingText !== "") textParts.push(trailingText);
+  let observedBody: Readonly<{ digest: Sha256; raw: ArrayBuffer }>;
+  let observedArtifact: Readonly<{ digest: Sha256; raw: ArrayBuffer }>;
+  try {
+    [observedBody, observedArtifact] = await Promise.all([
+      rawDigest.finish(),
+      artifactDigest.finish(),
+    ]);
+  } catch {
+    throw staticFailure("integrity_failure");
+  }
+  if (observedArtifact.digest !== expected.artifact_digest)
+    throw staticFailure("integrity_failure");
+  if (
+    !exactStringMetadata(object.customMetadata, {
+      "artifact-format": MODEL_SLUG_HISTORY_ARTIFACT_VERSION,
+      "body-sha256": observedBody.digest,
+      "retention-class": MODEL_SLUG_HISTORY_ARCHIVE_RETENTION_CLASS,
+    })
+  )
+    throw staticFailure("integrity_failure");
+  const checksum = object.checksums.sha256;
+  if (
+    !(checksum instanceof ArrayBuffer) ||
+    !equalBytes(checksum, new Uint8Array(observedBody.raw))
+  )
+    throw staticFailure("integrity_failure");
+  return textParts.join("");
+};
+
 const readAndVerify = async (
   bucket: ModelSlugHistoryArchiveBucket,
   key: string,
@@ -875,6 +1428,117 @@ const persistAndReadArchive = async (
   });
 };
 
+const mintArchiveProof = (input: {
+  artifactDigest: Sha256;
+  artifactByteCount: number;
+  publicationId: TrustedModelSlugHistoryArchiveProof["publicationId"];
+  baseBundleHash: Sha256;
+  closureHash: Sha256;
+  publicationBoundaryMs: number;
+  projection: TrustedModelSlugProjection;
+}): TrustedModelSlugHistoryArchiveProof => {
+  const proof = {
+    artifactVersion: MODEL_SLUG_HISTORY_ARTIFACT_VERSION,
+    acquisitionVersion: MODEL_SLUG_HISTORY_ACQUISITION_VERSION,
+    publicationId: input.publicationId,
+    baseBundleHash: input.baseBundleHash,
+    closureHash: input.closureHash,
+    publicationBoundaryMs: input.publicationBoundaryMs,
+    artifactDigest: input.artifactDigest,
+    artifactByteCount: input.artifactByteCount,
+    projection: input.projection,
+  };
+  Object.defineProperty(proof, archiveProofBrand, {
+    value: true,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  trustedArchiveProofs.add(proof);
+  return Object.freeze(proof) as TrustedModelSlugHistoryArchiveProof;
+};
+
+const mintFreshRollbackProof = (
+  archiveProof: TrustedModelSlugHistoryArchiveProof,
+  freshness: ModelSlugHistoryRollbackFreshness,
+): TrustedFreshModelSlugRollbackProof => {
+  assertModelSlugHistoryArchiveProof(archiveProof);
+  const binding = Object.freeze({
+    archiveProof,
+    observedAtMs: freshness.observedAtMs,
+    maximumAgeMs: freshness.maximumAgeMs,
+  });
+  const proof = { ...binding };
+  Object.defineProperty(proof, freshRollbackProofBrand, {
+    value: true,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  trustedFreshRollbackProofs.set(proof, binding);
+  return Object.freeze(proof) as TrustedFreshModelSlugRollbackProof;
+};
+
+/**
+ * Re-verifies one already-authorized sidecar for rollback. The protected
+ * nominal expected digest is the only address authority. This operation has
+ * no R2 write/list/delete capability and never consults canonical D1.
+ */
+export const verifyArchivedModelSlugHistoryForRollback = async (
+  bucket: ModelSlugHistoryArchiveReadBucket,
+  callerBase: ModelSlugHistoryRollbackBase,
+  expected: ModelSlugArchiveArtifactProofV5,
+  freshnessValue: ModelSlugHistoryRollbackFreshness,
+): Promise<TrustedFreshModelSlugRollbackProof> => {
+  let freshness: ModelSlugHistoryRollbackFreshness;
+  let base: ModelSlugHistoryRollbackBase;
+  try {
+    freshness = snapshotRollbackFreshness(freshnessValue);
+    assertModelSlugArchiveArtifactProofV5(expected);
+    base = snapshotRollbackBase(callerBase);
+  } catch {
+    throw staticFailure("configuration_invalid");
+  }
+  const boundaryMs = Date.parse(base.manifest.generatedAt);
+  let manifestModelCount = 0;
+  for (const resource of base.manifest.resources)
+    if (resource.resourceType === "model") manifestModelCount += 1;
+  if (
+    base.manifest.publicationId !== expected.publication_id ||
+    base.manifest.closureHash !== expected.closure_hash ||
+    base.manifest.bundleHash !== expected.base_bundle_hash ||
+    !Number.isSafeInteger(boundaryMs) ||
+    boundaryMs !== expected.publication_boundary_ms ||
+    manifestModelCount !== expected.model_count ||
+    base.resources.length !== expected.model_count ||
+    !admitsRollbackRetainedHeap(base, expected)
+  )
+    throw staticFailure("integrity_failure");
+
+  let text: string;
+  let replayed: TrustedModelSlugProjection;
+  try {
+    text = await readRollbackObject(bucket, expected);
+    replayed = await verifyRollbackArtifactMeaning(text, base, expected);
+  } catch (error) {
+    if (typeof error === "object" && error !== null) {
+      const code = trustedFailureCodes.get(error);
+      if (code !== undefined) throw staticFailure(code);
+    }
+    throw staticFailure("integrity_failure");
+  }
+  const archiveProof = mintArchiveProof({
+    artifactDigest: expected.artifact_digest,
+    artifactByteCount: expected.artifact_byte_count,
+    publicationId: expected.publication_id,
+    baseBundleHash: expected.base_bundle_hash,
+    closureHash: expected.closure_hash,
+    publicationBoundaryMs: expected.publication_boundary_ms,
+    projection: replayed,
+  });
+  return mintFreshRollbackProof(archiveProof, freshness);
+};
+
 /**
  * Writes one immutable sidecar and promotes it to a nominal proof only after a
  * bounded full read verifies exact bytes, metadata, checksum, and replayed
@@ -904,23 +1568,13 @@ export const archiveModelSlugHistoryCandidate = async (
     throw staticFailure("integrity_failure");
   }
 
-  const proof = {
-    artifactVersion: MODEL_SLUG_HISTORY_ARTIFACT_VERSION,
-    acquisitionVersion: candidate.acquisitionVersion,
+  return mintArchiveProof({
+    artifactDigest: archived.artifactDigest,
+    artifactByteCount: archived.artifactByteCount,
     publicationId: candidate.publicationId,
     baseBundleHash: candidate.bundleHash,
     closureHash: candidate.closureHash,
     publicationBoundaryMs: candidate.publicationBoundaryMs,
-    artifactDigest: archived.artifactDigest,
-    artifactByteCount: archived.artifactByteCount,
     projection: replayed,
-  };
-  Object.defineProperty(proof, archiveProofBrand, {
-    value: true,
-    enumerable: false,
-    configurable: false,
-    writable: false,
   });
-  trustedArchiveProofs.add(proof);
-  return Object.freeze(proof) as TrustedModelSlugHistoryArchiveProof;
 };

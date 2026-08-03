@@ -139,10 +139,15 @@ const withMutationBeforeReadinessBatch = (
 };
 
 beforeAll(async () => {
-  await applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS);
+  await applyD1Migrations(
+    env.SERVING_DB,
+    env.TEST_MIGRATIONS.filter(
+      (migration) => migration.name <= "0015_model_slug_projection.sql",
+    ),
+  );
 });
 
-describe("schema-1.7 readiness transaction in pinned workerd", () => {
+describe("legacy v4 readiness transaction on schema 1.12 in pinned workerd", () => {
   it("atomically persists v4 evidence and transitions building to ready", async () => {
     const fixture = await prepareSealed(
       PUBLICATION_A,

@@ -27,10 +27,15 @@ import {
 const PUBLICATION_ID = "pub_dddddddd-0000-4000-8000-000000000001" as const;
 
 beforeAll(async () => {
-  await applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS);
+  await applyD1Migrations(
+    env.SERVING_DB,
+    env.TEST_MIGRATIONS.filter(
+      (migration) => migration.name <= "0015_model_slug_projection.sql",
+    ),
+  );
 });
 
-describe("legacy v3 adapters on schema 1.7", () => {
+describe("legacy v3 adapters on schema 1.12", () => {
   it("rejects v3 readiness and switch writes without leaving rows or a head", async () => {
     const now = Math.floor(Date.now() / 1_000) * 1_000;
     const fixture = await createServingV4Fixture(

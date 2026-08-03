@@ -196,3 +196,96 @@ export const createModelSlugHistoryCandidateFixture = async (
     },
   });
 };
+
+export const createModelSlugHistoryCandidateForAssembly = async (
+  assembly: ModelSlugHistoryPublicationAssembly,
+  historyRows: readonly ModelSlugHistorySourceRow[],
+): Promise<TrustedModelSlugHistoryCandidateCapture> => {
+  const resources = assembly.resources.filter(
+    (resource) => resource.resource_type === "model",
+  );
+  const canonicalModels = resources.map((resource) => {
+    const parsed = JSON.parse(resource.resource_json) as {
+      slug: { state: string; value: string | null };
+    };
+    if (parsed.slug.state !== "known" || parsed.slug.value === null)
+      throw new TypeError("fixture Model slug is invalid");
+    return {
+      resource_id: resource.resource_id,
+      resource_type: "model" as const,
+      slug: parsed.slug.value,
+    };
+  });
+  const empty = {
+    slug_history_id: null,
+    resource_id: null,
+    resource_type: null,
+    slug: null,
+    valid_from_ms: null,
+    valid_to_ms: null,
+  };
+  const rows: AcquisitionRow[] = [
+    {
+      row_kind: "sentinel",
+      guard_version: "model-slug-history-guard@1",
+      guard_row_count: 1,
+      requested_model_count: resources.length,
+      canonical_model_count: resources.length,
+      source_history_count: historyRows.length,
+      ...empty,
+    },
+    ...canonicalModels.map((model) => ({
+      row_kind: "model",
+      guard_version: null,
+      guard_row_count: null,
+      requested_model_count: null,
+      canonical_model_count: null,
+      source_history_count: null,
+      slug_history_id: null,
+      ...model,
+      valid_from_ms: null,
+      valid_to_ms: null,
+    })),
+    ...historyRows.map((row) => ({
+      row_kind: "history",
+      guard_version: null,
+      guard_row_count: null,
+      requested_model_count: null,
+      canonical_model_count: null,
+      source_history_count: null,
+      ...row,
+    })),
+  ];
+  const database = {
+    withSession() {
+      return {
+        prepare() {
+          return {
+            bind() {
+              return {
+                all() {
+                  return Promise.resolve({
+                    success: true,
+                    results: rows,
+                    meta: { served_by_primary: true },
+                  });
+                },
+              };
+            },
+          };
+        },
+        getBookmark() {
+          return "bookmark-private-assembly-fixture";
+        },
+      };
+    },
+  } as unknown as D1Database;
+  return acquireModelSlugHistoryCandidate(database, {
+    async withWriterDrain<T>(operation: () => Promise<T>): Promise<T> {
+      return operation();
+    },
+    assemblePublication() {
+      return Promise.resolve(assembly);
+    },
+  });
+};

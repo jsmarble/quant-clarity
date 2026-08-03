@@ -311,7 +311,13 @@ const modelDetailEnvelope = (
 });
 
 beforeAll(async () => {
-  await applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS);
+  await applyD1Migrations(
+    env.SERVING_DB,
+    env.TEST_MIGRATIONS.filter(
+      (migration) =>
+        migration.name <= "0014_provider_model_stale_eligibility_index.sql",
+    ),
+  );
   fixture = await createServingV4Fixture(PUBLICATION, GENERATED_AT, [
     { rawProviderModelId: "\u0000" },
     { rawProviderModelId: "\u0000", status: "inactive", stale: true },
@@ -372,7 +378,7 @@ describe("schema-1.11 current exact readers (SRCH-002, SRCH-004, SRCH-006, SRCH-
       env.SERVING_DB.prepare(
         "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
       ).first(),
-    ).resolves.toEqual({ schema_version: "1.12.0" });
+    ).resolves.toEqual({ schema_version: "1.11.0" });
     await expect(
       exports.CatalogQueryService.resolvePublicationV1({
         version: 1,

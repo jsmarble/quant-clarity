@@ -2967,6 +2967,7 @@ describe("publication selection and hot retention (API-003, API-024A, PIPE-052, 
 
 describe("portable backup manifest validation (BE-010–BE-012, OPS-008)", () => {
   const trustedClosure = {
+    servingSchemaVersion: "1.11.0",
     publicationId: `pub_${UUID_A}` as const,
     closureHash: HASH_A,
     providerSliceCount: 2,
@@ -3088,8 +3089,26 @@ describe("portable backup manifest validation (BE-010–BE-012, OPS-008)", () =>
   };
 
   it("accepts one stable drained boundary over ordinary rows and search sources", async () => {
-    expect(await validateBackup(await backup())).toEqual([]);
+    const manifest = await backup();
+    const rootHash = manifest.rootHash;
+    expect(await validateBackup(manifest)).toEqual([]);
+    expect(manifest.rootHash).toBe(rootHash);
   });
+
+  it.each(["1.12.0", "1.13.0", "1.11.0+build", "2.0.0"])(
+    "rejects serving schema %s without changing the backup-v1 root",
+    async (servingSchemaVersion) => {
+      const manifest = await backup();
+      const rootHash = manifest.rootHash;
+      expect(
+        await validateBackupManifest(manifest, {
+          ...trustedClosure,
+          servingSchemaVersion,
+        }),
+      ).toContain("serving schema is unsupported by backup format 1.0.0");
+      expect(manifest.rootHash).toBe(rootHash);
+    },
+  );
 
   it("rejects boundary drift, virtual-index backup, missing search sources, and hash drift", async () => {
     const manifest = await backup();
@@ -3147,6 +3166,8 @@ describe("portable backup manifest validation (BE-010–BE-012, OPS-008)", () =>
       "fts_publication_provider_name",
       "publication_model_variant_name_search_document",
       "publication_provider_model_id_search_document",
+      "publication_model_slug_artifact_proof",
+      "publication_model_slug_mapping",
     ]) {
       const withoutRoot = {
         ...manifest,
