@@ -186,7 +186,7 @@ const modelAtDetailBytes = (targetBytes: number): Model => {
   return model;
 };
 
-const expectIntegrityFailure = async (operation: Promise<void>) => {
+const expectIntegrityFailure = async (operation: Promise<unknown>) => {
   await expect(operation).rejects.toMatchObject({
     name: "ServingSwitchError",
     code: "integrity_failure",
@@ -310,6 +310,18 @@ describe("Model detail publication admission", () => {
         { publicationId: PUBLICATION_ID, expectedModelCount: 1 },
       ),
     );
+
+    const overflow = fakeSession(
+      [{ schema_version: SCHEMA_VERSION }],
+      modelRows.map(admissionRow),
+    );
+    await expectIntegrityFailure(
+      admitModelDetailPublication(overflow.session, {
+        publicationId: PUBLICATION_ID,
+        expectedModelCount: 64,
+      }),
+    );
+    expect(overflow.statements).toHaveLength(2);
     await expectIntegrityFailure(
       admitModelDetailPublication(
         fakeSession([{ schema_version: SCHEMA_VERSION }], [admissionRow(first)])
@@ -397,6 +409,25 @@ describe("Model detail publication admission", () => {
     expect(() =>
       addModelDetailAdmissionBytes(MODEL_SLUG_MAX_TOTAL_RESOURCE_BYTES, 1),
     ).toThrow(new ServingSwitchError("integrity_failure"));
+    expect(addModelDetailAdmissionBytes(7, 3, 10)).toBe(10);
+    expect(() => addModelDetailAdmissionBytes(8, 3, 10)).toThrow(
+      new ServingSwitchError("integrity_failure"),
+    );
+  });
+
+  it("enforces a caller's smaller resource-byte budget during the scan", async () => {
+    const first = modelRows[0];
+    if (first === undefined) throw new Error("missing Model fixture");
+    const row = admissionRow(first);
+    const fake = fakeSession([{ schema_version: SCHEMA_VERSION }], [row]);
+    await expectIntegrityFailure(
+      admitModelDetailPublication(fake.session, {
+        publicationId: PUBLICATION_ID,
+        expectedModelCount: 1,
+        maximumResourceBytes: row.resource_json_bytes - 1,
+      }),
+    );
+    expect(fake.statements).toHaveLength(2);
   });
 
   it("accounts for multibyte UTF-8 resource bytes rather than characters", async () => {

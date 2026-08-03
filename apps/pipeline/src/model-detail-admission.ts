@@ -20,13 +20,17 @@ const SCHEMA_VERSION = /^[0-9]+\.[0-9]+\.[0-9]+$/u;
 export const addModelDetailAdmissionBytes = (
   admittedBytes: number,
   resourceBytes: number,
+  maximumBytes = MODEL_SLUG_MAX_TOTAL_RESOURCE_BYTES,
 ): number => {
   if (
     !Number.isSafeInteger(admittedBytes) ||
     admittedBytes < 0 ||
     !Number.isSafeInteger(resourceBytes) ||
     resourceBytes < 0 ||
-    admittedBytes > MODEL_SLUG_MAX_TOTAL_RESOURCE_BYTES - resourceBytes
+    !Number.isSafeInteger(maximumBytes) ||
+    maximumBytes < 0 ||
+    maximumBytes > MODEL_SLUG_MAX_TOTAL_RESOURCE_BYTES ||
+    admittedBytes > maximumBytes - resourceBytes
   )
     throw new ServingSwitchError("integrity_failure");
   return admittedBytes + resourceBytes;
@@ -131,12 +135,23 @@ const readSingleResult = async (
  */
 export const admitModelDetailPublication = async (
   session: D1DatabaseSession,
-  input: Readonly<{ publicationId: string; expectedModelCount: number }>,
-): Promise<void> => {
+  input: Readonly<{
+    expectedModelCount: number;
+    maximumResourceBytes?: number;
+    publicationId: string;
+  }>,
+): Promise<
+  Readonly<{ modelCount: number; pageCount: number; resourceBytes: number }>
+> => {
+  const maximumResourceBytes =
+    input.maximumResourceBytes ?? MODEL_SLUG_MAX_TOTAL_RESOURCE_BYTES;
   if (
     !Number.isSafeInteger(input.expectedModelCount) ||
     input.expectedModelCount < 0 ||
-    input.expectedModelCount > MODEL_SLUG_MAX_MODELS
+    input.expectedModelCount > MODEL_SLUG_MAX_MODELS ||
+    !Number.isSafeInteger(maximumResourceBytes) ||
+    maximumResourceBytes < 0 ||
+    maximumResourceBytes > MODEL_SLUG_MAX_TOTAL_RESOURCE_BYTES
   )
     throw new ServingSwitchError("integrity_failure");
 
@@ -192,6 +207,7 @@ export const admitModelDetailPublication = async (
       admittedBytes = addModelDetailAdmissionBytes(
         admittedBytes,
         row.resource_json_bytes,
+        maximumResourceBytes,
       );
       admittedCount += 1;
       if (admittedCount > input.expectedModelCount)
@@ -221,10 +237,16 @@ export const admitModelDetailPublication = async (
       }
       cursor = row.resource_id;
     }
+    if (rows.length > PAGE_SIZE && admittedCount === input.expectedModelCount)
+      throw new ServingSwitchError("integrity_failure");
     if (rows.length <= PAGE_SIZE) {
       if (admittedCount !== input.expectedModelCount)
         throw new ServingSwitchError("integrity_failure");
-      return;
+      return Object.freeze({
+        modelCount: admittedCount,
+        pageCount: page + 1,
+        resourceBytes: admittedBytes,
+      });
     }
   }
   throw new ServingSwitchError("integrity_failure");
