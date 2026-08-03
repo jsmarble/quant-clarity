@@ -32,6 +32,12 @@ This does **not** open any public Model path. `/v1/models/{model_id_or_slug}` re
 
 B1 does not authenticate that its caller supplied every canonical D1 history row, so it cannot gate readiness or answer a request. Phase 5O-B2 must add fixed canonical extraction or an archived authoritative input plus serving schema `1.12.0`, exact indexed storage, closure/readiness/switch proofs, and backup/restore. `/v1/models/{model_id_or_slug}`, query RPC, Cache API, CORS/ETag handling, and remote deployment remain closed. Whether an eventual API slug request redirects or returns the canonical Model directly remains undecided until Phase 5O-B3.
 
+### Phase 5O-B2A canonical Model slug capture boundary
+
+[ADR 0040](../decisions/0040-canonical-model-slug-history-capture.md) fixes the controlled acquisition prerequisite without adding an API operation. While one canonical single-writer drain remains continuously held from trusted manifest/resource assembly through acquisition, the pipeline requires canonical capability `model-slug-history-guard@1` and reads exactly that manifest's Model IDs, canonical current slugs, and boundary-adjusted history in one fixed `first-primary` statement. It proves trusted-resource/canonical-current/history agreement and derives unchanged `model-slug@1` roots and mappings. The candidate capture also carries a private D1 bookmark that is never part of a public contract or response.
+
+B2A is not readiness authority. B2B must first write and read-verify an immutable content-addressed private R2 artifact and stage serving schema `1.12.0`; B2C must bind it to lifecycle/backup/restore and add an internal indexed lookup. `/v1/models/{model_id_or_slug}` therefore remains closed, and Phase 5O-B3 still owns redirect-versus-direct-read and HTTP/cache semantics.
+
 | Resource | Collection | Detail / related routes |
 |---|---|---|
 | Models | `GET /models` | `GET /models/{model_id_or_slug}`, `GET /models/{id}/offerings` |
