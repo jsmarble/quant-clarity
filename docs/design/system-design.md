@@ -209,6 +209,8 @@ Complete D1 snapshots remain hot while active/current rollback and for exactly s
 
 The base path is `/v1`. GET/HEAD are supported for resources; OPTIONS handles CORS. Every other method returns `405`. No route shares a deployment with pipeline controls. After edge validation and rate limiting, the API calls the non-routable query Worker through a typed service binding to resolve the active head before selecting a versioned data cache entry; cache misses continue through the same binding. No client can address that Worker directly.
 
+[ADR 0032](../decisions/0032-local-named-query-service-binding.md) and [Phase 5I-B](phase-5i-b-local-named-query-service-binding.md) configure the first local form of that boundary as `CATALOG_QUERY` targeting the named `CatalogQueryService` entrypoint and prove it with the actual dry-run-compiled query Worker in a multi-Worker workerd test. The API still has no D1 binding, its public handler does not yet consume the service, and `/v1/search` remains closed. This is local transport evidence only; environment-specific remote names/resources, public composition, deployment, and release acceptance remain pending.
+
 The complete field shapes, collection/detail/filter/sort matrix, errors, cache rules, cursor, semantic query plan, and compatibility behavior are defined in `docs/design/api-contract.md`. Initial resources include:
 
 - `/v1/models`, `/v1/models/{id-or-slug}`, and `/v1/models/{id-or-slug}/offerings`

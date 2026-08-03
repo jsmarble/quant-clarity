@@ -6,6 +6,7 @@ import {
   reconcileRequestCursor,
   verifyCursor,
   type ApiLimits,
+  type CatalogQueryRpcV2,
   type CursorKeyring,
   type CursorPayload,
   type DeploymentEnvironment,
@@ -56,10 +57,7 @@ export type MergedExactSearchRpcResult = Readonly<{
   }>;
 }>;
 
-export interface MergedExactSearchCatalogQueryRpcV2 {
-  resolvePublicationV2(input: unknown): Promise<unknown>;
-  readMergedExactSearchV2(input: unknown): Promise<unknown>;
-}
+export type MergedExactSearchCatalogQueryRpcV2 = CatalogQueryRpcV2;
 
 export interface MergedExactSearchCatalogQueryRpcV1 {
   resolvePublicationV1(input: unknown): Promise<unknown>;

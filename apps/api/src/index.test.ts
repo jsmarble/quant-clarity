@@ -21,6 +21,7 @@ function environment(
       RATE_LIMIT_HMAC_KEY: SECRET,
       READ_LIMITER: limiter,
       ROTATION_LIMITER: limiter,
+      CATALOG_QUERY: {} as Service,
     },
     keys,
   };

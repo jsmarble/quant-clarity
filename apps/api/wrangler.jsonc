@@ -19,6 +19,13 @@
       "destinations": [],
     },
   },
+  "services": [
+    {
+      "binding": "CATALOG_QUERY",
+      "service": "quant-clarity-query-local",
+      "entrypoint": "CatalogQueryService",
+    },
+  ],
   "ratelimits": [
     {
       "name": "READ_LIMITER",

@@ -1,5 +1,7 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
 
+import type { CatalogQueryRpcV2 } from "@quant-clarity/api-core";
+
 import {
   readModelVariantExactNameTierV1,
   readMergedExactSearchV1,
@@ -41,7 +43,10 @@ function fetch(): Response {
   );
 }
 
-export class CatalogQueryService extends WorkerEntrypoint<CatalogQueryEnv> {
+export class CatalogQueryService
+  extends WorkerEntrypoint<CatalogQueryEnv>
+  implements CatalogQueryRpcV2
+{
   resolvePublicationV1(input: unknown): Promise<ResolvePublicationV1Outcome> {
     return resolvePublicationV1(
       this.env.SERVING_DB,

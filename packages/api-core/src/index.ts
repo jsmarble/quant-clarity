@@ -1216,6 +1216,11 @@ export interface ExactStructuredSearchPlan {
   semanticDegraded: "disabled";
 }
 
+export interface CatalogQueryRpcV2 {
+  resolvePublicationV2(input: unknown): Promise<unknown>;
+  readMergedExactSearchV2(input: unknown): Promise<unknown>;
+}
+
 export interface QueryServiceEnvelope {
   audience: "quantclarity-catalog-query-v1";
   continuation: QueryContinuation | null;
