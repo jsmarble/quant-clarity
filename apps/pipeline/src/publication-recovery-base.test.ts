@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import { createReadyPublicationFixture } from "../test/serving-switch-fixture.js";
+import { createMaximumObjectPublicationRecoveryFixture } from "../test/publication-recovery-accepted-bound-fixture.js";
+import { writeMaximumObjectPublicationRecoveryArchive } from "../test/publication-recovery-maximum-object-fixture.js";
 import {
   PUBLICATION_RECOVERY_BASE_CONTENT_TYPE,
   PUBLICATION_RECOVERY_BASE_FORMAT,
+  PUBLICATION_RECOVERY_BASE_MAX_OBJECTS,
   PUBLICATION_RECOVERY_BASE_MAX_ROW_BYTES,
   PUBLICATION_RECOVERY_CHUNK_CONTENT_TYPE,
   PublicationRecoveryBaseError,
@@ -875,5 +878,55 @@ describe("publication-recovery-base@1", () => {
     await expect(
       verifyPublicationRecoveryBase(rejected.store.reader, rejected.locator),
     ).rejects.toEqual(errorCode("integrity_failure"));
+  });
+
+  it("accepts exactly 64 total objects and rejects 65 before reading a source chunk", async () => {
+    const source = await createMaximumObjectPublicationRecoveryFixture(
+      PUBLICATION_ID,
+      GENERATED_AT_MS,
+    );
+    const sourceRowCount =
+      1 +
+      source.rows.providerSlices.length +
+      source.rows.providerSlices.length +
+      source.rows.providerAttributions.length +
+      source.rows.resources.length +
+      source.rows.searchDocuments.length +
+      source.rows.vectors.length +
+      source.rows.chunks.length;
+    expect(sourceRowCount).toBe(PUBLICATION_RECOVERY_BASE_MAX_OBJECTS);
+
+    const acceptedStore = new PrivateObjectStore();
+    const acceptedLocator = await writeMaximumObjectPublicationRecoveryArchive(
+      acceptedStore.writer,
+      "local",
+      source,
+      PUBLICATION_RECOVERY_BASE_MAX_OBJECTS - 1,
+    );
+    expect(acceptedStore.objects.size).toBe(
+      PUBLICATION_RECOVERY_BASE_MAX_OBJECTS,
+    );
+    const authority = await verifyPublicationRecoveryBase(
+      acceptedStore.reader,
+      acceptedLocator,
+    );
+    expect(authority.manifest).toEqual(source.manifest);
+    expect(authority.closureRows).toEqual(source.rows);
+
+    const exceededStore = new PrivateObjectStore();
+    const exceededLocator = await writeMaximumObjectPublicationRecoveryArchive(
+      exceededStore.writer,
+      "local",
+      source,
+      PUBLICATION_RECOVERY_BASE_MAX_OBJECTS,
+    );
+    expect(exceededStore.objects.size).toBe(
+      PUBLICATION_RECOVERY_BASE_MAX_OBJECTS + 1,
+    );
+    const readsBeforeRejection = exceededStore.getCalls;
+    await expect(
+      verifyPublicationRecoveryBase(exceededStore.reader, exceededLocator),
+    ).rejects.toEqual(errorCode("integrity_failure"));
+    expect(exceededStore.getCalls - readsBeforeRejection).toBe(1);
   });
 });

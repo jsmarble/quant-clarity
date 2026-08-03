@@ -4,7 +4,11 @@ import { describe, expect, it } from "vitest";
 import { checkProviderContract } from "@quant-clarity/contracts";
 
 import { createReadyPublicationFixture } from "../test/serving-switch-fixture.js";
-import { createAcceptedBoundPublicationRecoveryFixture } from "../test/publication-recovery-accepted-bound-fixture.js";
+import {
+  createAcceptedBoundPublicationRecoveryFixture,
+  createMaximumObjectPublicationRecoveryFixture,
+} from "../test/publication-recovery-accepted-bound-fixture.js";
+import { writeMaximumObjectPublicationRecoveryArchive } from "../test/publication-recovery-maximum-object-fixture.js";
 import {
   PUBLICATION_RECOVERY_BASE_CONTENT_TYPE,
   PUBLICATION_RECOVERY_BASE_FORMAT,
@@ -26,6 +30,55 @@ const PUBLICATION_ID = "pub_22222222-2222-4222-8222-222222222222" as const;
 const GENERATED_AT_MS = Date.parse("2026-08-03T01:00:00.000Z");
 
 describe("publication recovery base on pinned workerd R2", () => {
+  it("replays the exact 63-source-plus-root accepted object boundary", async () => {
+    const source = await createMaximumObjectPublicationRecoveryFixture(
+      "pub_55555555-5555-4555-8555-555555555555",
+      GENERATED_AT_MS,
+    );
+    const locator = await writeMaximumObjectPublicationRecoveryArchive(
+      env.MODEL_SLUG_ARCHIVE_BUCKET,
+      "test",
+      source,
+      PUBLICATION_RECOVERY_BASE_MAX_OBJECTS - 1,
+    );
+    const inventory = await env.MODEL_SLUG_ARCHIVE_BUCKET.list({
+      prefix: `private/publication-recovery-base/v1/test/${locator.publicationId}/`,
+    });
+    expect(inventory.truncated).toBe(false);
+    expect(inventory.objects).toHaveLength(
+      PUBLICATION_RECOVERY_BASE_MAX_OBJECTS,
+    );
+
+    const authority = await verifyPublicationRecoveryBase(
+      env.MODEL_SLUG_ARCHIVE_BUCKET,
+      locator,
+    );
+    expect(() => {
+      assertVerifiedPublicationRecoveryBase(authority);
+    }).not.toThrow();
+    expect(authority.manifest).toEqual(source.manifest);
+    expect(authority.closureRows).toEqual(source.rows);
+
+    const rootKey = publicationRecoveryBaseObjectKey({
+      environment: locator.environment,
+      publicationId: locator.publicationId,
+      relation: "manifest",
+      ordinal: 0,
+      digest: locator.rootDigest,
+    });
+    const root = await env.MODEL_SLUG_ARCHIVE_BUCKET.get(rootKey);
+    if (root === null) throw new Error("maximum-object recovery root missing");
+    const manifest = await root.json<{
+      sources: readonly { chunk_count: number }[];
+    }>();
+    expect(
+      manifest.sources.reduce(
+        (sum, descriptor) => sum + descriptor.chunk_count,
+        0,
+      ),
+    ).toBe(PUBLICATION_RECOVERY_BASE_MAX_OBJECTS - 1);
+  });
+
   it("round-trips the joint worst accepted byte and row shape within the retained-heap budget", async () => {
     const source = await createAcceptedBoundPublicationRecoveryFixture(
       "pub_11111111-1111-4111-8111-111111111111",
