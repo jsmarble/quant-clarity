@@ -1,6 +1,6 @@
 # Phase 5O-B3: Public Model detail HTTP and stable-ID cache
 
-Status: implementation in progress; shared exact-byte encoder and hostile API V2 adapter implemented locally; publication admission and public HTTP/cache increments pending
+Status: implementation in progress; shared exact-byte encoder, hostile API V2 adapter, and authorized V5 activation/rollback admission implemented locally; pre-open/recovery admission and public HTTP/cache increments pending
 
 Primary requirements: `DATA-001`–`DATA-015`, `DATA-060`–`DATA-065`, `API-001`–`API-005`, `API-011`–`API-014`, `API-016`, `API-017`, `API-020`–`API-027`, `BE-002`, `BE-003`, `BE-007`–`BE-009`, `CF-008`, `CF-020`, `CF-021`, `CF-023`, `NFR-001`, `NFR-002`, `SEC-001`, `SEC-007`, `SEC-008`, `SEC-011`, `PRIV-003`, `PRIV-004`, `PRIV-006`, `PRIV-007`, `PRIV-011`, `OPS-001`–`OPS-003`, `QA-004`, `QA-006`–`QA-008`, `QA-014`
 
@@ -24,6 +24,8 @@ The slice opens no collection, related-Offering, search, Variant, Provider, pipe
 6. Preserve V1 compatibility for its internal callers while the public route uses V2 only.
 
 The guard applies to the only authorized application activation/rollback path. Privileged direct D1 administration remains break-glass authority outside the application-correctness boundary because D1 has no per-statement application ACL and the fixed switch-history trigger can apply a valid direct insert. B3-A must prove that the public API has no D1 binding; the non-routable query Worker has only the disposable serving D1 binding and fixed SELECT-only code with no mutation or arbitrary-SQL operation; the pipeline is unrouted and accepts no caller-supplied SQL; routine switches use the guarded fixed adapter; and query, pipeline-deployment, and direct-administration identities are separated. It must not claim database-enforced non-bypass or persist an admission receipt.
+
+Local implementation evidence as of 2026-08-03: `packages/api-core/src/index.test.ts` proves the shared hostile-safe canonical snapshot and exact encoder boundary; `apps/pipeline/src/model-detail-admission.test.ts` proves bounded keyset scanning, count/hash/identity/contract checks, exact 65,536/65,537 behavior, and static hostile-D1 failure; and `apps/pipeline/src/serving-switch-v5.worker.test.ts` proves a corrupt candidate cannot mutate the head. This closes the authorized V5 application-path portion of B3-A items 1, 2, and 4. The pre-open audit, recovery/rebuild parity, retained-hot audit, remote query/CPU evidence, and protected identity/configuration gates remain open.
 
 ### B3-B — public protocol and cache
 

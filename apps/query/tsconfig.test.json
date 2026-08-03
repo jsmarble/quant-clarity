@@ -18,6 +18,7 @@
     "../pipeline/src/model-slug-history-acquisition.ts",
     "../pipeline/src/model-slug-history-staging.ts",
     "../pipeline/src/model-slug-lifecycle-authority.ts",
+    "../pipeline/src/model-detail-admission.ts",
     "../pipeline/src/provider-model-id-search-staging.ts",
     "../pipeline/src/provider-search-staging.ts",
     "../pipeline/src/readiness-commit-v2.ts",

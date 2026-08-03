@@ -20,6 +20,7 @@ import {
   assertFreshModelSlugRollbackProof,
   readFreshModelSlugRollbackProof,
 } from "./model-slug-history-archive.js";
+import { admitModelDetailPublication } from "./model-detail-admission.js";
 import {
   ProviderModelIdSearchStagingError,
   prepareProviderModelIdSearchAtomicAssertionsV4,
@@ -941,8 +942,12 @@ export const applyServingSwitchV5 = async (
   if (initial.outcome !== "execute") return fail(initial.outcome);
   await verifyProviderIds(database, state);
   await verifyModelSlug(database, state, verifiedMappings);
+  const session = database.withSession("first-primary");
+  await admitModelDetailPublication(session, {
+    publicationId: state.preflight.to_publication_id,
+    expectedModelCount: state.modelSlugArchiveProof.model_count,
+  });
   try {
-    const session = database.withSession("first-primary");
     const untrusted: unknown = await session.batch([
       ...prepareProviderModelIdSearchAtomicAssertionsV4(
         session,

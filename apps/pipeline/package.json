@@ -10,6 +10,7 @@
     "cf:types:check": "WRANGLER_SEND_METRICS=false wrangler types --check --env-interface CloudflareEnv worker-configuration.d.ts"
   },
   "dependencies": {
+    "@quant-clarity/api-core": "0.0.0",
     "@quant-clarity/contracts": "0.0.0",
     "@quant-clarity/domain": "0.0.0",
     "@quant-clarity/publication-core": "0.0.0"
