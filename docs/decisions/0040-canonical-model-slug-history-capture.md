@@ -23,7 +23,7 @@ Phase 5O-B2 is split into three reviewable boundaries:
 
 1. **B2A** hardens canonical Model-only history and implements the fixed canonical acquisition described below.
 2. **B2B** writes and read-verifies one immutable, content-addressed private R2 capture artifact, then stages its exact projection in serving schema `1.12.0`.
-3. **B2C** binds the archived artifact and serving projection to closure, readiness, switch, rollback, backup, restore, and an internal indexed read seam.
+3. **B2C** advances the serving schema beyond B2B staging and binds the archived artifact and serving projection to closure, readiness, switch, rollback, backup, restore, and an internal indexed read seam.
 
 B2A does not make a capture authoritative for readiness. The trust handoff is complete only after B2B writes the capture artifact at its deterministic content address, reads it back, revalidates its closed contract and digest, and proves that the archived bytes reproduce the capture and both ADR 0039 roots. B2C must consume that archived object rather than reread mutable canonical state.
 

@@ -2032,6 +2032,84 @@ export const AdapterBatchSchema = Type.Object(
   { $id: "AdapterBatch", additionalProperties: false },
 );
 
+export const MODEL_SLUG_HISTORY_ARTIFACT_VERSION =
+  "model-slug-history-artifact@1" as const;
+export const MODEL_SLUG_HISTORY_ARTIFACT_MAX_BYTES = 24 * 1024 * 1024;
+const MODEL_SLUG_HISTORY_ARTIFACT_MAX_MODELS = 25_000;
+const MODEL_SLUG_HISTORY_ARTIFACT_MAX_HISTORY_ROWS = 50_000;
+
+const ModelSlugHistoryArtifactTimestampSchema = Type.Integer({
+  minimum: 0,
+  maximum: Number.MAX_SAFE_INTEGER,
+});
+
+const ModelSlugHistoryCanonicalModelSchema = Type.Object(
+  {
+    resource_id: prefixedId("mdl"),
+    resource_type: Type.Literal("model"),
+    slug: slug(),
+  },
+  { additionalProperties: false },
+);
+
+const ModelSlugHistoryRowSchema = Type.Object(
+  {
+    slug_history_id: prefixedId("slg"),
+    resource_id: prefixedId("mdl"),
+    resource_type: Type.Literal("model"),
+    slug: slug(),
+    valid_from_ms: ModelSlugHistoryArtifactTimestampSchema,
+    valid_to_ms: Type.Union([
+      ModelSlugHistoryArtifactTimestampSchema,
+      Type.Null(),
+    ]),
+  },
+  { additionalProperties: false },
+);
+
+/** Closed, private sidecar contract; it is intentionally absent from OpenAPI. */
+export const ModelSlugHistoryArtifactSchema = Type.Object(
+  {
+    artifact_version: Type.Literal(MODEL_SLUG_HISTORY_ARTIFACT_VERSION),
+    acquisition_version: Type.Literal("model-slug-history-canonical@1"),
+    canonical_guard_version: Type.Literal("model-slug-history-guard@1"),
+    projection_version: Type.Literal("model-slug@1"),
+    publication_id: publicationId(),
+    closure_hash: hash(),
+    base_bundle_hash: hash(),
+    publication_boundary_ms: ModelSlugHistoryArtifactTimestampSchema,
+    canonical_models: Type.Array(ModelSlugHistoryCanonicalModelSchema, {
+      maxItems: MODEL_SLUG_HISTORY_ARTIFACT_MAX_MODELS,
+    }),
+    history_rows: Type.Array(ModelSlugHistoryRowSchema, {
+      maxItems: MODEL_SLUG_HISTORY_ARTIFACT_MAX_HISTORY_ROWS,
+    }),
+    model_count: Type.Integer({
+      minimum: 0,
+      maximum: MODEL_SLUG_HISTORY_ARTIFACT_MAX_MODELS,
+    }),
+    source_history_count: Type.Integer({
+      minimum: 0,
+      maximum: MODEL_SLUG_HISTORY_ARTIFACT_MAX_HISTORY_ROWS,
+    }),
+    source_history_hash: hash(),
+    mapping_count: Type.Integer({
+      minimum: 0,
+      maximum: MODEL_SLUG_HISTORY_ARTIFACT_MAX_HISTORY_ROWS,
+    }),
+    current_mapping_count: Type.Integer({
+      minimum: 0,
+      maximum: MODEL_SLUG_HISTORY_ARTIFACT_MAX_MODELS,
+    }),
+    historical_mapping_count: Type.Integer({
+      minimum: 0,
+      maximum: MODEL_SLUG_HISTORY_ARTIFACT_MAX_HISTORY_ROWS,
+    }),
+    mapping_inventory_hash: hash(),
+  },
+  { $id: "ModelSlugHistoryArtifact", additionalProperties: false },
+);
+
 const PublicationCommonFields = {
   publication_id: publicationId(),
   schema_version: Type.String({ pattern: SEMVER }),
@@ -2263,9 +2341,227 @@ export type ErrorEnvelope = Static<typeof ErrorEnvelopeSchema>;
 export type FactState = Static<typeof FactStateSchema>;
 export type FixtureMetadata = Static<typeof FixtureMetadataSchema>;
 export type IdPrefix = Static<typeof IdPrefixSchema>;
+export type ModelSlugHistoryArtifact = Static<
+  typeof ModelSlugHistoryArtifactSchema
+>;
 export type PublicationManifest = Static<typeof PublicationManifestSchema>;
 export type PublicationHead = Static<typeof PublicationHeadSchema>;
 export type ResourceId = Static<typeof ResourceIdSchema>;
+
+const MODEL_SLUG_HISTORY_ARTIFACT_KEYS = [
+  "artifact_version",
+  "acquisition_version",
+  "canonical_guard_version",
+  "projection_version",
+  "publication_id",
+  "closure_hash",
+  "base_bundle_hash",
+  "publication_boundary_ms",
+  "canonical_models",
+  "history_rows",
+  "model_count",
+  "source_history_count",
+  "source_history_hash",
+  "mapping_count",
+  "current_mapping_count",
+  "historical_mapping_count",
+  "mapping_inventory_hash",
+] as const;
+const MODEL_SLUG_HISTORY_CANONICAL_MODEL_KEYS = [
+  "resource_id",
+  "resource_type",
+  "slug",
+] as const;
+const MODEL_SLUG_HISTORY_ROW_KEYS = [
+  "slug_history_id",
+  "resource_id",
+  "resource_type",
+  "slug",
+  "valid_from_ms",
+  "valid_to_ms",
+] as const;
+
+const workerSafeModelSlugHistoryArtifactCandidate = (
+  value: unknown,
+): unknown => {
+  const artifact = ownDataRecordSnapshot(
+    value,
+    MODEL_SLUG_HISTORY_ARTIFACT_KEYS,
+  );
+  if (artifact === null)
+    return Object.freeze({ invalidModelSlugHistoryArtifact: true });
+
+  const canonicalModels = denseOwnDataArraySnapshot(artifact.canonical_models);
+  const historyRows = denseOwnDataArraySnapshot(artifact.history_rows);
+  if (canonicalModels === null || historyRows === null)
+    return Object.freeze({
+      ...artifact,
+      canonical_models: canonicalModels,
+      history_rows: historyRows,
+    });
+
+  return Object.freeze({
+    ...artifact,
+    canonical_models: Object.freeze(
+      canonicalModels.map(
+        (model) =>
+          ownDataRecordSnapshot(
+            model,
+            MODEL_SLUG_HISTORY_CANONICAL_MODEL_KEYS,
+          ) ?? Object.freeze({ invalidCanonicalModel: true }),
+      ),
+    ),
+    history_rows: Object.freeze(
+      historyRows.map(
+        (row) =>
+          ownDataRecordSnapshot(row, MODEL_SLUG_HISTORY_ROW_KEYS) ??
+          Object.freeze({ invalidHistoryRow: true }),
+      ),
+    ),
+  });
+};
+
+const utf8ByteLength = (value: string): number => {
+  let bytes = 0;
+  for (const scalar of value) {
+    const codePoint = scalar.codePointAt(0) ?? 0;
+    bytes +=
+      codePoint <= 0x7f
+        ? 1
+        : codePoint <= 0x7ff
+          ? 2
+          : codePoint <= 0xffff
+            ? 3
+            : 4;
+  }
+  return bytes;
+};
+
+const safeJsonUtf8ByteLength = (
+  value: unknown,
+  ancestors = new Set<object>(),
+): number => {
+  if (value === null) return 4;
+  if (typeof value === "string") return utf8ByteLength(JSON.stringify(value));
+  if (typeof value === "number" || typeof value === "boolean") {
+    const serialized = JSON.stringify(value);
+    return serialized.length;
+  }
+  if (typeof value !== "object") throw new TypeError("not JSON-serializable");
+  if (ancestors.has(value)) throw new TypeError("not JSON-serializable");
+  ancestors.add(value);
+  try {
+    const array = denseOwnDataArraySnapshot(value);
+    if (array !== null) {
+      let bytes = 2;
+      for (let index = 0; index < array.length; index += 1)
+        bytes +=
+          (index === 0 ? 0 : 1) +
+          safeJsonUtf8ByteLength(array[index], ancestors);
+      return bytes;
+    }
+
+    const prototype = Object.getPrototypeOf(value) as object | null;
+    if (prototype !== Object.prototype && prototype !== null)
+      throw new TypeError("not JSON-serializable");
+    const keys = Reflect.ownKeys(value);
+    if (keys.some((key) => typeof key !== "string"))
+      throw new TypeError("not JSON-serializable");
+    let bytes = 2;
+    for (let index = 0; index < keys.length; index += 1) {
+      const key = keys[index] as string;
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (
+        descriptor === undefined ||
+        !("value" in descriptor) ||
+        descriptor.enumerable !== true
+      )
+        throw new TypeError("not JSON-serializable");
+      bytes +=
+        (index === 0 ? 0 : 1) +
+        utf8ByteLength(JSON.stringify(key)) +
+        1 +
+        safeJsonUtf8ByteLength(descriptor.value, ancestors);
+    }
+    return bytes;
+  } finally {
+    ancestors.delete(value);
+  }
+};
+
+/**
+ * Validates the private slug-history sidecar without invoking caller-owned
+ * accessors. Row ordering and interval-transition semantics remain the archive
+ * adapter's responsibility.
+ */
+export function validateModelSlugHistoryArtifactContract(
+  value: unknown,
+): readonly string[] {
+  const candidate = workerSafeModelSlugHistoryArtifactCandidate(value);
+  const errors: string[] = [];
+
+  try {
+    const encodedBytes = safeJsonUtf8ByteLength(candidate);
+    if (encodedBytes > MODEL_SLUG_HISTORY_ARTIFACT_MAX_BYTES)
+      errors.push("artifact exceeds the 24 MiB encoded-byte limit");
+  } catch {
+    errors.push("artifact is not JSON-serializable");
+  }
+
+  const structurallyValid = (() => {
+    try {
+      return checkContractSchema(ModelSlugHistoryArtifactSchema, candidate);
+    } catch {
+      return false;
+    }
+  })();
+  if (!structurallyValid) {
+    errors.push("artifact does not satisfy the closed structural contract");
+    return errors;
+  }
+
+  const artifact = candidate as ModelSlugHistoryArtifact;
+  if (artifact.model_count !== artifact.canonical_models.length)
+    errors.push("model_count does not match canonical_models length");
+  if (artifact.source_history_count !== artifact.history_rows.length)
+    errors.push("source_history_count does not match history_rows length");
+  if (artifact.current_mapping_count !== artifact.model_count)
+    errors.push("current_mapping_count does not match model_count");
+  if (
+    artifact.mapping_count !==
+    artifact.current_mapping_count + artifact.historical_mapping_count
+  )
+    errors.push("mapping_count does not match mapping inventory counts");
+  if (artifact.mapping_count > artifact.source_history_count)
+    errors.push("mapping_count exceeds source_history_count");
+
+  const modelResourceIds = artifact.canonical_models.map(
+    (model) => model.resource_id,
+  );
+  const canonicalModelSet = new Set(modelResourceIds);
+  if (canonicalModelSet.size !== modelResourceIds.length)
+    errors.push("canonical_models contains duplicate resource_id values");
+
+  const historyIds = new Set<string>();
+  let duplicateHistoryId = false;
+  let missingCanonicalModel = false;
+  for (const row of artifact.history_rows) {
+    if (historyIds.has(row.slug_history_id)) duplicateHistoryId = true;
+    historyIds.add(row.slug_history_id);
+    if (!canonicalModelSet.has(row.resource_id)) missingCanonicalModel = true;
+  }
+  if (duplicateHistoryId)
+    errors.push("history_rows contains a duplicate slug_history_id");
+  if (missingCanonicalModel)
+    errors.push("history_rows references a non-canonical model");
+
+  return errors;
+}
+
+export const checkModelSlugHistoryArtifactContract = (
+  value: unknown,
+): value is ModelSlugHistoryArtifact =>
+  validateModelSlugHistoryArtifactContract(value).length === 0;
 
 export interface AdapterManifestValidationOptions {
   asOf?: string;
@@ -2896,6 +3192,7 @@ export const GENERATED_SCHEMAS = {
   ModelFamily: ModelFamilySchema,
   ModelFamilyCollection: ModelFamilyCollectionSchema,
   ModelFamilyDetail: ModelFamilyDetailSchema,
+  ModelSlugHistoryArtifact: ModelSlugHistoryArtifactSchema,
   Offering: OfferingSchema,
   OfferingApplicability: OfferingApplicabilitySchema,
   OfferingCollection: OfferingCollectionSchema,

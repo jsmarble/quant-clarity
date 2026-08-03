@@ -38,6 +38,12 @@ B1 does not authenticate that its caller supplied every canonical D1 history row
 
 B2A is not readiness authority. B2B must first write and read-verify an immutable content-addressed private R2 artifact and stage serving schema `1.12.0`; B2C must bind it to lifecycle/backup/restore and add an internal indexed lookup. `/v1/models/{model_id_or_slug}` therefore remains closed, and Phase 5O-B3 still owns redirect-versus-direct-read and HTTP/cache semantics.
 
+### Phase 5O-B2B private archive and staging boundary
+
+[ADR 0041](../decisions/0041-model-slug-sidecar-archive-and-staging.md) defines a private `model-slug-history-artifact@1` sidecar bound to the existing base publication bundle. It contains the exact controlled current-slug census, boundary history, and projection roots/counts, never the private D1 bookmark or visitor data. A conditional create-only R2 write becomes authority only after bounded exact readback, independent digest verification, closed decoding, and `model-slug@1` replay against the separately trusted base bundle reproduce every mapping and proof.
+
+Serving schema `1.12.0` is a dormant staging boundary only. Its immutable proof and exact publication-plus-slug mapping rows add no query RPC or public operation and do not authorize readiness, sealing, switching, rollback, or cache use. B2C owns schema `1.13.0` lifecycle/restore/indexed-read authority; B3 still owns redirect-versus-direct-read and HTTP semantics. The public `/v1/models/{model_id_or_slug}` route remains closed.
+
 | Resource | Collection | Detail / related routes |
 |---|---|---|
 | Models | `GET /models` | `GET /models/{model_id_or_slug}`, `GET /models/{id}/offerings` |

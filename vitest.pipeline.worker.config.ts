@@ -87,6 +87,7 @@ export default defineConfig({
           ),
         },
         d1Databases: ["CANONICAL_DB", "SERVING_DB"],
+        r2Buckets: ["MODEL_SLUG_ARCHIVE_BUCKET"],
       },
       wrangler: { configPath: "./apps/pipeline/wrangler.jsonc" },
     })),
