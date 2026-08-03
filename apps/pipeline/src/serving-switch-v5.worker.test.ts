@@ -20,6 +20,7 @@ import {
 } from "./model-slug-history-archive.js";
 import { stageModelSlugHistoryArchive } from "./model-slug-history-staging.js";
 import { mintModelSlugLifecycleAuthorityV5 } from "./model-slug-lifecycle-authority.js";
+import { auditServeableModelDetailPublications } from "./model-detail-pre-open-audit.js";
 import { applyModelVariantNameSearchStagingV1 } from "./model-variant-name-search-staging.js";
 import { applyProviderModelIdSearchStagingV1 } from "./provider-model-id-search-staging.js";
 import { applyProviderSearchStagingV2 } from "./provider-search-staging.js";
@@ -794,6 +795,13 @@ describe("schema-1.13 Model-slug-bound serving switch", () => {
         .bind(publicationA.fixture.v4.base.manifest.publicationId)
         .first(),
     ).resolves.toEqual({ state: "superseded" });
+    await expect(
+      auditServeableModelDetailPublications(env.SERVING_DB),
+    ).resolves.toMatchObject({
+      modelCount: 3,
+      outcome: "passed",
+      publicationCount: 3,
+    });
 
     const expiredObservedAt = activationC + 1;
     const expiredFresh = await verifyFreshRollback(
