@@ -5,6 +5,7 @@ import type { CatalogQueryRpcV2 } from "@quant-clarity/api-core";
 
 const catalogQuery = env.CATALOG_QUERY as unknown as CatalogQueryRpcV2;
 const PUBLICATION = "pub_11111111-1111-4111-8111-111111111111";
+const PROVIDER = "prv_22222222-2222-4222-8222-222222222222";
 
 describe("local named catalog query service binding (API-003, API-010, CF-002)", () => {
   it("calls the actual named WorkerEntrypoint over JSRPC", async () => {
@@ -49,6 +50,36 @@ describe("local named catalog query service binding (API-003, API-010, CF-002)",
             kind: "exact_structured",
             query: "Fixture",
             filters: {},
+            limit: 20,
+            semanticCandidates: 0,
+            semanticCalls: 0,
+            semanticDegraded: "disabled",
+          },
+        },
+      }),
+    ).resolves.toEqual({ outcome: "read_failure" });
+
+    await expect(
+      catalogQuery.readMergedExactSearchV2({
+        version: 2,
+        audience: "quantclarity-catalog-query-v1",
+        environment: "local",
+        bookmark: "bookmark-test-only",
+        requiredAvailableUntilMs: 0,
+        envelope: {
+          version: 1,
+          audience: "quantclarity-catalog-query-v1",
+          environment: "local",
+          operation: { kind: "search" },
+          publicationId: PUBLICATION,
+          filters: { provider: PROVIDER },
+          sort: ["relevance", "stable_id"],
+          limit: 20,
+          continuation: null,
+          searchPlan: {
+            kind: "exact_structured",
+            query: "Fixture",
+            filters: { provider: PROVIDER },
             limit: 20,
             semanticCandidates: 0,
             semanticCalls: 0,

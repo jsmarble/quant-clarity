@@ -159,6 +159,22 @@ function applyServingRetainedHotPublicationMigration(
   );
 }
 
+function applyServingProviderEligibilityMigration(
+  database: DatabaseSync,
+): void {
+  applyAtomicMigration(
+    database,
+    readFileSync(
+      resolve(
+        "migrations",
+        "serving",
+        "0012_provider_model_eligibility_index.sql",
+      ),
+      "utf8",
+    ),
+  );
+}
+
 function splitMigrationStatements(sql: string): readonly string[] {
   const statements: string[] = [];
   let current = "";
@@ -5886,7 +5902,10 @@ describe("serving publication migrations (PIPE-050–PIPE-056)", () => {
   });
 
   it("adds exact partial covering retained-hot history indexes in schema 1.8.0", () => {
-    const database = applyMigrations("serving");
+    const database = applyMigrations(
+      "serving",
+      "0011_retained_hot_publications.sql",
+    );
     expect(
       database
         .prepare(
@@ -6090,6 +6109,274 @@ describe("serving publication migrations (PIPE-050–PIPE-056)", () => {
           )
           .get(),
       ).toEqual({ schema_version: "1.8.0" });
+      database.close();
+    }
+  });
+
+  it("adds the exact nonunique provider eligibility index in schema 1.9.0", () => {
+    const database = applyMigrations("serving");
+    expect(
+      database
+        .prepare(
+          "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+        )
+        .get(),
+    ).toEqual({ schema_version: "1.9.0" });
+    expect(
+      database
+        .prepare(
+          `SELECT "unique" AS is_unique, origin, partial
+           FROM pragma_index_list('publication_provider_model_id_search_document')
+           WHERE name = 'publication_provider_model_id_eligibility_idx'`,
+        )
+        .get(),
+    ).toEqual({ is_unique: 0, origin: "c", partial: 0 });
+    expect(
+      database
+        .prepare(
+          "PRAGMA index_info(publication_provider_model_id_eligibility_idx)",
+        )
+        .all()
+        .map((row) => row.name),
+    ).toEqual([
+      "publication_id",
+      "provider_id",
+      "target_resource_type",
+      "target_resource_id",
+      "offering_id",
+    ]);
+    const eligibilityGuard = database
+      .prepare(
+        `SELECT sql FROM sqlite_master
+         WHERE type = 'trigger'
+           AND name = 'publication_switch_history_provider_eligibility_index_guard'`,
+      )
+      .get() as { sql: string } | undefined;
+    expect(eligibilityGuard?.sql).toContain(
+      "target_resource_type = '__queryability_probe__'",
+    );
+    const plan = database
+      .prepare(
+        `EXPLAIN QUERY PLAN
+         SELECT offering_id
+         FROM publication_provider_model_id_search_document
+           INDEXED BY publication_provider_model_id_eligibility_idx
+         WHERE publication_id = ?
+           AND provider_id = ?
+           AND target_resource_type = ?
+           AND target_resource_id = ?`,
+      )
+      .all(
+        "pub_ffffffff-ffff-4fff-bfff-ffffffffffff",
+        "prv_ffffffff-ffff-4fff-bfff-ffffffffffff",
+        "model",
+        "mdl_ffffffff-ffff-4fff-bfff-ffffffffffff",
+      );
+    expect(plan.map((row) => row.detail).join("\n")).toContain(
+      "publication_provider_model_id_eligibility_idx",
+    );
+    expect(database.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+    expect(database.prepare("PRAGMA integrity_check").get()).toEqual({
+      integrity_check: "ok",
+    });
+  });
+
+  it("requires exact clean schema 1.8.0 and rejects provider eligibility object collisions", () => {
+    const wrongVersion = applyMigrations(
+      "serving",
+      "0010_provider_model_id_exact_projection.sql",
+    );
+    expect(() => {
+      applyServingProviderEligibilityMigration(wrongVersion);
+    }).toThrow();
+    expect(
+      wrongVersion
+        .prepare(
+          "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+        )
+        .get(),
+    ).toEqual({ schema_version: "1.7.0" });
+
+    const dirty = applyMigrations(
+      "serving",
+      "0011_retained_hot_publications.sql",
+    );
+    dirty.exec("DROP INDEX publication_provider_model_id_raw_exact_idx");
+    dirty.exec(`CREATE INDEX publication_provider_model_id_raw_exact_idx
+      ON publication_provider_model_id_search_document(publication_id, provider_id, offering_id)`);
+    expect(() => {
+      applyServingProviderEligibilityMigration(dirty);
+    }).toThrow();
+    expect(
+      dirty
+        .prepare(
+          "SELECT count(*) AS count FROM sqlite_master WHERE name = 'publication_provider_model_id_eligibility_idx'",
+        )
+        .get(),
+    ).toEqual({ count: 0 });
+    dirty.close();
+
+    const missingGuard = applyMigrations(
+      "serving",
+      "0011_retained_hot_publications.sql",
+    );
+    missingGuard.exec(
+      "DROP TRIGGER publication_provider_model_id_search_document_insert_guard",
+    );
+    expect(() => {
+      applyServingProviderEligibilityMigration(missingGuard);
+    }).toThrow();
+    expect(
+      missingGuard
+        .prepare(
+          "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+        )
+        .get(),
+    ).toEqual({ schema_version: "1.8.0" });
+    missingGuard.close();
+
+    const malformedForeignKeys = applyMigrations(
+      "serving",
+      "0011_retained_hot_publications.sql",
+    );
+    malformedForeignKeys.enableDefensive(false);
+    try {
+      malformedForeignKeys.exec(`
+        PRAGMA writable_schema = ON;
+        UPDATE sqlite_schema
+        SET sql = replace(
+          sql,
+          'REFERENCES publication_resource(publication_id, resource_type, resource_id)',
+          'REFERENCES publication_resource(resource_id, resource_type, publication_id)'
+        )
+        WHERE type = 'table'
+          AND name = 'publication_provider_model_id_search_document';
+        PRAGMA writable_schema = RESET;
+      `);
+    } finally {
+      malformedForeignKeys.enableDefensive(true);
+    }
+    expect(() => {
+      applyServingProviderEligibilityMigration(malformedForeignKeys);
+    }).toThrow();
+    expect(
+      malformedForeignKeys
+        .prepare(
+          "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+        )
+        .get(),
+    ).toEqual({ schema_version: "1.8.0" });
+    malformedForeignKeys.close();
+
+    const collision = applyMigrations(
+      "serving",
+      "0011_retained_hot_publications.sql",
+    );
+    collision.exec(
+      "CREATE TABLE publication_provider_model_id_eligibility_idx(fake INTEGER)",
+    );
+    expect(() => {
+      applyServingProviderEligibilityMigration(collision);
+    }).toThrow();
+    expect(
+      collision
+        .prepare(
+          "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+        )
+        .get(),
+    ).toEqual({ schema_version: "1.8.0" });
+    collision.close();
+
+    const triggerCollision = applyMigrations(
+      "serving",
+      "0011_retained_hot_publications.sql",
+    );
+    triggerCollision.exec(`CREATE TRIGGER publication_switch_history_provider_eligibility_index_guard
+      BEFORE INSERT ON publication_switch_history BEGIN SELECT 1; END`);
+    expect(() => {
+      applyServingProviderEligibilityMigration(triggerCollision);
+    }).toThrow();
+    expect(
+      triggerCollision
+        .prepare(
+          "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+        )
+        .get(),
+    ).toEqual({ schema_version: "1.8.0" });
+    triggerCollision.close();
+  });
+
+  it("rolls back after every migration 0012 statement boundary and remains retryable", () => {
+    const migration = readFileSync(
+      resolve(
+        "migrations",
+        "serving",
+        "0012_provider_model_eligibility_index.sql",
+      ),
+      "utf8",
+    );
+    const statements = splitMigrationStatements(migration);
+    expect(statements).toHaveLength(8);
+    for (let boundary = 1; boundary <= statements.length; boundary += 1) {
+      const database = applyMigrations(
+        "serving",
+        "0011_retained_hot_publications.sql",
+      );
+      expect(() => {
+        applyAtomicMigration(
+          database,
+          `${statements.slice(0, boundary).join("\n")}\nSELECT * FROM __injected_migration_failure__;`,
+        );
+      }).toThrow();
+      expect(
+        database
+          .prepare(
+            `SELECT schema_version,
+               (SELECT count(*) FROM sqlite_master
+                WHERE name IN (
+                  'publication_provider_model_id_eligibility_idx',
+                  'publication_switch_history_provider_eligibility_index_guard'
+                )) AS eligibility_object_count
+             FROM serving_schema_metadata WHERE singleton = 1`,
+          )
+          .get(),
+      ).toEqual({ schema_version: "1.8.0", eligibility_object_count: 0 });
+      applyServingProviderEligibilityMigration(database);
+      expect(
+        database
+          .prepare(
+            "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+          )
+          .get(),
+      ).toEqual({ schema_version: "1.9.0" });
+      database.close();
+    }
+  });
+
+  it("fails switch insertion when the provider eligibility index is missing or malformed", () => {
+    for (const replacement of [
+      null,
+      `CREATE INDEX publication_provider_model_id_eligibility_idx
+       ON publication_provider_model_id_search_document(publication_id, offering_id)`,
+      `CREATE INDEX publication_provider_model_id_eligibility_idx
+       ON publication_provider_model_id_search_document(
+         publication_id COLLATE NOCASE DESC,
+         provider_id COLLATE NOCASE DESC,
+         target_resource_type COLLATE NOCASE DESC,
+         target_resource_id COLLATE NOCASE DESC,
+         offering_id COLLATE NOCASE DESC
+       )`,
+    ]) {
+      const database = applyMigrations("serving");
+      database.exec("DROP INDEX publication_provider_model_id_eligibility_idx");
+      if (replacement !== null) database.exec(replacement);
+      expect(() => {
+        database.exec("INSERT INTO publication_switch_history DEFAULT VALUES");
+      }).toThrow(
+        replacement === null
+          ? "no such index: publication_provider_model_id_eligibility_idx"
+          : "switch-time provider eligibility index is missing malformed or unqueryable",
+      );
       database.close();
     }
   });

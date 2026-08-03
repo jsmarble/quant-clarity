@@ -58,7 +58,7 @@ export type VerifiedRestoreSourceProfileV4 = Readonly<{
   backupRootHash: string;
   closureSource: RestoreClosureSourceV1;
   materialization: Readonly<{
-    destinationSchemaVersion: "1.8.0";
+    destinationSchemaVersion: "1.9.0";
     destinationIsolation: "fresh-local-schema";
     publicationState: "building";
     readyAtMs: null;
@@ -102,7 +102,7 @@ export const createVerifiedRestoreSourceProfileV4 = async (
     backupRootHash: validated.backupRootHash,
     closureSource: validated.closureSource,
     materialization: Object.freeze({
-      destinationSchemaVersion: "1.8.0" as const,
+      destinationSchemaVersion: "1.9.0" as const,
       destinationIsolation: "fresh-local-schema" as const,
       publicationState: "building" as const,
       readyAtMs: null,
@@ -216,7 +216,7 @@ export type RestoreRebuildTranscriptV4 = Readonly<{
   transcriptVersion: typeof RESTORE_REBUILD_TRANSCRIPT_VERSION_V4;
   profileVersion: typeof RESTORE_SOURCE_PROFILE_VERSION_V4;
   backupFormatVersion: "1.0.0";
-  destinationSchemaVersion: "1.8.0";
+  destinationSchemaVersion: "1.9.0";
   backupRootHash: string;
   closureHash: string;
   selectedTableCount: number;
@@ -413,7 +413,7 @@ const transcriptV4 = (
     transcriptVersion: RESTORE_REBUILD_TRANSCRIPT_VERSION_V4,
     profileVersion: RESTORE_SOURCE_PROFILE_VERSION_V4,
     backupFormatVersion: "1.0.0",
-    destinationSchemaVersion: "1.8.0",
+    destinationSchemaVersion: "1.9.0",
     backupRootHash: profile.backupRootHash,
     closureHash: profile.closureSource.closureHash,
     selectedTableCount: profile.selectedSources.length,

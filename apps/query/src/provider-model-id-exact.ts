@@ -44,12 +44,40 @@ export const PROVIDER_MODEL_ID_EXACT_MAX_TRANSFER_BYTES =
   (PROVIDER_MODEL_ID_EXACT_MAX_PAGE_SIZE + 1) *
   PROVIDER_MODEL_ID_EXACT_MAX_RESOURCE_BYTES;
 
+const PROVIDER_ELIGIBILITY_SQL = `
+    AND EXISTS (
+      SELECT 1
+      FROM publication_provider_model_id_search_document AS eligibility
+        INDEXED BY publication_provider_model_id_eligibility_idx
+      JOIN publication_resource AS eligibility_offering
+        ON eligibility_offering.publication_id = eligibility.publication_id
+       AND eligibility_offering.resource_type = 'offering'
+       AND eligibility_offering.resource_id = eligibility.offering_id
+      WHERE eligibility.publication_id = document.publication_id
+        AND eligibility.provider_id = ?14
+        AND eligibility.target_resource_type = document.target_resource_type
+        AND eligibility.target_resource_id = document.target_resource_id
+        AND eligibility.projection_version = 'provider-model-id@1'
+        AND eligibility.offering_content_hash = eligibility_offering.content_hash
+        AND eligibility.target_content_hash = document.target_content_hash
+        AND json_extract(eligibility_offering.resource_json, '$.offering_id') = eligibility.offering_id
+        AND json_extract(eligibility_offering.resource_json, '$.provider_id') = eligibility.provider_id
+        AND json_extract(eligibility_offering.resource_json, '$.model_resource_id') = eligibility.target_resource_id
+        AND CAST(json_extract(eligibility_offering.resource_json, '$.provider_model_id') AS BLOB) = eligibility.raw_provider_model_id_utf8
+        AND json_extract(eligibility_offering.resource_json, '$.status.state') = 'known'
+        AND json_extract(eligibility_offering.resource_json, '$.status.value') = 'active'
+        AND json_extract(eligibility_offering.resource_json, '$.stale') = 0
+    )`;
+
 /**
- * Fixed SELECT-only candidate read. Raw and normalized equality have distinct,
- * forced BLOB indexes. The canonical Offering is the witness for provider and
- * record-type filters. Targets are deduplicated before the page limit.
+ * Fixed SELECT-only candidate reads. Raw and normalized equality have
+ * distinct, forced BLOB indexes. The canonical matching Offering remains the
+ * standalone witness; merged provider filtering adds an independent witness.
+ * Targets are deduplicated before the page limit.
  */
-export const PROVIDER_MODEL_ID_EXACT_CANDIDATE_SELECT_SQL = `
+const providerModelIdExactCandidateSelectSql = (
+  providerEligibilitySql: string,
+): string => `
 WITH ${RETAINED_HOT_REFERENCE_CTE_SQL}, eligible_publication AS (
   SELECT publication.publication_id
   FROM publication_head AS head
@@ -130,6 +158,7 @@ WITH ${RETAINED_HOT_REFERENCE_CTE_SQL}, eligible_publication AS (
     AND json_extract(offering.resource_json, '$.stale') = 0
     AND json_extract(target.resource_json, '$.status.state') = 'known'
     AND json_extract(target.resource_json, '$.status.value') = 'active'
+${providerEligibilitySql}
   UNION ALL
   SELECT
     1 AS match_mode,
@@ -182,6 +211,7 @@ WITH ${RETAINED_HOT_REFERENCE_CTE_SQL}, eligible_publication AS (
     AND json_extract(offering.resource_json, '$.stale') = 0
     AND json_extract(target.resource_json, '$.status.state') = 'known'
     AND json_extract(target.resource_json, '$.status.value') = 'active'
+${providerEligibilitySql}
 ), deduplicated AS (
   SELECT *, row_number() OVER (
     PARTITION BY target_resource_type, target_resource_id
@@ -244,6 +274,11 @@ ORDER BY row_ordinal ASC, match_mode ASC,
   ordering_name_utf8 ASC,
   target_resource_id ASC
 `;
+
+export const PROVIDER_MODEL_ID_EXACT_CANDIDATE_SELECT_SQL =
+  providerModelIdExactCandidateSelectSql("");
+export const PROVIDER_MODEL_ID_EXACT_ELIGIBILITY_CANDIDATE_SELECT_SQL =
+  providerModelIdExactCandidateSelectSql(PROVIDER_ELIGIBILITY_SQL);
 
 /** Canonical targets are fetched separately to stay below D1's row-size cap. */
 export const PROVIDER_MODEL_ID_EXACT_TARGET_SELECT_SQL = `
@@ -330,6 +365,7 @@ export type MergedProviderModelIdExactContinuation = Readonly<{
 
 export type MergedProviderModelIdExactInput = Readonly<
   Omit<ProviderModelIdExactInput, "continuation"> & {
+    eligibilityProviderId: string | null;
     continuation: MergedProviderModelIdExactContinuation | null;
   }
 >;
@@ -390,6 +426,7 @@ type ValidatedInput = Readonly<{
   normalizedQuery: string;
   normalizedBytes: ArrayBuffer;
   providerId: string | null;
+  eligibilityProviderId: string | null;
   recordType: "model" | "variant" | null;
   afterMatchMode: -1 | 0 | 1;
   afterNormalizedBytes: ArrayBuffer;
@@ -539,6 +576,7 @@ const validateInput = (
     input === null ||
     !exactKeys(input, [
       "continuation",
+      ...(stableIdOrdering ? ["eligibilityProviderId"] : []),
       "limit",
       "providerId",
       "publicationId",
@@ -561,6 +599,10 @@ const validateInput = (
     (input.providerId !== null &&
       (typeof input.providerId !== "string" ||
         !PROVIDER_ID.test(input.providerId))) ||
+    (stableIdOrdering &&
+      input.eligibilityProviderId !== null &&
+      (typeof input.eligibilityProviderId !== "string" ||
+        !PROVIDER_ID.test(input.eligibilityProviderId))) ||
     (input.recordType !== null &&
       input.recordType !== "model" &&
       input.recordType !== "variant") ||
@@ -646,6 +688,9 @@ const validateInput = (
     normalizedQuery,
     normalizedBytes: bytes(normalizedQuery),
     providerId: input.providerId,
+    eligibilityProviderId: stableIdOrdering
+      ? (input.eligibilityProviderId as string | null)
+      : null,
     recordType: input.recordType,
     afterMatchMode,
     afterNormalizedBytes: bytes(afterNormalizedName),
@@ -881,24 +926,31 @@ const readProviderModelIdExactPageInternal = async (
   const valid = validateInput(input, stableIdOrdering);
   let candidateValues: unknown[];
   try {
-    const result: unknown = await database
-      .prepare(PROVIDER_MODEL_ID_EXACT_CANDIDATE_SELECT_SQL)
-      .bind(
-        valid.publicationId,
-        valid.rawBytes,
-        valid.normalizedBytes,
-        valid.providerId,
-        valid.recordType,
-        valid.afterMatchMode,
-        valid.afterNormalizedBytes,
-        valid.afterResourceId,
-        valid.limit + 1,
-        PROVIDER_MODEL_ID_EXACT_MAX_RESOURCE_BYTES,
-        excludeCanonicalExactMatch ? 1 : 0,
-        stableIdOrdering ? 1 : 0,
-        valid.requiredAvailableUntilMs,
-      )
-      .all();
+    const statement = database.prepare(
+      valid.eligibilityProviderId === null
+        ? PROVIDER_MODEL_ID_EXACT_CANDIDATE_SELECT_SQL
+        : PROVIDER_MODEL_ID_EXACT_ELIGIBILITY_CANDIDATE_SELECT_SQL,
+    );
+    const commonBindings = [
+      valid.publicationId,
+      valid.rawBytes,
+      valid.normalizedBytes,
+      valid.providerId,
+      valid.recordType,
+      valid.afterMatchMode,
+      valid.afterNormalizedBytes,
+      valid.afterResourceId,
+      valid.limit + 1,
+      PROVIDER_MODEL_ID_EXACT_MAX_RESOURCE_BYTES,
+      excludeCanonicalExactMatch ? 1 : 0,
+      stableIdOrdering ? 1 : 0,
+      valid.requiredAvailableUntilMs,
+    ] as const;
+    const result: unknown = await (
+      valid.eligibilityProviderId === null
+        ? statement.bind(...commonBindings)
+        : statement.bind(...commonBindings, valid.eligibilityProviderId)
+    ).all();
     candidateValues = rows(result, valid.limit + 2);
   } catch (error) {
     if (error instanceof ProviderModelIdExactError) throw error;

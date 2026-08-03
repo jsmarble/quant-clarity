@@ -29,6 +29,7 @@ const UUID_V4 =
 const PUBLICATION_ID = new RegExp(`^pub_${UUID_V4}$`, "u");
 const MODEL_ID = new RegExp(`^mdl_${UUID_V4}$`, "u");
 const VARIANT_ID = new RegExp(`^var_${UUID_V4}$`, "u");
+const PROVIDER_ID = new RegExp(`^prv_${UUID_V4}$`, "u");
 const SHA256 = /^sha256:[0-9a-f]{64}$/u;
 const utf8 = new TextEncoder();
 
@@ -43,12 +44,38 @@ export const MODEL_VARIANT_EXACT_NAME_MAX_TRANSFER_BYTES =
   (MODEL_VARIANT_EXACT_NAME_MAX_PAGE_SIZE + 1) *
   MODEL_VARIANT_EXACT_NAME_MAX_RESOURCE_BYTES;
 
+const PROVIDER_ELIGIBILITY_SQL = `
+    AND EXISTS (
+      SELECT 1
+      FROM publication_provider_model_id_search_document AS eligibility
+        INDEXED BY publication_provider_model_id_eligibility_idx
+      JOIN publication_resource AS eligibility_offering
+        ON eligibility_offering.publication_id = eligibility.publication_id
+       AND eligibility_offering.resource_type = 'offering'
+       AND eligibility_offering.resource_id = eligibility.offering_id
+      WHERE eligibility.publication_id = document.publication_id
+        AND eligibility.provider_id = ?8
+        AND eligibility.target_resource_type = document.resource_type
+        AND eligibility.target_resource_id = document.resource_id
+        AND eligibility.projection_version = 'provider-model-id@1'
+        AND eligibility.offering_content_hash = eligibility_offering.content_hash
+        AND eligibility.target_content_hash = document.resource_content_hash
+        AND json_extract(eligibility_offering.resource_json, '$.offering_id') = eligibility.offering_id
+        AND json_extract(eligibility_offering.resource_json, '$.provider_id') = eligibility.provider_id
+        AND json_extract(eligibility_offering.resource_json, '$.model_resource_id') = eligibility.target_resource_id
+        AND CAST(json_extract(eligibility_offering.resource_json, '$.provider_model_id') AS BLOB) = eligibility.raw_provider_model_id_utf8
+        AND json_extract(eligibility_offering.resource_json, '$.status.state') = 'known'
+        AND json_extract(eligibility_offering.resource_json, '$.status.value') = 'active'
+        AND json_extract(eligibility_offering.resource_json, '$.stale') = 0
+    )`;
+
 /**
- * One fixed SELECT-only statement. The equality lookup binds normalized UTF-8
- * as a BLOB and names the immutable exact index. Projection bytes never cross
- * the D1 boundary: the display-byte comparison is returned only as a boolean.
+ * Fixed SELECT-only statements. Unfiltered reads retain compatibility with the
+ * preceding serving schema; provider-filtered reads require the 1.9.0
+ * eligibility index. Projection bytes never cross the D1 boundary: the
+ * display-byte comparison is returned only as a boolean.
  */
-export const MODEL_VARIANT_EXACT_NAME_SELECT_SQL = `
+const modelVariantExactNameSelectSql = (eligibilitySql: string): string => `
 WITH ${RETAINED_HOT_REFERENCE_CTE_SQL}, eligible_publication AS (
   SELECT publication.publication_id
   FROM publication_head AS head
@@ -119,6 +146,7 @@ WITH ${RETAINED_HOT_REFERENCE_CTE_SQL}, eligible_publication AS (
     AND document.resource_id > ?4
     AND json_extract(resource.resource_json, '$.status.state') = 'known'
     AND json_extract(resource.resource_json, '$.status.value') = 'active'
+${eligibilitySql}
   ORDER BY document.resource_id ASC
   LIMIT ?6
 )
@@ -152,10 +180,16 @@ FROM candidate_page AS candidate
 ORDER BY row_ordinal ASC, resource_id ASC
 `;
 
+export const MODEL_VARIANT_EXACT_NAME_SELECT_SQL =
+  modelVariantExactNameSelectSql("");
+export const MODEL_VARIANT_EXACT_NAME_ELIGIBILITY_SELECT_SQL =
+  modelVariantExactNameSelectSql(PROVIDER_ELIGIBILITY_SQL);
+
 export type ModelVariantExactNameInput = Readonly<{
   publicationId: string;
   query: string;
   recordType: "model" | "variant" | null;
+  eligibilityProviderId?: string | null;
   afterResourceId: string | null;
   limit: number;
   requiredAvailableUntilMs?: number | null;
@@ -267,6 +301,7 @@ const validateInput = (
   normalizedQuery: string;
   normalizedQueryBytes: ArrayBuffer;
   recordType: "model" | "variant" | null;
+  eligibilityProviderId: string | null;
   afterResourceId: string;
   limit: number;
   requiredAvailableUntilMs: number | null;
@@ -275,6 +310,9 @@ const validateInput = (
   if (input === null) return invalidInput();
   const expectedKeys = [
     "afterResourceId",
+    ...(Object.hasOwn(input, "eligibilityProviderId")
+      ? ["eligibilityProviderId"]
+      : []),
     "limit",
     "publicationId",
     "query",
@@ -308,6 +346,16 @@ const validateInput = (
 
   const recordType = input.recordType;
   if (recordType !== null && recordType !== "model" && recordType !== "variant")
+    return invalidInput();
+
+  const eligibilityProviderId = Object.hasOwn(input, "eligibilityProviderId")
+    ? input.eligibilityProviderId
+    : null;
+  if (
+    eligibilityProviderId !== null &&
+    (typeof eligibilityProviderId !== "string" ||
+      !PROVIDER_ID.test(eligibilityProviderId))
+  )
     return invalidInput();
 
   const afterValue = input.afterResourceId;
@@ -359,6 +407,7 @@ const validateInput = (
     normalizedQuery,
     normalizedQueryBytes,
     recordType,
+    eligibilityProviderId,
     afterResourceId,
     limit: limitValue,
     requiredAvailableUntilMs,
@@ -532,18 +581,25 @@ export const readModelVariantExactNamePage = async (
   const validated = validateInput(input);
   let rowValues: unknown[];
   try {
-    const result: unknown = await database
-      .prepare(MODEL_VARIANT_EXACT_NAME_SELECT_SQL)
-      .bind(
-        validated.publicationId,
-        validated.normalizedQueryBytes,
-        validated.recordType,
-        validated.afterResourceId,
-        MODEL_VARIANT_EXACT_NAME_MAX_RESOURCE_BYTES,
-        validated.limit + 1,
-        validated.requiredAvailableUntilMs,
-      )
-      .all<ModelVariantExactNameRow>();
+    const statement = database.prepare(
+      validated.eligibilityProviderId === null
+        ? MODEL_VARIANT_EXACT_NAME_SELECT_SQL
+        : MODEL_VARIANT_EXACT_NAME_ELIGIBILITY_SELECT_SQL,
+    );
+    const commonBindings = [
+      validated.publicationId,
+      validated.normalizedQueryBytes,
+      validated.recordType,
+      validated.afterResourceId,
+      MODEL_VARIANT_EXACT_NAME_MAX_RESOURCE_BYTES,
+      validated.limit + 1,
+      validated.requiredAvailableUntilMs,
+    ] as const;
+    const result: unknown = await (
+      validated.eligibilityProviderId === null
+        ? statement.bind(...commonBindings)
+        : statement.bind(...commonBindings, validated.eligibilityProviderId)
+    ).all<ModelVariantExactNameRow>();
     const rows = snapshotD1Rows(result, validated.limit + 2);
     if (rows === null) throw new ModelVariantExactNameError("read_failure");
     rowValues = rows;

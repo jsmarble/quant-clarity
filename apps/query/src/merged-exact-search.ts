@@ -49,6 +49,7 @@ export type MergedExactSearchInput = Readonly<{
   publicationId: string;
   query: string;
   recordType: "model" | "variant" | "provider" | null;
+  eligibilityProviderId: string | null;
   continuation: MergedExactSearchContinuation | null;
   limit: number;
   requiredAvailableUntilMs?: number | null;
@@ -95,6 +96,7 @@ type ValidatedInput = Readonly<{
   query: string;
   normalizedQuery: string;
   recordType: "model" | "variant" | "provider" | null;
+  eligibilityProviderId: string | null;
   continuation: MergedExactSearchContinuation | null;
   limit: number;
   requiredAvailableUntilMs: number | null;
@@ -199,6 +201,7 @@ const validateInput = (value: unknown): ValidatedInput => {
   const expectedKeys = [
     "continuation",
     "limit",
+    "eligibilityProviderId",
     "publicationId",
     "query",
     "recordType",
@@ -221,6 +224,10 @@ const validateInput = (value: unknown): ValidatedInput => {
       input.recordType !== "model" &&
       input.recordType !== "variant" &&
       input.recordType !== "provider") ||
+    (input.eligibilityProviderId !== null &&
+      (typeof input.eligibilityProviderId !== "string" ||
+        !PROVIDER_ID.test(input.eligibilityProviderId))) ||
+    (input.eligibilityProviderId !== null && input.recordType === "provider") ||
     typeof input.limit !== "number" ||
     !Number.isSafeInteger(input.limit) ||
     input.limit < 1 ||
@@ -265,6 +272,8 @@ const validateInput = (value: unknown): ValidatedInput => {
     (input.recordType === "provider" &&
       continuation !== null &&
       continuation.tierMarker !== EXACT_PROVIDER_MARKER) ||
+    (input.eligibilityProviderId !== null &&
+      continuation?.tierMarker === EXACT_PROVIDER_MARKER) ||
     ((input.recordType === "model" || input.recordType === "variant") &&
       continuation?.tierMarker === EXACT_PROVIDER_MARKER) ||
     ((input.recordType === "model" || input.recordType === "variant") &&
@@ -289,6 +298,7 @@ const validateInput = (value: unknown): ValidatedInput => {
     query: input.query,
     normalizedQuery,
     recordType: input.recordType,
+    eligibilityProviderId: input.eligibilityProviderId,
     continuation,
     limit: input.limit,
     requiredAvailableUntilMs,
@@ -434,6 +444,7 @@ export const readMergedExactSearchPage = async (
           publicationId: input.publicationId,
           query: input.query,
           recordType: targetRecordType,
+          eligibilityProviderId: input.eligibilityProviderId,
           afterResourceId: input.continuation?.resourceId ?? null,
           limit: capacity(),
           requiredAvailableUntilMs: input.requiredAvailableUntilMs,
@@ -494,6 +505,7 @@ export const readMergedExactSearchPage = async (
           publicationId: input.publicationId,
           query: input.query,
           providerId: null,
+          eligibilityProviderId: input.eligibilityProviderId,
           recordType: targetRecordType,
           continuation,
           limit: capacity(),
@@ -543,6 +555,7 @@ export const readMergedExactSearchPage = async (
       output.length <= input.limit &&
       input.normalizedQuery.length > 0 &&
       !input.query.includes("\u0000") &&
+      input.eligibilityProviderId === null &&
       (input.recordType === null || input.recordType === "provider")
     ) {
       const page = pageRecord(

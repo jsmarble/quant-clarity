@@ -14,6 +14,7 @@ import {
   MODEL_VARIANT_EXACT_NAME_MAX_QUERY_UNICODE_SCALARS,
   MODEL_VARIANT_EXACT_NAME_MAX_RESOURCE_BYTES,
   MODEL_VARIANT_EXACT_NAME_MAX_TRANSFER_BYTES,
+  MODEL_VARIANT_EXACT_NAME_ELIGIBILITY_SELECT_SQL,
   MODEL_VARIANT_EXACT_NAME_SELECT_SQL,
   ModelVariantExactNameError,
   readModelVariantExactNamePage,
@@ -288,6 +289,27 @@ const expectIntegrityFailure = async (
 };
 
 describe("model/variant exact-name D1 reader (SRCH-002, SRCH-006, SRCH-008, SRCH-009)", () => {
+  it("uses the provider-eligibility index and canonical Offering witness checks", () => {
+    expect(MODEL_VARIANT_EXACT_NAME_ELIGIBILITY_SELECT_SQL).toContain(
+      "INDEXED BY publication_provider_model_id_eligibility_idx",
+    );
+    expect(MODEL_VARIANT_EXACT_NAME_ELIGIBILITY_SELECT_SQL).toContain(
+      "eligibility.offering_content_hash = eligibility_offering.content_hash",
+    );
+    expect(MODEL_VARIANT_EXACT_NAME_ELIGIBILITY_SELECT_SQL).toContain(
+      "eligibility.projection_version = 'provider-model-id@1'",
+    );
+    expect(MODEL_VARIANT_EXACT_NAME_ELIGIBILITY_SELECT_SQL).toContain(
+      "eligibility.target_content_hash = document.resource_content_hash",
+    );
+    expect(MODEL_VARIANT_EXACT_NAME_ELIGIBILITY_SELECT_SQL).toContain(
+      "json_extract(eligibility_offering.resource_json, '$.status.value') = 'active'",
+    );
+    expect(MODEL_VARIANT_EXACT_NAME_ELIGIBILITY_SELECT_SQL).toContain(
+      "json_extract(eligibility_offering.resource_json, '$.stale') = 0",
+    );
+  });
+
   it("binds normalized UTF-8 as a BLOB and rehydrates NUL-bearing canonical facts", async () => {
     const displayName = "Alpha\u0000Model";
     const rows = await fixtureRows(displayName);
@@ -324,6 +346,24 @@ describe("model/variant exact-name D1 reader (SRCH-002, SRCH-006, SRCH-008, SRCH
     );
     expect(Object.keys(page.results[0] ?? {})).not.toContain(
       "normalized_name_utf8",
+    );
+  });
+
+  it("binds provider eligibility separately from the canonical-name match", async () => {
+    const displayName = "Eligible Model";
+    const rows = await fixtureRows(displayName);
+    const database = databaseWithRows([hotPublication(), ...rows]);
+    await readModelVariantExactNamePage(
+      database.asD1(),
+      input(displayName, {
+        eligibilityProviderId: "prv_00000001-0000-4000-8000-000000000001",
+      }),
+    );
+    expect(database.calls[0]?.sql).toBe(
+      MODEL_VARIANT_EXACT_NAME_ELIGIBILITY_SELECT_SQL,
+    );
+    expect(database.calls[0]?.values[7]).toBe(
+      "prv_00000001-0000-4000-8000-000000000001",
     );
   });
 
@@ -499,6 +539,7 @@ describe("model/variant exact-name D1 reader (SRCH-002, SRCH-006, SRCH-008, SRCH
         afterResourceId: "mdl_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       }),
       input("alpha", { recordType: "provider" }),
+      input("alpha", { eligibilityProviderId: "prv_invalid" }),
       input("alpha", { limit: 0 }),
       input("alpha", {
         limit: MODEL_VARIANT_EXACT_NAME_MAX_PAGE_SIZE + 1,
@@ -872,17 +913,20 @@ describe("model/variant exact-name D1 reader (SRCH-002, SRCH-006, SRCH-008, SRCH
     }
   });
 
-  it("uses one fixed bounded SELECT with the exact named index and no mutation surface", () => {
-    expect(MODEL_VARIANT_EXACT_NAME_SELECT_SQL).toMatch(/^\s*WITH\b/u);
-    expect(MODEL_VARIANT_EXACT_NAME_SELECT_SQL).toContain(
-      "INDEXED BY publication_model_variant_name_exact_idx",
-    );
-    expect(MODEL_VARIANT_EXACT_NAME_SELECT_SQL).toContain(
-      "document.normalized_name_utf8 = ?2",
-    );
-    expect(MODEL_VARIANT_EXACT_NAME_SELECT_SQL).not.toMatch(
-      /\b(?:INSERT|UPDATE|DELETE|REPLACE|DROP|ALTER|CREATE|PRAGMA|ATTACH)\b/iu,
-    );
-    expect(MODEL_VARIANT_EXACT_NAME_SELECT_SQL).not.toContain("console.");
+  it("uses fixed bounded SELECTs with exact named indexes and no mutation surface", () => {
+    for (const sql of [
+      MODEL_VARIANT_EXACT_NAME_SELECT_SQL,
+      MODEL_VARIANT_EXACT_NAME_ELIGIBILITY_SELECT_SQL,
+    ]) {
+      expect(sql).toMatch(/^\s*WITH\b/u);
+      expect(sql).toContain(
+        "INDEXED BY publication_model_variant_name_exact_idx",
+      );
+      expect(sql).toContain("document.normalized_name_utf8 = ?2");
+      expect(sql).not.toMatch(
+        /\b(?:INSERT|UPDATE|DELETE|REPLACE|DROP|ALTER|CREATE|PRAGMA|ATTACH)\b/iu,
+      );
+      expect(sql).not.toContain("console.");
+    }
   });
 });

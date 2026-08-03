@@ -21,6 +21,7 @@ const MODEL_A = "mdl_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const MODEL_B = "mdl_bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const VARIANT = "var_cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const PROVIDER = "prv_dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+const OTHER_PROVIDER = "prv_ffffffff-ffff-4fff-8fff-ffffffffffff";
 const EVIDENCE = "evd_eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
 const NOW = 1_785_687_200;
 
@@ -482,9 +483,80 @@ describe("merged exact search API seam (SRCH-001/002, API-003/007, PRIV-006)", (
     });
   });
 
-  it("rejects provider filters, unsupported filters, and stable-id sort before RPC", async () => {
+  it("binds one stable provider eligibility filter without changing model facts or order", async () => {
+    const service = rpc({
+      outcome: "page",
+      page: {
+        publicationId: PUBLICATION,
+        results: [row("exact-v1:c", "model", MODEL_A)],
+        nextContinuation: null,
+        semanticDegraded: "disabled",
+      },
+    });
+    const outcome = await execute(
+      service,
+      request(`q=Model&provider=${PROVIDER}&limit=2`),
+    );
+    expect(outcome).toMatchObject({
+      success: true,
+      collection: {
+        data: [{ resource_type: "model", resource_id: MODEL_A }],
+        meta: {
+          filters: { provider: PROVIDER },
+          semantic_degraded: "disabled",
+        },
+      },
+    });
+    expect(service.readMergedExactSearchV2.mock.calls[0]?.[0]).toMatchObject({
+      envelope: {
+        filters: { provider: PROVIDER },
+        searchPlan: { filters: { provider: PROVIDER } },
+      },
+    });
+
+    const bound = await cursor({
+      filters: { provider: PROVIDER },
+      marker: "exact-v1:c",
+      stableId: MODEL_A,
+    });
+    const inherited = rpc({
+      outcome: "page",
+      page: {
+        publicationId: PUBLICATION,
+        results: [],
+        nextContinuation: null,
+        semanticDegraded: "disabled",
+      },
+    });
+    await expect(
+      execute(
+        inherited,
+        request(`q=Model&cursor=${encodeURIComponent(bound)}`),
+      ),
+    ).resolves.toMatchObject({ success: true });
+    expect(inherited.readMergedExactSearchV2.mock.calls[0]?.[0]).toMatchObject({
+      envelope: { filters: { provider: PROVIDER } },
+    });
+
+    const changed = rpc();
+    await expect(
+      execute(
+        changed,
+        request(
+          `q=Model&provider=${OTHER_PROVIDER}&cursor=${encodeURIComponent(bound)}`,
+        ),
+      ),
+    ).resolves.toEqual({ success: false, code: "invalid_cursor" });
+    expect(changed.resolvePublicationV2).not.toHaveBeenCalled();
+  });
+
+  it("rejects incompatible, malformed, unsupported, and provider-result filter shapes before effects", async () => {
     const malformed = [
-      { ...request(), filters: { provider: PROVIDER } },
+      { ...request(), filters: { provider: "example-provider" } },
+      {
+        ...request(),
+        filters: { provider: PROVIDER, record_type: "provider" },
+      },
       { ...request(), filters: { status: "active" } },
       { ...request(), sort: ["stable_id"] },
       { ...request(), visitorPayload: "VISITOR_INPUT_CANARY" },
@@ -499,18 +571,33 @@ describe("merged exact search API seam (SRCH-001/002, API-003/007, PRIV-006)", (
       expect(service.readMergedExactSearchV2).not.toHaveBeenCalled();
     }
 
-    const widerSearchCursor = await cursor({
+    const providerMarkerCursor = await cursor({
       filters: { provider: PROVIDER },
+      marker: "exact-v1:p",
+      stableId: PROVIDER,
     });
     const inheritedUnsupported = rpc();
     await expect(
       execute(
         inheritedUnsupported,
-        request(`q=Model&cursor=${encodeURIComponent(widerSearchCursor)}`),
+        request(`q=Model&cursor=${encodeURIComponent(providerMarkerCursor)}`),
       ),
     ).resolves.toEqual({ success: false, code: "invalid_cursor" });
     expect(inheritedUnsupported.resolvePublicationV2).not.toHaveBeenCalled();
     expect(inheritedUnsupported.readMergedExactSearchV2).not.toHaveBeenCalled();
+
+    const providerResult = rpc({
+      outcome: "page",
+      page: {
+        publicationId: PUBLICATION,
+        results: [row("exact-v1:p", "provider", PROVIDER)],
+        nextContinuation: null,
+        semanticDegraded: "disabled",
+      },
+    });
+    await expect(
+      execute(providerResult, request(`q=Model&provider=${PROVIDER}&limit=2`)),
+    ).resolves.toEqual({ success: false, code: "integrity_failure" });
   });
 
   it("marks explicit provider-only search not applicable and mirrors it on every result", async () => {
