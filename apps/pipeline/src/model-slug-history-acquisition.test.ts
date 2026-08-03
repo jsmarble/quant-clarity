@@ -219,6 +219,7 @@ describe("canonical Model slug-history acquisition", () => {
     expect(result).toMatchObject({
       acquisitionVersion: MODEL_SLUG_HISTORY_ACQUISITION_VERSION,
       publicationId: fixture.manifest.publicationId,
+      bundleHash: fixture.manifest.bundleHash,
       closureHash: fixture.manifest.closureHash,
       publicationBoundaryMs: GENERATED_AT_MS,
       privateSessionBookmark: "bookmark-private-1",
@@ -253,7 +254,15 @@ describe("canonical Model slug-history acquisition", () => {
     );
     expect(Object.isFrozen(result)).toBe(true);
     expect(Object.keys(result)).not.toContain("privateSessionBookmark");
+    expect(Object.keys(result)).not.toContain("manifest");
+    expect(Object.keys(result)).not.toContain("resources");
     expect(JSON.stringify(result)).not.toContain("bookmark-private-1");
+    expect(JSON.stringify(result)).not.toContain("resourceJson");
+    expect(result.manifest).toBe(fixture.manifest);
+    expect(result.resources).toEqual(assembly.resources);
+    expect(result.resources).not.toBe(assembly.resources);
+    expect(Object.isFrozen(result.resources)).toBe(true);
+    expect(result.resources.every(Object.isFrozen)).toBe(true);
     expect(Object.isFrozen(result.historyRows)).toBe(true);
     expect(result.historyRows).not.toBe(historyRows);
     expect(result.historyRows).toEqual(historyRows);

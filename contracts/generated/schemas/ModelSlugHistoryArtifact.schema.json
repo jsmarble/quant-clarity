@@ -1,0 +1,172 @@
+{
+  "$id": "ModelSlugHistoryArtifact",
+  "additionalProperties": false,
+  "type": "object",
+  "required": [
+    "artifact_version",
+    "acquisition_version",
+    "canonical_guard_version",
+    "projection_version",
+    "publication_id",
+    "closure_hash",
+    "base_bundle_hash",
+    "publication_boundary_ms",
+    "canonical_models",
+    "history_rows",
+    "model_count",
+    "source_history_count",
+    "source_history_hash",
+    "mapping_count",
+    "current_mapping_count",
+    "historical_mapping_count",
+    "mapping_inventory_hash"
+  ],
+  "properties": {
+    "artifact_version": {
+      "const": "model-slug-history-artifact@1",
+      "type": "string"
+    },
+    "acquisition_version": {
+      "const": "model-slug-history-canonical@1",
+      "type": "string"
+    },
+    "canonical_guard_version": {
+      "const": "model-slug-history-guard@1",
+      "type": "string"
+    },
+    "projection_version": {
+      "const": "model-slug@1",
+      "type": "string"
+    },
+    "publication_id": {
+      "pattern": "^pub_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "closure_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "base_bundle_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "publication_boundary_ms": {
+      "minimum": 0,
+      "maximum": 9007199254740991,
+      "type": "integer"
+    },
+    "canonical_models": {
+      "maxItems": 25000,
+      "type": "array",
+      "items": {
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "resource_id",
+          "resource_type",
+          "slug"
+        ],
+        "properties": {
+          "resource_id": {
+            "pattern": "^mdl_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "resource_type": {
+            "const": "model",
+            "type": "string"
+          },
+          "slug": {
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+            "maxLength": 128,
+            "type": "string"
+          }
+        }
+      }
+    },
+    "history_rows": {
+      "maxItems": 50000,
+      "type": "array",
+      "items": {
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "slug_history_id",
+          "resource_id",
+          "resource_type",
+          "slug",
+          "valid_from_ms",
+          "valid_to_ms"
+        ],
+        "properties": {
+          "slug_history_id": {
+            "pattern": "^slg_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "resource_id": {
+            "pattern": "^mdl_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "resource_type": {
+            "const": "model",
+            "type": "string"
+          },
+          "slug": {
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+            "maxLength": 128,
+            "type": "string"
+          },
+          "valid_from_ms": {
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "valid_to_ms": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "model_count": {
+      "minimum": 0,
+      "maximum": 25000,
+      "type": "integer"
+    },
+    "source_history_count": {
+      "minimum": 0,
+      "maximum": 50000,
+      "type": "integer"
+    },
+    "source_history_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "mapping_count": {
+      "minimum": 0,
+      "maximum": 50000,
+      "type": "integer"
+    },
+    "current_mapping_count": {
+      "minimum": 0,
+      "maximum": 25000,
+      "type": "integer"
+    },
+    "historical_mapping_count": {
+      "minimum": 0,
+      "maximum": 50000,
+      "type": "integer"
+    },
+    "mapping_inventory_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    }
+  }
+}

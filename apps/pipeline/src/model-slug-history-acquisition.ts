@@ -174,12 +174,17 @@ const trustedCandidateCaptures = new WeakSet<object>();
 export type TrustedModelSlugHistoryCandidateCapture = Readonly<{
   acquisitionVersion: typeof MODEL_SLUG_HISTORY_ACQUISITION_VERSION;
   publicationId: TrustedImmutablePublicationManifest["publicationId"];
+  bundleHash: TrustedImmutablePublicationManifest["bundleHash"];
   closureHash: TrustedImmutablePublicationManifest["closureHash"];
   publicationBoundaryMs: number;
   modelIds: readonly string[];
   canonicalModels: readonly CanonicalModelCurrentSlugRow[];
   historyRows: readonly ModelSlugHistorySourceRow[];
   projection: TrustedModelSlugProjection;
+  /** Trusted replay input retained privately for archive verification. */
+  manifest: TrustedImmutablePublicationManifest;
+  /** Exact frozen Model resources retained privately for archive verification. */
+  resources: readonly ServingResourceClosureRow[];
   /** Private control-plane consistency token; never publish this value. */
   privateSessionBookmark: string;
   readonly [candidateCaptureBrand]: true;
@@ -433,7 +438,7 @@ const utf8 = new TextEncoder();
 const validateAssemblyResources = async (
   assembly: ModelSlugHistoryPublicationAssembly,
   modelIds: readonly string[],
-): Promise<void> => {
+): Promise<readonly ServingResourceClosureRow[]> => {
   const resources = denseArraySnapshot(
     assembly.resources,
     MODEL_SLUG_MAX_MODELS,
@@ -447,6 +452,7 @@ const validateAssemblyResources = async (
   );
   const seen = new Set<string>();
   const byteLengths: number[] = [];
+  const validatedResources: ServingResourceClosureRow[] = [];
   for (const value of resources) {
     const resource = ownDataRecord(value, [
       "content_hash",
@@ -487,6 +493,14 @@ const validateAssemblyResources = async (
       resourceJson,
     });
     if (computedHash !== contentHash) throw staticFailure("integrity_failure");
+    validatedResources.push(
+      Object.freeze({
+        resource_type: "model" as const,
+        resource_id: resourceId,
+        resource_json: resourceJson,
+        content_hash: contentHash,
+      }),
+    );
   }
   if (
     seen.size !== manifestModels.size ||
@@ -494,6 +508,10 @@ const validateAssemblyResources = async (
   )
     throw staticFailure("integrity_failure");
   assertModelSlugResourceByteBudget(byteLengths);
+  validatedResources.sort((left, right) =>
+    compareAscii(left.resource_id, right.resource_id),
+  );
+  return Object.freeze(validatedResources);
 };
 
 /**
@@ -554,8 +572,12 @@ export const acquireModelSlugHistoryCandidate = async (
         publicationBoundaryMs < 0
       )
         throw staticFailure("integrity_failure");
+      let validatedResources: readonly ServingResourceClosureRow[];
       try {
-        await validateAssemblyResources(assembly, frozenModelIds);
+        validatedResources = await validateAssemblyResources(
+          assembly,
+          frozenModelIds,
+        );
       } catch {
         throw staticFailure("integrity_failure");
       }
@@ -600,7 +622,7 @@ export const acquireModelSlugHistoryCandidate = async (
       try {
         projection = await projectModelSlugProjection({
           manifest: assembly.manifest,
-          resources: assembly.resources,
+          resources: validatedResources,
           historyRows,
         });
       } catch {
@@ -629,6 +651,7 @@ export const acquireModelSlugHistoryCandidate = async (
       const capture = {
         acquisitionVersion: MODEL_SLUG_HISTORY_ACQUISITION_VERSION,
         publicationId: assembly.manifest.publicationId,
+        bundleHash: assembly.manifest.bundleHash,
         closureHash: assembly.manifest.closureHash,
         publicationBoundaryMs,
         modelIds: frozenModelIds,
@@ -636,6 +659,18 @@ export const acquireModelSlugHistoryCandidate = async (
         historyRows,
         projection,
       };
+      Object.defineProperty(capture, "manifest", {
+        value: assembly.manifest,
+        enumerable: false,
+        configurable: false,
+        writable: false,
+      });
+      Object.defineProperty(capture, "resources", {
+        value: validatedResources,
+        enumerable: false,
+        configurable: false,
+        writable: false,
+      });
       Object.defineProperty(capture, "privateSessionBookmark", {
         value: privateSessionBookmark,
         enumerable: false,

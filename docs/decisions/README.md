@@ -76,3 +76,4 @@ Accepted ADRs describe implementation choices; they do not amend product require
 - [ADR 0038](0038-publication-pinned-model-detail-read-seam.md) — publication-pinned stable-ID Model detail read seam without public routing
 - [ADR 0039](0039-publication-model-slug-projection-core.md) — schema-neutral publication Model-slug ownership and proof derivation
 - [ADR 0040](0040-canonical-model-slug-history-capture.md) — drained canonical Model-slug history capture and saga handoff
+- [ADR 0041](0041-model-slug-sidecar-archive-and-staging.md) — locked content-addressed Model-slug sidecar and dormant serving staging

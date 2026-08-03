@@ -219,6 +219,16 @@ function applyServingTargetEligibilityMigration(database: DatabaseSync): void {
   );
 }
 
+function applyServingModelSlugMigration(database: DatabaseSync): void {
+  applyAtomicMigration(
+    database,
+    readFileSync(
+      resolve("migrations", "serving", "0015_model_slug_projection.sql"),
+      "utf8",
+    ),
+  );
+}
+
 function splitMigrationStatements(sql: string): readonly string[] {
   const statements: string[] = [];
   let current = "";
@@ -7119,6 +7129,390 @@ describe("serving publication migrations (PIPE-050–PIPE-056)", () => {
       ).toEqual({ schema_version: "1.11.0" });
       database.close();
     }
+  });
+
+  it("adds immutable exact Model-slug staging storage in schema 1.12.0", () => {
+    const database = applyMigrations("serving");
+    const publicationId = id("pub", 920);
+    const modelId = id("mdl", 920);
+    insertBuildingPublication(
+      database,
+      publicationId,
+      { resources: 1, exactDocuments: 0, vectorDocuments: 0 },
+      null,
+      920,
+    );
+    const resourceJson = JSON.stringify({
+      model_id: modelId,
+      slug: {
+        state: "known",
+        value: "alpha-model",
+        observed_at: "2026-08-03T00:00:00.000Z",
+        evidence_ids: [id("evd", 920)],
+      },
+    });
+    database
+      .prepare("INSERT INTO publication_resource VALUES (?, 'model', ?, ?, ?)")
+      .run(publicationId, modelId, resourceJson, HASH);
+    database
+      .prepare(
+        "INSERT INTO publication_model_slug_mapping VALUES (?, 'alpha-model', 'model', ?, 'model-slug@1', 'current', ?)",
+      )
+      .run(publicationId, modelId, HASH);
+    const stagingRevision = (
+      database
+        .prepare(
+          "SELECT revision FROM publication_staging_revision WHERE publication_id = ?",
+        )
+        .get(publicationId) as { revision: number }
+    ).revision;
+    database
+      .prepare(
+        `INSERT INTO publication_model_slug_artifact_proof VALUES (
+          ?, ?, 'model-slug-history-artifact@1',
+          'model-slug-history-canonical@1', 'model-slug@1', ?, ?, 920,
+          ?, 1, 1, 1, ?, 1, 1, 0, ?
+        )`,
+      )
+      .run(publicationId, stagingRevision, HASH, OTHER_HASH, HASH, HASH, HASH);
+
+    expect(
+      database
+        .prepare(
+          "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+        )
+        .get(),
+    ).toEqual({ schema_version: "1.12.0" });
+    expect(
+      database
+        .prepare(
+          "SELECT model_id FROM publication_model_slug_mapping INDEXED BY publication_model_slug_exact_idx WHERE publication_id = ? AND slug = 'alpha-model'",
+        )
+        .get(publicationId),
+    ).toEqual({ model_id: modelId });
+    for (const operation of [
+      () =>
+        database
+          .prepare(
+            "UPDATE publication_model_slug_mapping SET resolution = 'historical' WHERE publication_id = ? AND slug = 'alpha-model'",
+          )
+          .run(publicationId),
+      () =>
+        database
+          .prepare(
+            "DELETE FROM publication_model_slug_mapping WHERE publication_id = ? AND slug = 'alpha-model'",
+          )
+          .run(publicationId),
+      () =>
+        database
+          .prepare(
+            "INSERT OR REPLACE INTO publication_model_slug_mapping VALUES (?, 'alpha-model', 'model', ?, 'model-slug@1', 'historical', ?)",
+          )
+          .run(publicationId, modelId, HASH),
+      () =>
+        database
+          .prepare(
+            "INSERT OR REPLACE INTO publication_model_slug_artifact_proof SELECT * FROM publication_model_slug_artifact_proof WHERE publication_id = ?",
+          )
+          .run(publicationId),
+    ])
+      expect(operation).toThrow();
+    expect(() =>
+      database
+        .prepare(
+          "INSERT INTO publication_model_slug_mapping VALUES (?, 'post-proof-alias', 'model', ?, 'model-slug@1', 'historical', ?)",
+        )
+        .run(publicationId, modelId, HASH),
+    ).toThrow(
+      "publication Model slug mappings are closed by their artifact proof",
+    );
+    expect(
+      database
+        .prepare(
+          `SELECT
+            (SELECT count(*) FROM publication_model_slug_mapping
+             WHERE publication_id = ?) AS mapping_count,
+            (SELECT mapping_count FROM publication_model_slug_artifact_proof
+             WHERE publication_id = ?) AS proven_mapping_count`,
+        )
+        .get(publicationId, publicationId),
+    ).toEqual({ mapping_count: 1, proven_mapping_count: 1 });
+  });
+
+  it.each(["index", "trigger"] as const)(
+    "atomically rejects a drifted schema-1.11 target eligibility %s",
+    (kind) => {
+      const database = applyMigrations(
+        "serving",
+        "0014_provider_model_stale_eligibility_index.sql",
+      );
+      if (kind === "index") {
+        database.exec(
+          "DROP INDEX publication_provider_model_id_target_eligibility_idx",
+        );
+        database.exec(
+          `CREATE INDEX publication_provider_model_id_target_eligibility_idx
+           ON publication_provider_model_id_search_document(
+             publication_id, target_resource_id, target_resource_type,
+             offering_id
+           )`,
+        );
+      } else {
+        database.exec(
+          "DROP TRIGGER publication_switch_history_target_eligibility_index_guard",
+        );
+        database.exec(
+          `CREATE TRIGGER publication_switch_history_target_eligibility_index_guard
+           BEFORE INSERT ON publication_switch_history BEGIN SELECT 1; END`,
+        );
+      }
+      expect(() => {
+        applyServingModelSlugMigration(database);
+      }).toThrow();
+      expect(
+        database
+          .prepare(
+            `SELECT schema_version,
+              (SELECT count(*) FROM sqlite_schema
+               WHERE name = 'publication_model_slug_mapping') AS new_object_count
+             FROM serving_schema_metadata WHERE singleton = 1`,
+          )
+          .get(),
+      ).toEqual({ schema_version: "1.11.0", new_object_count: 0 });
+      database.close();
+    },
+  );
+
+  it.each([
+    [
+      "publication columns",
+      "ALTER TABLE publication RENAME COLUMN generated_at_ms TO generated_at_drifted",
+    ],
+    [
+      "resource columns",
+      "ALTER TABLE publication_resource RENAME COLUMN content_hash TO content_hash_drifted",
+    ],
+    [
+      "staging revision columns",
+      "ALTER TABLE publication_staging_revision RENAME COLUMN revision TO revision_drifted",
+    ],
+    [
+      "closure seal columns",
+      "ALTER TABLE publication_closure_seal RENAME COLUMN bundle_hash TO bundle_hash_drifted",
+    ],
+    [
+      "resource revision guard",
+      `DROP TRIGGER publication_resource_revision;
+       CREATE TRIGGER publication_resource_revision
+       AFTER INSERT ON publication_resource BEGIN SELECT 1; END`,
+    ],
+  ] as const)("atomically rejects drifted foundational %s", (_label, sql) => {
+    const database = applyMigrations(
+      "serving",
+      "0014_provider_model_stale_eligibility_index.sql",
+    );
+    database.exec(sql);
+    expect(() => {
+      applyServingModelSlugMigration(database);
+    }).toThrow();
+    expect(
+      database
+        .prepare(
+          `SELECT schema_version,
+            (SELECT count(*) FROM sqlite_schema
+             WHERE name IN (
+               'publication_model_slug_mapping',
+               'publication_model_slug_artifact_proof'
+             )) AS new_object_count
+           FROM serving_schema_metadata WHERE singleton = 1`,
+        )
+        .get(),
+    ).toEqual({ schema_version: "1.11.0", new_object_count: 0 });
+    database.close();
+  });
+
+  it("refuses schema 1.12 installation over a pre-existing closure seal", () => {
+    const database = applyMigrations(
+      "serving",
+      "0014_provider_model_stale_eligibility_index.sql",
+    );
+    const publicationId = id("pub", 922);
+    insertBuildingPublication(
+      database,
+      publicationId,
+      { resources: 1, exactDocuments: 0, vectorDocuments: 0 },
+      null,
+      922,
+    );
+    const sealTriggers = database
+      .prepare(
+        "SELECT name FROM sqlite_schema WHERE type = 'trigger' AND tbl_name = 'publication_closure_seal'",
+      )
+      .all() as { name: string }[];
+    for (const trigger of sealTriggers)
+      database.exec(`DROP TRIGGER "${trigger.name}"`);
+    database
+      .prepare(
+        `INSERT INTO publication_closure_seal VALUES (
+          ?, 0, '1.0.0', 'publication-closure', '1', 'scope@1',
+          1, 1, 0, 1, 0, 0, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, 922
+        )`,
+      )
+      .run(
+        publicationId,
+        HASH,
+        HASH,
+        HASH,
+        HASH,
+        HASH,
+        HASH,
+        HASH,
+        HASH,
+        OTHER_HASH,
+      );
+    expect(() => {
+      applyServingModelSlugMigration(database);
+    }).toThrow();
+    expect(
+      database
+        .prepare(
+          "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+        )
+        .get(),
+    ).toEqual({ schema_version: "1.11.0" });
+    database.close();
+  });
+
+  it("rolls back after every migration 0015 statement boundary and remains retryable", () => {
+    const migration = readFileSync(
+      resolve("migrations", "serving", "0015_model_slug_projection.sql"),
+      "utf8",
+    );
+    const statements = splitMigrationStatements(migration);
+    expect(statements.length).toBeGreaterThan(10);
+    for (let boundary = 1; boundary <= statements.length; boundary += 1) {
+      const database = applyMigrations(
+        "serving",
+        "0014_provider_model_stale_eligibility_index.sql",
+      );
+      expect(() => {
+        applyAtomicMigration(
+          database,
+          `${statements.slice(0, boundary).join("\n")}\nSELECT * FROM __injected_migration_failure__;`,
+        );
+      }).toThrow();
+      expect(
+        database
+          .prepare(
+            `SELECT schema_version,
+              (SELECT count(*) FROM sqlite_schema
+               WHERE name IN (
+                 'publication_model_slug_mapping',
+                 'publication_model_slug_artifact_proof',
+                 'publication_model_slug_exact_idx'
+               )) AS model_slug_object_count
+             FROM serving_schema_metadata WHERE singleton = 1`,
+          )
+          .get(),
+      ).toEqual({
+        schema_version: "1.11.0",
+        model_slug_object_count: 0,
+      });
+      applyServingModelSlugMigration(database);
+      expect(
+        database
+          .prepare(
+            "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+          )
+          .get(),
+      ).toEqual({ schema_version: "1.12.0" });
+      database.close();
+    }
+  });
+
+  it("rejects malformed or incomplete Model-slug projections", () => {
+    const database = applyMigrations("serving");
+    const publicationId = id("pub", 921);
+    const modelId = id("mdl", 921);
+    insertBuildingPublication(
+      database,
+      publicationId,
+      { resources: 1, exactDocuments: 0, vectorDocuments: 0 },
+      null,
+      921,
+    );
+    database
+      .prepare("INSERT INTO publication_resource VALUES (?, 'model', ?, ?, ?)")
+      .run(
+        publicationId,
+        modelId,
+        JSON.stringify({
+          model_id: modelId,
+          slug: { state: "known", value: "expected-model" },
+        }),
+        HASH,
+      );
+    for (const slug of ["wrong-model", "bad\u0000slug", "two--segments"])
+      expect(() =>
+        database
+          .prepare(
+            "INSERT INTO publication_model_slug_mapping VALUES (?, ?, 'model', ?, 'model-slug@1', 'current', ?)",
+          )
+          .run(publicationId, slug, modelId, HASH),
+      ).toThrow();
+    for (const [index, malformedModelId] of [
+      `mdl_${"a".repeat(36)}`,
+      "mdl_00000001-0000-5000-8000-000000000001",
+      "mdl_00000001-0000-4000-7000-000000000001",
+    ].entries()) {
+      database
+        .prepare(
+          "INSERT INTO publication_resource VALUES (?, 'model', ?, ?, ?)",
+        )
+        .run(
+          publicationId,
+          malformedModelId,
+          JSON.stringify({
+            model_id: malformedModelId,
+            slug: { state: "known", value: `malformed-${String(index)}` },
+          }),
+          OTHER_HASH,
+        );
+      expect(() =>
+        database
+          .prepare(
+            "INSERT INTO publication_model_slug_mapping VALUES (?, ?, 'model', ?, 'model-slug@1', 'historical', ?)",
+          )
+          .run(
+            publicationId,
+            `malformed-${String(index)}`,
+            malformedModelId,
+            OTHER_HASH,
+          ),
+      ).toThrow();
+    }
+    expect(() =>
+      database
+        .prepare(
+          `INSERT INTO publication_model_slug_artifact_proof VALUES (
+            ?, 0, 'model-slug-history-artifact@1',
+            'model-slug-history-canonical@1', 'model-slug@1', ?, ?,
+            9007199254740992, ?, 1, 1, 1, ?, 1, 1, 0, ?
+          )`,
+        )
+        .run(publicationId, HASH, OTHER_HASH, HASH, HASH, HASH),
+    ).toThrow();
+    expect(() =>
+      database
+        .prepare(
+          `INSERT INTO publication_model_slug_artifact_proof VALUES (
+            ?, 0, 'model-slug-history-artifact@1',
+            'model-slug-history-canonical@1', 'model-slug@1', ?, ?, 921,
+            ?, 1, 1, 1, ?, 1, 1, 0, ?
+          )`,
+        )
+        .run(publicationId, HASH, OTHER_HASH, HASH, HASH, HASH),
+    ).toThrow("lacks an exact staged projection");
   });
 
   it.each(["activate", "rollback"] as const)(
