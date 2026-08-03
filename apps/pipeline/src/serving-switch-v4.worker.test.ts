@@ -426,7 +426,12 @@ const one = async <T>(sql: string): Promise<T> => {
 };
 
 beforeAll(async () => {
-  await applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS);
+  await applyD1Migrations(
+    env.SERVING_DB,
+    env.TEST_MIGRATIONS.filter(
+      (migration) => migration.name <= "0015_model_slug_projection.sql",
+    ),
+  );
 });
 
 let lastKnownGoodFixture: ServingV4Fixture;
@@ -434,7 +439,7 @@ let lastKnownGoodHead: StoredPublicationHead;
 let lastKnownGoodActive: PublicationRecord;
 let pendingProjection: ServingSwitchProjectionV4;
 
-describe("schema-1.7 serving switch v4 in pinned workerd", () => {
+describe("legacy v4 serving switch on schema 1.12 in pinned workerd", () => {
   it("activates, replaces, and immediately rolls back while preserving last-known-good head", async () => {
     const now = Math.floor(Date.now() / 1_000) * 1_000;
     const fixtureA = await prepareReady(PUBLICATION_A, now - 25 * 60_000, true);

@@ -28,6 +28,7 @@ const HASH_B = `sha256:${"b".repeat(64)}` as const;
 const HASH_C = `sha256:${"c".repeat(64)}` as const;
 
 const expectedClosure: BackupClosureExpectation = {
+  servingSchemaVersion: "1.11.0",
   publicationId: PUBLICATION_ID,
   closureHash: HASH_A,
   providerSliceCount: 1,
@@ -225,6 +226,30 @@ describe("backup-v1 restore source profile", () => {
     });
     expect(sourceReads).toBe(0);
   });
+
+  it.each(["1.12.0", "1.13.0"])(
+    "rejects legacy restore authority for serving schema %s before reading the source",
+    async (servingSchemaVersion) => {
+      let sourceReads = 0;
+      const hostileSource = new Proxy(
+        {},
+        {
+          ownKeys: () => {
+            sourceReads += 1;
+            throw new Error("must not inspect source");
+          },
+        },
+      );
+      await expect(
+        createVerifiedRestoreSourceProfileV1(
+          await backup(),
+          { ...expectedClosure, servingSchemaVersion },
+          hostileSource,
+        ),
+      ).rejects.toMatchObject({ code: "backup_manifest_invalid" });
+      expect(sourceReads).toBe(0);
+    },
+  );
 
   it("selects only deterministic rebuild sources and excludes all schema, lifecycle, and projections", async () => {
     const verified = await profile();

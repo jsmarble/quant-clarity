@@ -36,7 +36,13 @@ const switchStatement = (action: "activate" | "rollback") =>
   );
 
 beforeAll(async () => {
-  await applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS);
+  await applyD1Migrations(
+    env.SERVING_DB,
+    env.TEST_MIGRATIONS.filter(
+      (migration) =>
+        migration.name <= "0014_provider_model_stale_eligibility_index.sql",
+    ),
+  );
 });
 
 describe("schema-1.11 target eligibility switch guards in pinned workerd", () => {

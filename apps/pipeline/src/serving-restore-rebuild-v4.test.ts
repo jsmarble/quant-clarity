@@ -147,9 +147,11 @@ const backupFor = async (fixture: Fixture): Promise<BackupManifest> => {
 
 const profileFor = async (
   fixture: Fixture,
+  servingSchemaVersion = "1.11.0",
 ): Promise<VerifiedRestoreSourceProfileV4> => {
   const manifest = fixture.base.manifest;
   const expected: BackupClosureExpectation = {
+    servingSchemaVersion,
     publicationId: manifest.publicationId,
     closureHash: manifest.closureHash,
     providerSliceCount: manifest.providerSlices.length,
@@ -189,9 +191,11 @@ const profileFor = async (
 
 const profileForV5 = async (
   fixture: Fixture,
+  servingSchemaVersion = "1.11.0",
 ): Promise<VerifiedRestoreSourceProfileV5> => {
   const manifest = fixture.base.manifest;
   const expected: BackupClosureExpectation = {
+    servingSchemaVersion,
     publicationId: manifest.publicationId,
     closureHash: manifest.closureHash,
     providerSliceCount: manifest.providerSlices.length,
@@ -336,6 +340,16 @@ const portsFor = (
 };
 
 describe("serving restore rebuild v4", () => {
+  it.each(["1.12.0", "1.13.0"])(
+    "rejects legacy v4 restore authority for serving schema %s",
+    async (servingSchemaVersion) => {
+      const fixture = await createRestoreFixture();
+      await expect(
+        profileFor(fixture, servingSchemaVersion),
+      ).rejects.toMatchObject({ code: "backup_manifest_invalid" });
+    },
+  );
+
   it("keeps backup-v1 closed and explicitly excludes every derived table", async () => {
     const fixture = await createRestoreFixture();
     const profile = await profileFor(fixture);
@@ -511,6 +525,16 @@ describe("serving restore rebuild v4", () => {
 });
 
 describe("serving restore rebuild v5 schema boundary", () => {
+  it.each(["1.12.0", "1.13.0"])(
+    "rejects legacy v5 restore authority for serving schema %s",
+    async (servingSchemaVersion) => {
+      const fixture = await createRestoreFixture();
+      await expect(
+        profileForV5(fixture, servingSchemaVersion),
+      ).rejects.toMatchObject({ code: "backup_manifest_invalid" });
+    },
+  );
+
   it("preserves v4 identities and advances only the v5 profile and transcript to schema 1.11", async () => {
     const fixture = await createRestoreFixture();
     const v4 = await profileFor(fixture);

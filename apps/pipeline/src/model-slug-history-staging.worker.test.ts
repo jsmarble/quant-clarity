@@ -16,6 +16,7 @@ import {
   assertModelSlugServingProof,
   estimateModelSlugHistoryStagingRetainedHeapBytes,
   stageModelSlugHistoryArchive,
+  verifyModelSlugServingStorage,
 } from "./model-slug-history-staging.js";
 import {
   createModelVariantNameSearchFixture,
@@ -88,7 +89,12 @@ const withLostFirstMappingResponse = (database: D1Database): D1Database => {
 
 beforeAll(async () => {
   await applyD1Migrations(env.CANONICAL_DB, env.CANONICAL_MIGRATIONS);
-  await applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS);
+  await applyD1Migrations(
+    env.SERVING_DB,
+    env.TEST_MIGRATIONS.filter(
+      (migration) => migration.name <= "0015_model_slug_projection.sql",
+    ),
+  );
   const fixture = await createModelVariantNameSearchFixture(
     PUBLICATION_ID,
     BOUNDARY_MS,
@@ -166,6 +172,11 @@ describe("schema-1.12 Model slug-history staging in pinned workerd", () => {
   });
 
   it("stages only a read-verified archive, resumes an exact partial state, and proves indexed hit/miss", async () => {
+    await expect(
+      env.SERVING_DB.prepare(
+        "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+      ).first(),
+    ).resolves.toEqual({ schema_version: "1.12.0" });
     const candidate = await acquireModelSlugHistoryCandidate(
       env.CANONICAL_DB,
       acquisitionPorts(),
@@ -220,6 +231,9 @@ describe("schema-1.12 Model slug-history staging in pinned workerd", () => {
         slug: "previous-alpha",
       }),
     ]);
+    await expect(
+      verifyModelSlugServingStorage(env.SERVING_DB, archive, applied.proof),
+    ).rejects.toEqual(new ModelSlugHistoryStagingError("integrity_failure"));
 
     await expect(
       env.SERVING_DB.prepare(

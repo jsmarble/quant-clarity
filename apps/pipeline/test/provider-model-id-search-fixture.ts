@@ -205,11 +205,12 @@ export const createProviderModelIdSearchFixture = async (
     { rawProviderModelId: "accounts/provider/models/Alpha\u0000Model" },
   ],
   includeVariant = false,
+  modelDisplayNames: string | readonly string[] = "Alpha Model",
 ): Promise<ProviderModelIdSearchFixture> => {
   const base = await createModelVariantNameSearchFixture(
     publicationId,
     generatedAtMs,
-    "Alpha Model",
+    modelDisplayNames,
     includeVariant,
     true,
   );
@@ -565,6 +566,129 @@ export const createProviderModelIdSearchFixture = async (
             resource.resource_type === "variant") &&
           resource.resource_id === targetResource.resourceId),
     ),
+  });
+  const staging = await projectProviderModelIdSearchStagingV1({
+    projection,
+    closureRows,
+  });
+  return Object.freeze({
+    manifest,
+    closureRows,
+    staging,
+    persistence: readProviderModelIdSearchStagingPersistenceV1(staging),
+  });
+};
+
+/** Builds a real provider-only closure with no Model, Offering, search, or vector rows. */
+export const createZeroModelProviderModelIdSearchFixture = async (
+  publicationId: `pub_${string}`,
+  generatedAtMs: number,
+): Promise<ProviderModelIdSearchFixture> => {
+  const source = await createModelVariantNameSearchFixture(
+    publicationId,
+    generatedAtMs,
+    "discarded model",
+    false,
+    true,
+  );
+  const providerSlice = source.closureRows.providerSlices[0];
+  const providerResource = source.closureRows.resources.find(
+    (row) => row.resource_type === "provider",
+  );
+  if (providerSlice === undefined || providerResource === undefined)
+    throw new TypeError("zero-Model fixture lacks its provider closure");
+  const resources: readonly PersistedResourceDescriptor[] = [
+    {
+      resourceType: "provider",
+      resourceId: providerResource.resource_id,
+      resourceJson: providerResource.resource_json,
+      contentHash: providerResource.content_hash as Sha256,
+    },
+  ];
+  const resourceKey = `provider:${providerResource.resource_id}`;
+  const chunks: readonly ChunkDescriptor[] = [
+    {
+      kind: "resources",
+      ordinal: 0,
+      firstKey: resourceKey,
+      lastKey: resourceKey,
+      itemCount: 1,
+      contentHash: await hashPublicationResourceChunk(resources),
+    },
+  ];
+  const providerSlices: readonly ProviderSliceDescriptor[] = [
+    {
+      providerId: providerSlice.provider_id,
+      providerSliceId: providerSlice.provider_slice_id,
+      providerRunId: providerSlice.provider_run_id,
+      adapterVersion: providerSlice.adapter_version,
+      rosterVersion: providerSlice.roster_version,
+      sourceRegisterVersion: providerSlice.source_register_version,
+      carriedForward: providerSlice.carried_forward === 1,
+      freshnessState: providerSlice.freshness_state as "fresh",
+    },
+  ];
+  const providerAttributions: readonly ProviderAttributionDescriptor[] = [
+    {
+      resourceType: "provider",
+      resourceId: providerResource.resource_id,
+      providerId: providerSlice.provider_id,
+    },
+  ];
+  const manifest = await buildImmutableManifestFromPersistedContent({
+    contractVersion: "1.0.0",
+    publicationId,
+    sourceRunId: source.manifest.sourceRunId,
+    parentPublicationId: null,
+    generatedAt: new Date(generatedAtMs).toISOString(),
+    versions: source.manifest.versions,
+    enabledProviderScopeVersion: source.manifest.enabledProviderScopeVersion,
+    enabledProviderIds: [providerSlice.provider_id],
+    providerSlices,
+    providerAttributions,
+    resources,
+    searchDocuments: [],
+    vectors: [],
+    chunks,
+    bundleHash: source.manifest.bundleHash,
+  });
+  const closureRows: ServingClosureRows = Object.freeze({
+    publication: Object.freeze({
+      ...source.closureRows.publication,
+      closure_hash: manifest.closureHash,
+    }),
+    providerSlices: Object.freeze([providerSlice]),
+    providerAttributions: Object.freeze([
+      {
+        resource_type: "provider",
+        resource_id: providerResource.resource_id,
+        provider_id: providerSlice.provider_id,
+      },
+    ]),
+    resources: Object.freeze([providerResource]),
+    searchDocuments: Object.freeze([]),
+    vectors: Object.freeze([]),
+    chunks: Object.freeze(
+      chunks.map((chunk) =>
+        Object.freeze({
+          kind: chunk.kind,
+          ordinal: chunk.ordinal,
+          first_key: chunk.firstKey,
+          last_key: chunk.lastKey,
+          item_count: chunk.itemCount,
+          content_hash: chunk.contentHash,
+        }),
+      ),
+    ),
+    manifestContractVersion: "1.0.0",
+    enabledProviderScopeVersion: manifest.enabledProviderScopeVersion,
+    bundleHash: manifest.bundleHash,
+    stagingRevision: 5,
+    sealedAtMs: generatedAtMs + 60_000,
+  });
+  const projection = await projectProviderModelIdSearchProjection({
+    manifest,
+    resources: [],
   });
   const staging = await projectProviderModelIdSearchStagingV1({
     projection,

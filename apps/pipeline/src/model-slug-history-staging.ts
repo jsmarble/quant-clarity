@@ -42,6 +42,9 @@ const SELECT_PROOF_SQL = `SELECT
 FROM publication_model_slug_artifact_proof
 WHERE publication_id = ?1`;
 
+const SELECT_SCHEMA_VERSION_SQL = `SELECT schema_version
+FROM serving_schema_metadata WHERE singleton = 1`;
+
 const SELECT_MAPPING_PAGE_SQL = `SELECT
   slug, model_id, projection_version, resolution, target_content_hash
 FROM publication_model_slug_mapping
@@ -106,6 +109,67 @@ INDEXED BY publication_model_slug_exact_idx
 WHERE publication_id = ?1 AND slug = ?2
 ORDER BY model_id
 LIMIT 2`;
+const SELECT_CURRENT_INDEXED_SQL = `SELECT
+  slug, model_id, projection_version, resolution, target_content_hash
+FROM publication_model_slug_mapping
+INDEXED BY publication_model_slug_current_model_idx
+WHERE publication_id = ?1 AND model_id = ?2 AND resolution = 'current'
+LIMIT 2`;
+const ASSERT_EXACT_INDEX_DEFINITION_SQL = `SELECT CASE WHEN
+  EXISTS (SELECT 1 FROM pragma_index_list('publication_model_slug_mapping')
+    WHERE name = 'publication_model_slug_exact_idx'
+      AND "unique" = 0 AND origin = 'c' AND partial = 0)
+  AND EXISTS (
+    SELECT count(*) FROM pragma_index_xinfo(
+      'publication_model_slug_exact_idx'
+    ) WHERE key = 1 HAVING count(*) = 3 AND sum(CASE
+      WHEN seqno = 0 AND name = 'publication_id' AND desc = 0
+        AND coll = 'BINARY' THEN 1
+      WHEN seqno = 1 AND name = 'slug' AND desc = 0
+        AND coll = 'BINARY' THEN 1
+      WHEN seqno = 2 AND name = 'model_id' AND desc = 0
+        AND coll = 'BINARY' THEN 1
+      ELSE 0 END) = 3)
+  AND ?1 = ?1
+  THEN 1 ELSE 0 END AS indexes_valid`;
+const ASSERT_V5_INDEX_DEFINITIONS_SQL = `SELECT CASE WHEN
+  EXISTS (SELECT 1 FROM pragma_index_list('publication_model_slug_mapping')
+    WHERE name = 'publication_model_slug_exact_idx'
+      AND "unique" = 0 AND origin = 'c' AND partial = 0)
+  AND EXISTS (
+    SELECT count(*) FROM pragma_index_xinfo(
+      'publication_model_slug_exact_idx'
+    ) WHERE key = 1 HAVING count(*) = 3 AND sum(CASE
+      WHEN seqno = 0 AND name = 'publication_id' AND desc = 0
+        AND coll = 'BINARY' THEN 1
+      WHEN seqno = 1 AND name = 'slug' AND desc = 0
+        AND coll = 'BINARY' THEN 1
+      WHEN seqno = 2 AND name = 'model_id' AND desc = 0
+        AND coll = 'BINARY' THEN 1
+      ELSE 0 END) = 3)
+  AND EXISTS (SELECT 1 FROM pragma_index_list('publication_model_slug_mapping')
+    WHERE name = 'publication_model_slug_current_model_idx'
+      AND "unique" = 1 AND origin = 'c' AND partial = 1)
+  AND EXISTS (
+    SELECT 1 FROM sqlite_schema
+    WHERE type = 'index'
+      AND name = 'publication_model_slug_current_model_idx'
+      AND tbl_name = 'publication_model_slug_mapping'
+      AND replace(replace(replace(replace(sql, char(10), ''),
+        char(13), ''), char(9), ''), ' ', '') =
+        'CREATEUNIQUEINDEXpublication_model_slug_current_model_idxONpublication_model_slug_mapping(publication_id,model_id)WHEREresolution=''current'''
+  )
+  AND EXISTS (
+    SELECT count(*) FROM pragma_index_xinfo(
+      'publication_model_slug_current_model_idx'
+    ) WHERE key = 1 HAVING count(*) = 2 AND sum(CASE
+      WHEN seqno = 0 AND name = 'publication_id' AND desc = 0
+        AND coll = 'BINARY' THEN 1
+      WHEN seqno = 1 AND name = 'model_id' AND desc = 0
+        AND coll = 'BINARY' THEN 1
+      ELSE 0 END) = 2)
+  AND ?1 = ?1
+  THEN 1 ELSE 0 END AS indexes_valid`;
 
 export type ModelSlugHistoryStagingErrorCode =
   | "stale"
@@ -387,10 +451,9 @@ type Snapshot = Readonly<{
 }>;
 
 const snapshot = async (
-  database: D1Database,
+  session: D1DatabaseSession,
   publicationId: string,
 ): Promise<Snapshot> => {
-  const session = database.withSession("first-primary");
   const results = denseArraySnapshot(
     await session.batch([
       session.prepare(SELECT_CONTEXT_SQL).bind(publicationId),
@@ -465,7 +528,7 @@ const exactProofRow = (
 };
 
 const readExactMappingPrefix = async (
-  database: D1Database,
+  session: D1DatabaseSession,
   archive: TrustedModelSlugHistoryArchiveProof,
 ): Promise<number> => {
   const expected = archive.projection.mappings;
@@ -473,7 +536,6 @@ const readExactMappingPrefix = async (
   let cursor = "";
   let complete = false;
   while (!complete) {
-    const session = database.withSession("first-primary");
     const result = await session
       .prepare(SELECT_MAPPING_PAGE_SQL)
       .bind(archive.publicationId, cursor)
@@ -516,10 +578,11 @@ const classify = async (
   database: D1Database,
   archive: TrustedModelSlugHistoryArchiveProof,
 ): Promise<Classification> => {
-  const observed = await snapshot(database, archive.publicationId);
+  const session = database.withSession("first-primary");
+  const observed = await snapshot(session, archive.publicationId);
   const revision = contextRevision(observed, archive);
   const expected = archive.projection.mappings;
-  const observedMappingCount = await readExactMappingPrefix(database, archive);
+  const observedMappingCount = await readExactMappingPrefix(session, archive);
   if (observed.proof.length === 0)
     return Object.freeze({
       outcome: "execute",
@@ -542,10 +605,14 @@ const classify = async (
 };
 
 const indexedQueryability = async (
-  database: D1Database,
+  session: D1DatabaseSession,
   archive: TrustedModelSlugHistoryArchiveProof,
+  requireCurrentModelIndex: boolean,
 ): Promise<void> => {
   const expected = archive.projection.mappings[0];
+  const expectedCurrent = archive.projection.mappings.find(
+    (mapping) => mapping.resolution === "current",
+  );
   const hasSlug = (slug: string): boolean => {
     let lower = 0;
     let upper = archive.projection.mappings.length;
@@ -564,15 +631,40 @@ const indexedQueryability = async (
       throw new Error("indexed miss could not be selected");
     miss = `queryability-miss-${String(sequence + 1)}`;
   }
-  const session = database.withSession("first-primary");
-  const statements = [
-    session.prepare(SELECT_INDEXED_SQL).bind(archive.publicationId, miss),
-  ];
+  const definitionRows = resultRows(
+    await session
+      .prepare(
+        requireCurrentModelIndex
+          ? ASSERT_V5_INDEX_DEFINITIONS_SQL
+          : ASSERT_EXACT_INDEX_DEFINITION_SQL,
+      )
+      .bind(archive.publicationId)
+      .all(),
+    1,
+  ).map((row) => ownDataRecord(row, ["indexes_valid"]));
+  if (definitionRows.length !== 1 || definitionRows[0]?.indexes_valid !== 1)
+    throw staticFailure("integrity_failure");
+  const statements: D1PreparedStatement[] = [];
   if (expected !== undefined)
-    statements.unshift(
+    statements.push(
       session
         .prepare(SELECT_INDEXED_SQL)
         .bind(archive.publicationId, expected.slug),
+    );
+  statements.push(
+    session.prepare(SELECT_INDEXED_SQL).bind(archive.publicationId, miss),
+  );
+  if (requireCurrentModelIndex && expectedCurrent !== undefined)
+    statements.push(
+      session
+        .prepare(SELECT_CURRENT_INDEXED_SQL)
+        .bind(archive.publicationId, expectedCurrent.modelId),
+    );
+  if (requireCurrentModelIndex)
+    statements.push(
+      session
+        .prepare(SELECT_CURRENT_INDEXED_SQL)
+        .bind(archive.publicationId, "__queryability_miss__"),
     );
   const results = denseArraySnapshot(
     await session.batch(statements),
@@ -582,7 +674,7 @@ const indexedQueryability = async (
     throw new Error("indexed result is invalid");
   let offset = 0;
   if (expected !== undefined) {
-    const hit = resultRows(results[0], 2).map((row) =>
+    const hit = resultRows(results[offset], 2).map((row) =>
       ownDataRecord(row, MAPPING_ROW_KEYS),
     );
     const hitRow = hit.at(0);
@@ -592,10 +684,100 @@ const indexedQueryability = async (
       !mappingMatches(hitRow, expected)
     )
       throw new Error("indexed hit does not match");
-    offset = 1;
+    offset += 1;
   }
   if (resultRows(results[offset], 2).length !== 0)
     throw new Error("indexed miss unexpectedly matched");
+  offset += 1;
+  if (!requireCurrentModelIndex) return;
+  if (expectedCurrent !== undefined) {
+    const hit = resultRows(results[offset], 2).map((row) =>
+      ownDataRecord(row, MAPPING_ROW_KEYS),
+    );
+    const hitRow = hit[0];
+    if (
+      hit.length !== 1 ||
+      hitRow === undefined ||
+      !mappingMatches(hitRow, expectedCurrent)
+    )
+      throw new Error("current indexed hit does not match");
+    offset += 1;
+  }
+  if (resultRows(results[offset], 2).length !== 0)
+    throw new Error("current indexed miss unexpectedly matched");
+};
+
+const readServingSchemaVersion = async (
+  session: D1DatabaseSession,
+): Promise<"1.12.0" | "1.13.0"> => {
+  const rows = resultRows(
+    await session.prepare(SELECT_SCHEMA_VERSION_SQL).all(),
+    1,
+  ).map((row) => ownDataRecord(row, ["schema_version"]));
+  const version = rows[0]?.schema_version;
+  if (rows.length !== 1 || (version !== "1.12.0" && version !== "1.13.0"))
+    throw new Error("unsupported Model slug staging schema");
+  return version;
+};
+
+const verifyStagingIndexCompatibility = async (
+  session: D1DatabaseSession,
+  archive: TrustedModelSlugHistoryArchiveProof,
+): Promise<void> => {
+  const version = await readServingSchemaVersion(session);
+  await indexedQueryability(session, archive, version === "1.13.0");
+};
+
+/**
+ * Revalidates the complete retained D1 projection on one first-primary
+ * bookmark. This is the post-staging authority used by readiness and rollback;
+ * aggregate proof rows alone are not sufficient.
+ */
+export const verifyModelSlugServingStorage = async (
+  database: D1Database,
+  archiveValue: unknown,
+  servingValue: unknown,
+): Promise<void> => {
+  try {
+    assertModelSlugHistoryArchiveProof(archiveValue);
+    assertModelSlugServingProof(servingValue);
+    assertModelSlugProjection(archiveValue.projection);
+    if (
+      servingValue.projection !== archiveValue.projection ||
+      servingValue.publicationId !== archiveValue.publicationId ||
+      servingValue.artifactDigest !== archiveValue.artifactDigest ||
+      archiveValue.projection.modelCount > MODEL_SLUG_MAX_MODELS ||
+      archiveValue.projection.sourceHistoryCount >
+        MODEL_SLUG_MAX_HISTORY_ROWS ||
+      archiveValue.projection.mappingCount > MODEL_SLUG_MAX_HISTORY_ROWS
+    )
+      throw new Error("serving proof binding is invalid");
+  } catch {
+    throw staticFailure("integrity_failure");
+  }
+  const archive = archiveValue;
+  const serving = servingValue;
+  try {
+    const session = database.withSession("first-primary");
+    if ((await readServingSchemaVersion(session)) !== "1.13.0")
+      throw staticFailure("integrity_failure");
+    const proofRows = resultRows(
+      await session.prepare(SELECT_PROOF_SQL).bind(archive.publicationId).all(),
+      1,
+    ).map((row) => ownDataRecord(row, PROOF_ROW_KEYS));
+    const proof = proofRows[0];
+    const mappingCount = await readExactMappingPrefix(session, archive);
+    if (
+      proofRows.length !== 1 ||
+      proof === undefined ||
+      mappingCount !== archive.projection.mappings.length ||
+      !exactProofRow(proof, archive, serving.stagingRevision)
+    )
+      throw staticFailure("conflict");
+    await indexedQueryability(session, archive, true);
+  } catch (error) {
+    return rethrowTrustedFailure(error);
+  }
 };
 
 const mintProof = (
@@ -669,7 +851,10 @@ export const stageModelSlugHistoryArchive = async (
   );
   if (initial.outcome === "idempotent_success") {
     try {
-      await indexedQueryability(database, archive);
+      await verifyStagingIndexCompatibility(
+        database.withSession("first-primary"),
+        archive,
+      );
     } catch {
       throw staticFailure("conflict");
     }
@@ -711,7 +896,10 @@ export const stageModelSlugHistoryArchive = async (
     const final = await classify(database, archive);
     if (final.outcome !== "idempotent_success")
       throw new Error("proof was not durable");
-    await indexedQueryability(database, archive);
+    await verifyStagingIndexCompatibility(
+      database.withSession("first-primary"),
+      archive,
+    );
     return Object.freeze({
       outcome: "applied",
       proof: mintProof(archive, final.revision),
@@ -720,7 +908,10 @@ export const stageModelSlugHistoryArchive = async (
     try {
       const final = await classify(database, archive);
       if (final.outcome === "idempotent_success") {
-        await indexedQueryability(database, archive);
+        await verifyStagingIndexCompatibility(
+          database.withSession("first-primary"),
+          archive,
+        );
         return Object.freeze({
           outcome: "idempotent_success",
           proof: mintProof(archive, final.revision),

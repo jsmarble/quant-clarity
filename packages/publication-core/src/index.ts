@@ -4,6 +4,8 @@ import {
   checkOfferingContract,
   checkProviderContract,
   checkVariantContract,
+  MODEL_SLUG_HISTORY_ARTIFACT_MAX_BYTES,
+  MODEL_SLUG_HISTORY_ARTIFACT_VERSION,
   MODEL_DISPLAY_NAME_MAX_UNICODE_SCALARS,
   type Model,
   type Offering,
@@ -62,6 +64,10 @@ export const MODEL_VARIANT_NAME_SEARCH_MAX_NORMALIZED_NAME_UTF8_BYTES =
 export const MODEL_FAMILY_CLOSURE_MAX_RELEVANT_RESOURCES = 100_000;
 export const MODEL_FAMILY_CLOSURE_MAX_MEMBERSHIP_EDGES = 100_000;
 export const MODEL_SLUG_PROJECTION_VERSION = "model-slug@1" as const;
+export const MODEL_SLUG_HISTORY_ACQUISITION_VERSION =
+  "model-slug-history-canonical@1" as const;
+export const MODEL_SLUG_HISTORY_STORAGE_VERSION =
+  "model-slug-serving@1" as const;
 // Coarse hostile-input guards. The lower encoded-byte budgets below are the
 // effective Worker-memory admission limits for ordinary publication inputs.
 export const MODEL_SLUG_MAX_MODELS = 25_000;
@@ -1383,6 +1389,10 @@ export const READINESS_RECEIPT_VERSION_V4 = "4.0.0" as const;
 export const READINESS_EVALUATOR_VERSION_V4 = "4.0.0" as const;
 export const READINESS_PROBE_SET_VERSION_V4 = "search-gold@4" as const;
 export const SERVING_SWITCH_PREFLIGHT_VERSION_V4 = "4.0.0" as const;
+export const READINESS_RECEIPT_VERSION_V5 = "5.0.0" as const;
+export const READINESS_EVALUATOR_VERSION_V5 = "5.0.0" as const;
+export const READINESS_PROBE_SET_VERSION_V5 = "search-gold@5" as const;
+export const SERVING_SWITCH_PREFLIGHT_VERSION_V5 = "5.0.0" as const;
 
 export interface ProviderSearchFtsObservationV2 {
   readonly buildVersion: typeof PROVIDER_SEARCH_FTS_BUILD_VERSION;
@@ -6069,6 +6079,9 @@ const isCanonicalTimestamp = (value: unknown): value is string => {
 const isNonnegativeSafeInteger = (value: unknown): value is number =>
   typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 
+const runtimeValueDiffers = (actual: unknown, expected: unknown): boolean =>
+  actual !== expected;
+
 const validateReceiptShape = (value: unknown): value is ReadinessReceipt => {
   if (!isRecord(value) || typeof value.kind !== "string") return false;
   if (
@@ -6210,6 +6223,7 @@ const readinessReceiptHash = async (
   receipt: ReadinessReceipt,
   receiptVersion = "1.0.0",
   servingSuffix: readonly CanonicalField[] = [],
+  kindSuffix: readonly CanonicalField[] = [],
 ): Promise<Sha256> => {
   const common: CanonicalField[] = [
     field("receipt_version", "text", receiptVersion),
@@ -6360,6 +6374,7 @@ const readinessReceiptHash = async (
     ...common,
     ...specific,
     ...(receipt.kind === "serving" ? servingSuffix : []),
+    ...kindSuffix,
   ]);
 };
 
@@ -7039,7 +7054,44 @@ export type ServingReadinessCommitRetryDecision = Readonly<{
 const exactReadinessRows = (
   left: ServingReadinessReceiptRows,
   right: ServingReadinessReceiptRows,
-): boolean => JSON.stringify(left) === JSON.stringify(right);
+): boolean =>
+  exactRecordRows(left.bindings, right.bindings) &&
+  exactRecordRows(left.archives, right.archives) &&
+  exactRecordRows(left.servings, right.servings) &&
+  exactRecordRows(left.vectors, right.vectors) &&
+  exactRecordRows(left.probes, right.probes);
+
+const exactOwnDataRecord = (
+  actual: unknown,
+  expected: Readonly<Record<string, unknown>>,
+): boolean => {
+  try {
+    const keys = Object.keys(expected).sort(compareAscii);
+    const snapshot = ownDataRecordSnapshot(actual, keys, "persisted row");
+    return keys.every((key) => Object.is(snapshot[key], expected[key]));
+  } catch {
+    return false;
+  }
+};
+
+const exactRecordRows = <T extends Readonly<Record<string, unknown>>>(
+  actual: readonly T[],
+  expected: readonly T[],
+): boolean => {
+  let rows: readonly unknown[];
+  try {
+    rows = denseArraySnapshot(actual, expected.length, "persisted rows");
+  } catch {
+    return false;
+  }
+  return (
+    rows.length === expected.length &&
+    rows.every((row, index) => {
+      const expectedRow = expected[index];
+      return expectedRow !== undefined && exactOwnDataRecord(row, expectedRow);
+    })
+  );
+};
 
 const readinessRowsConflict = (
   actual: ServingReadinessReceiptRows,
@@ -7055,8 +7107,7 @@ const readinessRowsConflict = (
   return groups.some(([actualRows, expectedRows]) =>
     actualRows.some((actualRow) =>
       expectedRows.every(
-        (expectedRow) =>
-          JSON.stringify(actualRow) !== JSON.stringify(expectedRow),
+        (expectedRow) => !exactOwnDataRecord(actualRow, expectedRow),
       ),
     ),
   );
@@ -7103,8 +7154,7 @@ export const classifyServingReadinessCommitRetry = (input: {
   if (
     readinessRowsConflict(input.receiptRows, expected.receiptRows) ||
     (input.attestation !== null &&
-      JSON.stringify(input.attestation) !==
-        JSON.stringify(expected.attestation))
+      !exactOwnDataRecord(input.attestation, expected.attestation))
   )
     return Object.freeze({ outcome: "conflict" });
   if (
@@ -8327,12 +8377,33 @@ export type BackupManifest = Readonly<{
 
 /** Trusted closure facts supplied independently of the backup artifact. */
 export type BackupClosureExpectation = Readonly<{
+  servingSchemaVersion: string;
   publicationId: PublicationId;
   closureHash: Sha256;
   providerSliceCount: number;
   resourceCount: number;
   searchDocumentCount: number;
 }>;
+
+export const SERVING_BACKUP_V1_SUPPORTED_SCHEMA_VERSIONS = Object.freeze([
+  "1.0.0",
+  "1.1.0",
+  "1.2.0",
+  "1.3.0",
+  "1.4.0",
+  "1.5.0",
+  "1.5.1",
+  "1.6.0",
+  "1.7.0",
+  "1.8.0",
+  "1.9.0",
+  "1.10.0",
+  "1.11.0",
+] as const);
+
+const servingBackupV1SupportedSchemaVersions = new Set<string>(
+  SERVING_BACKUP_V1_SUPPORTED_SCHEMA_VERSIONS,
+);
 
 export const buildBackupRootHash = async (
   manifest: Omit<BackupManifest, "rootHash">,
@@ -8412,6 +8483,11 @@ export const validateBackupManifest = async (
   expected: BackupClosureExpectation,
 ): Promise<readonly string[]> => {
   const errors: string[] = [];
+  if (
+    typeof expected.servingSchemaVersion !== "string" ||
+    !servingBackupV1SupportedSchemaVersions.has(expected.servingSchemaVersion)
+  )
+    errors.push("serving schema is unsupported by backup format 1.0.0");
   if (manifest.formatVersion !== "1.0.0")
     errors.push("backup format is unsupported");
   if (!PUBLICATION_ID.test(manifest.publicationId))
@@ -9449,7 +9525,7 @@ export const projectServingSwitchPreflightProofV2 = async (input: {
     observed_at_ms: observedAtMs,
     maximum_age_ms: maximumAgeMs,
     valid_until_ms: validUntilMs,
-    fts_build_version: proof.ftsBuildVersion as string,
+    fts_build_version: proof.ftsBuildVersion,
     fts_source_document_count: proof.ftsSourceDocumentCount,
     fts_index_document_count: proof.ftsIndexDocumentCount,
     fts_source_inventory_hash: proof.ftsSourceInventoryHash,
@@ -9460,8 +9536,7 @@ export const projectServingSwitchPreflightProofV2 = async (input: {
     vector_document_count: proof.vectorDocumentCount,
     vector_verified_document_count: proof.vectorVerifiedDocumentCount,
     vector_inventory_hash: proof.vectorInventoryHash,
-    vector_visibility_probe_version:
-      proof.vectorVisibilityProbeVersion as string,
+    vector_visibility_probe_version: proof.vectorVisibilityProbeVersion,
     vector_mutation_id: proof.vectorMutationId,
     vector_all_ids_present: 1 as const,
     vector_all_namespaces_match: 1 as const,
@@ -10280,6 +10355,7 @@ export const projectServingSwitchV2 = async (input: {
   readonly persistedAttestation: ServingReadinessAttestationProjectionV2 | null;
 }): Promise<ServingSwitchProjectionV2> => {
   assertServingSwitchPreflightProofV2(input.preflight);
+  const preflight = input.preflight;
   const proofBinding = trustedServingSwitchPreflightProofsV2.get(
     input.preflight,
   );
@@ -10345,16 +10421,16 @@ export const projectServingSwitchV2 = async (input: {
   if (
     observed.target.publicationId !== proofBinding.manifest.publicationId ||
     observed.target.closureHash !== proofBinding.manifest.closureHash ||
-    input.preflight.to_publication_id !== observed.target.publicationId ||
-    input.preflight.to_closure_hash !== observed.target.closureHash
+    preflight.to_publication_id !== observed.target.publicationId ||
+    preflight.to_closure_hash !== observed.target.closureHash
   )
     throw new TypeError("serving switch v2 target does not bind its manifest");
   const switchedAt = timestampFromMs(
-    input.preflight.switched_at_ms,
+    preflight.switched_at_ms,
     "switch v2 time",
   );
   const plan =
-    input.preflight.action === "activate"
+    preflight.action === "activate"
       ? planActivation({
           candidate: observed.target,
           currentHead: observed.currentHead,
@@ -10375,23 +10451,22 @@ export const projectServingSwitchV2 = async (input: {
         })();
   const event = switchHistoryStep(plan);
   if (
-    event.switchId !== input.preflight.switch_id ||
-    event.action !== input.preflight.action ||
-    event.expectedPriorGeneration !==
-      input.preflight.expected_prior_generation ||
-    event.newGeneration !== input.preflight.new_generation ||
-    event.fromPublicationId !== input.preflight.from_publication_id ||
-    event.fromClosureHash !== input.preflight.from_closure_hash ||
-    event.toPublicationId !== input.preflight.to_publication_id ||
-    event.toClosureHash !== input.preflight.to_closure_hash ||
+    event.switchId !== preflight.switch_id ||
+    event.action !== preflight.action ||
+    event.expectedPriorGeneration !== preflight.expected_prior_generation ||
+    event.newGeneration !== preflight.new_generation ||
+    event.fromPublicationId !== preflight.from_publication_id ||
+    event.fromClosureHash !== preflight.from_closure_hash ||
+    event.toPublicationId !== preflight.to_publication_id ||
+    event.toClosureHash !== preflight.to_closure_hash ||
     (observed.currentHead?.rollbackCandidatePublicationId ?? null) !==
-      input.preflight.expected_prior_rollback_candidate_publication_id ||
+      preflight.expected_prior_rollback_candidate_publication_id ||
     (observed.currentHead === null
       ? null
       : assertTimestamp(
           observed.currentHead.switchedAt,
           "prior switch v2 time",
-        )) !== input.preflight.expected_prior_switched_at_ms
+        )) !== preflight.expected_prior_switched_at_ms
   )
     throw new TypeError(
       "serving switch v2 preflight does not bind its lifecycle plan",
@@ -10399,7 +10474,7 @@ export const projectServingSwitchV2 = async (input: {
   const eventHash = await digest("publication-switch-event", [
     field("event_version", "text", SERVING_SWITCH_EVENT_VERSION),
     field("switch_id", "text", event.switchId),
-    field("preflight_hash", "digest", input.preflight.preflight_hash),
+    field("preflight_hash", "digest", preflight.preflight_hash),
     field("action", "text", event.action),
     field(
       "expected_prior_generation",
@@ -10430,7 +10505,7 @@ export const projectServingSwitchV2 = async (input: {
     nullableCanonical(
       "to_attestation_hash",
       "digest",
-      input.preflight.to_attestation_hash,
+      preflight.to_attestation_hash,
     ),
     nullableCanonical(
       "resulting_rollback_candidate_publication_id",
@@ -10445,7 +10520,7 @@ export const projectServingSwitchV2 = async (input: {
     switch_id: event.switchId,
     event_version: SERVING_SWITCH_EVENT_VERSION,
     event_hash: eventHash,
-    preflight_hash: input.preflight.preflight_hash,
+    preflight_hash: preflight.preflight_hash,
     action: event.action,
     expected_prior_generation: event.expectedPriorGeneration,
     expected_prior_rollback_candidate_publication_id:
@@ -10462,16 +10537,16 @@ export const projectServingSwitchV2 = async (input: {
     from_closure_hash: event.fromClosureHash,
     to_publication_id: event.toPublicationId,
     to_closure_hash: event.toClosureHash,
-    to_attestation_hash: input.preflight.to_attestation_hash,
+    to_attestation_hash: preflight.to_attestation_hash,
     resulting_rollback_candidate_publication_id:
       event.resultingRollbackCandidatePublicationId,
-    switched_at_ms: input.preflight.switched_at_ms,
+    switched_at_ms: preflight.switched_at_ms,
     authorized_by_kind: event.authorizedBy.kind,
     authorized_identity_id: event.authorizedBy.identityId,
   } satisfies ServingSwitchHistoryRow);
   const persistence = Object.freeze({
     plan,
-    preflight: input.preflight,
+    preflight,
     history,
   });
   const result = {};
@@ -13888,6 +13963,3044 @@ export const classifyServingSwitchRetryV4 = (input: {
   );
   if (cas === undefined)
     throw new TypeError("switch v4 plan lacks its head CAS");
+  if (input.historyAtGeneration === null) {
+    if (input.preflightAtGeneration !== null)
+      return Object.freeze({
+        outcome: rowsExactlyEqual(
+          input.preflightAtGeneration,
+          expected.preflight,
+        )
+          ? "integrity_failure"
+          : "conflict",
+      });
+    if (!headsEqual(input.currentHead, cas.expected))
+      return Object.freeze({ outcome: "stale" });
+    const expectedTarget =
+      expected.history.action === "activate" ? "ready" : "superseded";
+    const expectedFormer =
+      expected.history.from_publication_id === null ? null : "active";
+    if (
+      input.targetState !== expectedTarget ||
+      input.formerState !== expectedFormer
+    )
+      return Object.freeze({ outcome: "integrity_failure" });
+    return Object.freeze({ outcome: "execute" });
+  }
+  if (!rowsExactlyEqual(input.historyAtGeneration, expected.history))
+    return Object.freeze({ outcome: "conflict" });
+  if (input.preflightAtGeneration === null)
+    return Object.freeze({ outcome: "integrity_failure" });
+  if (!rowsExactlyEqual(input.preflightAtGeneration, expected.preflight))
+    return Object.freeze({ outcome: "conflict" });
+  const expectedFormer =
+    expected.history.from_publication_id === null
+      ? null
+      : expected.history.action === "activate"
+        ? "superseded"
+        : "rolled_back";
+  if (
+    !headsEqual(input.currentHead, cas.next) ||
+    input.targetState !== "active" ||
+    input.formerState !== expectedFormer
+  )
+    return Object.freeze({ outcome: "integrity_failure" });
+  return Object.freeze({ outcome: "idempotent_success" });
+};
+
+// ADR 0042 schema-1.13 proof primitives. These are deliberately additive:
+// schema-1.12/v4 callers retain their exact hashes and nominal capabilities.
+const modelSlugArchiveArtifactProofV5Brand: unique symbol = Symbol(
+  "ModelSlugArchiveArtifactProofV5",
+);
+const trustedModelSlugArchiveArtifactProofsV5 = new WeakMap<
+  object,
+  Readonly<{
+    manifest: TrustedImmutablePublicationManifest;
+    projection: TrustedModelSlugProjection;
+  }>
+>();
+
+export type ModelSlugArchiveArtifactProofV5 = Readonly<{
+  publication_id: PublicationId;
+  closure_hash: Sha256;
+  base_bundle_hash: Sha256;
+  publication_boundary_ms: number;
+  artifact_version: typeof MODEL_SLUG_HISTORY_ARTIFACT_VERSION;
+  acquisition_version: typeof MODEL_SLUG_HISTORY_ACQUISITION_VERSION;
+  projection_version: typeof MODEL_SLUG_PROJECTION_VERSION;
+  artifact_digest: Sha256;
+  artifact_byte_count: number;
+  source_history_count: number;
+  source_history_hash: Sha256;
+  model_count: number;
+  mapping_count: number;
+  current_mapping_count: number;
+  historical_mapping_count: number;
+  mapping_inventory_hash: Sha256;
+  read_verified: true;
+  immutable: true;
+  readonly [modelSlugArchiveArtifactProofV5Brand]: true;
+}>;
+
+export const assertModelSlugArchiveArtifactProofV5: (
+  value: unknown,
+) => asserts value is ModelSlugArchiveArtifactProofV5 = (value) => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !(modelSlugArchiveArtifactProofV5Brand in value) ||
+    value[modelSlugArchiveArtifactProofV5Brand] !== true ||
+    !trustedModelSlugArchiveArtifactProofsV5.has(value)
+  )
+    throw new TypeError("model slug archive artifact proof v5 is not trusted");
+};
+
+export const projectModelSlugArchiveArtifactProofV5 = (input: {
+  readonly manifest: TrustedImmutablePublicationManifest;
+  readonly projection: TrustedModelSlugProjection;
+  readonly observation: Readonly<{
+    publicationId: PublicationId;
+    closureHash: Sha256;
+    baseBundleHash: Sha256;
+    publicationBoundaryMs: number;
+    artifactVersion: typeof MODEL_SLUG_HISTORY_ARTIFACT_VERSION;
+    acquisitionVersion: typeof MODEL_SLUG_HISTORY_ACQUISITION_VERSION;
+    artifactDigest: Sha256;
+    artifactByteCount: number;
+    readVerified: true;
+    immutable: true;
+  }>;
+}): ModelSlugArchiveArtifactProofV5 => {
+  const snapshot = ownDataRecordSnapshot(
+    input,
+    ["manifest", "observation", "projection"],
+    "model slug archive artifact proof v5 input",
+  );
+  const manifest = snapshot.manifest;
+  const projection = snapshot.projection;
+  assertImmutablePublicationManifest(manifest);
+  assertModelSlugProjection(projection);
+  const observation = ownDataRecordSnapshot(
+    snapshot.observation,
+    [
+      "acquisitionVersion",
+      "artifactByteCount",
+      "artifactDigest",
+      "artifactVersion",
+      "baseBundleHash",
+      "closureHash",
+      "immutable",
+      "publicationBoundaryMs",
+      "publicationId",
+      "readVerified",
+    ],
+    "model slug archive artifact proof v5 observation",
+  );
+  const boundaryMs = assertTimestamp(
+    manifest.generatedAt,
+    "model slug archive artifact proof v5 boundary",
+  );
+  if (
+    observation.publicationId !== manifest.publicationId ||
+    observation.closureHash !== manifest.closureHash ||
+    observation.baseBundleHash !== manifest.bundleHash ||
+    observation.publicationBoundaryMs !== boundaryMs ||
+    observation.artifactVersion !== MODEL_SLUG_HISTORY_ARTIFACT_VERSION ||
+    observation.acquisitionVersion !== MODEL_SLUG_HISTORY_ACQUISITION_VERSION ||
+    typeof observation.artifactDigest !== "string" ||
+    !HASH.test(observation.artifactDigest) ||
+    !isNonnegativeSafeInteger(observation.artifactByteCount) ||
+    observation.artifactByteCount === 0 ||
+    observation.artifactByteCount > MODEL_SLUG_HISTORY_ARTIFACT_MAX_BYTES ||
+    observation.readVerified !== true ||
+    observation.immutable !== true ||
+    projection.publicationId !== manifest.publicationId ||
+    projection.closureHash !== manifest.closureHash ||
+    projection.publicationBoundaryMs !== boundaryMs
+  )
+    throw new TypeError(
+      "model slug archive artifact proof v5 does not bind the trusted publication",
+    );
+  const result = {
+    publication_id: manifest.publicationId,
+    closure_hash: manifest.closureHash,
+    base_bundle_hash: manifest.bundleHash,
+    publication_boundary_ms: boundaryMs,
+    artifact_version: MODEL_SLUG_HISTORY_ARTIFACT_VERSION,
+    acquisition_version: MODEL_SLUG_HISTORY_ACQUISITION_VERSION,
+    projection_version: projection.projectionVersion,
+    artifact_digest: observation.artifactDigest as Sha256,
+    artifact_byte_count: observation.artifactByteCount,
+    source_history_count: projection.sourceHistoryCount,
+    source_history_hash: projection.sourceHistoryHash,
+    model_count: projection.modelCount,
+    mapping_count: projection.mappingCount,
+    current_mapping_count: projection.currentMappingCount,
+    historical_mapping_count: projection.historicalMappingCount,
+    mapping_inventory_hash: projection.mappingInventoryHash,
+    read_verified: true as const,
+    immutable: true as const,
+  };
+  Object.defineProperty(result, modelSlugArchiveArtifactProofV5Brand, {
+    value: true,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  trustedModelSlugArchiveArtifactProofsV5.set(
+    result,
+    Object.freeze({ manifest, projection }),
+  );
+  return Object.freeze(result) as ModelSlugArchiveArtifactProofV5;
+};
+
+const modelSlugServingArtifactProofV5Brand: unique symbol = Symbol(
+  "ModelSlugServingArtifactProofV5",
+);
+const trustedModelSlugServingArtifactProofsV5 = new WeakMap<
+  object,
+  Readonly<{
+    archiveProof: ModelSlugArchiveArtifactProofV5;
+    projection: TrustedModelSlugProjection;
+  }>
+>();
+
+export type ModelSlugServingArtifactProofV5 = Readonly<{
+  publication_id: PublicationId;
+  closure_hash: Sha256;
+  staging_revision: number;
+  storage_version: typeof MODEL_SLUG_HISTORY_STORAGE_VERSION;
+  artifact_digest: Sha256;
+  projection_version: typeof MODEL_SLUG_PROJECTION_VERSION;
+  model_count: number;
+  mapping_count: number;
+  current_mapping_count: number;
+  historical_mapping_count: number;
+  mapping_inventory_hash: Sha256;
+  queryable: true;
+  exact_parity: true;
+  readonly [modelSlugServingArtifactProofV5Brand]: true;
+}>;
+
+export const assertModelSlugServingArtifactProofV5: (
+  value: unknown,
+) => asserts value is ModelSlugServingArtifactProofV5 = (value) => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !(modelSlugServingArtifactProofV5Brand in value) ||
+    value[modelSlugServingArtifactProofV5Brand] !== true ||
+    !trustedModelSlugServingArtifactProofsV5.has(value)
+  )
+    throw new TypeError("model slug serving artifact proof v5 is not trusted");
+};
+
+export const projectModelSlugServingArtifactProofV5 = (input: {
+  readonly archiveProof: ModelSlugArchiveArtifactProofV5;
+  readonly projection: TrustedModelSlugProjection;
+  readonly observation: Readonly<{
+    publicationId: PublicationId;
+    closureHash: Sha256;
+    stagingRevision: number;
+    storageVersion: typeof MODEL_SLUG_HISTORY_STORAGE_VERSION;
+    artifactDigest: Sha256;
+    queryable: true;
+    exactParity: true;
+  }>;
+}): ModelSlugServingArtifactProofV5 => {
+  const snapshot = ownDataRecordSnapshot(
+    input,
+    ["archiveProof", "observation", "projection"],
+    "model slug serving artifact proof v5 input",
+  );
+  const archiveProof = snapshot.archiveProof;
+  const projection = snapshot.projection;
+  assertModelSlugArchiveArtifactProofV5(archiveProof);
+  assertModelSlugProjection(projection);
+  const archiveBinding =
+    trustedModelSlugArchiveArtifactProofsV5.get(archiveProof);
+  const observation = ownDataRecordSnapshot(
+    snapshot.observation,
+    [
+      "artifactDigest",
+      "closureHash",
+      "exactParity",
+      "publicationId",
+      "queryable",
+      "stagingRevision",
+      "storageVersion",
+    ],
+    "model slug serving artifact proof v5 observation",
+  );
+  if (
+    archiveBinding?.projection !== projection ||
+    observation.publicationId !== archiveProof.publication_id ||
+    observation.closureHash !== archiveProof.closure_hash ||
+    !isNonnegativeSafeInteger(observation.stagingRevision) ||
+    observation.storageVersion !== MODEL_SLUG_HISTORY_STORAGE_VERSION ||
+    observation.artifactDigest !== archiveProof.artifact_digest ||
+    observation.queryable !== true ||
+    observation.exactParity !== true
+  )
+    throw new TypeError(
+      "model slug serving artifact proof v5 does not bind its archive",
+    );
+  const result = {
+    publication_id: archiveProof.publication_id,
+    closure_hash: archiveProof.closure_hash,
+    staging_revision: observation.stagingRevision,
+    storage_version: MODEL_SLUG_HISTORY_STORAGE_VERSION,
+    artifact_digest: archiveProof.artifact_digest,
+    projection_version: projection.projectionVersion,
+    model_count: projection.modelCount,
+    mapping_count: projection.mappingCount,
+    current_mapping_count: projection.currentMappingCount,
+    historical_mapping_count: projection.historicalMappingCount,
+    mapping_inventory_hash: projection.mappingInventoryHash,
+    queryable: true as const,
+    exact_parity: true as const,
+  };
+  Object.defineProperty(result, modelSlugServingArtifactProofV5Brand, {
+    value: true,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  trustedModelSlugServingArtifactProofsV5.set(
+    result,
+    Object.freeze({ archiveProof, projection }),
+  );
+  return Object.freeze(result) as ModelSlugServingArtifactProofV5;
+};
+
+/** Proves that both pure V5 facts bind the exact operational projection. */
+export const assertModelSlugArtifactProofBindingV5 = (
+  archiveProof: ModelSlugArchiveArtifactProofV5,
+  servingProof: ModelSlugServingArtifactProofV5,
+  projection: TrustedModelSlugProjection,
+): void => {
+  assertModelSlugArchiveArtifactProofV5(archiveProof);
+  assertModelSlugServingArtifactProofV5(servingProof);
+  assertModelSlugProjection(projection);
+  const archiveBinding =
+    trustedModelSlugArchiveArtifactProofsV5.get(archiveProof);
+  const servingBinding =
+    trustedModelSlugServingArtifactProofsV5.get(servingProof);
+  if (
+    archiveBinding?.projection !== projection ||
+    servingBinding?.archiveProof !== archiveProof ||
+    servingBinding.projection !== projection
+  )
+    throw new TypeError("model slug artifact proof v5 binding differs");
+};
+
+const modelSlugArchiveProofFieldsV5 = (
+  proof: ModelSlugArchiveArtifactProofV5,
+): readonly CanonicalField[] => [
+  field("model_slug_artifact_version", "text", proof.artifact_version),
+  field("model_slug_acquisition_version", "text", proof.acquisition_version),
+  field("model_slug_projection_version", "text", proof.projection_version),
+  field("model_slug_artifact_digest", "digest", proof.artifact_digest),
+  field(
+    "model_slug_artifact_byte_count",
+    "integer",
+    String(proof.artifact_byte_count),
+  ),
+  field(
+    "model_slug_source_history_count",
+    "integer",
+    String(proof.source_history_count),
+  ),
+  field("model_slug_source_history_hash", "digest", proof.source_history_hash),
+  field("model_slug_model_count", "integer", String(proof.model_count)),
+  field("model_slug_mapping_count", "integer", String(proof.mapping_count)),
+  field(
+    "model_slug_current_mapping_count",
+    "integer",
+    String(proof.current_mapping_count),
+  ),
+  field(
+    "model_slug_historical_mapping_count",
+    "integer",
+    String(proof.historical_mapping_count),
+  ),
+  field(
+    "model_slug_mapping_inventory_hash",
+    "digest",
+    proof.mapping_inventory_hash,
+  ),
+  field("model_slug_read_verified", "boolean", "true"),
+  field("model_slug_immutable", "boolean", "true"),
+];
+
+const modelSlugServingProofFieldsV5 = (
+  proof: ModelSlugServingArtifactProofV5,
+): readonly CanonicalField[] => [
+  field("model_slug_storage_version", "text", proof.storage_version),
+  field("model_slug_serving_artifact_digest", "digest", proof.artifact_digest),
+  field(
+    "model_slug_serving_projection_version",
+    "text",
+    proof.projection_version,
+  ),
+  field("model_slug_serving_model_count", "integer", String(proof.model_count)),
+  field(
+    "model_slug_serving_mapping_count",
+    "integer",
+    String(proof.mapping_count),
+  ),
+  field(
+    "model_slug_serving_current_mapping_count",
+    "integer",
+    String(proof.current_mapping_count),
+  ),
+  field(
+    "model_slug_serving_historical_mapping_count",
+    "integer",
+    String(proof.historical_mapping_count),
+  ),
+  field(
+    "model_slug_serving_mapping_inventory_hash",
+    "digest",
+    proof.mapping_inventory_hash,
+  ),
+  field("model_slug_queryable", "boolean", "true"),
+  field("model_slug_exact_parity", "boolean", "true"),
+];
+
+export type ArchiveReceiptV5 = Readonly<
+  ArchiveReceipt & {
+    modelSlugArtifactVersion: typeof MODEL_SLUG_HISTORY_ARTIFACT_VERSION;
+    modelSlugAcquisitionVersion: typeof MODEL_SLUG_HISTORY_ACQUISITION_VERSION;
+    modelSlugProjectionVersion: typeof MODEL_SLUG_PROJECTION_VERSION;
+    modelSlugArtifactDigest: Sha256;
+    modelSlugArtifactByteCount: number;
+    modelSlugSourceHistoryCount: number;
+    modelSlugSourceHistoryHash: Sha256;
+    modelSlugModelCount: number;
+    modelSlugMappingCount: number;
+    modelSlugCurrentMappingCount: number;
+    modelSlugHistoricalMappingCount: number;
+    modelSlugMappingInventoryHash: Sha256;
+    modelSlugReadVerified: true;
+    modelSlugImmutable: true;
+  }
+>;
+
+export type ServingReceiptV5 = Readonly<
+  ServingReceipt & {
+    modelSlugStorageVersion: typeof MODEL_SLUG_HISTORY_STORAGE_VERSION;
+    modelSlugArtifactDigest: Sha256;
+    modelSlugProjectionVersion: typeof MODEL_SLUG_PROJECTION_VERSION;
+    modelSlugModelCount: number;
+    modelSlugMappingCount: number;
+    modelSlugCurrentMappingCount: number;
+    modelSlugHistoricalMappingCount: number;
+    modelSlugMappingInventoryHash: Sha256;
+    modelSlugQueryable: true;
+    modelSlugExactParity: true;
+  }
+>;
+
+export type ProbeReceiptV5 = Readonly<
+  ProbeReceipt & {
+    probeSetVersion: typeof READINESS_PROBE_SET_VERSION_V5;
+    modelSlugLookupPassed: true;
+  }
+>;
+
+export type ReadinessReceiptV5 =
+  ArchiveReceiptV5 | ServingReceiptV5 | VectorReceipt | ProbeReceiptV5;
+
+const archiveReceiptV5Keys = [
+  "kind",
+  "binding",
+  "observedAt",
+  "retainedBundleHash",
+  "immutable",
+  "modelSlugArtifactVersion",
+  "modelSlugAcquisitionVersion",
+  "modelSlugProjectionVersion",
+  "modelSlugArtifactDigest",
+  "modelSlugArtifactByteCount",
+  "modelSlugSourceHistoryCount",
+  "modelSlugSourceHistoryHash",
+  "modelSlugModelCount",
+  "modelSlugMappingCount",
+  "modelSlugCurrentMappingCount",
+  "modelSlugHistoricalMappingCount",
+  "modelSlugMappingInventoryHash",
+  "modelSlugReadVerified",
+  "modelSlugImmutable",
+] as const;
+
+const servingReceiptV5Keys = [
+  "kind",
+  "binding",
+  "observedAt",
+  "enabledProviderCount",
+  "enabledProviderScopeHash",
+  "providerSliceCount",
+  "providerSliceHash",
+  "providerAttributionCount",
+  "providerAttributionHash",
+  "resourceCount",
+  "exactDocumentCount",
+  "resourceInventoryHash",
+  "exactSearchInventoryHash",
+  "ftsBuildVersion",
+  "ftsDocumentCount",
+  "ftsQueryable",
+  "foreignKeysValid",
+  "contentHashesValid",
+  "unavailableProviderIsolationValid",
+  "modelSlugStorageVersion",
+  "modelSlugArtifactDigest",
+  "modelSlugProjectionVersion",
+  "modelSlugModelCount",
+  "modelSlugMappingCount",
+  "modelSlugCurrentMappingCount",
+  "modelSlugHistoricalMappingCount",
+  "modelSlugMappingInventoryHash",
+  "modelSlugQueryable",
+  "modelSlugExactParity",
+] as const;
+
+const vectorReceiptV5Keys = [
+  "kind",
+  "binding",
+  "observedAt",
+  "namespace",
+  "documentCount",
+  "verifiedDocumentCount",
+  "vectorInventoryHash",
+  "visibilityProbeVersion",
+  "mutationId",
+  "allIdsPresent",
+  "allNamespacesMatch",
+  "queryable",
+] as const;
+
+const probeReceiptV5Keys = [
+  "kind",
+  "binding",
+  "observedAt",
+  "probeSetVersion",
+  "integrityPassed",
+  "evidenceCoveragePassed",
+  "exactSearchPassed",
+  "semanticSearchPassed",
+  "structuredFilterPassed",
+  "neutralityPassed",
+  "versionIsolationPassed",
+  "modelSlugLookupPassed",
+] as const;
+
+const snapshotReadinessReceiptV5 = (
+  value: unknown,
+): Readonly<{ receipt: ReadinessReceiptV5; base: ReadinessReceipt }> => {
+  const record = inputRecord(value, "readiness receipt v5");
+  const kind = record.kind;
+  if (
+    kind !== "archive" &&
+    kind !== "serving" &&
+    kind !== "vectors" &&
+    kind !== "probes"
+  )
+    throw new TypeError("readiness receipt v5 kind is invalid");
+  const keys =
+    kind === "archive"
+      ? archiveReceiptV5Keys
+      : kind === "serving"
+        ? servingReceiptV5Keys
+        : kind === "vectors"
+          ? vectorReceiptV5Keys
+          : probeReceiptV5Keys;
+  const snapshot = ownDataRecordSnapshot(record, keys, "readiness receipt v5");
+  const common = {
+    kind,
+    binding: snapshot.binding,
+    observedAt: snapshot.observedAt,
+  };
+  let base: ReadinessReceipt;
+  switch (kind) {
+    case "archive":
+      base = snapshotReadinessReceipt({
+        ...common,
+        retainedBundleHash: snapshot.retainedBundleHash,
+        immutable: snapshot.immutable,
+      });
+      break;
+    case "serving":
+      base = snapshotReadinessReceipt({
+        ...common,
+        enabledProviderCount: snapshot.enabledProviderCount,
+        enabledProviderScopeHash: snapshot.enabledProviderScopeHash,
+        providerSliceCount: snapshot.providerSliceCount,
+        providerSliceHash: snapshot.providerSliceHash,
+        providerAttributionCount: snapshot.providerAttributionCount,
+        providerAttributionHash: snapshot.providerAttributionHash,
+        resourceCount: snapshot.resourceCount,
+        exactDocumentCount: snapshot.exactDocumentCount,
+        resourceInventoryHash: snapshot.resourceInventoryHash,
+        exactSearchInventoryHash: snapshot.exactSearchInventoryHash,
+        ftsBuildVersion: snapshot.ftsBuildVersion,
+        ftsDocumentCount: snapshot.ftsDocumentCount,
+        ftsQueryable: snapshot.ftsQueryable,
+        foreignKeysValid: snapshot.foreignKeysValid,
+        contentHashesValid: snapshot.contentHashesValid,
+        unavailableProviderIsolationValid:
+          snapshot.unavailableProviderIsolationValid,
+      });
+      break;
+    case "vectors":
+      base = snapshotReadinessReceipt({
+        ...common,
+        namespace: snapshot.namespace,
+        documentCount: snapshot.documentCount,
+        verifiedDocumentCount: snapshot.verifiedDocumentCount,
+        vectorInventoryHash: snapshot.vectorInventoryHash,
+        visibilityProbeVersion: snapshot.visibilityProbeVersion,
+        mutationId: snapshot.mutationId,
+        allIdsPresent: snapshot.allIdsPresent,
+        allNamespacesMatch: snapshot.allNamespacesMatch,
+        queryable: snapshot.queryable,
+      });
+      break;
+    case "probes":
+      base = snapshotReadinessReceipt({
+        ...common,
+        probeSetVersion: snapshot.probeSetVersion,
+        integrityPassed: snapshot.integrityPassed,
+        evidenceCoveragePassed: snapshot.evidenceCoveragePassed,
+        exactSearchPassed: snapshot.exactSearchPassed,
+        semanticSearchPassed: snapshot.semanticSearchPassed,
+        structuredFilterPassed: snapshot.structuredFilterPassed,
+        neutralityPassed: snapshot.neutralityPassed,
+        versionIsolationPassed: snapshot.versionIsolationPassed,
+      });
+      break;
+  }
+  return Object.freeze({
+    receipt: Object.freeze({ ...base, ...snapshot }) as ReadinessReceiptV5,
+    base,
+  });
+};
+
+const readinessReceiptProofV5Brand: unique symbol = Symbol(
+  "ReadinessReceiptProofV5",
+);
+interface ReadinessReceiptProofV5Binding {
+  readonly receipt: ReadinessReceiptV5;
+  readonly base: ReadinessReceipt;
+  readonly providerProof: ProviderSearchArtifactProofV2 | null;
+  readonly modelVariantNameProof: ModelVariantNameSearchQueryableArtifactProofV3 | null;
+  readonly providerModelIdProof: ProviderModelIdSearchQueryableArtifactProofV4 | null;
+  readonly modelSlugArchiveProof: ModelSlugArchiveArtifactProofV5 | null;
+  readonly modelSlugServingProof: ModelSlugServingArtifactProofV5 | null;
+}
+const trustedReadinessReceiptProofsV5 = new WeakMap<
+  object,
+  ReadinessReceiptProofV5Binding
+>();
+
+export type ReadinessReceiptProofV5 = Readonly<{
+  kind: ReadinessReceiptV5["kind"];
+  receipt_version: typeof READINESS_RECEIPT_VERSION_V5;
+  receipt_hash: Sha256;
+  publication_id: PublicationId;
+  environment: Exclude<PublicationEnvironment, "test">;
+  closure_hash: Sha256;
+  bundle_hash: Sha256;
+  observed_at_ms: number;
+  readonly [readinessReceiptProofV5Brand]: true;
+}>;
+
+export const assertReadinessReceiptProofV5: (
+  value: unknown,
+) => asserts value is ReadinessReceiptProofV5 = (value) => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !(readinessReceiptProofV5Brand in value) ||
+    value[readinessReceiptProofV5Brand] !== true ||
+    !trustedReadinessReceiptProofsV5.has(value)
+  )
+    throw new TypeError("readiness receipt proof v5 is not trusted");
+};
+
+export const projectReadinessReceiptProofV5 = async (input: {
+  readonly receipt: ReadinessReceiptV5;
+  readonly providerProof: ProviderSearchArtifactProofV2 | null;
+  readonly modelVariantNameProof: ModelVariantNameSearchQueryableArtifactProofV3 | null;
+  readonly providerModelIdProof: ProviderModelIdSearchQueryableArtifactProofV4 | null;
+  readonly modelSlugArchiveProof: ModelSlugArchiveArtifactProofV5 | null;
+  readonly modelSlugServingProof: ModelSlugServingArtifactProofV5 | null;
+}): Promise<ReadinessReceiptProofV5> => {
+  const snapshot = ownDataRecordSnapshot(
+    input,
+    [
+      "modelSlugArchiveProof",
+      "modelSlugServingProof",
+      "modelVariantNameProof",
+      "providerModelIdProof",
+      "providerProof",
+      "receipt",
+    ],
+    "readiness receipt proof v5 input",
+  );
+  const { receipt, base } = snapshotReadinessReceiptV5(snapshot.receipt);
+  const providerProof = snapshot.providerProof;
+  const modelVariantNameProof = snapshot.modelVariantNameProof;
+  const providerModelIdProof = snapshot.providerModelIdProof;
+  const modelSlugArchiveProof = snapshot.modelSlugArchiveProof;
+  const modelSlugServingProof = snapshot.modelSlugServingProof;
+  if (!SERVING_PUBLICATION_ENVIRONMENTS.has(receipt.binding.environment))
+    throw new TypeError("readiness receipt v5 environment is invalid");
+  let servingFields: readonly CanonicalField[] = [];
+  let kindFields: readonly CanonicalField[] = [];
+  if (receipt.kind === "archive") {
+    assertModelSlugArchiveArtifactProofV5(modelSlugArchiveProof);
+    const archiveBinding = trustedModelSlugArchiveArtifactProofsV5.get(
+      modelSlugArchiveProof,
+    );
+    if (
+      archiveBinding === undefined ||
+      providerProof !== null ||
+      modelVariantNameProof !== null ||
+      providerModelIdProof !== null ||
+      modelSlugServingProof !== null ||
+      receipt.binding.publicationId !== modelSlugArchiveProof.publication_id ||
+      receipt.binding.closureHash !== modelSlugArchiveProof.closure_hash ||
+      receipt.binding.bundleHash !== modelSlugArchiveProof.base_bundle_hash ||
+      receipt.retainedBundleHash !== modelSlugArchiveProof.base_bundle_hash ||
+      !receipt.immutable ||
+      runtimeValueDiffers(
+        receipt.modelSlugArtifactVersion,
+        modelSlugArchiveProof.artifact_version,
+      ) ||
+      runtimeValueDiffers(
+        receipt.modelSlugAcquisitionVersion,
+        modelSlugArchiveProof.acquisition_version,
+      ) ||
+      runtimeValueDiffers(
+        receipt.modelSlugProjectionVersion,
+        modelSlugArchiveProof.projection_version,
+      ) ||
+      receipt.modelSlugArtifactDigest !==
+        modelSlugArchiveProof.artifact_digest ||
+      receipt.modelSlugArtifactByteCount !==
+        modelSlugArchiveProof.artifact_byte_count ||
+      receipt.modelSlugSourceHistoryCount !==
+        modelSlugArchiveProof.source_history_count ||
+      receipt.modelSlugSourceHistoryHash !==
+        modelSlugArchiveProof.source_history_hash ||
+      receipt.modelSlugModelCount !== modelSlugArchiveProof.model_count ||
+      receipt.modelSlugMappingCount !== modelSlugArchiveProof.mapping_count ||
+      receipt.modelSlugCurrentMappingCount !==
+        modelSlugArchiveProof.current_mapping_count ||
+      receipt.modelSlugHistoricalMappingCount !==
+        modelSlugArchiveProof.historical_mapping_count ||
+      receipt.modelSlugMappingInventoryHash !==
+        modelSlugArchiveProof.mapping_inventory_hash ||
+      runtimeValueDiffers(receipt.modelSlugReadVerified, true) ||
+      runtimeValueDiffers(receipt.modelSlugImmutable, true)
+    )
+      throw new TypeError(
+        "archive receipt v5 does not bind the model slug archive",
+      );
+    kindFields = modelSlugArchiveProofFieldsV5(modelSlugArchiveProof);
+  } else if (receipt.kind === "serving") {
+    assertProviderSearchArtifactProofV2(providerProof);
+    assertModelVariantNameSearchQueryableArtifactProofV3(modelVariantNameProof);
+    assertProviderModelIdSearchQueryableArtifactProofV4(providerModelIdProof);
+    assertModelSlugServingArtifactProofV5(modelSlugServingProof);
+    const providerManifest =
+      trustedProviderSearchArtifactProofsV2.get(providerProof)?.manifest;
+    const modelManifest =
+      trustedModelVariantNameSearchQueryableArtifactProofsV3.get(
+        modelVariantNameProof,
+      )?.manifest;
+    const providerModelIdManifest =
+      trustedProviderModelIdSearchQueryableArtifactProofsV4.get(
+        providerModelIdProof,
+      )?.manifest;
+    const slugBinding = trustedModelSlugServingArtifactProofsV5.get(
+      modelSlugServingProof,
+    );
+    if (
+      modelSlugArchiveProof !== null ||
+      providerManifest === undefined ||
+      modelManifest === undefined ||
+      providerModelIdManifest === undefined ||
+      slugBinding === undefined ||
+      providerManifest.publicationId !== receipt.binding.publicationId ||
+      providerManifest.closureHash !== receipt.binding.closureHash ||
+      modelManifest.publicationId !== receipt.binding.publicationId ||
+      modelManifest.closureHash !== receipt.binding.closureHash ||
+      providerModelIdManifest.publicationId !== receipt.binding.publicationId ||
+      providerModelIdManifest.closureHash !== receipt.binding.closureHash ||
+      modelSlugServingProof.publication_id !== receipt.binding.publicationId ||
+      modelSlugServingProof.closure_hash !== receipt.binding.closureHash ||
+      receipt.enabledProviderCount !==
+        providerManifest.enabledProviderIds.length ||
+      receipt.providerSliceCount !== providerManifest.providerSlices.length ||
+      receipt.providerAttributionCount !==
+        providerManifest.providerAttributions.length ||
+      receipt.resourceCount !== providerManifest.resources.length ||
+      receipt.exactDocumentCount !== providerManifest.searchDocuments.length ||
+      receipt.resourceInventoryHash !==
+        providerManifest.resourceInventoryHash ||
+      receipt.exactSearchInventoryHash !==
+        providerManifest.exactSearchInventoryHash ||
+      runtimeValueDiffers(
+        receipt.modelSlugStorageVersion,
+        modelSlugServingProof.storage_version,
+      ) ||
+      receipt.modelSlugArtifactDigest !==
+        modelSlugServingProof.artifact_digest ||
+      runtimeValueDiffers(
+        receipt.modelSlugProjectionVersion,
+        modelSlugServingProof.projection_version,
+      ) ||
+      receipt.modelSlugModelCount !== modelSlugServingProof.model_count ||
+      receipt.modelSlugMappingCount !== modelSlugServingProof.mapping_count ||
+      receipt.modelSlugCurrentMappingCount !==
+        modelSlugServingProof.current_mapping_count ||
+      receipt.modelSlugHistoricalMappingCount !==
+        modelSlugServingProof.historical_mapping_count ||
+      receipt.modelSlugMappingInventoryHash !==
+        modelSlugServingProof.mapping_inventory_hash ||
+      runtimeValueDiffers(receipt.modelSlugQueryable, true) ||
+      runtimeValueDiffers(receipt.modelSlugExactParity, true)
+    )
+      throw new TypeError(
+        "serving receipt v5 does not bind the trusted publication",
+      );
+    servingFields = Object.freeze([
+      ...providerSearchProofFieldsV2(providerProof),
+      ...modelVariantNameSearchProofFieldsV3(modelVariantNameProof),
+      ...providerModelIdSearchProofFieldsV4(providerModelIdProof),
+      ...modelSlugServingProofFieldsV5(modelSlugServingProof),
+    ]);
+  } else {
+    if (
+      providerProof !== null ||
+      modelVariantNameProof !== null ||
+      providerModelIdProof !== null ||
+      modelSlugArchiveProof !== null ||
+      modelSlugServingProof !== null
+    )
+      throw new TypeError("non-artifact receipt v5 carries artifact proof");
+    if (receipt.kind === "probes") {
+      if (
+        runtimeValueDiffers(
+          receipt.probeSetVersion,
+          READINESS_PROBE_SET_VERSION_V5,
+        ) ||
+        runtimeValueDiffers(receipt.modelSlugLookupPassed, true)
+      )
+        throw new TypeError("readiness receipt v5 probe set is invalid");
+      kindFields = Object.freeze([
+        field("model_slug_lookup_passed", "boolean", "true"),
+      ]);
+    }
+  }
+  const proof = {
+    kind: receipt.kind,
+    receipt_version: READINESS_RECEIPT_VERSION_V5,
+    receipt_hash: await readinessReceiptHash(
+      base,
+      READINESS_RECEIPT_VERSION_V5,
+      servingFields,
+      kindFields,
+    ),
+    publication_id: receipt.binding.publicationId,
+    environment: receipt.binding.environment as Exclude<
+      PublicationEnvironment,
+      "test"
+    >,
+    closure_hash: receipt.binding.closureHash,
+    bundle_hash: receipt.binding.bundleHash,
+    observed_at_ms: assertTimestamp(
+      receipt.observedAt,
+      "readiness receipt v5 observation time",
+    ),
+  };
+  Object.defineProperty(proof, readinessReceiptProofV5Brand, {
+    value: true,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  trustedReadinessReceiptProofsV5.set(
+    proof,
+    Object.freeze({
+      receipt,
+      base,
+      providerProof,
+      modelVariantNameProof,
+      providerModelIdProof,
+      modelSlugArchiveProof,
+      modelSlugServingProof,
+    }),
+  );
+  return Object.freeze(proof) as ReadinessReceiptProofV5;
+};
+
+export type ServingReadinessAttestationProjectionV5 = Readonly<{
+  publication_id: PublicationId;
+  environment: Exclude<PublicationEnvironment, "test">;
+  closure_hash: Sha256;
+  bundle_hash: Sha256;
+  evaluator_version: typeof READINESS_EVALUATOR_VERSION_V5;
+  ready_at_ms: number;
+  maximum_receipt_age_ms: number;
+  effective_valid_until_ms: number;
+  archive_observed_at_ms: number;
+  serving_observed_at_ms: number;
+  vector_observed_at_ms: number;
+  probes_observed_at_ms: number;
+  archive_receipt_hash: Sha256;
+  serving_receipt_hash: Sha256;
+  vector_receipt_hash: Sha256;
+  probes_receipt_hash: Sha256;
+  attestation_hash: Sha256;
+}>;
+
+const servingReadinessProofV5Brand: unique symbol = Symbol(
+  "ServingReadinessProofV5",
+);
+const trustedServingReadinessProofsV5 = new WeakSet<object>();
+
+export type ServingReadinessProofV5 = Readonly<{
+  receipts: readonly ReadinessReceiptProofV5[];
+  attestation: ServingReadinessAttestationProjectionV5;
+  readonly [servingReadinessProofV5Brand]: true;
+}>;
+
+export const assertServingReadinessProofV5: (
+  value: unknown,
+) => asserts value is ServingReadinessProofV5 = (value) => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !(servingReadinessProofV5Brand in value) ||
+    value[servingReadinessProofV5Brand] !== true ||
+    !trustedServingReadinessProofsV5.has(value)
+  )
+    throw new TypeError("serving readiness proof v5 is not trusted");
+};
+
+export const projectServingReadinessProofV5 = async (input: {
+  readonly manifest: TrustedImmutablePublicationManifest;
+  readonly receiptProofs: readonly ReadinessReceiptProofV5[];
+  readonly environment: Exclude<PublicationEnvironment, "test">;
+  readonly readyAtMs: number;
+  readonly maximumReceiptAgeMs: number;
+}): Promise<ServingReadinessProofV5> => {
+  const snapshot = ownDataRecordSnapshot(
+    input,
+    [
+      "environment",
+      "manifest",
+      "maximumReceiptAgeMs",
+      "readyAtMs",
+      "receiptProofs",
+    ],
+    "serving readiness proof v5 input",
+  );
+  const manifest = snapshot.manifest;
+  assertImmutablePublicationManifest(manifest);
+  const receiptProofInputs = denseArraySnapshot(
+    snapshot.receiptProofs,
+    4,
+    "serving readiness proof v5 receipts",
+  );
+  if (
+    receiptProofInputs.length !== 4 ||
+    typeof snapshot.environment !== "string" ||
+    !SERVING_PUBLICATION_ENVIRONMENTS.has(snapshot.environment)
+  )
+    throw new TypeError("serving readiness proof v5 input is invalid");
+  const receiptProofs: ReadinessReceiptProofV5[] = [];
+  for (const proof of receiptProofInputs) {
+    assertReadinessReceiptProofV5(proof);
+    receiptProofs.push(proof);
+  }
+  const byKind = new Map(
+    receiptProofs.map((proof) => [proof.kind, proof] as const),
+  );
+  if (byKind.size !== 4)
+    throw new TypeError("serving readiness proof v5 receipt set is incomplete");
+  const requireProof = (
+    kind: ReadinessReceiptV5["kind"],
+  ): ReadinessReceiptProofV5 => {
+    const proof = byKind.get(kind);
+    if (proof === undefined)
+      throw new TypeError(`readiness receipt v5 ${kind} is missing`);
+    return proof;
+  };
+  const archive = requireProof("archive");
+  const serving = requireProof("serving");
+  const vectors = requireProof("vectors");
+  const probes = requireProof("probes");
+  const environment = snapshot.environment as Exclude<
+    PublicationEnvironment,
+    "test"
+  >;
+  if (
+    receiptProofs.some(
+      (proof) =>
+        proof.publication_id !== manifest.publicationId ||
+        proof.closure_hash !== manifest.closureHash ||
+        proof.bundle_hash !== manifest.bundleHash ||
+        proof.environment !== environment,
+    )
+  )
+    throw new TypeError("readiness receipt v5 bindings do not match");
+  const archiveBinding = trustedReadinessReceiptProofsV5.get(archive);
+  const servingBinding = trustedReadinessReceiptProofsV5.get(serving);
+  const archiveSlugProof = archiveBinding?.modelSlugArchiveProof;
+  const servingProviderProof = servingBinding?.providerProof;
+  const servingModelProof = servingBinding?.modelVariantNameProof;
+  const servingProviderModelIdProof = servingBinding?.providerModelIdProof;
+  const servingSlugProof = servingBinding?.modelSlugServingProof;
+  if (
+    archiveSlugProof === null ||
+    archiveSlugProof === undefined ||
+    servingProviderProof === null ||
+    servingProviderProof === undefined ||
+    servingModelProof === null ||
+    servingModelProof === undefined ||
+    servingProviderModelIdProof === null ||
+    servingProviderModelIdProof === undefined ||
+    servingSlugProof === null ||
+    servingSlugProof === undefined
+  )
+    throw new TypeError("serving readiness proof v5 lacks artifact evidence");
+  const slugServingBinding =
+    trustedModelSlugServingArtifactProofsV5.get(servingSlugProof);
+  if (slugServingBinding?.archiveProof !== archiveSlugProof)
+    throw new TypeError(
+      "serving readiness proof v5 uses different model slug artifacts",
+    );
+  const receipts = receiptProofs.map((proof) => {
+    const binding = trustedReadinessReceiptProofsV5.get(proof);
+    if (binding === undefined)
+      throw new TypeError("readiness receipt proof v5 is not trusted");
+    return binding.base.kind === "probes"
+      ? ({
+          ...binding.base,
+          probeSetVersion: READINESS_PROBE_SET_VERSION,
+        } satisfies ProbeReceipt)
+      : binding.base;
+  });
+  const readyAtMs = snapshot.readyAtMs;
+  const maximumReceiptAgeMs = snapshot.maximumReceiptAgeMs;
+  const readyAt = timestampFromMs(readyAtMs as number, "readiness v5 time");
+  const decision = await evaluateReadiness({
+    manifest,
+    receipts,
+    environment,
+    now: readyAt,
+    maximumReceiptAgeMs: maximumReceiptAgeMs as number,
+  });
+  if (decision.decision === "blocked")
+    throw new TypeError(
+      `serving readiness proof v5 is blocked: ${decision.failureCodes.join(",")}`,
+    );
+  const effectiveValidUntilMs =
+    Math.min(
+      archive.observed_at_ms,
+      serving.observed_at_ms,
+      vectors.observed_at_ms,
+      probes.observed_at_ms,
+    ) + (maximumReceiptAgeMs as number);
+  assertSafeInteger(
+    effectiveValidUntilMs,
+    readyAtMs as number,
+    "readiness v5 effective validity deadline",
+  );
+  const effectiveValidUntil = timestampFromMs(
+    effectiveValidUntilMs,
+    "readiness v5 effective validity deadline",
+  );
+  const attestationHash = await digest("publication-readiness-attestation", [
+    field("evaluator_version", "text", READINESS_EVALUATOR_VERSION_V5),
+    field("environment", "text", environment),
+    field("publication_id", "identifier", manifest.publicationId),
+    field("closure_hash", "digest", manifest.closureHash),
+    field("bundle_hash", "digest", manifest.bundleHash),
+    field("ready_at", "timestamp", readyAt),
+    field("maximum_receipt_age_ms", "integer", String(maximumReceiptAgeMs)),
+    field("effective_valid_until", "timestamp", effectiveValidUntil),
+    field("archive_receipt_hash", "digest", archive.receipt_hash),
+    field("serving_receipt_hash", "digest", serving.receipt_hash),
+    field("vector_receipt_hash", "digest", vectors.receipt_hash),
+    field("probes_receipt_hash", "digest", probes.receipt_hash),
+  ]);
+  const attestation = Object.freeze({
+    publication_id: manifest.publicationId,
+    environment,
+    closure_hash: manifest.closureHash,
+    bundle_hash: manifest.bundleHash,
+    evaluator_version: READINESS_EVALUATOR_VERSION_V5,
+    ready_at_ms: readyAtMs as number,
+    maximum_receipt_age_ms: maximumReceiptAgeMs as number,
+    effective_valid_until_ms: effectiveValidUntilMs,
+    archive_observed_at_ms: archive.observed_at_ms,
+    serving_observed_at_ms: serving.observed_at_ms,
+    vector_observed_at_ms: vectors.observed_at_ms,
+    probes_observed_at_ms: probes.observed_at_ms,
+    archive_receipt_hash: archive.receipt_hash,
+    serving_receipt_hash: serving.receipt_hash,
+    vector_receipt_hash: vectors.receipt_hash,
+    probes_receipt_hash: probes.receipt_hash,
+    attestation_hash: attestationHash,
+  } satisfies ServingReadinessAttestationProjectionV5);
+  const result = {
+    receipts: Object.freeze(receiptProofs),
+    attestation,
+  };
+  Object.defineProperty(result, servingReadinessProofV5Brand, {
+    value: true,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  trustedServingReadinessProofsV5.add(result);
+  return Object.freeze(result) as ServingReadinessProofV5;
+};
+
+export type ServingArchiveReceiptRowV5 = Readonly<
+  ServingArchiveReceiptRow & {
+    model_slug_artifact_version: typeof MODEL_SLUG_HISTORY_ARTIFACT_VERSION;
+    model_slug_acquisition_version: typeof MODEL_SLUG_HISTORY_ACQUISITION_VERSION;
+    model_slug_projection_version: typeof MODEL_SLUG_PROJECTION_VERSION;
+    model_slug_artifact_digest: Sha256;
+    model_slug_artifact_byte_count: number;
+    model_slug_source_history_count: number;
+    model_slug_source_history_hash: Sha256;
+    model_slug_model_count: number;
+    model_slug_mapping_count: number;
+    model_slug_current_mapping_count: number;
+    model_slug_historical_mapping_count: number;
+    model_slug_mapping_inventory_hash: Sha256;
+    model_slug_read_verified: 1;
+    model_slug_immutable: 1;
+  }
+>;
+
+export type ServingReceiptRowV5 = Readonly<
+  ServingReceiptRowV4 & {
+    model_slug_storage_version: typeof MODEL_SLUG_HISTORY_STORAGE_VERSION;
+    model_slug_artifact_digest: Sha256;
+    model_slug_projection_version: typeof MODEL_SLUG_PROJECTION_VERSION;
+    model_slug_model_count: number;
+    model_slug_mapping_count: number;
+    model_slug_current_mapping_count: number;
+    model_slug_historical_mapping_count: number;
+    model_slug_mapping_inventory_hash: Sha256;
+    model_slug_queryable: 1;
+    model_slug_exact_parity: 1;
+  }
+>;
+
+export type ServingProbeReceiptRowV5 = Readonly<
+  ServingProbeReceiptRow & { model_slug_lookup_passed: 1 }
+>;
+
+export type ServingReadinessReceiptRowsV5 = Readonly<{
+  bindings: readonly ServingReadinessReceiptBindingRow[];
+  archives: readonly ServingArchiveReceiptRowV5[];
+  servings: readonly ServingReceiptRowV5[];
+  vectors: readonly ServingVectorReceiptRow[];
+  probes: readonly ServingProbeReceiptRowV5[];
+}>;
+
+export type ServingReadinessPersistenceV5 = Readonly<{
+  receiptRows: ServingReadinessReceiptRowsV5;
+  attestation: ServingReadinessAttestationProjectionV5;
+  modelSlugArchiveProof: ModelSlugArchiveArtifactProofV5;
+  modelSlugServingProof: ModelSlugServingArtifactProofV5;
+}>;
+
+export const readServingReadinessPersistenceV5 = (
+  proof: ServingReadinessProofV5,
+): ServingReadinessPersistenceV5 => {
+  assertServingReadinessProofV5(proof);
+  const bindings: ServingReadinessReceiptBindingRow[] = [];
+  const archives: ServingArchiveReceiptRowV5[] = [];
+  const servings: ServingReceiptRowV5[] = [];
+  const vectors: ServingVectorReceiptRow[] = [];
+  const probes: ServingProbeReceiptRowV5[] = [];
+  let modelSlugArchiveProof: ModelSlugArchiveArtifactProofV5 | null = null;
+  let modelSlugServingProof: ModelSlugServingArtifactProofV5 | null = null;
+  for (const receiptProof of proof.receipts) {
+    const binding = trustedReadinessReceiptProofsV5.get(receiptProof);
+    if (binding === undefined)
+      throw new TypeError("readiness receipt proof v5 is not trusted");
+    const receipt = binding.receipt;
+    bindings.push(
+      Object.freeze({
+        publication_id: receiptProof.publication_id,
+        kind: receipt.kind,
+        receipt_version: receiptProof.receipt_version,
+        receipt_hash: receiptProof.receipt_hash,
+        environment: receiptProof.environment,
+        closure_hash: receiptProof.closure_hash,
+        bundle_hash: receiptProof.bundle_hash,
+        schema_version: receipt.binding.schemaVersion,
+        build_commit: receipt.binding.buildCommit,
+        observed_at_ms: receiptProof.observed_at_ms,
+      }),
+    );
+    switch (receipt.kind) {
+      case "archive": {
+        const slugProof = binding.modelSlugArchiveProof;
+        assertModelSlugArchiveArtifactProofV5(slugProof);
+        modelSlugArchiveProof = slugProof;
+        archives.push(
+          Object.freeze({
+            publication_id: receiptProof.publication_id,
+            kind: "archive",
+            retained_bundle_hash: receipt.retainedBundleHash,
+            immutable: 1,
+            model_slug_artifact_version: slugProof.artifact_version,
+            model_slug_acquisition_version: slugProof.acquisition_version,
+            model_slug_projection_version: slugProof.projection_version,
+            model_slug_artifact_digest: slugProof.artifact_digest,
+            model_slug_artifact_byte_count: slugProof.artifact_byte_count,
+            model_slug_source_history_count: slugProof.source_history_count,
+            model_slug_source_history_hash: slugProof.source_history_hash,
+            model_slug_model_count: slugProof.model_count,
+            model_slug_mapping_count: slugProof.mapping_count,
+            model_slug_current_mapping_count: slugProof.current_mapping_count,
+            model_slug_historical_mapping_count:
+              slugProof.historical_mapping_count,
+            model_slug_mapping_inventory_hash: slugProof.mapping_inventory_hash,
+            model_slug_read_verified: 1,
+            model_slug_immutable: 1,
+          }),
+        );
+        break;
+      }
+      case "serving": {
+        const providerProof = binding.providerProof;
+        const modelProof = binding.modelVariantNameProof;
+        const providerModelIdProof = binding.providerModelIdProof;
+        const slugProof = binding.modelSlugServingProof;
+        assertProviderSearchArtifactProofV2(providerProof);
+        assertModelVariantNameSearchQueryableArtifactProofV3(modelProof);
+        assertProviderModelIdSearchQueryableArtifactProofV4(
+          providerModelIdProof,
+        );
+        assertModelSlugServingArtifactProofV5(slugProof);
+        modelSlugServingProof = slugProof;
+        servings.push(
+          Object.freeze({
+            publication_id: receiptProof.publication_id,
+            kind: "serving",
+            enabled_provider_count: receipt.enabledProviderCount,
+            enabled_provider_scope_hash: receipt.enabledProviderScopeHash,
+            provider_slice_count: receipt.providerSliceCount,
+            provider_slice_hash: receipt.providerSliceHash,
+            provider_attribution_count: receipt.providerAttributionCount,
+            provider_attribution_hash: receipt.providerAttributionHash,
+            resource_count: receipt.resourceCount,
+            exact_document_count: receipt.exactDocumentCount,
+            resource_inventory_hash: receipt.resourceInventoryHash,
+            exact_search_inventory_hash: receipt.exactSearchInventoryHash,
+            fts_build_version: receipt.ftsBuildVersion,
+            fts_document_count: receipt.ftsDocumentCount,
+            fts_queryable: 1,
+            foreign_keys_valid: 1,
+            content_hashes_valid: 1,
+            unavailable_provider_isolation_valid: 1,
+            provider_search_projection_version:
+              providerProof.provider_search_projection_version,
+            provider_search_document_count:
+              providerProof.provider_search_document_count,
+            provider_search_inventory_hash:
+              providerProof.provider_search_inventory_hash,
+            provider_search_fts_build_version:
+              providerProof.provider_search_fts_build_version,
+            provider_search_fts_document_count:
+              providerProof.provider_search_fts_document_count,
+            provider_search_fts_queryable: 1,
+            provider_search_exact_parity: 1,
+            model_variant_name_projection_version:
+              modelProof.model_variant_name_projection_version,
+            model_variant_name_document_count:
+              modelProof.model_variant_name_document_count,
+            model_variant_name_inventory_hash:
+              modelProof.model_variant_name_inventory_hash,
+            model_variant_name_storage_version:
+              modelProof.model_variant_name_storage_version,
+            model_variant_name_storage_document_count:
+              modelProof.model_variant_name_storage_document_count,
+            model_variant_name_storage_queryable: 1,
+            model_variant_name_storage_exact_parity: 1,
+            provider_model_id_projection_version:
+              providerModelIdProof.provider_model_id_projection_version,
+            provider_model_id_document_count:
+              providerModelIdProof.provider_model_id_document_count,
+            provider_model_id_inventory_hash:
+              providerModelIdProof.provider_model_id_inventory_hash,
+            provider_model_id_storage_version:
+              providerModelIdProof.provider_model_id_storage_version,
+            provider_model_id_storage_document_count:
+              providerModelIdProof.provider_model_id_storage_document_count,
+            provider_model_id_storage_queryable: 1,
+            provider_model_id_storage_exact_parity: 1,
+            model_slug_storage_version: slugProof.storage_version,
+            model_slug_artifact_digest: slugProof.artifact_digest,
+            model_slug_projection_version: slugProof.projection_version,
+            model_slug_model_count: slugProof.model_count,
+            model_slug_mapping_count: slugProof.mapping_count,
+            model_slug_current_mapping_count: slugProof.current_mapping_count,
+            model_slug_historical_mapping_count:
+              slugProof.historical_mapping_count,
+            model_slug_mapping_inventory_hash: slugProof.mapping_inventory_hash,
+            model_slug_queryable: 1,
+            model_slug_exact_parity: 1,
+          }),
+        );
+        break;
+      }
+      case "vectors":
+        vectors.push(
+          Object.freeze({
+            publication_id: receiptProof.publication_id,
+            kind: "vectors",
+            vector_namespace: receipt.namespace,
+            document_count: receipt.documentCount,
+            verified_document_count: receipt.verifiedDocumentCount,
+            vector_inventory_hash: receipt.vectorInventoryHash,
+            visibility_probe_version: receipt.visibilityProbeVersion,
+            mutation_id: receipt.mutationId,
+            all_ids_present: receipt.allIdsPresent ? 1 : 0,
+            all_namespaces_match: receipt.allNamespacesMatch ? 1 : 0,
+            queryable: receipt.queryable ? 1 : 0,
+          }),
+        );
+        break;
+      case "probes":
+        probes.push(
+          Object.freeze({
+            publication_id: receiptProof.publication_id,
+            kind: "probes",
+            probe_set_version: receipt.probeSetVersion,
+            integrity_passed: 1,
+            evidence_coverage_passed: 1,
+            exact_search_passed: 1,
+            semantic_search_passed: 1,
+            structured_filter_passed: 1,
+            neutrality_passed: 1,
+            version_isolation_passed: 1,
+            model_slug_lookup_passed: 1,
+          }),
+        );
+        break;
+    }
+  }
+  assertModelSlugArchiveArtifactProofV5(modelSlugArchiveProof);
+  assertModelSlugServingArtifactProofV5(modelSlugServingProof);
+  return Object.freeze({
+    receiptRows: Object.freeze({
+      bindings: Object.freeze(
+        bindings.sort((left, right) => compareAscii(left.kind, right.kind)),
+      ),
+      archives: Object.freeze(archives),
+      servings: Object.freeze(servings),
+      vectors: Object.freeze(vectors),
+      probes: Object.freeze(probes),
+    }),
+    attestation: proof.attestation,
+    modelSlugArchiveProof,
+    modelSlugServingProof,
+  });
+};
+
+export type ServingSwitchArtifactProofV5 = Omit<
+  ServingSwitchArtifactProof,
+  "probeSetVersion"
+> &
+  Readonly<{
+    probeSetVersion: typeof READINESS_PROBE_SET_VERSION_V5;
+    modelSlugLookupPassed: true;
+  }>;
+
+export type ServingSwitchPreflightContextV5 = ServingSwitchPreflightContextV2;
+
+const servingSwitchPreflightProofV5Brand: unique symbol = Symbol(
+  "ServingSwitchPreflightProofV5",
+);
+interface ServingSwitchPreflightProofBindingV5 {
+  readonly manifest: TrustedImmutablePublicationManifest;
+  readonly readinessProof: ServingReadinessProofV5 | null;
+  readonly providerProof: ProviderSearchArtifactProofV2;
+  readonly modelVariantNameProof: ModelVariantNameSearchQueryableArtifactProofV3;
+  readonly providerModelIdProof: ProviderModelIdSearchQueryableArtifactProofV4;
+  readonly modelSlugArchiveProof: ModelSlugArchiveArtifactProofV5;
+  readonly modelSlugServingProof: ModelSlugServingArtifactProofV5;
+}
+const trustedServingSwitchPreflightProofsV5 = new WeakMap<
+  object,
+  ServingSwitchPreflightProofBindingV5
+>();
+
+export type ServingSwitchPreflightProofV5 = Readonly<
+  Omit<
+    ServingSwitchPreflightProofV4,
+    | "preflight_version"
+    | "preflight_hash"
+    | "probe_set_version"
+    | typeof servingSwitchPreflightProofV4Brand
+  > & {
+    preflight_version: typeof SERVING_SWITCH_PREFLIGHT_VERSION_V5;
+    preflight_hash: Sha256;
+    probe_set_version: typeof READINESS_PROBE_SET_VERSION_V5;
+    model_slug_lookup_passed: 1;
+    model_slug_artifact_version: typeof MODEL_SLUG_HISTORY_ARTIFACT_VERSION;
+    model_slug_acquisition_version: typeof MODEL_SLUG_HISTORY_ACQUISITION_VERSION;
+    model_slug_projection_version: typeof MODEL_SLUG_PROJECTION_VERSION;
+    model_slug_artifact_digest: Sha256;
+    model_slug_artifact_byte_count: number;
+    model_slug_source_history_count: number;
+    model_slug_source_history_hash: Sha256;
+    model_slug_model_count: number;
+    model_slug_mapping_count: number;
+    model_slug_current_mapping_count: number;
+    model_slug_historical_mapping_count: number;
+    model_slug_mapping_inventory_hash: Sha256;
+    model_slug_read_verified: 1;
+    model_slug_immutable: 1;
+    archive_receipt_hash: Sha256;
+    model_slug_storage_version: typeof MODEL_SLUG_HISTORY_STORAGE_VERSION;
+    model_slug_serving_artifact_digest: Sha256;
+    model_slug_serving_projection_version: typeof MODEL_SLUG_PROJECTION_VERSION;
+    model_slug_serving_model_count: number;
+    model_slug_serving_mapping_count: number;
+    model_slug_serving_current_mapping_count: number;
+    model_slug_serving_historical_mapping_count: number;
+    model_slug_serving_mapping_inventory_hash: Sha256;
+    model_slug_queryable: 1;
+    model_slug_exact_parity: 1;
+    readonly [servingSwitchPreflightProofV5Brand]: true;
+  }
+>;
+
+export const assertServingSwitchPreflightProofV5: (
+  value: unknown,
+) => asserts value is ServingSwitchPreflightProofV5 = (value) => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !(servingSwitchPreflightProofV5Brand in value) ||
+    value[servingSwitchPreflightProofV5Brand] !== true ||
+    !trustedServingSwitchPreflightProofsV5.has(value)
+  )
+    throw new TypeError("serving switch preflight proof v5 is not trusted");
+};
+
+export const projectServingSwitchPreflightProofV5 = async (input: {
+  readonly manifest: TrustedImmutablePublicationManifest;
+  readonly providerProof: ProviderSearchArtifactProofV2;
+  readonly modelVariantNameProof: ModelVariantNameSearchQueryableArtifactProofV3;
+  readonly providerModelIdProof: ProviderModelIdSearchQueryableArtifactProofV4;
+  readonly modelSlugArchiveProof: ModelSlugArchiveArtifactProofV5;
+  readonly modelSlugServingProof: ModelSlugServingArtifactProofV5;
+  readonly readinessProof: ServingReadinessProofV5 | null;
+  readonly rollbackArchiveReceiptHash: Sha256 | null;
+  readonly context: ServingSwitchPreflightContextV5;
+  readonly artifactProof: ServingSwitchArtifactProofV5;
+}): Promise<ServingSwitchPreflightProofV5> => {
+  const snapshot = ownDataRecordSnapshot(
+    input,
+    [
+      "artifactProof",
+      "context",
+      "manifest",
+      "modelSlugArchiveProof",
+      "modelSlugServingProof",
+      "modelVariantNameProof",
+      "providerModelIdProof",
+      "providerProof",
+      "readinessProof",
+      "rollbackArchiveReceiptHash",
+    ],
+    "serving switch preflight proof v5 input",
+  );
+  const manifest = snapshot.manifest;
+  const providerProof = snapshot.providerProof;
+  const modelVariantNameProof = snapshot.modelVariantNameProof;
+  const providerModelIdProof = snapshot.providerModelIdProof;
+  const modelSlugArchiveProof = snapshot.modelSlugArchiveProof;
+  const modelSlugServingProof = snapshot.modelSlugServingProof;
+  const readinessProof = snapshot.readinessProof;
+  const rollbackArchiveReceiptHash = snapshot.rollbackArchiveReceiptHash;
+  assertImmutablePublicationManifest(manifest);
+  assertProviderSearchArtifactProofV2(providerProof);
+  assertModelVariantNameSearchQueryableArtifactProofV3(modelVariantNameProof);
+  assertProviderModelIdSearchQueryableArtifactProofV4(providerModelIdProof);
+  assertModelSlugArchiveArtifactProofV5(modelSlugArchiveProof);
+  assertModelSlugServingArtifactProofV5(modelSlugServingProof);
+  const providerManifest =
+    trustedProviderSearchArtifactProofsV2.get(providerProof)?.manifest;
+  const modelManifest =
+    trustedModelVariantNameSearchQueryableArtifactProofsV3.get(
+      modelVariantNameProof,
+    )?.manifest;
+  const providerModelIdManifest =
+    trustedProviderModelIdSearchQueryableArtifactProofsV4.get(
+      providerModelIdProof,
+    )?.manifest;
+  const slugArchiveBinding = trustedModelSlugArchiveArtifactProofsV5.get(
+    modelSlugArchiveProof,
+  );
+  const slugServingBinding = trustedModelSlugServingArtifactProofsV5.get(
+    modelSlugServingProof,
+  );
+  if (
+    providerManifest?.publicationId !== manifest.publicationId ||
+    providerManifest.closureHash !== manifest.closureHash ||
+    modelManifest?.publicationId !== manifest.publicationId ||
+    modelManifest.closureHash !== manifest.closureHash ||
+    providerModelIdManifest?.publicationId !== manifest.publicationId ||
+    providerModelIdManifest.closureHash !== manifest.closureHash ||
+    slugArchiveBinding?.manifest !== manifest ||
+    slugServingBinding?.archiveProof !== modelSlugArchiveProof
+  )
+    throw new TypeError("switch preflight v5 uses another artifact manifest");
+  const proofRecord = inputRecord(
+    snapshot.artifactProof,
+    "switch artifact proof v5",
+  );
+  if (
+    !hasExactKeys(proofRecord, [
+      ...switchArtifactProofKeysV2,
+      "modelSlugLookupPassed",
+    ])
+  )
+    throw new TypeError("switch artifact proof v5 shape is invalid");
+  const proof = {
+    environment: proofRecord.environment,
+    observedAtMs: proofRecord.observedAtMs,
+    maximumAgeMs: proofRecord.maximumAgeMs,
+    ftsBuildVersion: proofRecord.ftsBuildVersion,
+    ftsSourceDocumentCount: proofRecord.ftsSourceDocumentCount,
+    ftsIndexDocumentCount: proofRecord.ftsIndexDocumentCount,
+    ftsSourceInventoryHash: proofRecord.ftsSourceInventoryHash,
+    ftsExactParity: proofRecord.ftsExactParity,
+    archiveBundleHash: proofRecord.archiveBundleHash,
+    archiveImmutable: proofRecord.archiveImmutable,
+    vectorNamespace: proofRecord.vectorNamespace,
+    vectorDocumentCount: proofRecord.vectorDocumentCount,
+    vectorVerifiedDocumentCount: proofRecord.vectorVerifiedDocumentCount,
+    vectorInventoryHash: proofRecord.vectorInventoryHash,
+    vectorVisibilityProbeVersion: proofRecord.vectorVisibilityProbeVersion,
+    vectorMutationId: proofRecord.vectorMutationId,
+    vectorAllIdsPresent: proofRecord.vectorAllIdsPresent,
+    vectorAllNamespacesMatch: proofRecord.vectorAllNamespacesMatch,
+    vectorQueryable: proofRecord.vectorQueryable,
+    probeSetVersion: proofRecord.probeSetVersion,
+    integrityPassed: proofRecord.integrityPassed,
+    exactSearchPassed: proofRecord.exactSearchPassed,
+    semanticSearchPassed: proofRecord.semanticSearchPassed,
+    structuredFilterPassed: proofRecord.structuredFilterPassed,
+    neutralityPassed: proofRecord.neutralityPassed,
+    versionIsolationPassed: proofRecord.versionIsolationPassed,
+    modelSlugLookupPassed: proofRecord.modelSlugLookupPassed,
+  };
+  const contextRecord = inputRecord(snapshot.context, "switch context v5");
+  if (
+    !hasExactKeys(contextRecord, [
+      "switchId",
+      "action",
+      "expectedPriorGeneration",
+      "expectedPriorRollbackCandidatePublicationId",
+      "expectedPriorSwitchedAtMs",
+      "newGeneration",
+      "fromPublicationId",
+      "fromClosureHash",
+      "toPublicationId",
+      "toClosureHash",
+      "switchedAtMs",
+    ])
+  )
+    throw new TypeError("switch context v5 shape is invalid");
+  const context = {
+    switchId: contextRecord.switchId,
+    action: contextRecord.action,
+    expectedPriorGeneration: contextRecord.expectedPriorGeneration,
+    expectedPriorRollbackCandidatePublicationId:
+      contextRecord.expectedPriorRollbackCandidatePublicationId,
+    expectedPriorSwitchedAtMs: contextRecord.expectedPriorSwitchedAtMs,
+    newGeneration: contextRecord.newGeneration,
+    fromPublicationId: contextRecord.fromPublicationId,
+    fromClosureHash: contextRecord.fromClosureHash,
+    toPublicationId: contextRecord.toPublicationId,
+    toClosureHash: contextRecord.toClosureHash,
+    switchedAtMs: contextRecord.switchedAtMs,
+  };
+  if (
+    typeof context.switchId !== "string" ||
+    !isAscii(context.switchId) ||
+    context.switchId.length === 0 ||
+    context.switchId.length > 256 ||
+    (context.action !== "activate" && context.action !== "rollback") ||
+    !isNonnegativeSafeInteger(context.expectedPriorGeneration) ||
+    !isNonnegativeSafeInteger(context.newGeneration) ||
+    context.newGeneration !== context.expectedPriorGeneration + 1 ||
+    context.toPublicationId !== manifest.publicationId ||
+    context.toClosureHash !== manifest.closureHash ||
+    (context.fromPublicationId === null) !==
+      (context.fromClosureHash === null) ||
+    (context.expectedPriorRollbackCandidatePublicationId !== null &&
+      (typeof context.expectedPriorRollbackCandidatePublicationId !==
+        "string" ||
+        !PUBLICATION_ID.test(
+          context.expectedPriorRollbackCandidatePublicationId,
+        ))) ||
+    (context.fromPublicationId !== null &&
+      (typeof context.fromPublicationId !== "string" ||
+        !PUBLICATION_ID.test(context.fromPublicationId))) ||
+    (context.fromClosureHash !== null &&
+      (typeof context.fromClosureHash !== "string" ||
+        !HASH.test(context.fromClosureHash)))
+  )
+    throw new TypeError("switch context v5 is invalid");
+  assertSafeInteger(context.switchedAtMs as number, 0, "switch v5 time");
+  assertSafeInteger(proof.observedAtMs as number, 0, "switch v5 observation");
+  assertSafeInteger(proof.maximumAgeMs as number, 0, "switch v5 maximum age");
+  const switchedAtMs = context.switchedAtMs as number;
+  const observedAtMs = proof.observedAtMs as number;
+  const maximumAgeMs = proof.maximumAgeMs as number;
+  if (observedAtMs > switchedAtMs)
+    throw new TypeError("switch v5 observation follows switch time");
+  const validUntilMs = observedAtMs + maximumAgeMs;
+  assertSafeInteger(validUntilMs, switchedAtMs, "switch v5 validity deadline");
+  if (
+    typeof proof.environment !== "string" ||
+    !SERVING_PUBLICATION_ENVIRONMENTS.has(proof.environment) ||
+    proof.ftsBuildVersion !== READINESS_FTS_BUILD_VERSION ||
+    proof.ftsSourceDocumentCount !== manifest.searchDocuments.length ||
+    proof.ftsIndexDocumentCount !== manifest.searchDocuments.length ||
+    proof.ftsSourceInventoryHash !== manifest.exactSearchInventoryHash ||
+    proof.ftsExactParity !== true ||
+    proof.archiveBundleHash !== manifest.bundleHash ||
+    proof.archiveImmutable !== true ||
+    proof.vectorNamespace !== manifest.publicationId ||
+    proof.vectorDocumentCount !== manifest.vectors.length ||
+    proof.vectorVerifiedDocumentCount !== manifest.vectors.length ||
+    proof.vectorInventoryHash !== manifest.vectorInventoryHash ||
+    proof.vectorVisibilityProbeVersion !== VECTOR_VISIBILITY_PROBE_VERSION ||
+    typeof proof.vectorMutationId !== "string" ||
+    !isAscii(proof.vectorMutationId) ||
+    proof.vectorMutationId.length === 0 ||
+    proof.vectorMutationId.length > 128 ||
+    proof.vectorAllIdsPresent !== true ||
+    proof.vectorAllNamespacesMatch !== true ||
+    proof.vectorQueryable !== true ||
+    proof.probeSetVersion !== READINESS_PROBE_SET_VERSION_V5 ||
+    proof.integrityPassed !== true ||
+    proof.exactSearchPassed !== true ||
+    proof.semanticSearchPassed !== true ||
+    proof.structuredFilterPassed !== true ||
+    proof.neutralityPassed !== true ||
+    proof.versionIsolationPassed !== true ||
+    proof.modelSlugLookupPassed !== true
+  )
+    throw new TypeError("switch preflight v5 does not prove serving artifacts");
+  let attestationHash: Sha256 | null = null;
+  let archiveReceiptHash: Sha256;
+  if (context.action === "activate") {
+    assertServingReadinessProofV5(readinessProof);
+    const readiness = readServingReadinessPersistenceV5(readinessProof);
+    const attestation = readinessProof.attestation;
+    if (
+      readiness.modelSlugArchiveProof !== modelSlugArchiveProof ||
+      readiness.modelSlugServingProof !== modelSlugServingProof ||
+      attestation.publication_id !== manifest.publicationId ||
+      attestation.closure_hash !== manifest.closureHash ||
+      attestation.environment !== proof.environment ||
+      switchedAtMs < attestation.ready_at_ms ||
+      switchedAtMs > attestation.effective_valid_until_ms ||
+      rollbackArchiveReceiptHash !== null
+    )
+      throw new TypeError("switch activation v5 attestation is invalid");
+    attestationHash = attestation.attestation_hash;
+    archiveReceiptHash = attestation.archive_receipt_hash;
+  } else {
+    if (
+      readinessProof !== null ||
+      typeof rollbackArchiveReceiptHash !== "string" ||
+      !HASH.test(rollbackArchiveReceiptHash)
+    )
+      throw new TypeError(
+        "switch rollback v5 lacks its retained archive receipt",
+      );
+    archiveReceiptHash = rollbackArchiveReceiptHash as Sha256;
+  }
+  const expectedPriorSwitchedAt =
+    context.expectedPriorSwitchedAtMs === null
+      ? null
+      : timestampFromMs(
+          context.expectedPriorSwitchedAtMs as number,
+          "expected prior switch v5 time",
+        );
+  const switchedAt = timestampFromMs(switchedAtMs, "switch v5 time");
+  const observedAt = timestampFromMs(observedAtMs, "switch v5 observation");
+  const validUntil = timestampFromMs(validUntilMs, "switch v5 validity");
+  const preflightHash = await digest("publication-switch-preflight", [
+    field("preflight_version", "text", SERVING_SWITCH_PREFLIGHT_VERSION_V5),
+    field("action", "text", context.action),
+    field("environment", "text", proof.environment),
+    field(
+      "expected_prior_generation",
+      "integer",
+      String(context.expectedPriorGeneration),
+    ),
+    nullableCanonical(
+      "expected_prior_rollback_candidate_publication_id",
+      "identifier",
+      context.expectedPriorRollbackCandidatePublicationId,
+    ),
+    expectedPriorSwitchedAt === null
+      ? field("expected_prior_switched_at", "null", "null")
+      : field(
+          "expected_prior_switched_at",
+          "timestamp",
+          expectedPriorSwitchedAt,
+        ),
+    field("new_generation", "integer", String(context.newGeneration)),
+    nullableCanonical(
+      "from_publication_id",
+      "identifier",
+      context.fromPublicationId,
+    ),
+    nullableCanonical("from_closure_hash", "digest", context.fromClosureHash),
+    field("to_publication_id", "identifier", manifest.publicationId),
+    field("to_closure_hash", "digest", manifest.closureHash),
+    nullableCanonical("to_attestation_hash", "digest", attestationHash),
+    field("switched_at", "timestamp", switchedAt),
+    field("observed_at", "timestamp", observedAt),
+    field("maximum_age_ms", "integer", String(maximumAgeMs)),
+    field("valid_until", "timestamp", validUntil),
+    field("fts_build_version", "text", proof.ftsBuildVersion),
+    field(
+      "fts_source_document_count",
+      "integer",
+      String(proof.ftsSourceDocumentCount),
+    ),
+    field(
+      "fts_index_document_count",
+      "integer",
+      String(proof.ftsIndexDocumentCount),
+    ),
+    field("fts_source_inventory_hash", "digest", proof.ftsSourceInventoryHash),
+    field("fts_exact_parity", "boolean", "true"),
+    field("archive_bundle_hash", "digest", proof.archiveBundleHash),
+    field("archive_immutable", "boolean", "true"),
+    field("vector_namespace", "identifier", proof.vectorNamespace),
+    field(
+      "vector_document_count",
+      "integer",
+      String(proof.vectorDocumentCount),
+    ),
+    field(
+      "vector_verified_document_count",
+      "integer",
+      String(proof.vectorVerifiedDocumentCount),
+    ),
+    field("vector_inventory_hash", "digest", proof.vectorInventoryHash),
+    field(
+      "vector_visibility_probe_version",
+      "text",
+      proof.vectorVisibilityProbeVersion,
+    ),
+    field("vector_mutation_id", "text", proof.vectorMutationId),
+    field("vector_all_ids_present", "boolean", "true"),
+    field("vector_all_namespaces_match", "boolean", "true"),
+    field("vector_queryable", "boolean", "true"),
+    field("probe_set_version", "text", READINESS_PROBE_SET_VERSION_V5),
+    field("integrity_passed", "boolean", "true"),
+    field("exact_search_passed", "boolean", "true"),
+    field("semantic_search_passed", "boolean", "true"),
+    field("structured_filter_passed", "boolean", "true"),
+    field("neutrality_passed", "boolean", "true"),
+    field("version_isolation_passed", "boolean", "true"),
+    field("model_slug_lookup_passed", "boolean", "true"),
+    ...providerSearchProofFieldsV2(providerProof),
+    ...modelVariantNameSearchProofFieldsV3(modelVariantNameProof),
+    ...providerModelIdSearchProofFieldsV4(providerModelIdProof),
+    ...modelSlugArchiveProofFieldsV5(modelSlugArchiveProof),
+    field("archive_receipt_hash", "digest", archiveReceiptHash),
+    ...modelSlugServingProofFieldsV5(modelSlugServingProof),
+  ]);
+  const result = {
+    switch_id: context.switchId,
+    preflight_version: SERVING_SWITCH_PREFLIGHT_VERSION_V5,
+    preflight_hash: preflightHash,
+    action: context.action,
+    environment: proof.environment as Exclude<PublicationEnvironment, "test">,
+    expected_prior_generation: context.expectedPriorGeneration,
+    expected_prior_rollback_candidate_publication_id:
+      context.expectedPriorRollbackCandidatePublicationId as PublicationId | null,
+    expected_prior_switched_at_ms: context.expectedPriorSwitchedAtMs as
+      number | null,
+    new_generation: context.newGeneration,
+    from_publication_id: context.fromPublicationId as PublicationId | null,
+    from_closure_hash: context.fromClosureHash as Sha256 | null,
+    to_publication_id: manifest.publicationId,
+    to_closure_hash: manifest.closureHash,
+    to_attestation_hash: attestationHash,
+    switched_at_ms: switchedAtMs,
+    observed_at_ms: observedAtMs,
+    maximum_age_ms: maximumAgeMs,
+    valid_until_ms: validUntilMs,
+    fts_build_version: proof.ftsBuildVersion as string,
+    fts_source_document_count: proof.ftsSourceDocumentCount,
+    fts_index_document_count: proof.ftsIndexDocumentCount,
+    fts_source_inventory_hash: proof.ftsSourceInventoryHash,
+    fts_exact_parity: 1 as const,
+    archive_bundle_hash: proof.archiveBundleHash,
+    archive_immutable: 1 as const,
+    archive_receipt_hash: archiveReceiptHash,
+    vector_namespace: proof.vectorNamespace,
+    vector_document_count: proof.vectorDocumentCount,
+    vector_verified_document_count: proof.vectorVerifiedDocumentCount,
+    vector_inventory_hash: proof.vectorInventoryHash,
+    vector_visibility_probe_version:
+      proof.vectorVisibilityProbeVersion as string,
+    vector_mutation_id: proof.vectorMutationId,
+    vector_all_ids_present: 1 as const,
+    vector_all_namespaces_match: 1 as const,
+    vector_queryable: 1 as const,
+    probe_set_version: READINESS_PROBE_SET_VERSION_V5,
+    integrity_passed: 1 as const,
+    exact_search_passed: 1 as const,
+    semantic_search_passed: 1 as const,
+    structured_filter_passed: 1 as const,
+    neutrality_passed: 1 as const,
+    version_isolation_passed: 1 as const,
+    provider_search_projection_version:
+      providerProof.provider_search_projection_version,
+    provider_search_document_count:
+      providerProof.provider_search_document_count,
+    provider_search_inventory_hash:
+      providerProof.provider_search_inventory_hash,
+    provider_search_fts_build_version:
+      providerProof.provider_search_fts_build_version,
+    provider_search_fts_document_count:
+      providerProof.provider_search_fts_document_count,
+    provider_search_fts_queryable: 1 as const,
+    provider_search_exact_parity: 1 as const,
+    model_variant_name_projection_version:
+      modelVariantNameProof.model_variant_name_projection_version,
+    model_variant_name_document_count:
+      modelVariantNameProof.model_variant_name_document_count,
+    model_variant_name_inventory_hash:
+      modelVariantNameProof.model_variant_name_inventory_hash,
+    model_variant_name_storage_version:
+      modelVariantNameProof.model_variant_name_storage_version,
+    model_variant_name_storage_document_count:
+      modelVariantNameProof.model_variant_name_storage_document_count,
+    model_variant_name_storage_queryable: 1 as const,
+    model_variant_name_storage_exact_parity: 1 as const,
+    provider_model_id_projection_version:
+      providerModelIdProof.provider_model_id_projection_version,
+    provider_model_id_document_count:
+      providerModelIdProof.provider_model_id_document_count,
+    provider_model_id_inventory_hash:
+      providerModelIdProof.provider_model_id_inventory_hash,
+    provider_model_id_storage_version:
+      providerModelIdProof.provider_model_id_storage_version,
+    provider_model_id_storage_document_count:
+      providerModelIdProof.provider_model_id_storage_document_count,
+    provider_model_id_storage_queryable: 1 as const,
+    provider_model_id_storage_exact_parity: 1 as const,
+    model_slug_lookup_passed: 1 as const,
+    model_slug_artifact_version: modelSlugArchiveProof.artifact_version,
+    model_slug_acquisition_version: modelSlugArchiveProof.acquisition_version,
+    model_slug_projection_version: modelSlugArchiveProof.projection_version,
+    model_slug_artifact_digest: modelSlugArchiveProof.artifact_digest,
+    model_slug_artifact_byte_count: modelSlugArchiveProof.artifact_byte_count,
+    model_slug_source_history_count: modelSlugArchiveProof.source_history_count,
+    model_slug_source_history_hash: modelSlugArchiveProof.source_history_hash,
+    model_slug_model_count: modelSlugArchiveProof.model_count,
+    model_slug_mapping_count: modelSlugArchiveProof.mapping_count,
+    model_slug_current_mapping_count:
+      modelSlugArchiveProof.current_mapping_count,
+    model_slug_historical_mapping_count:
+      modelSlugArchiveProof.historical_mapping_count,
+    model_slug_mapping_inventory_hash:
+      modelSlugArchiveProof.mapping_inventory_hash,
+    model_slug_read_verified: 1 as const,
+    model_slug_immutable: 1 as const,
+    model_slug_storage_version: modelSlugServingProof.storage_version,
+    model_slug_serving_artifact_digest: modelSlugServingProof.artifact_digest,
+    model_slug_serving_projection_version:
+      modelSlugServingProof.projection_version,
+    model_slug_serving_model_count: modelSlugServingProof.model_count,
+    model_slug_serving_mapping_count: modelSlugServingProof.mapping_count,
+    model_slug_serving_current_mapping_count:
+      modelSlugServingProof.current_mapping_count,
+    model_slug_serving_historical_mapping_count:
+      modelSlugServingProof.historical_mapping_count,
+    model_slug_serving_mapping_inventory_hash:
+      modelSlugServingProof.mapping_inventory_hash,
+    model_slug_queryable: 1 as const,
+    model_slug_exact_parity: 1 as const,
+  };
+  Object.defineProperty(result, servingSwitchPreflightProofV5Brand, {
+    value: true,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  trustedServingSwitchPreflightProofsV5.set(
+    result,
+    Object.freeze({
+      manifest,
+      readinessProof,
+      providerProof,
+      modelVariantNameProof,
+      providerModelIdProof,
+      modelSlugArchiveProof,
+      modelSlugServingProof,
+    }),
+  );
+  return Object.freeze(result) as ServingSwitchPreflightProofV5;
+};
+
+export type ServingSwitchPreflightBindingV5 = Readonly<{
+  manifest: TrustedImmutablePublicationManifest;
+  readinessProof: ServingReadinessProofV5 | null;
+  providerProof: ProviderSearchArtifactProofV2;
+  modelVariantNameProof: ModelVariantNameSearchQueryableArtifactProofV3;
+  providerModelIdProof: ProviderModelIdSearchQueryableArtifactProofV4;
+  modelSlugArchiveProof: ModelSlugArchiveArtifactProofV5;
+  modelSlugServingProof: ModelSlugServingArtifactProofV5;
+}>;
+
+export const readServingSwitchPreflightBindingV5 = (
+  proof: ServingSwitchPreflightProofV5,
+): ServingSwitchPreflightBindingV5 => {
+  assertServingSwitchPreflightProofV5(proof);
+  const binding = trustedServingSwitchPreflightProofsV5.get(proof);
+  if (binding === undefined)
+    throw new TypeError("serving switch preflight proof v5 is not trusted");
+  return binding;
+};
+
+export type ModelSlugArtifactProofStorageRowV5 = Readonly<{
+  publication_id: PublicationId;
+  staging_revision: number;
+  artifact_version: typeof MODEL_SLUG_HISTORY_ARTIFACT_VERSION;
+  acquisition_version: typeof MODEL_SLUG_HISTORY_ACQUISITION_VERSION;
+  projection_version: typeof MODEL_SLUG_PROJECTION_VERSION;
+  base_bundle_hash: Sha256;
+  closure_hash: Sha256;
+  publication_boundary_ms: number;
+  artifact_digest: Sha256;
+  artifact_byte_count: number;
+  model_count: number;
+  source_history_count: number;
+  source_history_hash: Sha256;
+  mapping_count: number;
+  current_mapping_count: number;
+  historical_mapping_count: number;
+  mapping_inventory_hash: Sha256;
+}>;
+
+export type ModelSlugMappingStorageRowV5 = Readonly<{
+  publication_id: PublicationId;
+  slug: string;
+  target_resource_type: "model";
+  model_id: string;
+  projection_version: typeof MODEL_SLUG_PROJECTION_VERSION;
+  resolution: "current" | "historical";
+  target_content_hash: Sha256;
+}>;
+
+export type ServingReadinessCommitPersistenceV5 = Readonly<{
+  providerSearch: ProviderSearchStagingPersistenceV2;
+  modelVariantNameSearch: ModelVariantNameSearchStagingPersistenceV1;
+  providerModelIdSearch: ProviderModelIdSearchStagingPersistenceV1;
+  providerModelIdProof: ProviderModelIdSearchQueryableArtifactProofV4;
+  modelSlugArtifactProof: ModelSlugArtifactProofStorageRowV5;
+  modelSlugMappings: readonly ModelSlugMappingStorageRowV5[];
+  modelSlugArchiveProof: ModelSlugArchiveArtifactProofV5;
+  modelSlugServingProof: ModelSlugServingArtifactProofV5;
+  receiptRows: ServingReadinessReceiptRowsV5;
+  attestation: ServingReadinessAttestationProjectionV5;
+  transition: Readonly<{
+    publication_id: PublicationId;
+    closure_hash: Sha256;
+    expected_state: "building";
+    next_state: "ready";
+    ready_at_ms: number;
+  }>;
+}>;
+
+const servingReadinessCommitProjectionV5Brand: unique symbol = Symbol(
+  "ServingReadinessCommitProjectionV5",
+);
+export type ServingReadinessCommitProjectionV5 = Readonly<{
+  readonly [servingReadinessCommitProjectionV5Brand]: true;
+}>;
+const trustedServingReadinessCommitProjectionsV5 = new WeakMap<
+  object,
+  ServingReadinessCommitPersistenceV5
+>();
+
+export const assertServingReadinessCommitProjectionV5: (
+  value: unknown,
+) => asserts value is ServingReadinessCommitProjectionV5 = (value) => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !(servingReadinessCommitProjectionV5Brand in value) ||
+    value[servingReadinessCommitProjectionV5Brand] !== true ||
+    !trustedServingReadinessCommitProjectionsV5.has(value)
+  )
+    throw new TypeError(
+      "serving readiness commit projection v5 is not trusted",
+    );
+};
+
+const closureRowKeysV5 = Object.freeze({
+  publication: [
+    "build_commit",
+    "closure_hash",
+    "embedding_version",
+    "generated_at_ms",
+    "methodology_version",
+    "parent_publication_id",
+    "precision_display_order_version",
+    "precision_normalization_version",
+    "price_policy_version",
+    "publication_id",
+    "schema_version",
+    "source_policy_version",
+    "source_run_id",
+  ],
+  providerSlice: [
+    "adapter_version",
+    "carried_forward",
+    "freshness_state",
+    "provider_id",
+    "provider_run_id",
+    "provider_slice_id",
+    "roster_version",
+    "source_register_version",
+  ],
+  providerAttribution: ["provider_id", "resource_id", "resource_type"],
+  resource: ["content_hash", "resource_id", "resource_json", "resource_type"],
+  searchDocument: [
+    "aliases_json",
+    "content_hash",
+    "document_id",
+    "document_text",
+    "normalized_name",
+    "provider_model_ids_json",
+    "publisher_name",
+    "resource_id",
+    "resource_type",
+  ],
+  vector: [
+    "embedding_input_hash",
+    "resource_id",
+    "resource_type",
+    "search_document_content_hash",
+    "vector_id",
+    "vector_namespace",
+  ],
+  chunk: [
+    "content_hash",
+    "first_key",
+    "item_count",
+    "kind",
+    "last_key",
+    "ordinal",
+  ],
+  seal: [
+    "bundle_hash",
+    "chunk_count",
+    "chunk_root_hash",
+    "closure_hash",
+    "enabled_provider_count",
+    "enabled_provider_scope_hash",
+    "enabled_provider_scope_version",
+    "exact_document_count",
+    "exact_search_inventory_hash",
+    "hash_domain",
+    "hash_encoding_version",
+    "manifest_contract_version",
+    "provider_attribution_count",
+    "provider_attribution_hash",
+    "provider_slice_count",
+    "provider_slice_hash",
+    "publication_id",
+    "resource_count",
+    "resource_inventory_hash",
+    "sealed_at_ms",
+    "staging_revision",
+    "vector_document_count",
+    "vector_inventory_hash",
+  ],
+} as const);
+
+const snapshotOwnDataRowsV5 = (
+  value: unknown,
+  exactLength: number,
+  keys: readonly string[],
+  label: string,
+): readonly Readonly<Record<string, unknown>>[] => {
+  const rows = denseArraySnapshot(value, exactLength, label);
+  if (rows.length !== exactLength)
+    throw new TypeError(`${label} does not have the proof-bound length`);
+  return Object.freeze(
+    rows.map((row) => ownDataRecordSnapshot(row, keys, `${label} row`)),
+  );
+};
+
+const snapshotClosureRowsV5 = (
+  value: unknown,
+  manifest: TrustedImmutablePublicationManifest,
+): ServingClosureRows => {
+  const snapshot = ownDataRecordSnapshot(
+    value,
+    [
+      "bundleHash",
+      "chunks",
+      "enabledProviderScopeVersion",
+      "manifestContractVersion",
+      "providerAttributions",
+      "providerSlices",
+      "publication",
+      "resources",
+      "sealedAtMs",
+      "searchDocuments",
+      "stagingRevision",
+      "vectors",
+    ],
+    "serving v5 closure rows",
+  );
+  return Object.freeze({
+    publication: ownDataRecordSnapshot(
+      snapshot.publication,
+      closureRowKeysV5.publication,
+      "serving v5 publication closure row",
+    ) as unknown as ServingPublicationClosureRow,
+    providerSlices: snapshotOwnDataRowsV5(
+      snapshot.providerSlices,
+      manifest.providerSlices.length,
+      closureRowKeysV5.providerSlice,
+      "serving v5 provider slices",
+    ) as unknown as readonly ServingProviderSliceClosureRow[],
+    providerAttributions: snapshotOwnDataRowsV5(
+      snapshot.providerAttributions,
+      manifest.providerAttributions.length,
+      closureRowKeysV5.providerAttribution,
+      "serving v5 provider attributions",
+    ) as unknown as readonly ServingProviderAttributionClosureRow[],
+    resources: snapshotOwnDataRowsV5(
+      snapshot.resources,
+      manifest.resources.length,
+      closureRowKeysV5.resource,
+      "serving v5 resources",
+    ) as unknown as readonly ServingResourceClosureRow[],
+    searchDocuments: snapshotOwnDataRowsV5(
+      snapshot.searchDocuments,
+      manifest.searchDocuments.length,
+      closureRowKeysV5.searchDocument,
+      "serving v5 search documents",
+    ) as unknown as readonly ServingSearchDocumentClosureRow[],
+    vectors: snapshotOwnDataRowsV5(
+      snapshot.vectors,
+      manifest.vectors.length,
+      closureRowKeysV5.vector,
+      "serving v5 vectors",
+    ) as unknown as readonly ServingVectorClosureRow[],
+    chunks: snapshotOwnDataRowsV5(
+      snapshot.chunks,
+      manifest.chunks.length,
+      closureRowKeysV5.chunk,
+      "serving v5 chunks",
+    ) as unknown as readonly ServingChunkClosureRow[],
+    manifestContractVersion: snapshot.manifestContractVersion as "1.0.0",
+    enabledProviderScopeVersion: snapshot.enabledProviderScopeVersion as string,
+    bundleHash: snapshot.bundleHash as Sha256,
+    stagingRevision: snapshot.stagingRevision as number,
+    sealedAtMs: snapshot.sealedAtMs as number,
+  });
+};
+
+const exactAdmittedValueV5 = (
+  actual: unknown,
+  expected: unknown,
+  label: string,
+): boolean => {
+  if (!Array.isArray(expected)) return Object.is(actual, expected);
+  let values: readonly unknown[];
+  try {
+    values = denseArraySnapshot(actual, expected.length, label);
+  } catch {
+    return false;
+  }
+  return (
+    values.length === expected.length &&
+    values.every((value, index) =>
+      exactAdmittedValueV5(value, expected[index], label),
+    )
+  );
+};
+
+const admitExactRowsV5 = <T extends Readonly<Record<string, unknown>>>(
+  actual: unknown,
+  expected: readonly T[],
+  label: string,
+): readonly T[] => {
+  const rows = snapshotOwnDataRowsV5(
+    actual,
+    expected.length,
+    Object.keys(expected[0] ?? {}).sort(compareAscii),
+    label,
+  );
+  if (
+    rows.some((row, index) => {
+      const expectedRow = expected[index];
+      return (
+        expectedRow === undefined ||
+        Object.keys(expectedRow).some(
+          (key) =>
+            !exactAdmittedValueV5(
+              row[key],
+              expectedRow[key],
+              `${label} ${key}`,
+            ),
+        )
+      );
+    })
+  )
+    throw new TypeError(`${label} does not exactly match its proof`);
+  return expected;
+};
+
+export const projectServingReadinessCommitV5 = async (input: {
+  readonly proof: ServingReadinessProofV5;
+  readonly closureRows: ServingClosureRows;
+  readonly persistedSeal: ServingClosureSealProjection;
+  readonly persistedProviderSearchDocuments: readonly ProviderSearchDocumentRowV2[];
+  readonly persistedProviderSearchFtsRows: readonly ProviderSearchFtsRowV2[];
+  readonly persistedModelVariantNameRows: readonly ModelVariantNameSearchStorageRowV1[];
+  readonly persistedProviderModelIdRows: readonly ProviderModelIdSearchStorageRowV1[];
+  readonly persistedModelSlugArtifactProof: ModelSlugArtifactProofStorageRowV5;
+  readonly persistedModelSlugMappings: readonly ModelSlugMappingStorageRowV5[];
+}): Promise<ServingReadinessCommitProjectionV5> => {
+  const snapshot = ownDataRecordSnapshot(
+    input,
+    [
+      "closureRows",
+      "persistedModelSlugArtifactProof",
+      "persistedModelSlugMappings",
+      "persistedModelVariantNameRows",
+      "persistedProviderModelIdRows",
+      "persistedProviderSearchDocuments",
+      "persistedProviderSearchFtsRows",
+      "persistedSeal",
+      "proof",
+    ],
+    "serving readiness commit v5 input",
+  );
+  const proof = snapshot.proof;
+  assertServingReadinessProofV5(proof);
+  const readiness = readServingReadinessPersistenceV5(proof);
+  const servingReceiptProof = proof.receipts.find(
+    (receipt) => receipt.kind === "serving",
+  );
+  if (servingReceiptProof === undefined)
+    throw new TypeError("serving readiness proof v5 lacks serving evidence");
+  const receiptBinding =
+    trustedReadinessReceiptProofsV5.get(servingReceiptProof);
+  const providerProof = receiptBinding?.providerProof;
+  const modelProof = receiptBinding?.modelVariantNameProof;
+  const providerModelIdProof = receiptBinding?.providerModelIdProof;
+  assertProviderSearchArtifactProofV2(providerProof);
+  assertModelVariantNameSearchQueryableArtifactProofV3(modelProof);
+  assertProviderModelIdSearchQueryableArtifactProofV4(providerModelIdProof);
+  const providerBinding =
+    trustedProviderSearchArtifactProofsV2.get(providerProof);
+  const modelBinding =
+    trustedModelVariantNameSearchQueryableArtifactProofsV3.get(modelProof);
+  const providerModelIdBinding =
+    trustedProviderModelIdSearchQueryableArtifactProofsV4.get(
+      providerModelIdProof,
+    );
+  const slugBinding = trustedModelSlugServingArtifactProofsV5.get(
+    readiness.modelSlugServingProof,
+  );
+  const slugProjection = slugBinding?.projection;
+  if (
+    providerBinding === undefined ||
+    modelBinding === undefined ||
+    providerModelIdBinding === undefined ||
+    slugProjection === undefined
+  )
+    throw new TypeError(
+      "serving readiness proof v5 artifact proof is not trusted",
+    );
+  const closureRows = snapshotClosureRowsV5(
+    snapshot.closureRows,
+    providerBinding.manifest,
+  );
+  const providerSearch = providerSearchPersistenceV2(
+    providerBinding.projection,
+    closureRows.stagingRevision,
+  );
+  const modelVariantNameSearch = modelVariantNameSearchStoragePersistenceV1(
+    modelBinding.projection,
+    closureRows.stagingRevision,
+  );
+  const providerModelIdSearch = providerModelIdSearchStoragePersistenceV1(
+    providerModelIdBinding.projection,
+    closureRows.stagingRevision,
+  );
+  const expectedSlugArtifactProof = Object.freeze({
+    publication_id: readiness.modelSlugArchiveProof.publication_id,
+    staging_revision: readiness.modelSlugServingProof.staging_revision,
+    artifact_version: readiness.modelSlugArchiveProof.artifact_version,
+    acquisition_version: readiness.modelSlugArchiveProof.acquisition_version,
+    projection_version: readiness.modelSlugArchiveProof.projection_version,
+    base_bundle_hash: readiness.modelSlugArchiveProof.base_bundle_hash,
+    closure_hash: readiness.modelSlugArchiveProof.closure_hash,
+    publication_boundary_ms:
+      readiness.modelSlugArchiveProof.publication_boundary_ms,
+    artifact_digest: readiness.modelSlugArchiveProof.artifact_digest,
+    artifact_byte_count: readiness.modelSlugArchiveProof.artifact_byte_count,
+    model_count: readiness.modelSlugArchiveProof.model_count,
+    source_history_count: readiness.modelSlugArchiveProof.source_history_count,
+    source_history_hash: readiness.modelSlugArchiveProof.source_history_hash,
+    mapping_count: readiness.modelSlugArchiveProof.mapping_count,
+    current_mapping_count:
+      readiness.modelSlugArchiveProof.current_mapping_count,
+    historical_mapping_count:
+      readiness.modelSlugArchiveProof.historical_mapping_count,
+    mapping_inventory_hash:
+      readiness.modelSlugArchiveProof.mapping_inventory_hash,
+  } satisfies ModelSlugArtifactProofStorageRowV5);
+  const expectedSlugMappings = Object.freeze(
+    slugProjection.mappings.map((mapping) =>
+      Object.freeze({
+        publication_id: slugProjection.publicationId,
+        slug: mapping.slug,
+        target_resource_type: "model" as const,
+        model_id: mapping.modelId,
+        projection_version: mapping.projectionVersion,
+        resolution: mapping.resolution,
+        target_content_hash: mapping.targetContentHash,
+      }),
+    ),
+  );
+  const observed = Object.freeze({
+    closureRows,
+    persistedSeal: ownDataRecordSnapshot(
+      snapshot.persistedSeal,
+      closureRowKeysV5.seal,
+      "serving readiness commit v5 seal",
+    ) as unknown as ServingClosureSealProjection,
+    providerDocuments: admitExactRowsV5(
+      snapshot.persistedProviderSearchDocuments,
+      providerSearch.documents,
+      "serving readiness provider documents",
+    ),
+    providerFtsRows: admitExactRowsV5(
+      snapshot.persistedProviderSearchFtsRows,
+      providerSearch.ftsRows,
+      "serving readiness provider FTS rows",
+    ),
+    modelRows: admitExactRowsV5(
+      snapshot.persistedModelVariantNameRows,
+      modelVariantNameSearch.rows,
+      "serving readiness model name rows",
+    ),
+    providerModelIdRows: admitExactRowsV5(
+      snapshot.persistedProviderModelIdRows,
+      providerModelIdSearch.rows,
+      "serving readiness provider model ID rows",
+    ),
+    modelSlugArtifactProof: admitExactRowsV5(
+      [snapshot.persistedModelSlugArtifactProof],
+      [expectedSlugArtifactProof],
+      "serving readiness model slug artifact proof",
+    )[0],
+    modelSlugMappings: admitExactRowsV5(
+      snapshot.persistedModelSlugMappings,
+      expectedSlugMappings,
+      "serving readiness model slug mappings",
+    ),
+  });
+  const closure = await projectServingClosureSeal(observed.closureRows);
+  const sealErrors = await verifyServingClosureSealProjection(
+    observed.closureRows,
+    observed.persistedSeal,
+  );
+  if (
+    sealErrors.length > 0 ||
+    closure.manifest.publicationId !== proof.attestation.publication_id ||
+    closure.manifest.closureHash !== proof.attestation.closure_hash ||
+    closure.manifest.bundleHash !== proof.attestation.bundle_hash ||
+    providerBinding.manifest.publicationId !== closure.manifest.publicationId ||
+    providerBinding.manifest.closureHash !== closure.manifest.closureHash ||
+    modelBinding.manifest.publicationId !== closure.manifest.publicationId ||
+    modelBinding.manifest.closureHash !== closure.manifest.closureHash ||
+    providerModelIdBinding.manifest.publicationId !==
+      closure.manifest.publicationId ||
+    providerModelIdBinding.manifest.closureHash !==
+      closure.manifest.closureHash ||
+    slugProjection.publicationId !== closure.manifest.publicationId ||
+    slugProjection.closureHash !== closure.manifest.closureHash ||
+    proof.receipts.some(
+      (receipt) => receipt.observed_at_ms < observed.closureRows.sealedAtMs,
+    ) ||
+    JSON.stringify(observed.providerDocuments) !==
+      JSON.stringify(providerSearch.documents) ||
+    JSON.stringify(observed.providerFtsRows) !==
+      JSON.stringify(providerSearch.ftsRows) ||
+    JSON.stringify(observed.modelRows) !==
+      JSON.stringify(modelVariantNameSearch.rows) ||
+    JSON.stringify(observed.providerModelIdRows) !==
+      JSON.stringify(providerModelIdSearch.rows) ||
+    JSON.stringify(observed.modelSlugArtifactProof) !==
+      JSON.stringify(expectedSlugArtifactProof) ||
+    JSON.stringify(observed.modelSlugMappings) !==
+      JSON.stringify(expectedSlugMappings)
+  )
+    throw new TypeError(
+      "serving readiness commit v5 does not match persisted sealed evidence",
+    );
+  const persistence = Object.freeze({
+    providerSearch,
+    modelVariantNameSearch,
+    providerModelIdSearch,
+    providerModelIdProof,
+    modelSlugArtifactProof: expectedSlugArtifactProof,
+    modelSlugMappings: expectedSlugMappings,
+    modelSlugArchiveProof: readiness.modelSlugArchiveProof,
+    modelSlugServingProof: readiness.modelSlugServingProof,
+    receiptRows: readiness.receiptRows,
+    attestation: proof.attestation,
+    transition: Object.freeze({
+      publication_id: proof.attestation.publication_id,
+      closure_hash: proof.attestation.closure_hash,
+      expected_state: "building" as const,
+      next_state: "ready" as const,
+      ready_at_ms: proof.attestation.ready_at_ms,
+    }),
+  });
+  const result = {};
+  Object.defineProperty(result, servingReadinessCommitProjectionV5Brand, {
+    value: true,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  trustedServingReadinessCommitProjectionsV5.set(result, persistence);
+  return Object.freeze(result) as ServingReadinessCommitProjectionV5;
+};
+
+export const readServingReadinessCommitPersistenceV5 = (
+  value: ServingReadinessCommitProjectionV5,
+): ServingReadinessCommitPersistenceV5 => {
+  assertServingReadinessCommitProjectionV5(value);
+  const persistence = trustedServingReadinessCommitProjectionsV5.get(value);
+  if (persistence === undefined)
+    throw new TypeError(
+      "serving readiness commit projection v5 is not trusted",
+    );
+  return persistence;
+};
+
+export const classifyServingReadinessCommitRetryV5 = (input: {
+  readonly expected: ServingReadinessCommitProjectionV5;
+  readonly publicationState: PublicationState;
+  readonly publicationReadyAtMs: number | null;
+  readonly publicationClosureHash: string;
+  readonly receiptRows: ServingReadinessReceiptRowsV5;
+  readonly attestation: ServingReadinessAttestationProjectionV5 | null;
+}): ServingReadinessCommitRetryDecision => {
+  const expected = readServingReadinessCommitPersistenceV5(input.expected);
+  const hasRows = !readinessRowsEmpty(input.receiptRows);
+  if (!hasRows && input.attestation === null) {
+    if (input.publicationClosureHash !== expected.transition.closure_hash)
+      return Object.freeze({ outcome: "integrity_failure" });
+    if (
+      input.publicationState === expected.transition.expected_state &&
+      input.publicationReadyAtMs === null
+    )
+      return Object.freeze({ outcome: "execute" });
+    if (
+      input.publicationState === "failed" &&
+      input.publicationReadyAtMs === null
+    )
+      return Object.freeze({ outcome: "stale" });
+    return Object.freeze({ outcome: "integrity_failure" });
+  }
+  if (
+    readinessRowsConflict(input.receiptRows, expected.receiptRows) ||
+    (input.attestation !== null &&
+      !exactOwnDataRecord(input.attestation, expected.attestation))
+  )
+    return Object.freeze({ outcome: "conflict" });
+  if (
+    !exactReadinessRows(input.receiptRows, expected.receiptRows) ||
+    input.attestation === null
+  )
+    return Object.freeze({ outcome: "integrity_failure" });
+  if (
+    !(
+      /* prettier-ignore */ (["ready", "active", "superseded", "rolled_back"] as const).includes(
+      input.publicationState as
+        | "ready"
+        | "active"
+        | "superseded"
+        | "rolled_back",
+    )
+    ) ||
+    input.publicationReadyAtMs !== expected.transition.ready_at_ms ||
+    input.publicationClosureHash !== expected.transition.closure_hash
+  )
+    return Object.freeze({ outcome: "integrity_failure" });
+  return Object.freeze({ outcome: "idempotent_success" });
+};
+
+export type ServingSwitchPersistenceV5 = Readonly<{
+  plan: HeadSwitchPlan;
+  preflight: ServingSwitchPreflightProofV5;
+  history: ServingSwitchHistoryRow;
+  providerModelIdSearch: ProviderModelIdSearchStagingPersistenceV1;
+  providerModelIdProof: ProviderModelIdSearchQueryableArtifactProofV4;
+  modelSlugArtifactProof: ModelSlugArtifactProofStorageRowV5;
+  modelSlugMappings: readonly ModelSlugMappingStorageRowV5[];
+  modelSlugArchiveProof: ModelSlugArchiveArtifactProofV5;
+  modelSlugServingProof: ModelSlugServingArtifactProofV5;
+}>;
+
+const servingSwitchProjectionV5Brand: unique symbol = Symbol(
+  "ServingSwitchProjectionV5",
+);
+export type ServingSwitchProjectionV5 = Readonly<{
+  readonly [servingSwitchProjectionV5Brand]: true;
+}>;
+const trustedServingSwitchProjectionsV5 = new WeakMap<
+  object,
+  ServingSwitchPersistenceV5
+>();
+
+export const assertServingSwitchProjectionV5: (
+  value: unknown,
+) => asserts value is ServingSwitchProjectionV5 = (value) => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !(servingSwitchProjectionV5Brand in value) ||
+    value[servingSwitchProjectionV5Brand] !== true ||
+    !trustedServingSwitchProjectionsV5.has(value)
+  )
+    throw new TypeError("serving switch projection v5 is not trusted");
+};
+
+const modelSlugStoragePersistenceV5 = (
+  archiveProof: ModelSlugArchiveArtifactProofV5,
+  servingProof: ModelSlugServingArtifactProofV5,
+): Readonly<{
+  artifactProof: ModelSlugArtifactProofStorageRowV5;
+  mappings: readonly ModelSlugMappingStorageRowV5[];
+}> => {
+  assertModelSlugArchiveArtifactProofV5(archiveProof);
+  assertModelSlugServingArtifactProofV5(servingProof);
+  const servingBinding =
+    trustedModelSlugServingArtifactProofsV5.get(servingProof);
+  if (servingBinding?.archiveProof !== archiveProof)
+    throw new TypeError("model slug serving proof v5 uses another archive");
+  const projection = servingBinding.projection;
+  return Object.freeze({
+    artifactProof: Object.freeze({
+      publication_id: archiveProof.publication_id,
+      staging_revision: servingProof.staging_revision,
+      artifact_version: archiveProof.artifact_version,
+      acquisition_version: archiveProof.acquisition_version,
+      projection_version: archiveProof.projection_version,
+      base_bundle_hash: archiveProof.base_bundle_hash,
+      closure_hash: archiveProof.closure_hash,
+      publication_boundary_ms: archiveProof.publication_boundary_ms,
+      artifact_digest: archiveProof.artifact_digest,
+      artifact_byte_count: archiveProof.artifact_byte_count,
+      model_count: archiveProof.model_count,
+      source_history_count: archiveProof.source_history_count,
+      source_history_hash: archiveProof.source_history_hash,
+      mapping_count: archiveProof.mapping_count,
+      current_mapping_count: archiveProof.current_mapping_count,
+      historical_mapping_count: archiveProof.historical_mapping_count,
+      mapping_inventory_hash: archiveProof.mapping_inventory_hash,
+    }),
+    mappings: Object.freeze(
+      projection.mappings.map((mapping) =>
+        Object.freeze({
+          publication_id: projection.publicationId,
+          slug: mapping.slug,
+          target_resource_type: "model" as const,
+          model_id: mapping.modelId,
+          projection_version: mapping.projectionVersion,
+          resolution: mapping.resolution,
+          target_content_hash: mapping.targetContentHash,
+        }),
+      ),
+    ),
+  });
+};
+
+export const projectServingSwitchV5 = async (input: {
+  readonly preflight: ServingSwitchPreflightProofV5;
+  readonly target: PublicationRecord;
+  readonly currentHead: StoredPublicationHead | null;
+  readonly currentActive: PublicationRecord | null;
+  readonly authorizedBy: SwitchAuthorization;
+  readonly closureRows: ServingClosureRows;
+  readonly persistedSeal: ServingClosureSealProjection;
+  readonly persistedProviderSearchDocuments: readonly ProviderSearchDocumentRowV2[];
+  readonly persistedProviderSearchFtsRows: readonly ProviderSearchFtsRowV2[];
+  readonly persistedModelVariantNameRows: readonly ModelVariantNameSearchStorageRowV1[];
+  readonly persistedProviderModelIdRows: readonly ProviderModelIdSearchStorageRowV1[];
+  readonly persistedModelSlugArtifactProof: ModelSlugArtifactProofStorageRowV5;
+  readonly persistedModelSlugMappings: readonly ModelSlugMappingStorageRowV5[];
+  readonly persistedReceiptRows: ServingReadinessReceiptRowsV5 | null;
+  readonly persistedAttestation: ServingReadinessAttestationProjectionV5 | null;
+}): Promise<ServingSwitchProjectionV5> => {
+  const snapshot = ownDataRecordSnapshot(
+    input,
+    [
+      "authorizedBy",
+      "closureRows",
+      "currentActive",
+      "currentHead",
+      "persistedAttestation",
+      "persistedModelSlugArtifactProof",
+      "persistedModelSlugMappings",
+      "persistedModelVariantNameRows",
+      "persistedProviderModelIdRows",
+      "persistedProviderSearchDocuments",
+      "persistedProviderSearchFtsRows",
+      "persistedReceiptRows",
+      "persistedSeal",
+      "preflight",
+      "target",
+    ],
+    "serving switch v5 input",
+  );
+  const preflight = snapshot.preflight;
+  assertServingSwitchPreflightProofV5(preflight);
+  const binding = trustedServingSwitchPreflightProofsV5.get(preflight);
+  if (binding === undefined)
+    throw new TypeError("serving switch preflight proof v5 is not trusted");
+  const providerBinding = trustedProviderSearchArtifactProofsV2.get(
+    binding.providerProof,
+  );
+  const modelBinding =
+    trustedModelVariantNameSearchQueryableArtifactProofsV3.get(
+      binding.modelVariantNameProof,
+    );
+  const providerModelIdBinding =
+    trustedProviderModelIdSearchQueryableArtifactProofsV4.get(
+      binding.providerModelIdProof,
+    );
+  if (
+    providerBinding === undefined ||
+    modelBinding === undefined ||
+    providerModelIdBinding === undefined
+  )
+    throw new TypeError("serving switch v5 search proof is not trusted");
+  const closureRows = snapshotClosureRowsV5(
+    snapshot.closureRows,
+    binding.manifest,
+  );
+  const providerSearch = providerSearchPersistenceV2(
+    providerBinding.projection,
+    closureRows.stagingRevision,
+  );
+  const modelVariantNameSearch = modelVariantNameSearchStoragePersistenceV1(
+    modelBinding.projection,
+    closureRows.stagingRevision,
+  );
+  const providerModelIdSearch = providerModelIdSearchStoragePersistenceV1(
+    providerModelIdBinding.projection,
+    closureRows.stagingRevision,
+  );
+  const modelSlug = modelSlugStoragePersistenceV5(
+    binding.modelSlugArchiveProof,
+    binding.modelSlugServingProof,
+  );
+  let receiptRows: ServingReadinessReceiptRowsV5 | null = null;
+  let attestation: ServingReadinessAttestationProjectionV5 | null = null;
+  if (preflight.action === "activate") {
+    const readinessProof = binding.readinessProof;
+    assertServingReadinessProofV5(readinessProof);
+    const readiness = readServingReadinessPersistenceV5(readinessProof);
+    const suppliedRows = ownDataRecordSnapshot(
+      snapshot.persistedReceiptRows,
+      ["archives", "bindings", "probes", "servings", "vectors"],
+      "serving switch v5 readiness rows",
+    );
+    receiptRows = Object.freeze({
+      bindings: admitExactRowsV5(
+        suppliedRows.bindings,
+        readiness.receiptRows.bindings,
+        "serving switch readiness bindings",
+      ),
+      archives: admitExactRowsV5(
+        suppliedRows.archives,
+        readiness.receiptRows.archives,
+        "serving switch archive receipts",
+      ),
+      servings: admitExactRowsV5(
+        suppliedRows.servings,
+        readiness.receiptRows.servings,
+        "serving switch serving receipts",
+      ),
+      vectors: admitExactRowsV5(
+        suppliedRows.vectors,
+        readiness.receiptRows.vectors,
+        "serving switch vector receipts",
+      ),
+      probes: admitExactRowsV5(
+        suppliedRows.probes,
+        readiness.receiptRows.probes,
+        "serving switch probe receipts",
+      ),
+    });
+    attestation =
+      admitExactRowsV5(
+        [snapshot.persistedAttestation],
+        [readiness.attestation],
+        "serving switch readiness attestation",
+      )[0] ?? null;
+  } else if (
+    snapshot.persistedReceiptRows !== null ||
+    snapshot.persistedAttestation !== null
+  ) {
+    throw new TypeError(
+      "serving switch rollback v5 carries readiness evidence",
+    );
+  }
+  const observed = Object.freeze({
+    target: ownDataRecordSnapshot(
+      snapshot.target,
+      [
+        "closureHash",
+        "firstActivatedAt",
+        "generatedAt",
+        "lastHeadReferencedAt",
+        "publicationId",
+        "readyAt",
+        "state",
+      ],
+      "serving switch v5 target",
+    ) as unknown as PublicationRecord,
+    currentHead:
+      snapshot.currentHead === null
+        ? null
+        : (ownDataRecordSnapshot(
+            snapshot.currentHead,
+            [
+              "activePublicationId",
+              "generation",
+              "rollbackCandidatePublicationId",
+              "switchedAt",
+            ],
+            "serving switch v5 current head",
+          ) as unknown as StoredPublicationHead),
+    currentActive:
+      snapshot.currentActive === null
+        ? null
+        : (ownDataRecordSnapshot(
+            snapshot.currentActive,
+            [
+              "closureHash",
+              "firstActivatedAt",
+              "generatedAt",
+              "lastHeadReferencedAt",
+              "publicationId",
+              "readyAt",
+              "state",
+            ],
+            "serving switch v5 current active publication",
+          ) as unknown as PublicationRecord),
+    authorizedBy: ownDataRecordSnapshot(
+      snapshot.authorizedBy,
+      ["identityId", "kind"],
+      "serving switch v5 authorization",
+    ) as unknown as SwitchAuthorization,
+    closureRows,
+    persistedSeal: ownDataRecordSnapshot(
+      snapshot.persistedSeal,
+      closureRowKeysV5.seal,
+      "serving switch v5 seal",
+    ) as unknown as ServingClosureSealProjection,
+    providerDocuments: admitExactRowsV5(
+      snapshot.persistedProviderSearchDocuments,
+      providerSearch.documents,
+      "serving switch provider documents",
+    ),
+    providerFtsRows: admitExactRowsV5(
+      snapshot.persistedProviderSearchFtsRows,
+      providerSearch.ftsRows,
+      "serving switch provider FTS rows",
+    ),
+    modelRows: admitExactRowsV5(
+      snapshot.persistedModelVariantNameRows,
+      modelVariantNameSearch.rows,
+      "serving switch model name rows",
+    ),
+    providerModelIdRows: admitExactRowsV5(
+      snapshot.persistedProviderModelIdRows,
+      providerModelIdSearch.rows,
+      "serving switch provider model ID rows",
+    ),
+    modelSlugArtifactProof: admitExactRowsV5(
+      [snapshot.persistedModelSlugArtifactProof],
+      [modelSlug.artifactProof],
+      "serving switch model slug artifact proof",
+    )[0],
+    modelSlugMappings: admitExactRowsV5(
+      snapshot.persistedModelSlugMappings,
+      modelSlug.mappings,
+      "serving switch model slug mappings",
+    ),
+    receiptRows,
+    attestation,
+  });
+  const closure = await projectServingClosureSeal(observed.closureRows);
+  const sealErrors = await verifyServingClosureSealProjection(
+    observed.closureRows,
+    observed.persistedSeal,
+  );
+  if (
+    sealErrors.length > 0 ||
+    closure.manifest.publicationId !== binding.manifest.publicationId ||
+    closure.manifest.closureHash !== binding.manifest.closureHash ||
+    JSON.stringify(observed.providerDocuments) !==
+      JSON.stringify(providerSearch.documents) ||
+    JSON.stringify(observed.providerFtsRows) !==
+      JSON.stringify(providerSearch.ftsRows) ||
+    JSON.stringify(observed.modelRows) !==
+      JSON.stringify(modelVariantNameSearch.rows) ||
+    JSON.stringify(observed.providerModelIdRows) !==
+      JSON.stringify(providerModelIdSearch.rows) ||
+    JSON.stringify(observed.modelSlugArtifactProof) !==
+      JSON.stringify(modelSlug.artifactProof) ||
+    JSON.stringify(observed.modelSlugMappings) !==
+      JSON.stringify(modelSlug.mappings) ||
+    preflight.observed_at_ms < observed.closureRows.sealedAtMs
+  )
+    throw new TypeError(
+      "serving switch v5 does not match persisted sealed evidence",
+    );
+  if (preflight.action === "activate") {
+    const readinessProof = binding.readinessProof;
+    assertServingReadinessProofV5(readinessProof);
+    const readiness = readServingReadinessPersistenceV5(readinessProof);
+    if (
+      observed.receiptRows === null ||
+      observed.attestation === null ||
+      JSON.stringify(observed.receiptRows) !==
+        JSON.stringify(readiness.receiptRows) ||
+      JSON.stringify(observed.attestation) !==
+        JSON.stringify(readiness.attestation)
+    )
+      throw new TypeError(
+        "serving switch activation v5 lacks persisted readiness",
+      );
+  }
+  if (
+    observed.target.publicationId !== binding.manifest.publicationId ||
+    observed.target.closureHash !== binding.manifest.closureHash ||
+    preflight.to_publication_id !== observed.target.publicationId ||
+    preflight.to_closure_hash !== observed.target.closureHash
+  )
+    throw new TypeError("serving switch v5 target does not bind its manifest");
+  const switchedAt = timestampFromMs(
+    preflight.switched_at_ms,
+    "switch v5 time",
+  );
+  const plan =
+    preflight.action === "activate"
+      ? planActivation({
+          candidate: observed.target,
+          currentHead: observed.currentHead,
+          currentActive: observed.currentActive,
+          switchedAt,
+          authorizedBy: observed.authorizedBy,
+        })
+      : (() => {
+          if (observed.currentHead === null || observed.currentActive === null)
+            throw new TypeError("rollback v5 lacks current serving state");
+          return planRollback({
+            currentHead: observed.currentHead,
+            defective: observed.currentActive,
+            target: observed.target,
+            switchedAt,
+            authorizedBy: observed.authorizedBy,
+          });
+        })();
+  const event = switchHistoryStep(plan);
+  if (
+    event.switchId !== preflight.switch_id ||
+    event.action !== preflight.action ||
+    event.expectedPriorGeneration !== preflight.expected_prior_generation ||
+    event.newGeneration !== preflight.new_generation ||
+    event.fromPublicationId !== preflight.from_publication_id ||
+    event.fromClosureHash !== preflight.from_closure_hash ||
+    event.toPublicationId !== preflight.to_publication_id ||
+    event.toClosureHash !== preflight.to_closure_hash ||
+    (observed.currentHead?.rollbackCandidatePublicationId ?? null) !==
+      preflight.expected_prior_rollback_candidate_publication_id ||
+    (observed.currentHead === null
+      ? null
+      : assertTimestamp(
+          observed.currentHead.switchedAt,
+          "prior switch v5 time",
+        )) !== preflight.expected_prior_switched_at_ms
+  )
+    throw new TypeError(
+      "serving switch v5 preflight does not bind its lifecycle plan",
+    );
+  const eventHash = await digest("publication-switch-event", [
+    field("event_version", "text", SERVING_SWITCH_EVENT_VERSION),
+    field("switch_id", "text", event.switchId),
+    field("preflight_hash", "digest", preflight.preflight_hash),
+    field("action", "text", event.action),
+    field(
+      "expected_prior_generation",
+      "integer",
+      String(event.expectedPriorGeneration),
+    ),
+    nullableCanonical(
+      "expected_prior_rollback_candidate_publication_id",
+      "identifier",
+      observed.currentHead?.rollbackCandidatePublicationId ?? null,
+    ),
+    observed.currentHead === null
+      ? field("expected_prior_switched_at", "null", "null")
+      : field(
+          "expected_prior_switched_at",
+          "timestamp",
+          observed.currentHead.switchedAt,
+        ),
+    field("new_generation", "integer", String(event.newGeneration)),
+    nullableCanonical(
+      "from_publication_id",
+      "identifier",
+      event.fromPublicationId,
+    ),
+    nullableCanonical("from_closure_hash", "digest", event.fromClosureHash),
+    field("to_publication_id", "identifier", event.toPublicationId),
+    field("to_closure_hash", "digest", event.toClosureHash),
+    nullableCanonical(
+      "to_attestation_hash",
+      "digest",
+      preflight.to_attestation_hash,
+    ),
+    nullableCanonical(
+      "resulting_rollback_candidate_publication_id",
+      "identifier",
+      event.resultingRollbackCandidatePublicationId,
+    ),
+    field("switched_at", "timestamp", event.switchedAt),
+    field("authorized_by_kind", "text", event.authorizedBy.kind),
+    field("authorized_identity_id", "text", event.authorizedBy.identityId),
+  ]);
+  const history = Object.freeze({
+    switch_id: event.switchId,
+    event_version: SERVING_SWITCH_EVENT_VERSION,
+    event_hash: eventHash,
+    preflight_hash: preflight.preflight_hash,
+    action: event.action,
+    expected_prior_generation: event.expectedPriorGeneration,
+    expected_prior_rollback_candidate_publication_id:
+      observed.currentHead?.rollbackCandidatePublicationId ?? null,
+    expected_prior_switched_at_ms:
+      observed.currentHead === null
+        ? null
+        : assertTimestamp(
+            observed.currentHead.switchedAt,
+            "prior switch v5 time",
+          ),
+    new_generation: event.newGeneration,
+    from_publication_id: event.fromPublicationId,
+    from_closure_hash: event.fromClosureHash,
+    to_publication_id: event.toPublicationId,
+    to_closure_hash: event.toClosureHash,
+    to_attestation_hash: preflight.to_attestation_hash,
+    resulting_rollback_candidate_publication_id:
+      event.resultingRollbackCandidatePublicationId,
+    switched_at_ms: preflight.switched_at_ms,
+    authorized_by_kind: event.authorizedBy.kind,
+    authorized_identity_id: event.authorizedBy.identityId,
+  } satisfies ServingSwitchHistoryRow);
+  const persistence = Object.freeze({
+    plan,
+    preflight,
+    history,
+    providerModelIdSearch,
+    providerModelIdProof: binding.providerModelIdProof,
+    modelSlugArtifactProof: modelSlug.artifactProof,
+    modelSlugMappings: modelSlug.mappings,
+    modelSlugArchiveProof: binding.modelSlugArchiveProof,
+    modelSlugServingProof: binding.modelSlugServingProof,
+  });
+  const result = {};
+  Object.defineProperty(result, servingSwitchProjectionV5Brand, {
+    value: true,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  trustedServingSwitchProjectionsV5.set(result, persistence);
+  return Object.freeze(result) as ServingSwitchProjectionV5;
+};
+
+export const readServingSwitchPersistenceV5 = (
+  value: ServingSwitchProjectionV5,
+): ServingSwitchPersistenceV5 => {
+  assertServingSwitchProjectionV5(value);
+  const persistence = trustedServingSwitchProjectionsV5.get(value);
+  if (persistence === undefined)
+    throw new TypeError("serving switch projection v5 is not trusted");
+  return persistence;
+};
+
+export const classifyServingSwitchRetryV5 = (input: {
+  readonly expected: ServingSwitchProjectionV5;
+  readonly currentHead: StoredPublicationHead | null;
+  readonly preflightAtGeneration: ServingSwitchPreflightProofV5 | null;
+  readonly historyAtGeneration: ServingSwitchHistoryRow | null;
+  readonly targetState: PublicationState;
+  readonly formerState: PublicationState | null;
+}): ServingSwitchRetryDecision => {
+  const expected = readServingSwitchPersistenceV5(input.expected);
+  if (input.currentHead !== null) validateHead(input.currentHead);
+  const cas = expected.plan.steps.find(
+    (
+      step,
+    ): step is Extract<HeadSwitchStep, { kind: "compare_and_swap_head" }> =>
+      step.kind === "compare_and_swap_head",
+  );
+  if (cas === undefined)
+    throw new TypeError("switch v5 plan lacks its head CAS");
   if (input.historyAtGeneration === null) {
     if (input.preflightAtGeneration !== null)
       return Object.freeze({

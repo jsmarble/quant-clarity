@@ -13,6 +13,9 @@ import {
   projectModelVariantNameSearchQueryabilityPlanV3,
   projectModelVariantNameSearchQueryableArtifactProofV3,
   projectModelVariantNameSearchStagingV1,
+  projectModelSlugArchiveArtifactProofV5,
+  projectModelSlugProjection,
+  projectModelSlugServingArtifactProofV5,
   projectProviderModelIdSearchArtifactProofV1,
   projectProviderModelIdSearchProjection,
   projectProviderModelIdSearchQueryabilityPlanV4,
@@ -22,24 +25,35 @@ import {
   projectProviderSearchProjection,
   projectProviderSearchStagingV2,
   projectReadinessReceiptProofV4,
+  projectReadinessReceiptProofV5,
   projectServingClosureSeal,
   projectServingReadinessCommitV4,
+  projectServingReadinessCommitV5,
   projectServingReadinessProofV4,
+  projectServingReadinessProofV5,
   projectServingSwitchPreflightProofV4,
+  projectServingSwitchPreflightProofV5,
   projectServingSwitchV4,
+  projectServingSwitchV5,
   readModelVariantNameSearchStagingPersistenceV1,
   readProviderModelIdSearchStagingPersistenceV1,
   readProviderModelIdSearchQueryablePersistenceV4,
   readProviderSearchStagingPersistenceV2,
   readServingReadinessCommitPersistenceV4,
+  readServingReadinessCommitPersistenceV5,
+  readServingReadinessPersistenceV5,
   readServingSwitchPersistenceV4,
+  readServingSwitchPersistenceV5,
   type ProviderModelIdSearchQueryableArtifactProofV4,
   type ProviderSearchArtifactProofV2,
   type ReadinessReceipt,
   type ServingClosureRows,
   type ServingReadinessAttestationProjectionV4,
+  type ReadinessReceiptV5,
+  type ServingReadinessAttestationProjectionV5,
   type ServingSwitchHistoryRow,
   type ServingSwitchPreflightProofV4,
+  type ServingSwitchPreflightProofV5,
 } from "./index.js";
 
 type OracleField = Readonly<{
@@ -318,7 +332,9 @@ const receiptFields = (
 ];
 
 const attestationFields = (
-  value: ServingReadinessAttestationProjectionV4,
+  value:
+    | ServingReadinessAttestationProjectionV4
+    | ServingReadinessAttestationProjectionV5,
 ): readonly OracleField[] => [
   field("evaluator_version", "text", "4.0.0"),
   field("environment", "text", value.environment),
@@ -474,6 +490,189 @@ const preflightFields = (
   field("model_variant_name_storage_exact_parity", "boolean", true),
   ...providerModelIdFields(proof),
 ];
+
+const archiveSlugFieldsV5 = (
+  receipt: Extract<ReadinessReceiptV5, { kind: "archive" }>,
+): readonly OracleField[] => [
+  field(
+    "model_slug_artifact_version",
+    "text",
+    receipt.modelSlugArtifactVersion,
+  ),
+  field(
+    "model_slug_acquisition_version",
+    "text",
+    receipt.modelSlugAcquisitionVersion,
+  ),
+  field(
+    "model_slug_projection_version",
+    "text",
+    receipt.modelSlugProjectionVersion,
+  ),
+  field(
+    "model_slug_artifact_digest",
+    "digest",
+    receipt.modelSlugArtifactDigest,
+  ),
+  field(
+    "model_slug_artifact_byte_count",
+    "integer",
+    receipt.modelSlugArtifactByteCount,
+  ),
+  field(
+    "model_slug_source_history_count",
+    "integer",
+    receipt.modelSlugSourceHistoryCount,
+  ),
+  field(
+    "model_slug_source_history_hash",
+    "digest",
+    receipt.modelSlugSourceHistoryHash,
+  ),
+  field("model_slug_model_count", "integer", receipt.modelSlugModelCount),
+  field("model_slug_mapping_count", "integer", receipt.modelSlugMappingCount),
+  field(
+    "model_slug_current_mapping_count",
+    "integer",
+    receipt.modelSlugCurrentMappingCount,
+  ),
+  field(
+    "model_slug_historical_mapping_count",
+    "integer",
+    receipt.modelSlugHistoricalMappingCount,
+  ),
+  field(
+    "model_slug_mapping_inventory_hash",
+    "digest",
+    receipt.modelSlugMappingInventoryHash,
+  ),
+  field("model_slug_read_verified", "boolean", true),
+  field("model_slug_immutable", "boolean", true),
+];
+
+const servingSlugFieldsV5 = (
+  receipt: Extract<ReadinessReceiptV5, { kind: "serving" }>,
+): readonly OracleField[] => [
+  field("model_slug_storage_version", "text", receipt.modelSlugStorageVersion),
+  field(
+    "model_slug_serving_artifact_digest",
+    "digest",
+    receipt.modelSlugArtifactDigest,
+  ),
+  field(
+    "model_slug_serving_projection_version",
+    "text",
+    receipt.modelSlugProjectionVersion,
+  ),
+  field(
+    "model_slug_serving_model_count",
+    "integer",
+    receipt.modelSlugModelCount,
+  ),
+  field(
+    "model_slug_serving_mapping_count",
+    "integer",
+    receipt.modelSlugMappingCount,
+  ),
+  field(
+    "model_slug_serving_current_mapping_count",
+    "integer",
+    receipt.modelSlugCurrentMappingCount,
+  ),
+  field(
+    "model_slug_serving_historical_mapping_count",
+    "integer",
+    receipt.modelSlugHistoricalMappingCount,
+  ),
+  field(
+    "model_slug_serving_mapping_inventory_hash",
+    "digest",
+    receipt.modelSlugMappingInventoryHash,
+  ),
+  field("model_slug_queryable", "boolean", true),
+  field("model_slug_exact_parity", "boolean", true),
+];
+
+const receiptFieldsV5 = (
+  receipt: ReadinessReceiptV5,
+  searchSuffix: readonly OracleField[],
+): readonly OracleField[] => {
+  const base = receiptFields(
+    receipt,
+    receipt.kind === "serving" ? searchSuffix : [],
+  );
+  const versioned = [
+    field("receipt_version", "text", "5.0.0"),
+    ...base.slice(1),
+  ];
+  return receipt.kind === "archive"
+    ? [...versioned, ...archiveSlugFieldsV5(receipt)]
+    : receipt.kind === "serving"
+      ? [...versioned, ...servingSlugFieldsV5(receipt)]
+      : receipt.kind === "probes"
+        ? [...versioned, field("model_slug_lookup_passed", "boolean", true)]
+        : versioned;
+};
+
+const attestationFieldsV5 = (
+  value: ServingReadinessAttestationProjectionV5,
+): readonly OracleField[] => [
+  field("evaluator_version", "text", "5.0.0"),
+  ...attestationFields(value).slice(1),
+];
+
+const preflightFieldsV5 = (
+  proof: ServingSwitchPreflightProofV5,
+): readonly OracleField[] => {
+  const v4 = preflightFields(proof as unknown as ServingSwitchPreflightProofV4);
+  const providerStart = v4.findIndex(
+    (entry) => entry.name === "provider_search_projection_version",
+  );
+  const common = [
+    field("preflight_version", "text", "5.0.0"),
+    ...v4.slice(1, providerStart),
+    field("model_slug_lookup_passed", "boolean", true),
+    ...v4.slice(providerStart),
+  ];
+  return [
+    ...common,
+    ...archiveSlugFieldsV5({
+      kind: "archive",
+      modelSlugArtifactVersion: proof.model_slug_artifact_version,
+      modelSlugAcquisitionVersion: proof.model_slug_acquisition_version,
+      modelSlugProjectionVersion: proof.model_slug_projection_version,
+      modelSlugArtifactDigest: proof.model_slug_artifact_digest,
+      modelSlugArtifactByteCount: proof.model_slug_artifact_byte_count,
+      modelSlugSourceHistoryCount: proof.model_slug_source_history_count,
+      modelSlugSourceHistoryHash: proof.model_slug_source_history_hash,
+      modelSlugModelCount: proof.model_slug_model_count,
+      modelSlugMappingCount: proof.model_slug_mapping_count,
+      modelSlugCurrentMappingCount: proof.model_slug_current_mapping_count,
+      modelSlugHistoricalMappingCount:
+        proof.model_slug_historical_mapping_count,
+      modelSlugMappingInventoryHash: proof.model_slug_mapping_inventory_hash,
+      modelSlugReadVerified: true,
+      modelSlugImmutable: true,
+    } as Extract<ReadinessReceiptV5, { kind: "archive" }>),
+    field("archive_receipt_hash", "digest", proof.archive_receipt_hash),
+    ...servingSlugFieldsV5({
+      kind: "serving",
+      modelSlugStorageVersion: proof.model_slug_storage_version,
+      modelSlugArtifactDigest: proof.model_slug_serving_artifact_digest,
+      modelSlugProjectionVersion: proof.model_slug_serving_projection_version,
+      modelSlugModelCount: proof.model_slug_serving_model_count,
+      modelSlugMappingCount: proof.model_slug_serving_mapping_count,
+      modelSlugCurrentMappingCount:
+        proof.model_slug_serving_current_mapping_count,
+      modelSlugHistoricalMappingCount:
+        proof.model_slug_serving_historical_mapping_count,
+      modelSlugMappingInventoryHash:
+        proof.model_slug_serving_mapping_inventory_hash,
+      modelSlugQueryable: true,
+      modelSlugExactParity: true,
+    } as Extract<ReadinessReceiptV5, { kind: "serving" }>),
+  ];
+};
 
 const eventFields = (
   history: ServingSwitchHistoryRow,
@@ -858,7 +1057,9 @@ const makeFixture = async () => {
   };
 };
 
-const artifactProof = (source: Awaited<ReturnType<typeof makeFixture>>) => ({
+const artifactProof = (
+  source: Pick<Awaited<ReturnType<typeof makeFixture>>, "manifest">,
+) => ({
   environment: "local" as const,
   observedAtMs: Date.parse("2026-08-02T00:34:00.000Z"),
   maximumAgeMs: 60 * 60 * 1_000,
@@ -885,6 +1086,151 @@ const artifactProof = (source: Awaited<ReturnType<typeof makeFixture>>) => ({
   structuredFilterPassed: true as const,
   neutralityPassed: true as const,
   versionIsolationPassed: true as const,
+});
+
+const makeV5Fixture = async () => {
+  const source = await makeFixture();
+  const projection = await projectModelSlugProjection({
+    manifest: source.manifest,
+    resources: [],
+    historyRows: [],
+  });
+  const artifactDigest = `sha256:${"d".repeat(64)}` as const;
+  const archiveProof = projectModelSlugArchiveArtifactProofV5({
+    manifest: source.manifest,
+    projection,
+    observation: {
+      publicationId: source.manifest.publicationId,
+      closureHash: source.manifest.closureHash,
+      baseBundleHash: source.manifest.bundleHash,
+      publicationBoundaryMs: Date.parse(source.manifest.generatedAt),
+      artifactVersion: "model-slug-history-artifact@1",
+      acquisitionVersion: "model-slug-history-canonical@1",
+      artifactDigest,
+      artifactByteCount: 512,
+      readVerified: true,
+      immutable: true,
+    },
+  });
+  const servingProof = projectModelSlugServingArtifactProofV5({
+    archiveProof,
+    projection,
+    observation: {
+      publicationId: source.manifest.publicationId,
+      closureHash: source.manifest.closureHash,
+      stagingRevision: source.closureRows.stagingRevision,
+      storageVersion: "model-slug-serving@1",
+      artifactDigest,
+      queryable: true,
+      exactParity: true,
+    },
+  });
+  const receipts: ReadinessReceiptV5[] = source.receipts.map((receipt) => {
+    switch (receipt.kind) {
+      case "archive":
+        return {
+          ...receipt,
+          modelSlugArtifactVersion: archiveProof.artifact_version,
+          modelSlugAcquisitionVersion: archiveProof.acquisition_version,
+          modelSlugProjectionVersion: archiveProof.projection_version,
+          modelSlugArtifactDigest: archiveProof.artifact_digest,
+          modelSlugArtifactByteCount: archiveProof.artifact_byte_count,
+          modelSlugSourceHistoryCount: archiveProof.source_history_count,
+          modelSlugSourceHistoryHash: archiveProof.source_history_hash,
+          modelSlugModelCount: archiveProof.model_count,
+          modelSlugMappingCount: archiveProof.mapping_count,
+          modelSlugCurrentMappingCount: archiveProof.current_mapping_count,
+          modelSlugHistoricalMappingCount:
+            archiveProof.historical_mapping_count,
+          modelSlugMappingInventoryHash: archiveProof.mapping_inventory_hash,
+          modelSlugReadVerified: true,
+          modelSlugImmutable: true,
+        };
+      case "serving":
+        return {
+          ...receipt,
+          modelSlugStorageVersion: servingProof.storage_version,
+          modelSlugArtifactDigest: servingProof.artifact_digest,
+          modelSlugProjectionVersion: servingProof.projection_version,
+          modelSlugModelCount: servingProof.model_count,
+          modelSlugMappingCount: servingProof.mapping_count,
+          modelSlugCurrentMappingCount: servingProof.current_mapping_count,
+          modelSlugHistoricalMappingCount:
+            servingProof.historical_mapping_count,
+          modelSlugMappingInventoryHash: servingProof.mapping_inventory_hash,
+          modelSlugQueryable: true,
+          modelSlugExactParity: true,
+        };
+      case "vectors":
+        return receipt;
+      case "probes":
+        return {
+          ...receipt,
+          probeSetVersion: "search-gold@5",
+          modelSlugLookupPassed: true,
+        };
+    }
+  });
+  const receiptProofs = await Promise.all(
+    receipts.map((receipt) =>
+      projectReadinessReceiptProofV5({
+        receipt,
+        providerProof: receipt.kind === "serving" ? source.providerProof : null,
+        modelVariantNameProof:
+          receipt.kind === "serving" ? source.modelProof : null,
+        providerModelIdProof:
+          receipt.kind === "serving" ? source.providerModelIdProof : null,
+        modelSlugArchiveProof: receipt.kind === "archive" ? archiveProof : null,
+        modelSlugServingProof: receipt.kind === "serving" ? servingProof : null,
+      }),
+    ),
+  );
+  const readinessProof = await projectServingReadinessProofV5({
+    manifest: source.manifest,
+    receiptProofs,
+    environment: "local",
+    readyAtMs: Date.parse("2026-08-02T00:34:00.000Z"),
+    maximumReceiptAgeMs: 60 * 60 * 1_000,
+  });
+  return {
+    ...source,
+    projection,
+    archiveProof,
+    servingProof,
+    receipts,
+    receiptProofs,
+    readinessProof,
+  };
+};
+
+const artifactProofV5 = (
+  source: Awaited<ReturnType<typeof makeV5Fixture>>,
+) => ({
+  ...artifactProof(source),
+  probeSetVersion: "search-gold@5" as const,
+  modelSlugLookupPassed: true as const,
+});
+
+const slugStorageProof = (
+  source: Awaited<ReturnType<typeof makeV5Fixture>>,
+) => ({
+  publication_id: source.archiveProof.publication_id,
+  staging_revision: source.servingProof.staging_revision,
+  artifact_version: source.archiveProof.artifact_version,
+  acquisition_version: source.archiveProof.acquisition_version,
+  projection_version: source.archiveProof.projection_version,
+  base_bundle_hash: source.archiveProof.base_bundle_hash,
+  closure_hash: source.archiveProof.closure_hash,
+  publication_boundary_ms: source.archiveProof.publication_boundary_ms,
+  artifact_digest: source.archiveProof.artifact_digest,
+  artifact_byte_count: source.archiveProof.artifact_byte_count,
+  model_count: source.archiveProof.model_count,
+  source_history_count: source.archiveProof.source_history_count,
+  source_history_hash: source.archiveProof.source_history_hash,
+  mapping_count: source.archiveProof.mapping_count,
+  current_mapping_count: source.archiveProof.current_mapping_count,
+  historical_mapping_count: source.archiveProof.historical_mapping_count,
+  mapping_inventory_hash: source.archiveProof.mapping_inventory_hash,
 });
 
 describe("independent provider-model-ID v4 hash oracle", () => {
@@ -1156,5 +1502,372 @@ describe("independent provider-model-ID v4 hash oracle", () => {
     expect(
       digest("publication-switch-event", eventWithWrongPreflight),
     ).not.toBe(rollbackState.history.event_hash);
+  });
+});
+
+describe("archive-bound model-slug lifecycle v5 proofs", () => {
+  it("mints nominal archive/serving capabilities and exact persistence rows", async () => {
+    const source = await makeV5Fixture();
+    expect(() =>
+      projectModelSlugServingArtifactProofV5({
+        archiveProof: { ...source.archiveProof },
+        projection: source.projection,
+        observation: {
+          publicationId: source.manifest.publicationId,
+          closureHash: source.manifest.closureHash,
+          stagingRevision: 1,
+          storageVersion: "model-slug-serving@1",
+          artifactDigest: source.archiveProof.artifact_digest,
+          queryable: true,
+          exactParity: true,
+        },
+      }),
+    ).toThrow("not trusted");
+    const persistence = readServingReadinessPersistenceV5(
+      source.readinessProof,
+    );
+    expect(persistence.modelSlugArchiveProof).toBe(source.archiveProof);
+    expect(persistence.modelSlugServingProof).toBe(source.servingProof);
+    expect(persistence.receiptRows.bindings.map((row) => row.kind)).toEqual([
+      "archive",
+      "probes",
+      "serving",
+      "vectors",
+    ]);
+    expect(persistence.receiptRows.archives[0]).toMatchObject({
+      model_slug_artifact_digest: source.archiveProof.artifact_digest,
+      model_slug_mapping_inventory_hash:
+        source.archiveProof.mapping_inventory_hash,
+      model_slug_read_verified: 1,
+      model_slug_immutable: 1,
+    });
+    expect(persistence.receiptRows.servings[0]).toMatchObject({
+      model_slug_artifact_digest: source.servingProof.artifact_digest,
+      model_slug_mapping_inventory_hash:
+        source.servingProof.mapping_inventory_hash,
+      model_slug_queryable: 1,
+      model_slug_exact_parity: 1,
+    });
+    expect(persistence.receiptRows.probes[0]?.model_slug_lookup_passed).toBe(1);
+  });
+
+  it("projects a readiness commit only from exact persisted slug and search rows", async () => {
+    const source = await makeV5Fixture();
+    const persistedModelSlugArtifactProof = {
+      publication_id: source.archiveProof.publication_id,
+      staging_revision: source.servingProof.staging_revision,
+      artifact_version: source.archiveProof.artifact_version,
+      acquisition_version: source.archiveProof.acquisition_version,
+      projection_version: source.archiveProof.projection_version,
+      base_bundle_hash: source.archiveProof.base_bundle_hash,
+      closure_hash: source.archiveProof.closure_hash,
+      publication_boundary_ms: source.archiveProof.publication_boundary_ms,
+      artifact_digest: source.archiveProof.artifact_digest,
+      artifact_byte_count: source.archiveProof.artifact_byte_count,
+      model_count: source.archiveProof.model_count,
+      source_history_count: source.archiveProof.source_history_count,
+      source_history_hash: source.archiveProof.source_history_hash,
+      mapping_count: source.archiveProof.mapping_count,
+      current_mapping_count: source.archiveProof.current_mapping_count,
+      historical_mapping_count: source.archiveProof.historical_mapping_count,
+      mapping_inventory_hash: source.archiveProof.mapping_inventory_hash,
+    };
+    const commit = await projectServingReadinessCommitV5({
+      proof: source.readinessProof,
+      closureRows: source.closureRows,
+      persistedSeal: source.seal,
+      persistedProviderSearchDocuments: source.providerPersistence.documents,
+      persistedProviderSearchFtsRows: source.providerPersistence.ftsRows,
+      persistedModelVariantNameRows: source.modelPersistence.rows,
+      persistedProviderModelIdRows: source.providerModelIdPersistence.rows,
+      persistedModelSlugArtifactProof,
+      persistedModelSlugMappings: [],
+    });
+    const persistence = readServingReadinessCommitPersistenceV5(commit);
+    expect(persistence.modelSlugArchiveProof).toBe(source.archiveProof);
+    expect(persistence.transition).toMatchObject({
+      expected_state: "building",
+      next_state: "ready",
+    });
+    await expect(
+      projectServingReadinessCommitV5({
+        proof: source.readinessProof,
+        closureRows: source.closureRows,
+        persistedSeal: source.seal,
+        persistedProviderSearchDocuments: source.providerPersistence.documents,
+        persistedProviderSearchFtsRows: source.providerPersistence.ftsRows,
+        persistedModelVariantNameRows: source.modelPersistence.rows,
+        persistedProviderModelIdRows: source.providerModelIdPersistence.rows,
+        persistedModelSlugArtifactProof: {
+          ...persistedModelSlugArtifactProof,
+          mapping_count: 1,
+        },
+        persistedModelSlugMappings: [],
+      }),
+    ).rejects.toThrow("does not exactly match its proof");
+    const sparse = new Array(1);
+    await expect(
+      projectServingReadinessCommitV5({
+        proof: source.readinessProof,
+        closureRows: source.closureRows,
+        persistedSeal: source.seal,
+        persistedProviderSearchDocuments: source.providerPersistence.documents,
+        persistedProviderSearchFtsRows: source.providerPersistence.ftsRows,
+        persistedModelVariantNameRows: source.modelPersistence.rows,
+        persistedProviderModelIdRows: source.providerModelIdPersistence.rows,
+        persistedModelSlugArtifactProof,
+        persistedModelSlugMappings: sparse,
+      }),
+    ).rejects.toThrow("invalid or too large");
+    let getterCalled = false;
+    const hostile = {
+      proof: source.readinessProof,
+      closureRows: source.closureRows,
+      persistedSeal: source.seal,
+      persistedProviderSearchDocuments: source.providerPersistence.documents,
+      persistedProviderSearchFtsRows: source.providerPersistence.ftsRows,
+      persistedModelVariantNameRows: source.modelPersistence.rows,
+      persistedProviderModelIdRows: source.providerModelIdPersistence.rows,
+      persistedModelSlugArtifactProof,
+      persistedModelSlugMappings: [],
+    };
+    Object.defineProperty(hostile, "persistedModelSlugMappings", {
+      enumerable: true,
+      get() {
+        getterCalled = true;
+        return [];
+      },
+    });
+    await expect(
+      projectServingReadinessCommitV5(
+        hostile as Parameters<typeof projectServingReadinessCommitV5>[0],
+      ),
+    ).rejects.toThrow("input is invalid");
+    expect(getterCalled).toBe(false);
+  });
+
+  it("pins all four v5 receipt hashes and the v5 attestation with an independent oracle", async () => {
+    const source = await makeV5Fixture();
+    const searchSuffix = [
+      ...providerFields(source.providerProof),
+      ...modelFields(source.modelProof),
+      ...providerModelIdFields(source.providerModelIdProof),
+    ];
+    for (let index = 0; index < source.receipts.length; index += 1) {
+      const receipt = source.receipts[index]!;
+      expect(source.receiptProofs[index]!.receipt_hash).toBe(
+        digest(
+          "publication-readiness-receipt",
+          receiptFieldsV5(receipt, searchSuffix),
+        ),
+      );
+    }
+    expect(source.readinessProof.attestation.attestation_hash).toBe(
+      digest(
+        "publication-readiness-attestation",
+        attestationFieldsV5(source.readinessProof.attestation),
+      ),
+    );
+    const archive = source.receipts[0]!;
+    if (archive.kind !== "archive") throw new TypeError("fixture is invalid");
+    const changed = receiptFieldsV5(archive, []).map((entry) =>
+      entry.name === "model_slug_mapping_count"
+        ? field(entry.name, entry.type, Number(entry.value) + 1)
+        : entry,
+    );
+    expect(digest("publication-readiness-receipt", changed)).not.toBe(
+      source.receiptProofs[0]!.receipt_hash,
+    );
+  });
+
+  it("rejects extra receipt keys and mismatched archive-bound evidence", async () => {
+    const source = await makeV5Fixture();
+    const archive = source.receipts[0]!;
+    await expect(
+      projectReadinessReceiptProofV5({
+        receipt: { ...archive, unexpected: true } as never,
+        providerProof: null,
+        modelVariantNameProof: null,
+        providerModelIdProof: null,
+        modelSlugArchiveProof: source.archiveProof,
+        modelSlugServingProof: null,
+      }),
+    ).rejects.toThrow("invalid");
+    if (archive.kind !== "archive") throw new TypeError("fixture is invalid");
+    await expect(
+      projectReadinessReceiptProofV5({
+        receipt: {
+          ...archive,
+          modelSlugArtifactDigest: `sha256:${"e".repeat(64)}`,
+        },
+        providerProof: null,
+        modelVariantNameProof: null,
+        providerModelIdProof: null,
+        modelSlugArchiveProof: source.archiveProof,
+        modelSlugServingProof: null,
+      }),
+    ).rejects.toThrow("does not bind");
+  });
+
+  it("pins activation and rollback v5 preflight hashes including slug evidence", async () => {
+    const source = await makeV5Fixture();
+    const activatedAtMs = Date.parse("2026-08-02T00:35:00.000Z");
+    const activation = await projectServingSwitchPreflightProofV5({
+      manifest: source.manifest,
+      providerProof: source.providerProof,
+      modelVariantNameProof: source.modelProof,
+      providerModelIdProof: source.providerModelIdProof,
+      modelSlugArchiveProof: source.archiveProof,
+      modelSlugServingProof: source.servingProof,
+      readinessProof: source.readinessProof,
+      rollbackArchiveReceiptHash: null,
+      context: {
+        switchId: `publication-switch|activate|1|${PUBLICATION_ID}|${source.manifest.closureHash}`,
+        action: "activate",
+        expectedPriorGeneration: 0,
+        expectedPriorRollbackCandidatePublicationId: null,
+        expectedPriorSwitchedAtMs: null,
+        newGeneration: 1,
+        fromPublicationId: null,
+        fromClosureHash: null,
+        toPublicationId: PUBLICATION_ID,
+        toClosureHash: source.manifest.closureHash,
+        switchedAtMs: activatedAtMs,
+      },
+      artifactProof: artifactProofV5(source),
+    });
+    expect(activation.preflight_hash).toBe(
+      digest("publication-switch-preflight", preflightFieldsV5(activation)),
+    );
+    const readiness = readServingReadinessPersistenceV5(source.readinessProof);
+    const activationInput = {
+      preflight: activation,
+      target: {
+        publicationId: PUBLICATION_ID,
+        closureHash: source.manifest.closureHash,
+        state: "ready",
+        generatedAt: source.manifest.generatedAt,
+        readyAt: new Date(readiness.attestation.ready_at_ms).toISOString(),
+        firstActivatedAt: null,
+        lastHeadReferencedAt: null,
+      },
+      currentHead: null,
+      currentActive: null,
+      authorizedBy: { kind: "pipeline", identityId: "pipeline.oracle" },
+      closureRows: source.closureRows,
+      persistedSeal: source.seal,
+      persistedProviderSearchDocuments: source.providerPersistence.documents,
+      persistedProviderSearchFtsRows: source.providerPersistence.ftsRows,
+      persistedModelVariantNameRows: source.modelPersistence.rows,
+      persistedProviderModelIdRows: source.providerModelIdPersistence.rows,
+      persistedModelSlugArtifactProof: slugStorageProof(source),
+      persistedModelSlugMappings: [],
+      persistedReceiptRows: readiness.receiptRows,
+      persistedAttestation: readiness.attestation,
+    } satisfies Parameters<typeof projectServingSwitchV5>[0];
+    const activationProjection = await projectServingSwitchV5(activationInput);
+    const activationState =
+      readServingSwitchPersistenceV5(activationProjection);
+    expect(activationState.modelSlugArchiveProof).toBe(source.archiveProof);
+    expect(activationState.history.event_hash).toBe(
+      digest("publication-switch-event", eventFields(activationState.history)),
+    );
+    let switchGetterCalled = false;
+    const hostileSwitch = { ...activationInput };
+    Object.defineProperty(hostileSwitch, "persistedModelSlugMappings", {
+      enumerable: true,
+      get() {
+        switchGetterCalled = true;
+        return [];
+      },
+    });
+    await expect(projectServingSwitchV5(hostileSwitch)).rejects.toThrow(
+      "input is invalid",
+    );
+    expect(switchGetterCalled).toBe(false);
+    const otherClosure = `sha256:${"c".repeat(64)}` as const;
+    const rollback = await projectServingSwitchPreflightProofV5({
+      manifest: source.manifest,
+      providerProof: source.providerProof,
+      modelVariantNameProof: source.modelProof,
+      providerModelIdProof: source.providerModelIdProof,
+      modelSlugArchiveProof: source.archiveProof,
+      modelSlugServingProof: source.servingProof,
+      readinessProof: null,
+      rollbackArchiveReceiptHash: readiness.attestation.archive_receipt_hash,
+      context: {
+        switchId: `publication-switch|rollback|2|${PUBLICATION_ID}|${source.manifest.closureHash}`,
+        action: "rollback",
+        expectedPriorGeneration: 1,
+        expectedPriorRollbackCandidatePublicationId: PUBLICATION_ID,
+        expectedPriorSwitchedAtMs: activatedAtMs,
+        newGeneration: 2,
+        fromPublicationId: OTHER_PUBLICATION_ID,
+        fromClosureHash: otherClosure,
+        toPublicationId: PUBLICATION_ID,
+        toClosureHash: source.manifest.closureHash,
+        switchedAtMs: Date.parse("2026-08-02T00:36:00.000Z"),
+      },
+      artifactProof: {
+        ...artifactProofV5(source),
+        observedAtMs: Date.parse("2026-08-02T00:36:00.000Z"),
+      },
+    });
+    expect(rollback.preflight_hash).toBe(
+      digest("publication-switch-preflight", preflightFieldsV5(rollback)),
+    );
+    expect(rollback.to_attestation_hash).toBeNull();
+    const rollbackProjection = await projectServingSwitchV5({
+      preflight: rollback,
+      target: {
+        publicationId: PUBLICATION_ID,
+        closureHash: source.manifest.closureHash,
+        state: "superseded",
+        generatedAt: source.manifest.generatedAt,
+        readyAt: new Date(readiness.attestation.ready_at_ms).toISOString(),
+        firstActivatedAt: new Date(activatedAtMs).toISOString(),
+        lastHeadReferencedAt: new Date(activatedAtMs).toISOString(),
+      },
+      currentHead: {
+        activePublicationId: OTHER_PUBLICATION_ID,
+        rollbackCandidatePublicationId: PUBLICATION_ID,
+        switchedAt: new Date(activatedAtMs).toISOString(),
+        generation: 1,
+      },
+      currentActive: {
+        publicationId: OTHER_PUBLICATION_ID,
+        closureHash: otherClosure,
+        state: "active",
+        generatedAt: source.manifest.generatedAt,
+        readyAt: new Date(readiness.attestation.ready_at_ms).toISOString(),
+        firstActivatedAt: new Date(activatedAtMs).toISOString(),
+        lastHeadReferencedAt: new Date(activatedAtMs).toISOString(),
+      },
+      authorizedBy: { kind: "operator", identityId: "operator.oracle" },
+      closureRows: source.closureRows,
+      persistedSeal: source.seal,
+      persistedProviderSearchDocuments: source.providerPersistence.documents,
+      persistedProviderSearchFtsRows: source.providerPersistence.ftsRows,
+      persistedModelVariantNameRows: source.modelPersistence.rows,
+      persistedProviderModelIdRows: source.providerModelIdPersistence.rows,
+      persistedModelSlugArtifactProof: slugStorageProof(source),
+      persistedModelSlugMappings: [],
+      persistedReceiptRows: null,
+      persistedAttestation: null,
+    });
+    const rollbackState = readServingSwitchPersistenceV5(rollbackProjection);
+    expect(rollbackState.modelSlugServingProof).toBe(source.servingProof);
+    expect(rollbackState.history.event_hash).toBe(
+      digest("publication-switch-event", eventFields(rollbackState.history)),
+    );
+    const reordered = [...preflightFieldsV5(rollback)];
+    const last = reordered.length - 1;
+    [reordered[last - 1], reordered[last]] = [
+      reordered[last]!,
+      reordered[last - 1]!,
+    ];
+    expect(digest("publication-switch-preflight", reordered)).not.toBe(
+      rollback.preflight_hash,
+    );
   });
 });

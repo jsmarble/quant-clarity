@@ -40,6 +40,7 @@ import {
 import {
   createProviderModelIdSearchFixture,
   type ProviderModelIdOfferingFixture,
+  type ProviderModelIdSearchFixture,
 } from "./provider-model-id-search-fixture.js";
 import type { ModelVariantNameSearchFixture } from "./model-variant-name-search-fixture.js";
 
@@ -76,13 +77,16 @@ export const createServingV4Fixture = async (
   generatedAtMs: number,
   offerings: readonly ProviderModelIdOfferingFixture[] = DEFAULT_OFFERINGS,
   includeVariant = false,
+  providerModelIdFixtureOverride?: ProviderModelIdSearchFixture,
 ): Promise<ServingV4Fixture> => {
-  const providerModelIdFixture = await createProviderModelIdSearchFixture(
-    publicationId,
-    generatedAtMs,
-    offerings,
-    includeVariant,
-  );
+  const providerModelIdFixture =
+    providerModelIdFixtureOverride ??
+    (await createProviderModelIdSearchFixture(
+      publicationId,
+      generatedAtMs,
+      offerings,
+      includeVariant,
+    ));
   const { manifest, closureRows } = providerModelIdFixture;
   const { seal } = await projectServingClosureSeal(closureRows);
   const datasetMetadataSummary =
