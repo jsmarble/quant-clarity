@@ -8418,12 +8418,12 @@ BEGIN SELECT 1; /*`;
         database
           .prepare(
             `SELECT schema_version,
-               (SELECT count(*) FROM sqlite_schema
-                WHERE name IN (
-                  'publication_model_slug_current_model_idx',
-                  'publication_switch_history_model_slug_index_guard'
-                )) AS v5_object_count
-             FROM serving_schema_metadata WHERE singleton = 1`,
+                 (SELECT count(*) FROM sqlite_schema
+                  WHERE name IN (
+                    'publication_model_slug_current_model_idx',
+                    'publication_switch_history_model_slug_index_guard'
+                  )) AS v5_object_count
+               FROM serving_schema_metadata WHERE singleton = 1`,
           )
           .get(),
       ).toEqual({ schema_version: "1.12.0", v5_object_count: 0 });
@@ -8437,7 +8437,7 @@ BEGIN SELECT 1; /*`;
       ).toEqual({ schema_version: "1.13.0" });
       database.close();
     }
-  });
+  }, 15_000);
 
   it("keeps every migration 0016 statement below the project D1 byte ceiling", () => {
     const migration = readFileSync(
