@@ -31,6 +31,7 @@ const PROVIDER_ID = new RegExp(`^prv_${UUID_V4}$`, "u");
 const OFFERING_ID = new RegExp(`^off_${UUID_V4}$`, "u");
 const MODEL_ID = new RegExp(`^mdl_${UUID_V4}$`, "u");
 const VARIANT_ID = new RegExp(`^var_${UUID_V4}$`, "u");
+const FAMILY_ID = new RegExp(`^fam_${UUID_V4}$`, "u");
 const SHA256 = /^sha256:[0-9a-f]{64}$/u;
 const utf8 = new TextEncoder();
 
@@ -44,7 +45,7 @@ export const PROVIDER_MODEL_ID_EXACT_MAX_TRANSFER_BYTES =
   (PROVIDER_MODEL_ID_EXACT_MAX_PAGE_SIZE + 1) *
   PROVIDER_MODEL_ID_EXACT_MAX_RESOURCE_BYTES;
 
-const PROVIDER_ELIGIBILITY_SQL = `
+const providerEligibilitySql = (binding: 14 | 15): string => `
     AND EXISTS (
       SELECT 1
       FROM publication_provider_model_id_search_document AS eligibility
@@ -54,7 +55,7 @@ const PROVIDER_ELIGIBILITY_SQL = `
        AND eligibility_offering.resource_type = 'offering'
        AND eligibility_offering.resource_id = eligibility.offering_id
       WHERE eligibility.publication_id = document.publication_id
-        AND eligibility.provider_id = ?14
+        AND eligibility.provider_id = ?${String(binding)}
         AND eligibility.target_resource_type = document.target_resource_type
         AND eligibility.target_resource_id = document.target_resource_id
         AND eligibility.projection_version = 'provider-model-id@1'
@@ -77,6 +78,7 @@ const PROVIDER_ELIGIBILITY_SQL = `
  */
 const providerModelIdExactCandidateSelectSql = (
   providerEligibilitySql: string,
+  familySql: string,
 ): string => `
 WITH ${RETAINED_HOT_REFERENCE_CTE_SQL}, eligible_publication AS (
   SELECT publication.publication_id
@@ -159,6 +161,7 @@ WITH ${RETAINED_HOT_REFERENCE_CTE_SQL}, eligible_publication AS (
     AND json_extract(target.resource_json, '$.status.state') = 'known'
     AND json_extract(target.resource_json, '$.status.value') = 'active'
 ${providerEligibilitySql}
+${familySql}
   UNION ALL
   SELECT
     1 AS match_mode,
@@ -212,6 +215,7 @@ ${providerEligibilitySql}
     AND json_extract(target.resource_json, '$.status.state') = 'known'
     AND json_extract(target.resource_json, '$.status.value') = 'active'
 ${providerEligibilitySql}
+${familySql}
 ), deduplicated AS (
   SELECT *, row_number() OVER (
     PARTITION BY target_resource_type, target_resource_id
@@ -276,9 +280,19 @@ ORDER BY row_ordinal ASC, match_mode ASC,
 `;
 
 export const PROVIDER_MODEL_ID_EXACT_CANDIDATE_SELECT_SQL =
-  providerModelIdExactCandidateSelectSql("");
+  providerModelIdExactCandidateSelectSql("", "");
 export const PROVIDER_MODEL_ID_EXACT_ELIGIBILITY_CANDIDATE_SELECT_SQL =
-  providerModelIdExactCandidateSelectSql(PROVIDER_ELIGIBILITY_SQL);
+  providerModelIdExactCandidateSelectSql(providerEligibilitySql(14), "");
+export const PROVIDER_MODEL_ID_EXACT_FAMILY_CANDIDATE_SELECT_SQL =
+  providerModelIdExactCandidateSelectSql(
+    "",
+    "    AND json_extract(target.resource_json, '$.family_id') = ?14",
+  );
+export const PROVIDER_MODEL_ID_EXACT_ELIGIBILITY_FAMILY_CANDIDATE_SELECT_SQL =
+  providerModelIdExactCandidateSelectSql(
+    providerEligibilitySql(14),
+    "    AND json_extract(target.resource_json, '$.family_id') = ?15",
+  );
 
 /** Canonical targets are fetched separately to stay below D1's row-size cap. */
 export const PROVIDER_MODEL_ID_EXACT_TARGET_SELECT_SQL = `
@@ -352,6 +366,7 @@ export type ProviderModelIdExactInput = Readonly<{
   publicationId: string;
   query: string;
   providerId: string | null;
+  familyId?: string | null;
   recordType: "model" | "variant" | null;
   continuation: ProviderModelIdExactContinuation | null;
   limit: number;
@@ -427,6 +442,7 @@ type ValidatedInput = Readonly<{
   normalizedBytes: ArrayBuffer;
   providerId: string | null;
   eligibilityProviderId: string | null;
+  familyId: string | null;
   recordType: "model" | "variant" | null;
   afterMatchMode: -1 | 0 | 1;
   afterNormalizedBytes: ArrayBuffer;
@@ -577,6 +593,7 @@ const validateInput = (
     !exactKeys(input, [
       "continuation",
       ...(stableIdOrdering ? ["eligibilityProviderId"] : []),
+      ...(Object.hasOwn(input, "familyId") ? ["familyId"] : []),
       "limit",
       "providerId",
       "publicationId",
@@ -599,6 +616,10 @@ const validateInput = (
     (input.providerId !== null &&
       (typeof input.providerId !== "string" ||
         !PROVIDER_ID.test(input.providerId))) ||
+    (Object.hasOwn(input, "familyId") &&
+      input.familyId !== null &&
+      (typeof input.familyId !== "string" ||
+        !FAMILY_ID.test(input.familyId))) ||
     (stableIdOrdering &&
       input.eligibilityProviderId !== null &&
       (typeof input.eligibilityProviderId !== "string" ||
@@ -690,6 +711,9 @@ const validateInput = (
     providerId: input.providerId,
     eligibilityProviderId: stableIdOrdering
       ? (input.eligibilityProviderId as string | null)
+      : null,
+    familyId: Object.hasOwn(input, "familyId")
+      ? (input.familyId as string | null)
       : null,
     recordType: input.recordType,
     afterMatchMode,
@@ -928,8 +952,12 @@ const readProviderModelIdExactPageInternal = async (
   try {
     const statement = database.prepare(
       valid.eligibilityProviderId === null
-        ? PROVIDER_MODEL_ID_EXACT_CANDIDATE_SELECT_SQL
-        : PROVIDER_MODEL_ID_EXACT_ELIGIBILITY_CANDIDATE_SELECT_SQL,
+        ? valid.familyId === null
+          ? PROVIDER_MODEL_ID_EXACT_CANDIDATE_SELECT_SQL
+          : PROVIDER_MODEL_ID_EXACT_FAMILY_CANDIDATE_SELECT_SQL
+        : valid.familyId === null
+          ? PROVIDER_MODEL_ID_EXACT_ELIGIBILITY_CANDIDATE_SELECT_SQL
+          : PROVIDER_MODEL_ID_EXACT_ELIGIBILITY_FAMILY_CANDIDATE_SELECT_SQL,
     );
     const commonBindings = [
       valid.publicationId,
@@ -946,11 +974,15 @@ const readProviderModelIdExactPageInternal = async (
       stableIdOrdering ? 1 : 0,
       valid.requiredAvailableUntilMs,
     ] as const;
-    const result: unknown = await (
-      valid.eligibilityProviderId === null
-        ? statement.bind(...commonBindings)
-        : statement.bind(...commonBindings, valid.eligibilityProviderId)
-    ).all();
+    const optionalBindings = [
+      ...(valid.eligibilityProviderId === null
+        ? []
+        : [valid.eligibilityProviderId]),
+      ...(valid.familyId === null ? [] : [valid.familyId]),
+    ] as const;
+    const result: unknown = await statement
+      .bind(...commonBindings, ...optionalBindings)
+      .all();
     candidateValues = rows(result, valid.limit + 2);
   } catch (error) {
     if (error instanceof ProviderModelIdExactError) throw error;
@@ -1139,6 +1171,7 @@ const readProviderModelIdExactPageInternal = async (
     }
     if (
       canonicalId !== row.resource_id ||
+      (valid.familyId !== null && canonical.family_id !== valid.familyId) ||
       canonical.status.state !== "known" ||
       canonical.status.value !== "active" ||
       canonical.display_name.state !== "known" ||

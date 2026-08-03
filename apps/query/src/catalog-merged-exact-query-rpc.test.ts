@@ -22,6 +22,7 @@ import {
 
 const PUBLICATION = "pub_11111111-1111-4111-8111-111111111111";
 const MODEL = "mdl_22222222-2222-4222-8222-222222222222";
+const FAMILY = "fam_33333333-3333-4333-8333-333333333333";
 
 const envelope = (
   filters: Record<string, string> = {},
@@ -114,6 +115,7 @@ describe("merged exact-search RPC (SRCH-002, API-003, API-007, CF-020)", () => {
       query: "Fixture",
       recordType: "model",
       eligibilityProviderId: null,
+      familyId: null,
       continuation: {
         tierMarker: EXACT_PROVIDER_MODEL_ID_RAW_MARKER,
         resourceId: MODEL,
@@ -219,6 +221,7 @@ describe("merged exact-search RPC (SRCH-002, API-003, API-007, CF-020)", () => {
       limit: 20,
       requiredAvailableUntilMs: horizon,
       eligibilityProviderId: null,
+      familyId: null,
     });
   });
 
@@ -248,6 +251,28 @@ describe("merged exact-search RPC (SRCH-002, API-003, API-007, CF-020)", () => {
     );
   });
 
+  it("reconciles one exact canonical family filter and passes its stable ID", async () => {
+    const page = {
+      publicationId: PUBLICATION,
+      results: [],
+      nextContinuation: null,
+      semanticDegraded: "disabled",
+    } as const;
+    mocked.readPage.mockResolvedValue(page);
+    const database = new FakeDatabase();
+    await expect(
+      readMergedExactSearchV1(
+        database.asD1(),
+        "test",
+        input({ family: FAMILY }),
+      ),
+    ).resolves.toEqual({ outcome: "page", page });
+    expect(mocked.readPage).toHaveBeenCalledWith(
+      database.session,
+      expect.objectContaining({ familyId: FAMILY }),
+    );
+  });
+
   it("rejects mismatched provider filters, provider records, and provider cursors before D1", async () => {
     const provider = "prv_11111111-1111-4111-8111-111111111111";
     const mismatched = input({ provider });
@@ -271,6 +296,48 @@ describe("merged exact-search RPC (SRCH-002, API-003, API-007, CF-020)", () => {
       await expect(
         readMergedExactSearchV1(database.asD1(), "test", candidate),
       ).resolves.toEqual({ outcome: "integrity_failure" });
+    expect(database.sessionInputs).toEqual([]);
+    expect(mocked.readPage).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed, mismatched, Provider-scoped, and accessor-backed family filters before D1", async () => {
+    const mismatched = input({ family: FAMILY });
+    mismatched.envelope.searchPlan.filters = {};
+    const accessor = input();
+    const familyFilter = {} as Record<string, string>;
+    let reads = 0;
+    Object.defineProperty(familyFilter, "family", {
+      enumerable: true,
+      get: () => {
+        reads += 1;
+        return FAMILY;
+      },
+    });
+    accessor.envelope.filters = familyFilter;
+    accessor.envelope.searchPlan.filters = familyFilter;
+    const candidates = [
+      input({ family: "fam_invalid" }),
+      input({ family: FAMILY.toUpperCase() }),
+      input({ family: FAMILY, record_type: "provider" }),
+      input(
+        { family: FAMILY },
+        {
+          lastSortTuple: [
+            "exact-v1:p",
+            "prv_22222222-2222-4222-8222-222222222222",
+          ],
+          stableId: "prv_22222222-2222-4222-8222-222222222222",
+        },
+      ),
+      mismatched,
+      accessor,
+    ];
+    const database = new FakeDatabase();
+    for (const candidate of candidates)
+      await expect(
+        readMergedExactSearchV1(database.asD1(), "test", candidate),
+      ).resolves.toEqual({ outcome: "integrity_failure" });
+    expect(reads).toBe(0);
     expect(database.sessionInputs).toEqual([]);
     expect(mocked.readPage).not.toHaveBeenCalled();
   });

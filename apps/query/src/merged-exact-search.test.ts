@@ -49,6 +49,7 @@ const MODEL_1 = "mdl_11111111-1111-4111-8111-111111111111";
 const MODEL_2 = "mdl_22222222-2222-4222-8222-222222222222";
 const MODEL_3 = "mdl_33333333-3333-4333-8333-333333333333";
 const PROVIDER = "prv_44444444-4444-4444-8444-444444444444";
+const FAMILY = "fam_66666666-6666-4666-8666-666666666666";
 const displayName = Object.freeze({
   state: "known",
   value: "Fixture",
@@ -214,6 +215,7 @@ describe("merged exact search (SRCH-002, SRCH-006, API-007, PRIV-006)", () => {
       query: "Fixture",
       providerId: null,
       eligibilityProviderId: null,
+      familyId: null,
       recordType: null,
       continuation: {
         matchMode: "raw",
@@ -351,6 +353,79 @@ describe("merged exact search (SRCH-002, SRCH-006, API-007, PRIV-006)", () => {
     expect(mocked.provider).not.toHaveBeenCalled();
   });
 
+  it("applies family membership to both target tiers and skips Provider results", async () => {
+    mocked.model.mockResolvedValue({
+      publicationId: PUBLICATION,
+      results: [canonical()],
+      nextAfterResourceId: null,
+    });
+    mocked.providerModelId.mockResolvedValue({
+      publicationId: PUBLICATION,
+      results: [providerModelId(MODEL_2)],
+      matchModes: ["raw"],
+      nextContinuation: null,
+    });
+    const database = { prepare: vi.fn() };
+    const page = await readMergedExactSearchPage(
+      database,
+      input({ familyId: FAMILY }),
+    );
+    expect(page.results.map((result) => result.resourceId)).toEqual([
+      MODEL_1,
+      MODEL_2,
+    ]);
+    expect(mocked.model).toHaveBeenCalledWith(
+      database,
+      expect.objectContaining({ familyId: FAMILY }),
+    );
+    expect(mocked.providerModelId).toHaveBeenCalledWith(
+      database,
+      expect.objectContaining({ familyId: FAMILY }),
+    );
+    expect(mocked.provider).not.toHaveBeenCalled();
+  });
+
+  it("preserves family membership across compact continuation pages", async () => {
+    mocked.providerModelId.mockResolvedValueOnce({
+      publicationId: PUBLICATION,
+      results: [providerModelId(MODEL_1)],
+      matchModes: ["raw"],
+      nextContinuation: { matchMode: "raw", resourceId: MODEL_1 },
+    });
+    const database = { prepare: vi.fn() };
+    const first = await readMergedExactSearchPage(
+      database,
+      input({ familyId: FAMILY, limit: 1 }),
+    );
+    expect(first.nextContinuation).toEqual({
+      tierMarker: EXACT_PROVIDER_MODEL_ID_RAW_MARKER,
+      resourceId: MODEL_1,
+    });
+
+    mocked.providerModelId.mockResolvedValueOnce({
+      publicationId: PUBLICATION,
+      results: [providerModelId(MODEL_2)],
+      matchModes: ["normalized"],
+      nextContinuation: null,
+    });
+    const second = await readMergedExactSearchPage(
+      database,
+      input({
+        familyId: FAMILY,
+        continuation: first.nextContinuation,
+        limit: 1,
+      }),
+    );
+    expect(second.results.map((result) => result.resourceId)).toEqual([
+      MODEL_2,
+    ]);
+    expect(mocked.providerModelId).toHaveBeenLastCalledWith(
+      database,
+      expect.objectContaining({ familyId: FAMILY }),
+    );
+    expect(mocked.provider).not.toHaveBeenCalled();
+  });
+
   it("keeps provider eligibility on every filtered page without entering the provider tier", async () => {
     mocked.providerModelId.mockResolvedValueOnce({
       publicationId: PUBLICATION,
@@ -436,7 +511,16 @@ describe("merged exact search (SRCH-002, SRCH-006, API-007, PRIV-006)", () => {
       input({ query: "\ud800" }),
       input({ limit: 21 }),
       input({ eligibilityProviderId: "prv_invalid" }),
+      input({ familyId: "fam_invalid" }),
+      input({ familyId: FAMILY, recordType: "provider" }),
       input({ eligibilityProviderId: PROVIDER, recordType: "provider" }),
+      input({
+        familyId: FAMILY,
+        continuation: {
+          tierMarker: EXACT_PROVIDER_MARKER,
+          resourceId: PROVIDER,
+        },
+      }),
       input({
         eligibilityProviderId: PROVIDER,
         continuation: {

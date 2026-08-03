@@ -8,7 +8,9 @@ import {
 
 import {
   PROVIDER_MODEL_ID_EXACT_CANDIDATE_SELECT_SQL,
+  PROVIDER_MODEL_ID_EXACT_ELIGIBILITY_FAMILY_CANDIDATE_SELECT_SQL,
   PROVIDER_MODEL_ID_EXACT_ELIGIBILITY_CANDIDATE_SELECT_SQL,
+  PROVIDER_MODEL_ID_EXACT_FAMILY_CANDIDATE_SELECT_SQL,
   PROVIDER_MODEL_ID_EXACT_MAX_QUERY_BYTES,
   PROVIDER_MODEL_ID_EXACT_TARGET_SELECT_SQL,
   ProviderModelIdExactError,
@@ -330,6 +332,8 @@ describe("provider-model-ID exact reader (SRCH-002, SRCH-006, SRCH-008, SRCH-009
     for (const sql of [
       PROVIDER_MODEL_ID_EXACT_CANDIDATE_SELECT_SQL,
       PROVIDER_MODEL_ID_EXACT_ELIGIBILITY_CANDIDATE_SELECT_SQL,
+      PROVIDER_MODEL_ID_EXACT_FAMILY_CANDIDATE_SELECT_SQL,
+      PROVIDER_MODEL_ID_EXACT_ELIGIBILITY_FAMILY_CANDIDATE_SELECT_SQL,
       PROVIDER_MODEL_ID_EXACT_TARGET_SELECT_SQL,
     ]) {
       expect(sql).not.toMatch(/\b(?:INSERT|UPDATE|DELETE|MATCH)\b/u);
@@ -428,12 +432,89 @@ describe("provider-model-ID exact reader (SRCH-002, SRCH-006, SRCH-008, SRCH-009
     expect(database.calls[0]?.values[13]).toBe(PROVIDER_ID);
   });
 
+  it("filters canonical target families before dedupe and LIMIT, including provider conjunction", async () => {
+    const familyOnly = new FakeDatabase(
+      await fixtureResults("fixture-id", 0, undefined, "fixture-id", true),
+    );
+    await expect(
+      readMergedProviderModelIdExactPage(familyOnly.asD1(), {
+        ...input("fixture-id"),
+        eligibilityProviderId: null,
+        familyId: FAMILY_ID,
+      }),
+    ).resolves.toMatchObject({ results: [{ resourceId: MODEL_ID }] });
+    expect(familyOnly.calls[0]?.sql).toBe(
+      PROVIDER_MODEL_ID_EXACT_FAMILY_CANDIDATE_SELECT_SQL,
+    );
+    expect(familyOnly.calls[0]?.values[13]).toBe(FAMILY_ID);
+    expect(PROVIDER_MODEL_ID_EXACT_FAMILY_CANDIDATE_SELECT_SQL).toContain(
+      "json_extract(target.resource_json, '$.family_id') = ?14",
+    );
+    expect(
+      PROVIDER_MODEL_ID_EXACT_FAMILY_CANDIDATE_SELECT_SQL.match(
+        /json_extract\(target\.resource_json, '\$\.family_id'\) = \?14/gu,
+      ),
+    ).toHaveLength(2);
+    expect(
+      PROVIDER_MODEL_ID_EXACT_FAMILY_CANDIDATE_SELECT_SQL.indexOf(
+        "'$.family_id'",
+      ),
+    ).toBeLessThan(
+      PROVIDER_MODEL_ID_EXACT_FAMILY_CANDIDATE_SELECT_SQL.indexOf(
+        "), deduplicated AS",
+      ),
+    );
+    expect(
+      PROVIDER_MODEL_ID_EXACT_FAMILY_CANDIDATE_SELECT_SQL.indexOf(
+        "), deduplicated AS",
+      ),
+    ).toBeLessThan(
+      PROVIDER_MODEL_ID_EXACT_FAMILY_CANDIDATE_SELECT_SQL.indexOf("  LIMIT ?9"),
+    );
+
+    const combined = new FakeDatabase(
+      await fixtureResults("fixture-id", 0, undefined, "fixture-id", true),
+    );
+    await readMergedProviderModelIdExactPage(combined.asD1(), {
+      ...input("fixture-id"),
+      eligibilityProviderId: PROVIDER_ID,
+      familyId: FAMILY_ID,
+    });
+    expect(combined.calls[0]?.sql).toBe(
+      PROVIDER_MODEL_ID_EXACT_ELIGIBILITY_FAMILY_CANDIDATE_SELECT_SQL,
+    );
+    expect(combined.calls[0]?.values.slice(13)).toEqual([
+      PROVIDER_ID,
+      FAMILY_ID,
+    ]);
+
+    await expect(
+      readMergedProviderModelIdExactPage(
+        new FakeDatabase(
+          await fixtureResults("fixture-id", 0, undefined, "fixture-id", true),
+        ).asD1(),
+        {
+          ...input("fixture-id"),
+          eligibilityProviderId: null,
+          familyId: "fam_00000002-0000-4000-8000-000000000001",
+        },
+      ),
+    ).rejects.toMatchObject({ code: "integrity_failure" });
+  });
+
   it("validates merged eligibility while preserving the standalone closed input", async () => {
     const merged = new FakeDatabase([]);
     await expect(
       readMergedProviderModelIdExactPage(merged.asD1(), {
         ...input("fixture-id"),
         eligibilityProviderId: "prv_invalid",
+      }),
+    ).rejects.toMatchObject({ code: "invalid_input" });
+    await expect(
+      readMergedProviderModelIdExactPage(merged.asD1(), {
+        ...input("fixture-id"),
+        eligibilityProviderId: null,
+        familyId: "fam_invalid",
       }),
     ).rejects.toMatchObject({ code: "invalid_input" });
     const standalone = new FakeDatabase([]);

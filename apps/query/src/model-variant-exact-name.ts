@@ -30,6 +30,7 @@ const PUBLICATION_ID = new RegExp(`^pub_${UUID_V4}$`, "u");
 const MODEL_ID = new RegExp(`^mdl_${UUID_V4}$`, "u");
 const VARIANT_ID = new RegExp(`^var_${UUID_V4}$`, "u");
 const PROVIDER_ID = new RegExp(`^prv_${UUID_V4}$`, "u");
+const FAMILY_ID = new RegExp(`^fam_${UUID_V4}$`, "u");
 const SHA256 = /^sha256:[0-9a-f]{64}$/u;
 const utf8 = new TextEncoder();
 
@@ -44,7 +45,7 @@ export const MODEL_VARIANT_EXACT_NAME_MAX_TRANSFER_BYTES =
   (MODEL_VARIANT_EXACT_NAME_MAX_PAGE_SIZE + 1) *
   MODEL_VARIANT_EXACT_NAME_MAX_RESOURCE_BYTES;
 
-const PROVIDER_ELIGIBILITY_SQL = `
+const providerEligibilitySql = (binding: 8 | 9): string => `
     AND EXISTS (
       SELECT 1
       FROM publication_provider_model_id_search_document AS eligibility
@@ -54,7 +55,7 @@ const PROVIDER_ELIGIBILITY_SQL = `
        AND eligibility_offering.resource_type = 'offering'
        AND eligibility_offering.resource_id = eligibility.offering_id
       WHERE eligibility.publication_id = document.publication_id
-        AND eligibility.provider_id = ?8
+        AND eligibility.provider_id = ?${String(binding)}
         AND eligibility.target_resource_type = document.resource_type
         AND eligibility.target_resource_id = document.resource_id
         AND eligibility.projection_version = 'provider-model-id@1'
@@ -75,7 +76,10 @@ const PROVIDER_ELIGIBILITY_SQL = `
  * eligibility index. Projection bytes never cross the D1 boundary: the
  * display-byte comparison is returned only as a boolean.
  */
-const modelVariantExactNameSelectSql = (eligibilitySql: string): string => `
+const modelVariantExactNameSelectSql = (
+  eligibilitySql: string,
+  familySql: string,
+): string => `
 WITH ${RETAINED_HOT_REFERENCE_CTE_SQL}, eligible_publication AS (
   SELECT publication.publication_id
   FROM publication_head AS head
@@ -147,6 +151,7 @@ WITH ${RETAINED_HOT_REFERENCE_CTE_SQL}, eligible_publication AS (
     AND json_extract(resource.resource_json, '$.status.state') = 'known'
     AND json_extract(resource.resource_json, '$.status.value') = 'active'
 ${eligibilitySql}
+${familySql}
   ORDER BY document.resource_id ASC
   LIMIT ?6
 )
@@ -181,15 +186,26 @@ ORDER BY row_ordinal ASC, resource_id ASC
 `;
 
 export const MODEL_VARIANT_EXACT_NAME_SELECT_SQL =
-  modelVariantExactNameSelectSql("");
+  modelVariantExactNameSelectSql("", "");
 export const MODEL_VARIANT_EXACT_NAME_ELIGIBILITY_SELECT_SQL =
-  modelVariantExactNameSelectSql(PROVIDER_ELIGIBILITY_SQL);
+  modelVariantExactNameSelectSql(providerEligibilitySql(8), "");
+export const MODEL_VARIANT_EXACT_NAME_FAMILY_SELECT_SQL =
+  modelVariantExactNameSelectSql(
+    "",
+    "    AND json_extract(resource.resource_json, '$.family_id') = ?8",
+  );
+export const MODEL_VARIANT_EXACT_NAME_ELIGIBILITY_FAMILY_SELECT_SQL =
+  modelVariantExactNameSelectSql(
+    providerEligibilitySql(8),
+    "    AND json_extract(resource.resource_json, '$.family_id') = ?9",
+  );
 
 export type ModelVariantExactNameInput = Readonly<{
   publicationId: string;
   query: string;
   recordType: "model" | "variant" | null;
   eligibilityProviderId?: string | null;
+  familyId?: string | null;
   afterResourceId: string | null;
   limit: number;
   requiredAvailableUntilMs?: number | null;
@@ -276,9 +292,19 @@ const exactKeys = (
 const snapshotRecord = (value: unknown): Record<string, unknown> | null => {
   try {
     if (!plainRecord(value)) return null;
-    const keys = Object.keys(value);
+    const descriptors = Object.getOwnPropertyDescriptors(value);
     const snapshot: Record<string, unknown> = {};
-    for (const key of keys) snapshot[key] = value[key];
+    for (const key of Reflect.ownKeys(descriptors)) {
+      if (typeof key !== "string") return null;
+      const descriptor = descriptors[key];
+      if (
+        descriptor === undefined ||
+        !("value" in descriptor) ||
+        descriptor.enumerable !== true
+      )
+        return null;
+      snapshot[key] = descriptor.value;
+    }
     return snapshot;
   } catch {
     return null;
@@ -302,6 +328,7 @@ const validateInput = (
   normalizedQueryBytes: ArrayBuffer;
   recordType: "model" | "variant" | null;
   eligibilityProviderId: string | null;
+  familyId: string | null;
   afterResourceId: string;
   limit: number;
   requiredAvailableUntilMs: number | null;
@@ -313,6 +340,7 @@ const validateInput = (
     ...(Object.hasOwn(input, "eligibilityProviderId")
       ? ["eligibilityProviderId"]
       : []),
+    ...(Object.hasOwn(input, "familyId") ? ["familyId"] : []),
     "limit",
     "publicationId",
     "query",
@@ -332,6 +360,13 @@ const validateInput = (
       MODEL_VARIANT_EXACT_NAME_MAX_QUERY_UNICODE_SCALARS ||
     utf8.encode(input.query).byteLength >
       MODEL_VARIANT_EXACT_NAME_MAX_QUERY_BYTES
+  )
+    return invalidInput();
+
+  const familyId = Object.hasOwn(input, "familyId") ? input.familyId : null;
+  if (
+    familyId !== null &&
+    (typeof familyId !== "string" || !FAMILY_ID.test(familyId))
   )
     return invalidInput();
 
@@ -408,6 +443,7 @@ const validateInput = (
     normalizedQueryBytes,
     recordType,
     eligibilityProviderId,
+    familyId,
     afterResourceId,
     limit: limitValue,
     requiredAvailableUntilMs,
@@ -508,6 +544,7 @@ const isHotPublicationSentinel = (
 const rehydrate = async (
   row: ModelVariantExactNameRow,
   normalizedQuery: string,
+  familyId: string | null,
 ): Promise<ModelVariantExactNameResult> => {
   if (
     row.resource_json === null ||
@@ -535,6 +572,7 @@ const rehydrate = async (
       : (canonical as Variant).variant_id;
   if (
     canonicalId !== row.resource_id ||
+    (familyId !== null && canonical.family_id !== familyId) ||
     canonical.display_name.state !== "known" ||
     canonical.status.state !== "known" ||
     canonical.status.value !== "active"
@@ -583,8 +621,12 @@ export const readModelVariantExactNamePage = async (
   try {
     const statement = database.prepare(
       validated.eligibilityProviderId === null
-        ? MODEL_VARIANT_EXACT_NAME_SELECT_SQL
-        : MODEL_VARIANT_EXACT_NAME_ELIGIBILITY_SELECT_SQL,
+        ? validated.familyId === null
+          ? MODEL_VARIANT_EXACT_NAME_SELECT_SQL
+          : MODEL_VARIANT_EXACT_NAME_FAMILY_SELECT_SQL
+        : validated.familyId === null
+          ? MODEL_VARIANT_EXACT_NAME_ELIGIBILITY_SELECT_SQL
+          : MODEL_VARIANT_EXACT_NAME_ELIGIBILITY_FAMILY_SELECT_SQL,
     );
     const commonBindings = [
       validated.publicationId,
@@ -595,11 +637,15 @@ export const readModelVariantExactNamePage = async (
       validated.limit + 1,
       validated.requiredAvailableUntilMs,
     ] as const;
-    const result: unknown = await (
-      validated.eligibilityProviderId === null
-        ? statement.bind(...commonBindings)
-        : statement.bind(...commonBindings, validated.eligibilityProviderId)
-    ).all<ModelVariantExactNameRow>();
+    const optionalBindings = [
+      ...(validated.eligibilityProviderId === null
+        ? []
+        : [validated.eligibilityProviderId]),
+      ...(validated.familyId === null ? [] : [validated.familyId]),
+    ] as const;
+    const result: unknown = await statement
+      .bind(...commonBindings, ...optionalBindings)
+      .all<ModelVariantExactNameRow>();
     const rows = snapshotD1Rows(result, validated.limit + 2);
     if (rows === null) throw new ModelVariantExactNameError("read_failure");
     rowValues = rows;
@@ -649,7 +695,9 @@ export const readModelVariantExactNamePage = async (
 
   const hydrated: ModelVariantExactNameResult[] = [];
   for (const row of candidateRows)
-    hydrated.push(await rehydrate(row, validated.normalizedQuery));
+    hydrated.push(
+      await rehydrate(row, validated.normalizedQuery, validated.familyId),
+    );
   const results = Object.freeze(hydrated.slice(0, validated.limit));
   return Object.freeze({
     publicationId: validated.publicationId,
