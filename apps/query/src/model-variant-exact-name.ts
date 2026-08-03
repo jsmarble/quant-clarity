@@ -15,6 +15,15 @@ import {
   normalizeExactSearchName,
 } from "@quant-clarity/publication-core";
 
+import {
+  RETAINED_HOT_PUBLICATION_CLOCK_SKEW_MS,
+  RETAINED_HOT_PUBLICATION_MAX_HORIZON_MS,
+  RETAINED_HOT_PUBLICATION_MAX_SWITCH_FUTURE_MS,
+  RETAINED_HOT_PUBLICATION_WINDOW_MS,
+  RETAINED_HOT_REFERENCE_CTE_SQL,
+  validRequiredAvailableUntilMs,
+} from "./retained-hot-publication.js";
+
 const UUID_V4 =
   "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
 const PUBLICATION_ID = new RegExp(`^pub_${UUID_V4}$`, "u");
@@ -40,12 +49,21 @@ export const MODEL_VARIANT_EXACT_NAME_MAX_TRANSFER_BYTES =
  * the D1 boundary: the display-byte comparison is returned only as a boolean.
  */
 export const MODEL_VARIANT_EXACT_NAME_SELECT_SQL = `
-WITH eligible_publication AS (
+WITH ${RETAINED_HOT_REFERENCE_CTE_SQL}, eligible_publication AS (
   SELECT publication.publication_id
   FROM publication_head AS head
   JOIN publication AS publication
     ON publication.publication_id = ?1
+  CROSS JOIN retained_reference AS retained
   WHERE head.singleton = 1
+    AND (
+      ?7 IS NULL OR (
+        ?7 > CAST(strftime('%s', 'now') AS INTEGER) * 1000 -
+          ${String(RETAINED_HOT_PUBLICATION_CLOCK_SKEW_MS)}
+        AND ?7 <= CAST(strftime('%s', 'now') AS INTEGER) * 1000 +
+          ${String(RETAINED_HOT_PUBLICATION_MAX_HORIZON_MS)}
+      )
+    )
     AND (
       (
         head.active_publication_id = publication.publication_id
@@ -54,6 +72,16 @@ WITH eligible_publication AS (
       OR (
         head.rollback_candidate_publication_id = publication.publication_id
         AND publication.state IN ('superseded', 'rolled_back')
+      )
+      OR (
+        ?7 IS NOT NULL
+        AND publication.state IN ('superseded', 'rolled_back')
+        AND retained.latest_head_reference_ms BETWEEN 0 AND
+          CAST(strftime('%s', 'now') AS INTEGER) * 1000 +
+            ${String(RETAINED_HOT_PUBLICATION_MAX_SWITCH_FUTURE_MS)}
+        AND retained.latest_head_reference_ms >
+          ?7 + ${String(RETAINED_HOT_PUBLICATION_CLOCK_SKEW_MS)} -
+            ${String(RETAINED_HOT_PUBLICATION_WINDOW_MS)}
       )
     )
 ), candidate_page AS (
@@ -130,6 +158,7 @@ export type ModelVariantExactNameInput = Readonly<{
   recordType: "model" | "variant" | null;
   afterResourceId: string | null;
   limit: number;
+  requiredAvailableUntilMs?: number | null;
 }>;
 
 export type ModelVariantExactNameDatabase = Pick<D1DatabaseSession, "prepare">;
@@ -240,17 +269,21 @@ const validateInput = (
   recordType: "model" | "variant" | null;
   afterResourceId: string;
   limit: number;
+  requiredAvailableUntilMs: number | null;
 }> => {
   const input = snapshotRecord(inputValue);
   if (input === null) return invalidInput();
+  const expectedKeys = [
+    "afterResourceId",
+    "limit",
+    "publicationId",
+    "query",
+    "recordType",
+  ];
+  if (Object.hasOwn(input, "requiredAvailableUntilMs"))
+    expectedKeys.push("requiredAvailableUntilMs");
   if (
-    !exactKeys(input, [
-      "afterResourceId",
-      "limit",
-      "publicationId",
-      "query",
-      "recordType",
-    ]) ||
+    !exactKeys(input, expectedKeys) ||
     typeof input.publicationId !== "string" ||
     !PUBLICATION_ID.test(input.publicationId) ||
     typeof input.query !== "string" ||
@@ -262,6 +295,15 @@ const validateInput = (
     utf8.encode(input.query).byteLength >
       MODEL_VARIANT_EXACT_NAME_MAX_QUERY_BYTES
   )
+    return invalidInput();
+
+  const requiredAvailableUntilMs = Object.hasOwn(
+    input,
+    "requiredAvailableUntilMs",
+  )
+    ? input.requiredAvailableUntilMs
+    : null;
+  if (!validRequiredAvailableUntilMs(requiredAvailableUntilMs))
     return invalidInput();
 
   const recordType = input.recordType;
@@ -319,6 +361,7 @@ const validateInput = (
     recordType,
     afterResourceId,
     limit: limitValue,
+    requiredAvailableUntilMs,
   };
 };
 
@@ -498,6 +541,7 @@ export const readModelVariantExactNamePage = async (
         validated.afterResourceId,
         MODEL_VARIANT_EXACT_NAME_MAX_RESOURCE_BYTES,
         validated.limit + 1,
+        validated.requiredAvailableUntilMs,
       )
       .all<ModelVariantExactNameRow>();
     const rows = snapshotD1Rows(result, validated.limit + 2);

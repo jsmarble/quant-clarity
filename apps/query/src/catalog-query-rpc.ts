@@ -31,6 +31,14 @@ import {
   type MergedExactSearchContinuation,
   type MergedExactSearchPage,
 } from "./merged-exact-search.js";
+import {
+  RETAINED_HOT_FROM_INDEX,
+  RETAINED_HOT_PUBLICATION_CLOCK_SKEW_MS,
+  RETAINED_HOT_PUBLICATION_MAX_HORIZON_MS,
+  RETAINED_HOT_PUBLICATION_MAX_SWITCH_FUTURE_MS,
+  RETAINED_HOT_PUBLICATION_WINDOW_MS,
+  RETAINED_HOT_ROLLBACK_INDEX,
+} from "./retained-hot-publication.js";
 
 const UUID_V4 =
   "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
@@ -69,6 +77,93 @@ WHERE head.singleton = 1
 LIMIT 2
 `;
 
+export const RESOLVE_PUBLICATION_V2_SELECT_SQL = `
+WITH clock AS (
+  SELECT CAST(strftime('%s', 'now') AS INTEGER) * 1000 AS now_ms
+), requested AS (
+  SELECT
+    publication.publication_id,
+    publication.state,
+    max(
+      coalesce((
+        SELECT history.switched_at_ms
+        FROM publication_switch_history AS history
+          INDEXED BY ${RETAINED_HOT_FROM_INDEX}
+        WHERE history.from_publication_id = publication.publication_id
+        ORDER BY history.switched_at_ms DESC, history.new_generation DESC
+        LIMIT 1
+      ), -1),
+      coalesce((
+        SELECT history.switched_at_ms
+        FROM publication_switch_history AS history
+          INDEXED BY ${RETAINED_HOT_ROLLBACK_INDEX}
+        WHERE history.expected_prior_rollback_candidate_publication_id =
+          publication.publication_id
+        ORDER BY history.switched_at_ms DESC, history.new_generation DESC
+        LIMIT 1
+      ), -1)
+    ) AS latest_head_reference_ms
+  FROM publication AS publication
+  WHERE publication.publication_id = ?1
+), decision AS (
+  SELECT
+    head.active_publication_id AS current_publication_id,
+    head.rollback_candidate_publication_id,
+    active_publication.state AS current_publication_state,
+    clock.now_ms AS database_now_ms,
+    CASE
+      WHEN ?2 > clock.now_ms - ${String(RETAINED_HOT_PUBLICATION_CLOCK_SKEW_MS)}
+        AND ?2 <= clock.now_ms + ${String(RETAINED_HOT_PUBLICATION_MAX_HORIZON_MS)}
+      THEN 1 ELSE 0
+    END AS horizon_valid,
+    requested.state AS requested_publication_state,
+    requested.latest_head_reference_ms,
+    CASE
+      WHEN NOT (
+        ?2 > clock.now_ms - ${String(RETAINED_HOT_PUBLICATION_CLOCK_SKEW_MS)}
+        AND ?2 <= clock.now_ms + ${String(RETAINED_HOT_PUBLICATION_MAX_HORIZON_MS)}
+      ) THEN NULL
+      WHEN ?1 IS NULL THEN head.active_publication_id
+      WHEN ?1 = head.active_publication_id THEN head.active_publication_id
+      WHEN ?1 = head.rollback_candidate_publication_id
+        AND requested.state IN ('superseded', 'rolled_back')
+      THEN head.rollback_candidate_publication_id
+      WHEN requested.state IN ('superseded', 'rolled_back')
+        AND requested.latest_head_reference_ms BETWEEN 0 AND
+          clock.now_ms + ${String(RETAINED_HOT_PUBLICATION_MAX_SWITCH_FUTURE_MS)}
+        AND requested.latest_head_reference_ms >
+          ?2 + ${String(RETAINED_HOT_PUBLICATION_CLOCK_SKEW_MS)} -
+            ${String(RETAINED_HOT_PUBLICATION_WINDOW_MS)}
+      THEN requested.publication_id
+      ELSE NULL
+    END AS selected_publication_id
+  FROM publication_head AS head
+  CROSS JOIN clock
+  LEFT JOIN publication AS active_publication
+    ON active_publication.publication_id = head.active_publication_id
+  LEFT JOIN requested ON true
+  WHERE head.singleton = 1
+  LIMIT 2
+)
+SELECT
+  current_publication_id,
+  rollback_candidate_publication_id,
+  current_publication_state,
+  database_now_ms,
+  horizon_valid,
+  selected_publication_id,
+  CASE WHEN selected_publication_id IS NULL THEN NULL
+    WHEN selected_publication_id = current_publication_id THEN 'active'
+    ELSE requested_publication_state
+  END AS selected_publication_state,
+  CASE WHEN selected_publication_id IS NULL OR
+    selected_publication_id = current_publication_id OR
+    selected_publication_id = rollback_candidate_publication_id
+    THEN NULL ELSE latest_head_reference_ms
+  END AS selected_latest_head_reference_ms
+FROM decision
+`;
+
 export type QueryRpcEnvironment = "local" | "preview" | "production" | "test";
 
 export type ResolvePublicationV1Input = Readonly<{
@@ -91,6 +186,23 @@ export type ResolvePublicationV1Outcome =
   | Readonly<{ outcome: "publication_not_ready" }>
   | Readonly<{ outcome: "integrity_failure" }>
   | Readonly<{ outcome: "read_failure" }>;
+
+export type ResolvePublicationV2Input = Readonly<{
+  version: 2;
+  audience: typeof AUDIENCE;
+  environment: QueryRpcEnvironment;
+  requestedPublicationId: string | null;
+  requiredAvailableUntilMs: number;
+}>;
+
+export type ResolvePublicationV2Outcome =
+  | Readonly<{
+      outcome: "selected";
+      publicationId: string;
+      bookmark: string;
+      requiredAvailableUntilMs: number;
+    }>
+  | Exclude<ResolvePublicationV1Outcome, { outcome: "selected" }>;
 
 export type ReadProviderExactNameTierV1Input = Readonly<{
   version: 1;
@@ -144,6 +256,17 @@ export type ReadMergedExactSearchV1Outcome =
   | Readonly<{ outcome: "integrity_failure" }>
   | Readonly<{ outcome: "read_failure" }>;
 
+export type ReadMergedExactSearchV2Input = Readonly<{
+  version: 2;
+  audience: typeof AUDIENCE;
+  environment: QueryRpcEnvironment;
+  bookmark: string;
+  requiredAvailableUntilMs: number;
+  envelope: QueryServiceEnvelope;
+}>;
+
+export type ReadMergedExactSearchV2Outcome = ReadMergedExactSearchV1Outcome;
+
 type ResolveRow = Readonly<{
   current_publication_id: string;
   rollback_candidate_publication_id: string | null;
@@ -151,6 +274,13 @@ type ResolveRow = Readonly<{
   selected_publication_id: string | null;
   selected_publication_state: string | null;
 }>;
+
+type ResolveV2Row = ResolveRow &
+  Readonly<{
+    database_now_ms: number;
+    horizon_valid: 0 | 1;
+    selected_latest_head_reference_ms: number | null;
+  }>;
 
 const record = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" &&
@@ -237,6 +367,37 @@ const resolveInput = (value: unknown): value is ResolvePublicationV1Input =>
   (value.requestedPublicationId === null ||
     (typeof value.requestedPublicationId === "string" &&
       PUBLICATION_ID.test(value.requestedPublicationId)));
+
+const parseResolveV2Input = (
+  value: unknown,
+): ResolvePublicationV2Input | null => {
+  const snapshot = ownDataRecord(value, [
+    "audience",
+    "environment",
+    "requestedPublicationId",
+    "requiredAvailableUntilMs",
+    "version",
+  ]);
+  if (
+    snapshot?.version !== 2 ||
+    snapshot.audience !== AUDIENCE ||
+    !environment(snapshot.environment) ||
+    (snapshot.requestedPublicationId !== null &&
+      (typeof snapshot.requestedPublicationId !== "string" ||
+        !PUBLICATION_ID.test(snapshot.requestedPublicationId))) ||
+    typeof snapshot.requiredAvailableUntilMs !== "number" ||
+    !Number.isSafeInteger(snapshot.requiredAvailableUntilMs) ||
+    snapshot.requiredAvailableUntilMs < 0
+  )
+    return null;
+  return {
+    version: 2,
+    audience: AUDIENCE,
+    environment: snapshot.environment,
+    requestedPublicationId: snapshot.requestedPublicationId,
+    requiredAvailableUntilMs: snapshot.requiredAvailableUntilMs,
+  };
+};
 
 const validEnvelope = (
   value: unknown,
@@ -729,6 +890,7 @@ type ParsedMergedExactSearchInput = Readonly<{
   recordType: "model" | "variant" | "provider" | null;
   continuation: MergedExactSearchContinuation | null;
   limit: number;
+  requiredAvailableUntilMs: number | null;
 }>;
 
 const mergedRecordTypeFilter = (
@@ -786,16 +948,19 @@ const mergedContinuation = (
 
 const parseMergedExactSearchInput = (
   value: unknown,
+  protocolVersion: 1 | 2 = 1,
 ): ParsedMergedExactSearchInput | null => {
-  const outer = ownDataRecord(value, [
+  const outerKeys = [
     "audience",
     "bookmark",
     "envelope",
     "environment",
     "version",
-  ]);
+  ];
+  if (protocolVersion === 2) outerKeys.push("requiredAvailableUntilMs");
+  const outer = ownDataRecord(value, outerKeys);
   if (
-    outer?.version !== 1 ||
+    outer?.version !== protocolVersion ||
     outer.audience !== AUDIENCE ||
     !environment(outer.environment) ||
     typeof outer.bookmark !== "string" ||
@@ -803,6 +968,15 @@ const parseMergedExactSearchInput = (
     outer.bookmark.length > 4096 ||
     outer.bookmark === "first-primary" ||
     outer.bookmark === "first-unconstrained"
+  )
+    return null;
+  const requiredAvailableUntilMs =
+    protocolVersion === 2 ? outer.requiredAvailableUntilMs : null;
+  if (
+    requiredAvailableUntilMs !== null &&
+    (typeof requiredAvailableUntilMs !== "number" ||
+      !Number.isSafeInteger(requiredAvailableUntilMs) ||
+      requiredAvailableUntilMs < 0)
   )
     return null;
   const envelope = ownDataRecord(outer.envelope, [
@@ -892,6 +1066,7 @@ const parseMergedExactSearchInput = (
     recordType,
     continuation,
     limit: envelope.limit,
+    requiredAvailableUntilMs,
   };
 };
 
@@ -922,6 +1097,39 @@ const resolveRow = (value: unknown): value is ResolveRow =>
       PUBLICATION_ID.test(value.selected_publication_id))) &&
   (value.selected_publication_state === null ||
     typeof value.selected_publication_state === "string");
+
+const resolveV2Row = (value: unknown): value is ResolveV2Row =>
+  record(value) &&
+  exactKeys(value, [
+    "current_publication_id",
+    "current_publication_state",
+    "database_now_ms",
+    "horizon_valid",
+    "rollback_candidate_publication_id",
+    "selected_latest_head_reference_ms",
+    "selected_publication_id",
+    "selected_publication_state",
+  ]) &&
+  typeof value.current_publication_id === "string" &&
+  PUBLICATION_ID.test(value.current_publication_id) &&
+  (value.rollback_candidate_publication_id === null ||
+    (typeof value.rollback_candidate_publication_id === "string" &&
+      PUBLICATION_ID.test(value.rollback_candidate_publication_id))) &&
+  (value.current_publication_state === null ||
+    typeof value.current_publication_state === "string") &&
+  typeof value.database_now_ms === "number" &&
+  Number.isSafeInteger(value.database_now_ms) &&
+  value.database_now_ms >= 0 &&
+  (value.horizon_valid === 0 || value.horizon_valid === 1) &&
+  (value.selected_publication_id === null ||
+    (typeof value.selected_publication_id === "string" &&
+      PUBLICATION_ID.test(value.selected_publication_id))) &&
+  (value.selected_publication_state === null ||
+    typeof value.selected_publication_state === "string") &&
+  (value.selected_latest_head_reference_ms === null ||
+    (typeof value.selected_latest_head_reference_ms === "number" &&
+      Number.isSafeInteger(value.selected_latest_head_reference_ms) &&
+      value.selected_latest_head_reference_ms >= 0));
 
 export const resolvePublicationV1 = async (
   database: D1Database,
@@ -984,6 +1192,89 @@ export const resolvePublicationV1 = async (
       outcome: "selected",
       publicationId: row.selected_publication_id,
       bookmark,
+    };
+  } catch {
+    return { outcome: "read_failure" };
+  }
+};
+
+export const resolvePublicationV2 = async (
+  database: D1Database,
+  protectedEnvironment: unknown,
+  input: unknown,
+): Promise<ResolvePublicationV2Outcome> => {
+  const parsed = parseResolveV2Input(input);
+  if (
+    parsed === null ||
+    !environment(protectedEnvironment) ||
+    parsed.environment !== protectedEnvironment
+  )
+    return { outcome: "integrity_failure" };
+  try {
+    const session = database.withSession("first-primary");
+    const result: unknown = await session
+      .prepare(RESOLVE_PUBLICATION_V2_SELECT_SQL)
+      .bind(parsed.requestedPublicationId, parsed.requiredAvailableUntilMs)
+      .all<ResolveV2Row>();
+    const rows = d1Rows(result);
+    if (rows === null) return { outcome: "read_failure" };
+    if (rows.length === 0) return { outcome: "publication_not_ready" };
+    if (rows.length !== 1 || !resolveV2Row(rows[0]))
+      return { outcome: "integrity_failure" };
+    const row = rows[0];
+    if (row.current_publication_state !== "active" || row.horizon_valid !== 1)
+      return { outcome: "integrity_failure" };
+    if (row.selected_publication_id === null) {
+      if (
+        parsed.requestedPublicationId === null ||
+        parsed.requestedPublicationId ===
+          row.rollback_candidate_publication_id ||
+        row.selected_publication_state !== null ||
+        row.selected_latest_head_reference_ms !== null
+      )
+        return { outcome: "integrity_failure" };
+      return {
+        outcome: "publication_expired",
+        currentPublicationId: row.current_publication_id,
+      };
+    }
+    if (
+      parsed.requestedPublicationId !== null &&
+      row.selected_publication_id !== parsed.requestedPublicationId
+    )
+      return { outcome: "integrity_failure" };
+    const selectedActive =
+      row.selected_publication_id === row.current_publication_id;
+    const selectedRollback =
+      row.selected_publication_id === row.rollback_candidate_publication_id;
+    if (
+      (parsed.requestedPublicationId === null && !selectedActive) ||
+      (selectedActive && row.selected_publication_state !== "active") ||
+      (!selectedActive &&
+        row.selected_publication_state !== "superseded" &&
+        row.selected_publication_state !== "rolled_back") ||
+      ((selectedActive || selectedRollback) &&
+        row.selected_latest_head_reference_ms !== null) ||
+      (!selectedActive &&
+        !selectedRollback &&
+        (row.selected_latest_head_reference_ms === null ||
+          row.selected_latest_head_reference_ms >
+            row.database_now_ms +
+              RETAINED_HOT_PUBLICATION_MAX_SWITCH_FUTURE_MS ||
+          row.selected_latest_head_reference_ms <=
+            parsed.requiredAvailableUntilMs +
+              RETAINED_HOT_PUBLICATION_CLOCK_SKEW_MS -
+              RETAINED_HOT_PUBLICATION_WINDOW_MS))
+    )
+      return { outcome: "integrity_failure" };
+    const bookmark = session.getBookmark();
+    if (bookmark === null || bookmark.length === 0 || bookmark.length > 4096)
+      return { outcome: "integrity_failure" };
+    return {
+      outcome: "selected",
+      publicationId: row.selected_publication_id,
+      bookmark,
+      requiredAvailableUntilMs: parsed.requiredAvailableUntilMs,
     };
   } catch {
     return { outcome: "read_failure" };
@@ -1116,6 +1407,40 @@ export const readMergedExactSearchV1 = async (
       recordType: parsed.recordType,
       continuation: parsed.continuation,
       limit: parsed.limit,
+      requiredAvailableUntilMs: null,
+    });
+    return { outcome: "page", page };
+  } catch (error) {
+    if (error instanceof MergedExactSearchError)
+      return {
+        outcome:
+          error.code === "read_failure" ? "read_failure" : "integrity_failure",
+      };
+    return { outcome: "read_failure" };
+  }
+};
+
+export const readMergedExactSearchV2 = async (
+  database: D1Database,
+  protectedEnvironment: unknown,
+  input: unknown,
+): Promise<ReadMergedExactSearchV2Outcome> => {
+  const parsed = parseMergedExactSearchInput(input, 2);
+  if (
+    typeof parsed?.requiredAvailableUntilMs !== "number" ||
+    !environment(protectedEnvironment) ||
+    parsed.environment !== protectedEnvironment
+  )
+    return { outcome: "integrity_failure" };
+  try {
+    const session = database.withSession(parsed.bookmark);
+    const page = await readMergedExactSearchPage(session, {
+      publicationId: parsed.publicationId,
+      query: parsed.query,
+      recordType: parsed.recordType,
+      continuation: parsed.continuation,
+      limit: parsed.limit,
+      requiredAvailableUntilMs: parsed.requiredAvailableUntilMs,
     });
     return { outcome: "page", page };
   } catch (error) {

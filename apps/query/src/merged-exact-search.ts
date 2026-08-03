@@ -16,6 +16,7 @@ import {
   type MergedProviderModelIdExactContinuation,
   type ProviderModelIdExactResult,
 } from "./provider-model-id-exact.js";
+import { validRequiredAvailableUntilMs } from "./retained-hot-publication.js";
 
 const UUID_V4 =
   "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
@@ -50,6 +51,7 @@ export type MergedExactSearchInput = Readonly<{
   recordType: "model" | "variant" | "provider" | null;
   continuation: MergedExactSearchContinuation | null;
   limit: number;
+  requiredAvailableUntilMs?: number | null;
 }>;
 
 type DisplayName = ModelVariantExactNameResult["displayName"];
@@ -95,6 +97,7 @@ type ValidatedInput = Readonly<{
   recordType: "model" | "variant" | "provider" | null;
   continuation: MergedExactSearchContinuation | null;
   limit: number;
+  requiredAvailableUntilMs: number | null;
 }>;
 
 const plain = (value: unknown): value is Record<string, unknown> => {
@@ -192,15 +195,18 @@ const validMarkerId = (
 
 const validateInput = (value: unknown): ValidatedInput => {
   const input = snapshot(value);
+  if (input === null) throw new MergedExactSearchError("invalid_input");
+  const expectedKeys = [
+    "continuation",
+    "limit",
+    "publicationId",
+    "query",
+    "recordType",
+  ];
+  if (Object.hasOwn(input, "requiredAvailableUntilMs"))
+    expectedKeys.push("requiredAvailableUntilMs");
   if (
-    input === null ||
-    !exactKeys(input, [
-      "continuation",
-      "limit",
-      "publicationId",
-      "query",
-      "recordType",
-    ]) ||
+    !exactKeys(input, expectedKeys) ||
     typeof input.publicationId !== "string" ||
     !PUBLICATION_ID.test(input.publicationId) ||
     typeof input.query !== "string" ||
@@ -220,6 +226,14 @@ const validateInput = (value: unknown): ValidatedInput => {
     input.limit < 1 ||
     input.limit > MERGED_EXACT_SEARCH_MAX_PAGE_SIZE
   )
+    throw new MergedExactSearchError("invalid_input");
+  const requiredAvailableUntilMs = Object.hasOwn(
+    input,
+    "requiredAvailableUntilMs",
+  )
+    ? input.requiredAvailableUntilMs
+    : null;
+  if (!validRequiredAvailableUntilMs(requiredAvailableUntilMs))
     throw new MergedExactSearchError("invalid_input");
   let normalizedQuery = "";
   try {
@@ -277,6 +291,7 @@ const validateInput = (value: unknown): ValidatedInput => {
     recordType: input.recordType,
     continuation,
     limit: input.limit,
+    requiredAvailableUntilMs,
   };
 };
 
@@ -421,6 +436,7 @@ export const readMergedExactSearchPage = async (
           recordType: targetRecordType,
           afterResourceId: input.continuation?.resourceId ?? null,
           limit: capacity(),
+          requiredAvailableUntilMs: input.requiredAvailableUntilMs,
         }),
         ["nextAfterResourceId", "publicationId", "results"],
       );
@@ -481,6 +497,7 @@ export const readMergedExactSearchPage = async (
           recordType: targetRecordType,
           continuation,
           limit: capacity(),
+          requiredAvailableUntilMs: input.requiredAvailableUntilMs,
         }),
         ["matchModes", "nextContinuation", "publicationId", "results"],
       );
@@ -537,6 +554,7 @@ export const readMergedExactSearchPage = async (
               ? (input.continuation?.resourceId ?? null)
               : null,
           limit: capacity(),
+          requiredAvailableUntilMs: input.requiredAvailableUntilMs,
         }),
         ["nextAfterProviderId", "publicationId", "results"],
       );

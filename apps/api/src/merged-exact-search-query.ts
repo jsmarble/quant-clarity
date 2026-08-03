@@ -56,6 +56,11 @@ export type MergedExactSearchRpcResult = Readonly<{
   }>;
 }>;
 
+export interface MergedExactSearchCatalogQueryRpcV2 {
+  resolvePublicationV2(input: unknown): Promise<unknown>;
+  readMergedExactSearchV2(input: unknown): Promise<unknown>;
+}
+
 export interface MergedExactSearchCatalogQueryRpcV1 {
   resolvePublicationV1(input: unknown): Promise<unknown>;
   readMergedExactSearchV1(input: unknown): Promise<unknown>;
@@ -98,7 +103,7 @@ export type MergedExactSearchApiOutcome =
     }>;
 
 export type MergedExactSearchApiInput = Readonly<{
-  service: MergedExactSearchCatalogQueryRpcV1;
+  service: MergedExactSearchCatalogQueryRpcV2;
   request: NormalizedRequest;
   environment: DeploymentEnvironment;
   limits: ApiLimits;
@@ -355,14 +360,22 @@ const snapshotKeyring = (value: unknown): CursorKeyring | null => {
 };
 
 type ResolverClassification =
-  | Readonly<{ kind: "selected"; publicationId: string; bookmark: string }>
+  | Readonly<{
+      kind: "selected";
+      publicationId: string;
+      bookmark: string;
+      requiredAvailableUntilMs: number;
+    }>
   | Readonly<{
       kind: "failure";
       outcome: Exclude<MergedExactSearchApiOutcome, { success: true }>;
     }>
   | Readonly<{ kind: "invalid" }>;
 
-const classifyResolver = (value: unknown): ResolverClassification => {
+const classifyResolver = (
+  value: unknown,
+  expectedRequiredAvailableUntilMs: number,
+): ResolverClassification => {
   try {
     const failure = snapshotOwnRecord(value, ["outcome"]);
     if (failure !== null)
@@ -395,6 +408,7 @@ const classifyResolver = (value: unknown): ResolverClassification => {
       "bookmark",
       "outcome",
       "publicationId",
+      "requiredAvailableUntilMs",
     ]);
     if (
       selected?.outcome !== "selected" ||
@@ -404,13 +418,15 @@ const classifyResolver = (value: unknown): ResolverClassification => {
       selected.bookmark.length === 0 ||
       selected.bookmark.length > 4096 ||
       selected.bookmark === "first-primary" ||
-      selected.bookmark === "first-unconstrained"
+      selected.bookmark === "first-unconstrained" ||
+      selected.requiredAvailableUntilMs !== expectedRequiredAvailableUntilMs
     )
       return { kind: "invalid" };
     return {
       kind: "selected",
       publicationId: selected.publicationId,
       bookmark: selected.bookmark,
+      requiredAvailableUntilMs: expectedRequiredAvailableUntilMs,
     };
   } catch {
     return { kind: "invalid" };
@@ -779,20 +795,27 @@ export const readMergedExactSearchFromQueryV1 = async (
     }
 
     const service = outer.service;
-    const resolve = snapshotServiceMethod(service, "resolvePublicationV1");
+    const requiredAvailableUntilMs = cursorTiming.expiresAtSeconds * 1000;
+    if (!Number.isSafeInteger(requiredAvailableUntilMs))
+      return { success: false, code: "invalid_input" };
+    const resolve = snapshotServiceMethod(service, "resolvePublicationV2");
     if (resolve === null) return { success: false, code: "invalid_input" };
     let resolutionValue: unknown;
     try {
       resolutionValue = await resolve.call(service, {
-        version: 1,
+        version: 2,
         audience: AUDIENCE,
         environment: outer.environment,
         requestedPublicationId,
+        requiredAvailableUntilMs,
       });
     } catch {
       return { success: false, code: "read_failure" };
     }
-    const resolution = classifyResolver(resolutionValue);
+    const resolution = classifyResolver(
+      resolutionValue,
+      requiredAvailableUntilMs,
+    );
     if (resolution.kind === "failure") return resolution.outcome;
     if (resolution.kind === "invalid")
       return { success: false, code: "integrity_failure" };
@@ -814,15 +837,16 @@ export const readMergedExactSearchFromQueryV1 = async (
     } catch {
       return { success: false, code: "invalid_input" };
     }
-    const read = snapshotServiceMethod(service, "readMergedExactSearchV1");
+    const read = snapshotServiceMethod(service, "readMergedExactSearchV2");
     if (read === null) return { success: false, code: "integrity_failure" };
     let pageValue: unknown;
     try {
       pageValue = await read.call(service, {
-        version: 1,
+        version: 2,
         audience: AUDIENCE,
         environment: outer.environment,
         bookmark: resolution.bookmark,
+        requiredAvailableUntilMs,
         envelope,
       });
     } catch {

@@ -3,14 +3,18 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 import {
   readModelVariantExactNameTierV1,
   readMergedExactSearchV1,
+  readMergedExactSearchV2,
   readProviderModelIdExactTierV1,
   readProviderExactNameTierV1,
   resolvePublicationV1,
+  resolvePublicationV2,
   type ReadModelVariantExactNameTierV1Outcome,
   type ReadMergedExactSearchV1Outcome,
+  type ReadMergedExactSearchV2Outcome,
   type ReadProviderModelIdExactTierV1Outcome,
   type ReadProviderExactNameTierV1Outcome,
   type ResolvePublicationV1Outcome,
+  type ResolvePublicationV2Outcome,
 } from "./catalog-query-rpc.js";
 
 type CatalogQueryEnv = CloudflareEnv & {
@@ -40,6 +44,14 @@ function fetch(): Response {
 export class CatalogQueryService extends WorkerEntrypoint<CatalogQueryEnv> {
   resolvePublicationV1(input: unknown): Promise<ResolvePublicationV1Outcome> {
     return resolvePublicationV1(
+      this.env.SERVING_DB,
+      this.env.DEPLOYMENT_ENVIRONMENT,
+      input,
+    );
+  }
+
+  resolvePublicationV2(input: unknown): Promise<ResolvePublicationV2Outcome> {
+    return resolvePublicationV2(
       this.env.SERVING_DB,
       this.env.DEPLOYMENT_ENVIRONMENT,
       input,
@@ -80,6 +92,16 @@ export class CatalogQueryService extends WorkerEntrypoint<CatalogQueryEnv> {
     input: unknown,
   ): Promise<ReadMergedExactSearchV1Outcome> {
     return readMergedExactSearchV1(
+      this.env.SERVING_DB,
+      this.env.DEPLOYMENT_ENVIRONMENT,
+      input,
+    );
+  }
+
+  readMergedExactSearchV2(
+    input: unknown,
+  ): Promise<ReadMergedExactSearchV2Outcome> {
+    return readMergedExactSearchV2(
       this.env.SERVING_DB,
       this.env.DEPLOYMENT_ENVIRONMENT,
       input,

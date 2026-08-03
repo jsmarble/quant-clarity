@@ -12,7 +12,7 @@ import {
 import {
   readMergedExactSearchFromQueryV1,
   type ExactTierMarker,
-  type MergedExactSearchCatalogQueryRpcV1,
+  type MergedExactSearchCatalogQueryRpcV2,
 } from "./merged-exact-search-query.js";
 
 const PUBLICATION = "pub_11111111-1111-4111-8111-111111111111";
@@ -116,24 +116,27 @@ const rpc = (
       semanticDegraded: "disabled",
     },
   },
-  resolution: unknown = {
-    outcome: "selected",
-    publicationId: PUBLICATION,
-    bookmark: "bookmark-test-only",
-  },
+  resolution?: unknown,
 ) => ({
-  resolvePublicationV1: vi.fn((inputValue: unknown) => {
-    void inputValue;
-    return Promise.resolve(resolution);
+  resolvePublicationV2: vi.fn((inputValue: unknown) => {
+    const requested = inputValue as { requiredAvailableUntilMs: number };
+    return Promise.resolve(
+      resolution ?? {
+        outcome: "selected",
+        publicationId: PUBLICATION,
+        bookmark: "bookmark-test-only",
+        requiredAvailableUntilMs: requested.requiredAvailableUntilMs,
+      },
+    );
   }),
-  readMergedExactSearchV1: vi.fn((inputValue: unknown) => {
+  readMergedExactSearchV2: vi.fn((inputValue: unknown) => {
     void inputValue;
     return Promise.resolve(page);
   }),
 });
 
 const execute = (
-  service: MergedExactSearchCatalogQueryRpcV1,
+  service: MergedExactSearchCatalogQueryRpcV2,
   requestValue: NormalizedRequest = request(),
   overrides: Partial<{
     cursorKeyring: CursorKeyring;
@@ -248,19 +251,21 @@ describe("merged exact search API seam (SRCH-001/002, API-003/007, PRIV-006)", (
     );
     expect(payloadText).not.toContain("Model");
     expect(payloadText).not.toContain("Example Provider");
-    expect(service.resolvePublicationV1).toHaveBeenCalledTimes(1);
-    expect(service.readMergedExactSearchV1).toHaveBeenCalledTimes(1);
-    expect(service.resolvePublicationV1).toHaveBeenCalledWith({
-      version: 1,
+    expect(service.resolvePublicationV2).toHaveBeenCalledTimes(1);
+    expect(service.readMergedExactSearchV2).toHaveBeenCalledTimes(1);
+    expect(service.resolvePublicationV2).toHaveBeenCalledWith({
+      version: 2,
       audience: "quantclarity-catalog-query-v1",
       environment: "test",
       requestedPublicationId: null,
+      requiredAvailableUntilMs: (NOW + 900) * 1000,
     });
-    expect(service.readMergedExactSearchV1.mock.calls[0]?.[0]).toMatchObject({
-      version: 1,
+    expect(service.readMergedExactSearchV2.mock.calls[0]?.[0]).toMatchObject({
+      version: 2,
       audience: "quantclarity-catalog-query-v1",
       environment: "test",
       bookmark: "bookmark-test-only",
+      requiredAvailableUntilMs: (NOW + 900) * 1000,
       envelope: {
         publicationId: PUBLICATION,
         continuation: null,
@@ -313,10 +318,14 @@ describe("merged exact search API seam (SRCH-001/002, API-003/007, PRIV-006)", (
     );
     expect(outcome.success).toBe(true);
     if (!outcome.success) return;
-    expect(service.resolvePublicationV1).toHaveBeenCalledWith(
-      expect.objectContaining({ requestedPublicationId: PUBLICATION }),
+    expect(service.resolvePublicationV2).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestedPublicationId: PUBLICATION,
+        requiredAvailableUntilMs: (NOW + 500) * 1000,
+      }),
     );
-    expect(service.readMergedExactSearchV1.mock.calls[0]?.[0]).toMatchObject({
+    expect(service.readMergedExactSearchV2.mock.calls[0]?.[0]).toMatchObject({
+      requiredAvailableUntilMs: (NOW + 500) * 1000,
       envelope: {
         limit: 2,
         publicationId: PUBLICATION,
@@ -405,8 +414,8 @@ describe("merged exact search API seam (SRCH-001/002, API-003/007, PRIV-006)", (
           request(`q=Model&cursor=${encodeURIComponent(token)}`),
         ),
       ).resolves.toEqual({ success: false, code: "invalid_cursor" });
-      expect(service.resolvePublicationV1).not.toHaveBeenCalled();
-      expect(service.readMergedExactSearchV1).not.toHaveBeenCalled();
+      expect(service.resolvePublicationV2).not.toHaveBeenCalled();
+      expect(service.readMergedExactSearchV2).not.toHaveBeenCalled();
     }
   });
 
@@ -436,7 +445,7 @@ describe("merged exact search API seam (SRCH-001/002, API-003/007, PRIV-006)", (
         success: false,
         code: "invalid_cursor",
       });
-      expect(service.resolvePublicationV1).not.toHaveBeenCalled();
+      expect(service.resolvePublicationV2).not.toHaveBeenCalled();
     }
 
     const changedSort = rpc();
@@ -448,7 +457,7 @@ describe("merged exact search API seam (SRCH-001/002, API-003/007, PRIV-006)", (
         ),
       ),
     ).resolves.toEqual({ success: false, code: "invalid_input" });
-    expect(changedSort.resolvePublicationV1).not.toHaveBeenCalled();
+    expect(changedSort.resolvePublicationV2).not.toHaveBeenCalled();
 
     const inherited = rpc({
       outcome: "page",
@@ -465,7 +474,7 @@ describe("merged exact search API seam (SRCH-001/002, API-003/007, PRIV-006)", (
         request(`q=Model&cursor=${encodeURIComponent(bound)}`),
       ),
     ).resolves.toMatchObject({ success: true });
-    expect(inherited.readMergedExactSearchV1.mock.calls[0]?.[0]).toMatchObject({
+    expect(inherited.readMergedExactSearchV2.mock.calls[0]?.[0]).toMatchObject({
       envelope: {
         filters: { record_type: "model" },
         limit: 2,
@@ -486,8 +495,8 @@ describe("merged exact search API seam (SRCH-001/002, API-003/007, PRIV-006)", (
         success: false,
         code: "invalid_input",
       });
-      expect(service.resolvePublicationV1).not.toHaveBeenCalled();
-      expect(service.readMergedExactSearchV1).not.toHaveBeenCalled();
+      expect(service.resolvePublicationV2).not.toHaveBeenCalled();
+      expect(service.readMergedExactSearchV2).not.toHaveBeenCalled();
     }
 
     const widerSearchCursor = await cursor({
@@ -500,8 +509,8 @@ describe("merged exact search API seam (SRCH-001/002, API-003/007, PRIV-006)", (
         request(`q=Model&cursor=${encodeURIComponent(widerSearchCursor)}`),
       ),
     ).resolves.toEqual({ success: false, code: "invalid_cursor" });
-    expect(inheritedUnsupported.resolvePublicationV1).not.toHaveBeenCalled();
-    expect(inheritedUnsupported.readMergedExactSearchV1).not.toHaveBeenCalled();
+    expect(inheritedUnsupported.resolvePublicationV2).not.toHaveBeenCalled();
+    expect(inheritedUnsupported.readMergedExactSearchV2).not.toHaveBeenCalled();
   });
 
   it("marks explicit provider-only search not applicable and mirrors it on every result", async () => {
@@ -715,7 +724,7 @@ describe("merged exact search API seam (SRCH-001/002, API-003/007, PRIV-006)", (
     await expect(
       execute(service, accessor as unknown as NormalizedRequest),
     ).resolves.toEqual({ success: false, code: "invalid_input" });
-    expect(service.resolvePublicationV1).not.toHaveBeenCalled();
+    expect(service.resolvePublicationV2).not.toHaveBeenCalled();
 
     const hostileInput = new Proxy(request(), {
       ownKeys: () => {
@@ -751,7 +760,7 @@ describe("merged exact search API seam (SRCH-001/002, API-003/007, PRIV-006)", (
       code: "publication_expired",
       currentPublicationId: OTHER_PUBLICATION,
     });
-    expect(expired.readMergedExactSearchV1).not.toHaveBeenCalled();
+    expect(expired.readMergedExactSearchV2).not.toHaveBeenCalled();
 
     for (const code of [
       "publication_not_ready",
@@ -763,14 +772,14 @@ describe("merged exact search API seam (SRCH-001/002, API-003/007, PRIV-006)", (
         success: false,
         code,
       });
-      expect(service.readMergedExactSearchV1).not.toHaveBeenCalled();
+      expect(service.readMergedExactSearchV2).not.toHaveBeenCalled();
     }
 
-    const throwing: MergedExactSearchCatalogQueryRpcV1 = {
-      resolvePublicationV1: vi.fn(() =>
+    const throwing: MergedExactSearchCatalogQueryRpcV2 = {
+      resolvePublicationV2: vi.fn(() =>
         Promise.reject(new Error("VISITOR_INPUT_CANARY")),
       ),
-      readMergedExactSearchV1: vi.fn(),
+      readMergedExactSearchV2: vi.fn(),
     };
     const failure = await execute(throwing);
     expect(failure).toEqual({ success: false, code: "read_failure" });
@@ -781,5 +790,26 @@ describe("merged exact search API seam (SRCH-001/002, API-003/007, PRIV-006)", (
         success: false,
         code,
       });
+  });
+
+  it("rejects resolver horizon disagreement and fresh-horizon overflow before reading", async () => {
+    const mismatched = rpc(undefined, {
+      outcome: "selected",
+      publicationId: PUBLICATION,
+      bookmark: "bookmark-test-only",
+      requiredAvailableUntilMs: (NOW + 900) * 1000 + 1,
+    });
+    await expect(execute(mismatched)).resolves.toEqual({
+      success: false,
+      code: "integrity_failure",
+    });
+    expect(mismatched.readMergedExactSearchV2).not.toHaveBeenCalled();
+
+    const overflow = rpc();
+    await expect(
+      execute(overflow, request(), { nowSeconds: Number.MAX_SAFE_INTEGER }),
+    ).resolves.toEqual({ success: false, code: "invalid_input" });
+    expect(overflow.resolvePublicationV2).not.toHaveBeenCalled();
+    expect(overflow.readMergedExactSearchV2).not.toHaveBeenCalled();
   });
 });

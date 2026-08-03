@@ -15,7 +15,10 @@ import {
   EXACT_PROVIDER_MODEL_ID_RAW_MARKER,
   MergedExactSearchError,
 } from "./merged-exact-search.js";
-import { readMergedExactSearchV1 } from "./catalog-query-rpc.js";
+import {
+  readMergedExactSearchV1,
+  readMergedExactSearchV2,
+} from "./catalog-query-rpc.js";
 
 const PUBLICATION = "pub_11111111-1111-4111-8111-111111111111";
 const MODEL = "mdl_22222222-2222-4222-8222-222222222222";
@@ -52,6 +55,19 @@ const input = (
   audience: "quantclarity-catalog-query-v1",
   environment: "test",
   bookmark: "bookmark-test-only",
+  envelope: envelope(filters, continuation),
+});
+
+const inputV2 = (
+  requiredAvailableUntilMs: number,
+  filters: Record<string, string> = {},
+  continuation: unknown = null,
+) => ({
+  version: 2,
+  audience: "quantclarity-catalog-query-v1",
+  environment: "test",
+  bookmark: "bookmark-test-only",
+  requiredAvailableUntilMs,
   envelope: envelope(filters, continuation),
 });
 
@@ -102,6 +118,7 @@ describe("merged exact-search RPC (SRCH-002, API-003, API-007, CF-020)", () => {
         resourceId: MODEL,
       },
       limit: 20,
+      requiredAvailableUntilMs: null,
     });
   });
 
@@ -176,5 +193,54 @@ describe("merged exact-search RPC (SRCH-002, API-003, API-007, CF-020)", () => {
     await expect(
       readMergedExactSearchV1(database.asD1(), "test", input()),
     ).resolves.toEqual({ outcome: "read_failure" });
+  });
+
+  it("propagates the authenticated availability horizon through protocol v2", async () => {
+    const page = {
+      publicationId: PUBLICATION,
+      results: [],
+      nextContinuation: null,
+      semanticDegraded: "disabled",
+    } as const;
+    const horizon = 2_000_000_000_000;
+    mocked.readPage.mockResolvedValue(page);
+    const database = new FakeDatabase();
+    await expect(
+      readMergedExactSearchV2(database.asD1(), "test", inputV2(horizon)),
+    ).resolves.toEqual({ outcome: "page", page });
+    expect(mocked.readPage).toHaveBeenCalledWith(database.session, {
+      publicationId: PUBLICATION,
+      query: "Fixture",
+      recordType: null,
+      continuation: null,
+      limit: 20,
+      requiredAvailableUntilMs: horizon,
+    });
+  });
+
+  it("rejects malformed or accessor-backed v2 horizons before opening D1", async () => {
+    const database = new FakeDatabase();
+    const valid = inputV2(2_000_000_000_000);
+    let reads = 0;
+    const accessor = { ...valid } as Record<string, unknown>;
+    Object.defineProperty(accessor, "requiredAvailableUntilMs", {
+      enumerable: true,
+      get: () => {
+        reads += 1;
+        return 2_000_000_000_000;
+      },
+    });
+    for (const candidate of [
+      accessor,
+      { ...valid, requiredAvailableUntilMs: -1 },
+      { ...valid, requiredAvailableUntilMs: Number.MAX_VALUE },
+      { ...valid, extra: true },
+    ])
+      await expect(
+        readMergedExactSearchV2(database.asD1(), "test", candidate),
+      ).resolves.toEqual({ outcome: "integrity_failure" });
+    expect(reads).toBe(0);
+    expect(database.sessionInputs).toEqual([]);
+    expect(mocked.readPage).not.toHaveBeenCalled();
   });
 });

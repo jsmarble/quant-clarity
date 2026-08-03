@@ -65,6 +65,24 @@ beforeAll(async () => {
       (migration) => migration.name <= "0008_provider_name_nul_guard.sql",
     ),
   );
+  await env.SERVING_DB.prepare(
+    `
+    CREATE INDEX publication_switch_history_from_retained_hot_idx
+    ON publication_switch_history(
+      from_publication_id, switched_at_ms DESC, new_generation DESC
+    ) WHERE from_publication_id IS NOT NULL
+  `,
+  ).run();
+  await env.SERVING_DB.prepare(
+    `
+    CREATE INDEX publication_switch_history_prior_rollback_retained_hot_idx
+    ON publication_switch_history(
+      expected_prior_rollback_candidate_publication_id,
+      switched_at_ms DESC,
+      new_generation DESC
+    ) WHERE expected_prior_rollback_candidate_publication_id IS NOT NULL
+  `,
+  ).run();
 });
 
 describe("provider exact-name reader in workerd/D1 (SRCH-002, SRCH-006, SRCH-008, QA-006)", () => {
@@ -170,7 +188,7 @@ describe("provider exact-name reader in workerd/D1 (SRCH-002, SRCH-006, SRCH-008
     const plan = await env.SERVING_DB.prepare(
       `EXPLAIN QUERY PLAN ${PROVIDER_EXACT_NAME_SELECT_SQL}`,
     )
-      .bind(PUBLICATION_A, "fixture provider", "", 1_000_000, 21)
+      .bind(PUBLICATION_A, "fixture provider", "", 1_000_000, 21, null)
       .all<{ detail: string }>();
     expect(plan.success).toBe(true);
     expect(plan.results.map((row) => row.detail).join("\n")).toContain(

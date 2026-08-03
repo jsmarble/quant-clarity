@@ -11,6 +11,15 @@ import {
   PROVIDER_SEARCH_PROJECTION_VERSION,
 } from "@quant-clarity/publication-core";
 
+import {
+  RETAINED_HOT_PUBLICATION_CLOCK_SKEW_MS,
+  RETAINED_HOT_PUBLICATION_MAX_HORIZON_MS,
+  RETAINED_HOT_PUBLICATION_MAX_SWITCH_FUTURE_MS,
+  RETAINED_HOT_PUBLICATION_WINDOW_MS,
+  RETAINED_HOT_REFERENCE_CTE_SQL,
+  validRequiredAvailableUntilMs,
+} from "./retained-hot-publication.js";
+
 const UUID_V4 =
   "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
 const PUBLICATION_ID = new RegExp(`^pub_${UUID_V4}$`, "u");
@@ -33,12 +42,21 @@ export const PROVIDER_EXACT_NAME_MAX_TRANSFER_BYTES =
  * and visitor input is bound rather than interpreted as SQL or MATCH syntax.
  */
 export const PROVIDER_EXACT_NAME_SELECT_SQL = `
-WITH eligible_publication AS (
+WITH ${RETAINED_HOT_REFERENCE_CTE_SQL}, eligible_publication AS (
   SELECT publication.publication_id
   FROM publication_head AS head
   JOIN publication AS publication
     ON publication.publication_id = ?1
+  CROSS JOIN retained_reference AS retained
   WHERE head.singleton = 1
+    AND (
+      ?6 IS NULL OR (
+        ?6 > CAST(strftime('%s', 'now') AS INTEGER) * 1000 -
+          ${String(RETAINED_HOT_PUBLICATION_CLOCK_SKEW_MS)}
+        AND ?6 <= CAST(strftime('%s', 'now') AS INTEGER) * 1000 +
+          ${String(RETAINED_HOT_PUBLICATION_MAX_HORIZON_MS)}
+      )
+    )
     AND (
       (
         head.active_publication_id = publication.publication_id
@@ -47,6 +65,16 @@ WITH eligible_publication AS (
       OR (
         head.rollback_candidate_publication_id = publication.publication_id
         AND publication.state IN ('superseded', 'rolled_back')
+      )
+      OR (
+        ?6 IS NOT NULL
+        AND publication.state IN ('superseded', 'rolled_back')
+        AND retained.latest_head_reference_ms BETWEEN 0 AND
+          CAST(strftime('%s', 'now') AS INTEGER) * 1000 +
+            ${String(RETAINED_HOT_PUBLICATION_MAX_SWITCH_FUTURE_MS)}
+        AND retained.latest_head_reference_ms >
+          ?6 + ${String(RETAINED_HOT_PUBLICATION_CLOCK_SKEW_MS)} -
+            ${String(RETAINED_HOT_PUBLICATION_WINDOW_MS)}
       )
     )
 ), candidate_page AS (
@@ -113,6 +141,7 @@ export type ProviderExactNameInput = Readonly<{
   query: string;
   afterProviderId?: string | null;
   limit?: number;
+  requiredAvailableUntilMs?: number | null;
 }>;
 
 export type ProviderExactNameDatabase = Pick<D1DatabaseSession, "prepare">;
@@ -182,12 +211,14 @@ const validateInput = (
   normalizedQuery: string;
   afterProviderId: string;
   limit: number;
+  requiredAvailableUntilMs: number | null;
 }> => {
   const allowedKeys = new Set([
     "publicationId",
     "query",
     "afterProviderId",
     "limit",
+    "requiredAvailableUntilMs",
   ]);
   if (
     typeof inputValue !== "object" ||
@@ -195,7 +226,15 @@ const validateInput = (
     Array.isArray(inputValue)
   )
     return invalidInput();
+
   const input = inputValue as Record<string, unknown>;
+
+  const requiredAvailableUntilMs =
+    input.requiredAvailableUntilMs === undefined
+      ? null
+      : input.requiredAvailableUntilMs;
+  if (!validRequiredAvailableUntilMs(requiredAvailableUntilMs))
+    return invalidInput();
   if (
     Object.keys(input).some((key) => !allowedKeys.has(key)) ||
     typeof input.publicationId !== "string" ||
@@ -246,6 +285,7 @@ const validateInput = (
     normalizedQuery,
     afterProviderId,
     limit,
+    requiredAvailableUntilMs,
   };
 };
 
@@ -386,6 +426,7 @@ export const readProviderExactNamePage = async (
         validated.afterProviderId,
         PROVIDER_EXACT_NAME_MAX_RESOURCE_BYTES,
         validated.limit + 1,
+        validated.requiredAvailableUntilMs,
       )
       .all<ProviderExactNameRow>();
     const results = successfulD1Rows(result);
