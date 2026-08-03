@@ -1,6 +1,6 @@
 # Phase 5O-B3: Public Model detail HTTP and stable-ID cache
 
-Status: implementation in progress; shared exact-byte encoder, hostile API V2 adapter, authorized V5 activation/rollback admission, and a bounded every-serveable-publication pre-open audit implemented locally; protected audit invocation/evidence, recovery admission, and public HTTP/cache increments pending
+Status: implementation in progress; B3-A admission and pre-open audit plus the first pure, unrouted B3-B Model-detail request planner implemented locally; protected audit invocation/evidence, recovery admission, response planning, public routing, and cache increments pending
 
 Primary requirements: `DATA-001`–`DATA-015`, `DATA-060`–`DATA-065`, `API-001`–`API-005`, `API-011`–`API-014`, `API-016`, `API-017`, `API-020`–`API-027`, `BE-002`, `BE-003`, `BE-007`–`BE-009`, `CF-008`, `CF-020`, `CF-021`, `CF-023`, `NFR-001`, `NFR-002`, `SEC-001`, `SEC-007`, `SEC-008`, `SEC-011`, `PRIV-003`, `PRIV-004`, `PRIV-006`, `PRIV-007`, `PRIV-011`, `OPS-001`–`OPS-003`, `QA-004`, `QA-006`–`QA-008`, `QA-014`
 
@@ -40,6 +40,8 @@ The function returning `passed` is ephemeral local evidence only. It persists no
 5. Add stable-ID-only manual Cache API lookup/write at the protected origin after limiter and resolver effects. Treat the application-authorized cache as optional, corruption-prone storage and every cache failure as a canonical-query miss.
 6. Explicitly disable pre-invocation Workers Caching for the public gateway. Keep invocation logs, traces, Logpush/Tail, analytics, cookies, correlation IDs, and custom telemetry disabled.
 7. Align generated OpenAPI, CORS, response headers, errors, examples, privacy checks, and environment policy with ADR 0044.
+
+Local request-planning evidence as of 2026-08-03: `apps/api/src/model-detail-request-plan.test.ts` proves exact GET/HEAD lookup plans, bodyless OPTIONS, lowercase Model stable-ID and 1–128-byte slug classification, explicit rejection of a bare query marker, bounded body/path/conditional failures, and fixed closure of unrelated routes. The planner is pure and is not imported by the live Worker handler. Existing handler tests continue to prove Model stable-ID and slug paths return `404` without an RPC call. Response outcome planning, Request/Response rendering, limiter integration, public routing, cache behavior, workerd protocol evidence, and deployment remain pending.
 
 ## Fixed response matrix
 

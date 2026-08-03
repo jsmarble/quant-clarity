@@ -32,6 +32,11 @@ const CURSOR_VERSION = 1;
 const CURSOR_TTL_SECONDS = 15 * 60;
 const CURSOR_MAX_CHARACTERS = 4096;
 const CURSOR_MAX_CLOCK_SKEW_SECONDS = 30;
+const ENTITY_TAG = String.raw`(?:W/)?"[\x21\x23-\x7e]*"`;
+const IF_NONE_MATCH_LIST = new RegExp(
+  String.raw`^[\t ]*${ENTITY_TAG}(?:[\t ]*,[\t ]*${ENTITY_TAG})*[\t ]*$`,
+  "u",
+);
 
 export interface ApiLimits {
   defaultPageSize: number;
@@ -1896,6 +1901,13 @@ export function ifNoneMatchMatches(
     .some(
       (candidate) => candidate === "*" || opaque(candidate) === opaque(etag),
     );
+}
+
+export function validIfNoneMatch(value: string | null): boolean {
+  if (value === null) return true;
+  if (value.length > 256 || UTF8.encode(value).byteLength > 256) return false;
+  if (/^[\t ]*\*[\t ]*$/u.test(value)) return true;
+  return IF_NONE_MATCH_LIST.test(value);
 }
 
 export function corsHeaders(): Readonly<Record<string, string>> {

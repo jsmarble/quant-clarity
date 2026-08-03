@@ -1,6 +1,7 @@
 import {
   ifNoneMatchMatches,
   representationEtag,
+  validIfNoneMatch,
   validateAndNormalizeRequest,
   type ApiLimits,
   type DeploymentEnvironment,
@@ -16,14 +17,8 @@ type Env = CloudflareEnv & {
 };
 
 const DEPLOYMENT_ENVIRONMENT: DeploymentEnvironment = "local";
-const CONDITIONAL_HEADER_MAX_BYTES = 256;
 const PUBLICATION_HEADER_MAX_BYTES = 40;
 const UTF8 = new TextEncoder();
-const ENTITY_TAG = String.raw`(?:W/)?"[\x21\x23-\x7e]*"`;
-const IF_NONE_MATCH_LIST = new RegExp(
-  String.raw`^[\t ]*${ENTITY_TAG}(?:[\t ]*,[\t ]*${ENTITY_TAG})*[\t ]*$`,
-  "u",
-);
 
 const API_LIMITS: ApiLimits = {
   defaultPageSize: 25,
@@ -111,17 +106,6 @@ const bodyBytesWithoutReading = (request: Request): number => {
   const parsed = Number(declared);
   if (!Number.isSafeInteger(parsed)) return API_LIMITS.maxBodyBytes + 1;
   return request.body === null ? parsed : Math.max(1, parsed);
-};
-
-const validIfNoneMatch = (value: string | null): boolean => {
-  if (value === null) return true;
-  if (
-    value.length > CONDITIONAL_HEADER_MAX_BYTES ||
-    UTF8.encode(value).byteLength > CONDITIONAL_HEADER_MAX_BYTES
-  )
-    return false;
-  if (/^[\t ]*\*[\t ]*$/u.test(value)) return true;
-  return IF_NONE_MATCH_LIST.test(value);
 };
 
 function protocolResponsePlan(request: Request): ProtocolPlan {
