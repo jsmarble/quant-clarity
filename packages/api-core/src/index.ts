@@ -1241,6 +1241,13 @@ export interface ModelDetailQueryRpcV1 {
 export interface CatalogQueryRpcV4
   extends CatalogQueryRpcV3, ModelDetailQueryRpcV1 {}
 
+export interface ModelDetailQueryRpcV2 extends ModelDetailQueryRpcV1 {
+  readModelDetailV2(input: unknown): Promise<unknown>;
+}
+
+export interface CatalogQueryRpcV5
+  extends CatalogQueryRpcV4, ModelDetailQueryRpcV2 {}
+
 export type ReadDatasetMetadataV1Input = Readonly<{
   version: 1;
   audience: "quantclarity-catalog-query-v1";
@@ -1270,6 +1277,42 @@ export type ReadModelDetailV1Outcome =
       model: Model;
       publicationId: string;
       schemaVersion: string;
+    }>
+  | Readonly<{
+      outcome: "not_found";
+      publicationId: string;
+      schemaVersion: string;
+    }>
+  | Readonly<{ outcome: "integrity_failure" }>
+  | Readonly<{ outcome: "read_failure" }>;
+
+export type ModelDetailLookupV2 =
+  | Readonly<{ kind: "stable_id"; value: string }>
+  | Readonly<{ kind: "slug"; value: string }>;
+
+export type ModelDetailLookupProvenanceV2 = Readonly<{
+  matchedBy: "stable_id" | "current_slug" | "historical_slug";
+  canonicalSlug: string;
+  projectionVersion: "model-slug@1";
+}>;
+
+export type ReadModelDetailV2Input = Readonly<{
+  version: 2;
+  audience: "quantclarity-catalog-query-v1";
+  environment: DeploymentEnvironment;
+  bookmark: string;
+  requiredAvailableUntilMs: number;
+  envelope: QueryServiceEnvelope;
+  lookup: ModelDetailLookupV2;
+}>;
+
+export type ReadModelDetailV2Outcome =
+  | Readonly<{
+      outcome: "model";
+      model: Model;
+      publicationId: string;
+      schemaVersion: string;
+      lookupProvenance: ModelDetailLookupProvenanceV2;
     }>
   | Readonly<{
       outcome: "not_found";

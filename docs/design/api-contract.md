@@ -44,6 +44,12 @@ B2A is not readiness authority. B2B must first write and read-verify an immutabl
 
 Serving schema `1.12.0` is a dormant staging boundary only. Its immutable proof and exact publication-plus-slug mapping rows add no query RPC or public operation and do not authorize readiness, sealing, switching, rollback, or cache use. B2C owns schema `1.13.0` lifecycle/restore/indexed-read authority; B3 still owns redirect-versus-direct-read and HTTP semantics. The public `/v1/models/{model_id_or_slug}` route remains closed.
 
+### Phase 5O-B2C-C internal Model slug read boundary
+
+[ADR 0042](../decisions/0042-model-slug-lifecycle-authority.md) and [Phase 5O-B2C-C](phase-5o-b2c-c-model-slug-internal-read.md) define additive `readModelDetailV2`. One closed lookup discriminates an exact lowercase Model stable ID from a strict 1–128-character lowercase ASCII slug. Relative to a resolver-V2-selected publication, the query Worker uses one bookmark-continuous Session and one fixed SELECT to require the immutable closure and staged artifact proof, force the exact-slug and current-Model indexes, validate the selected mapping/resource/hash/current-slug path, and return the unchanged canonical Model with `stable_id`, `current_slug`, or `historical_slug` provenance. The returned canonical slug comes from the verified current mapping; the historical submitted slug is never returned.
+
+This operation remains internal and unrouted. The V1 stable-ID operation stays compatible, and the public handler, OpenAPI, Cache API, CORS, ETag, redirect/direct-response decision, remote configuration, and deployment remain unchanged. Phase 5O-B3 owns those public semantics and their load/conformance evidence.
+
 | Resource | Collection | Detail / related routes |
 |---|---|---|
 | Models | `GET /models` | `GET /models/{model_id_or_slug}`, `GET /models/{id}/offerings` |

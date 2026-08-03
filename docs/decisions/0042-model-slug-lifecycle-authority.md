@@ -131,6 +131,8 @@ B2C-B must define `backup-v2@1` with format version `2.0.0`, a new protected bac
 
 B2C-C adds an internal SELECT-only V2 Model-detail lookup by exact stable ID, current slug, or historical slug relative to one already selected publication and one bookmark-continuous Session. It must verify canonical Model bytes and the staged artifact/seal authority and return lookup provenance without echoing hostile input. It remains unrouted. Phase 5O-B3 alone decides current/historical HTTP behavior, canonicalization, CORS, ETag, Cache API, response admission, and public conformance.
 
+The accepted B2C-C implementation contract is recorded in [Phase 5O-B2C-C](../design/phase-5o-b2c-c-model-slug-internal-read.md). Its closed success provenance contains `matchedBy`, the verified canonical current slug, and projection version only; it never returns the submitted historical slug. This names the minimal internal result promised above without deciding B3's public behavior.
+
 ### Privacy, security, and deployment boundary
 
 All B2C inputs are immutable publication facts, protected configuration, controlled writer identity, or version-controlled synthetic probes. No visitor path, query, URL, header, address, user agent, referrer, cookie, actor key, correlation identifier, click, telemetry event, or visitor-derived cache key enters a receipt, preflight, history event, R2 key, D1 row, log, metric, trace, alert, or artifact.
