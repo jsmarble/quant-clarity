@@ -553,6 +553,54 @@ beforeAll(async () => {
 describe("schema-1.13 Model-slug-bound serving switch", () => {
   it("reconciles activation, revalidates idempotently, and stores all 88 preflight columns", async () => {
     const prepared = await prepare(1);
+    const publicationId = prepared.fixture.v4.base.manifest.publicationId;
+    const originalModel = await env.SERVING_DB.prepare(
+      `SELECT resource_id, resource_json FROM publication_resource
+       WHERE publication_id = ?1 AND resource_type = 'model' LIMIT 1`,
+    )
+      .bind(publicationId)
+      .first<{ resource_id: string; resource_json: string }>();
+    if (originalModel === null)
+      throw new Error("activation fixture lacks Model");
+    await env.SERVING_DB.prepare(
+      "DROP TRIGGER publication_resource_immutable_update",
+    ).run();
+    try {
+      await env.SERVING_DB.prepare(
+        `UPDATE publication_resource SET resource_json = json_set(
+           resource_json, '$.publisher.value', 'admission-corruption'
+         ) WHERE publication_id = ?1 AND resource_type = 'model'
+           AND resource_id = ?2`,
+      )
+        .bind(publicationId, originalModel.resource_id)
+        .run();
+      await expect(
+        applyServingSwitchV5(
+          env.SERVING_DB,
+          prepared.authority,
+          null,
+          prepared.projection,
+        ),
+      ).rejects.toEqual(new ServingSwitchError("integrity_failure"));
+      await expect(readHead()).resolves.toBeNull();
+    } finally {
+      await env.SERVING_DB.prepare(
+        `UPDATE publication_resource SET resource_json = ?3
+         WHERE publication_id = ?1 AND resource_type = 'model'
+           AND resource_id = ?2`,
+      )
+        .bind(
+          publicationId,
+          originalModel.resource_id,
+          originalModel.resource_json,
+        )
+        .run();
+      await env.SERVING_DB.prepare(
+        `CREATE TRIGGER publication_resource_immutable_update
+         BEFORE UPDATE ON publication_resource
+         BEGIN SELECT RAISE(ABORT, 'publication resource is immutable'); END`,
+      ).run();
+    }
     await expect(
       applyServingSwitchV5(
         env.SERVING_DB,

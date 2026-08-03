@@ -1,5 +1,6 @@
 import {
   API_ROUTE_POLICIES,
+  checkModelContract,
   type DatasetMetadata,
   type Model,
 } from "@quant-clarity/contracts";
@@ -1324,6 +1325,165 @@ export type ReadModelDetailV2Outcome =
   | Readonly<{ outcome: "read_failure" }>;
 
 export const MODEL_DETAIL_PUBLIC_MAX_BYTES = 65_536;
+const MODEL_DETAIL_SNAPSHOT_MAX_OBJECT_KEYS = 256;
+const MODEL_DETAIL_SNAPSHOT_MAX_KEY_CHARACTERS = 128;
+const MODEL_DETAIL_SNAPSHOT_MAX_KEY_BYTES = 512;
+
+interface ModelDetailSnapshotBudget {
+  remaining: number;
+  seen: WeakSet<object>;
+}
+
+const snapshotModelDetailArray = (
+  value: unknown,
+  maximumLength: number,
+): readonly unknown[] | null => {
+  try {
+    if (
+      !Array.isArray(value) ||
+      Object.getPrototypeOf(value) !== Array.prototype
+    )
+      return null;
+    const length = value.length;
+    if (!Number.isSafeInteger(length) || length < 0 || length > maximumLength)
+      return null;
+    const ownKeys = Reflect.ownKeys(value);
+    if (
+      ownKeys.length !== length + 1 ||
+      ownKeys.some(
+        (key) =>
+          typeof key !== "string" ||
+          (key !== "length" &&
+            (!/^(?:0|[1-9][0-9]*)$/u.test(key) || Number(key) >= length)),
+      )
+    )
+      return null;
+    const snapshot: unknown[] = [];
+    for (let index = 0; index < length; index += 1) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+      if (
+        descriptor === undefined ||
+        !("value" in descriptor) ||
+        descriptor.enumerable !== true
+      )
+        return null;
+      snapshot.push(descriptor.value);
+    }
+    return snapshot;
+  } catch {
+    return null;
+  }
+};
+
+const snapshotModelDetailJson = (
+  value: unknown,
+  budget: ModelDetailSnapshotBudget,
+): unknown => {
+  budget.remaining -= 1;
+  if (budget.remaining < 0) throw new RangeError("snapshot budget exceeded");
+  if (value === null || typeof value === "boolean") return value;
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new TypeError("non-JSON number");
+    return value;
+  }
+  if (typeof value === "string") {
+    if (value.length > budget.remaining)
+      throw new RangeError("snapshot budget exceeded");
+    budget.remaining -= UTF8.encode(value).byteLength;
+    if (budget.remaining < 0) throw new RangeError("snapshot budget exceeded");
+    return value;
+  }
+  if (typeof value !== "object") throw new TypeError("non-JSON value");
+  if (budget.seen.has(value)) throw new TypeError("cyclic value");
+  budget.seen.add(value);
+  try {
+    if (Array.isArray(value)) {
+      const array = snapshotModelDetailArray(
+        value,
+        Math.max(0, budget.remaining),
+      );
+      if (array === null) throw new TypeError("hostile array");
+      return array.map((item) => snapshotModelDetailJson(item, budget));
+    }
+    const prototype: unknown = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null)
+      throw new TypeError("hostile object");
+    const keys = Reflect.ownKeys(value);
+    if (
+      keys.length > MODEL_DETAIL_SNAPSHOT_MAX_OBJECT_KEYS ||
+      keys.length > budget.remaining ||
+      keys.some((key) => typeof key !== "string")
+    )
+      throw new TypeError("hostile object keys");
+    let keyBytes = 0;
+    for (const key of keys as string[]) {
+      if (
+        key.length > MODEL_DETAIL_SNAPSHOT_MAX_KEY_CHARACTERS ||
+        key.length > budget.remaining
+      )
+        throw new RangeError("snapshot budget exceeded");
+      const bytes = UTF8.encode(key).byteLength;
+      if (bytes > MODEL_DETAIL_SNAPSHOT_MAX_KEY_BYTES)
+        throw new TypeError("hostile key");
+      keyBytes += bytes;
+      if (keyBytes > budget.remaining)
+        throw new RangeError("snapshot budget exceeded");
+    }
+    budget.remaining -= keyBytes;
+    const output: Record<string, unknown> = Object.create(null) as Record<
+      string,
+      unknown
+    >;
+    for (const key of (keys as string[]).sort()) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (
+        descriptor === undefined ||
+        !("value" in descriptor) ||
+        descriptor.enumerable !== true
+      )
+        throw new TypeError("hostile property");
+      output[key] = snapshotModelDetailJson(descriptor.value, budget);
+    }
+    return output;
+  } finally {
+    budget.seen.delete(value);
+  }
+};
+
+/**
+ * Detaches and validates one canonical Model before ModelDetail serialization.
+ * The bounded, recursively key-sorted snapshot is shared by request adapters
+ * and publication admission so they measure the same representation bytes.
+ */
+export function snapshotModelDetailModel(
+  input: Readonly<{
+    expectedModelId: string | null;
+    maxRepresentationBytes: number;
+    model: unknown;
+  }>,
+): Model | null {
+  try {
+    if (
+      !Number.isSafeInteger(input.maxRepresentationBytes) ||
+      input.maxRepresentationBytes < 0 ||
+      input.maxRepresentationBytes > Math.floor(Number.MAX_SAFE_INTEGER / 2)
+    )
+      return null;
+    const detached = snapshotModelDetailJson(input.model, {
+      remaining: Math.max(4096, input.maxRepresentationBytes * 2),
+      seen: new WeakSet(),
+    });
+    if (
+      !checkModelContract(detached) ||
+      (input.expectedModelId !== null &&
+        detached.model_id !== input.expectedModelId)
+    )
+      return null;
+    return detached;
+  } catch {
+    return null;
+  }
+}
 
 export type ModelDetailResponse = Readonly<{
   data: Model;

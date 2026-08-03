@@ -3,6 +3,7 @@ import {
   buildQueryServiceEnvelope,
   encodeModelDetailRepresentation,
   MODEL_DETAIL_PUBLIC_MAX_BYTES,
+  snapshotModelDetailModel,
   type ApiLimits,
   type DeploymentEnvironment,
   type ModelDetailLookupProvenanceV2,
@@ -14,7 +15,7 @@ import {
   type ReadModelDetailV1Input,
   type ReadModelDetailV2Input,
 } from "@quant-clarity/api-core";
-import { checkModelContract, type Model } from "@quant-clarity/contracts";
+import type { Model } from "@quant-clarity/contracts";
 
 export type { ModelDetailResponse } from "@quant-clarity/api-core";
 
@@ -29,7 +30,6 @@ const SCHEMA_VERSION = /^[0-9]+\.[0-9]+\.[0-9]+$/u;
 const UTF8 = new TextEncoder();
 const MAX_SCHEMA_VERSION_CHARACTERS = 128;
 const MAX_SCHEMA_VERSION_BYTES = 512;
-const MAX_SNAPSHOT_OBJECT_KEYS = 256;
 const MAX_SNAPSHOT_KEY_CHARACTERS = 128;
 const MAX_SNAPSHOT_KEY_BYTES = 512;
 const MODEL_SLUG_MAX_BYTES = 128;
@@ -366,101 +366,6 @@ const classifyResolver = (
   };
 };
 
-interface SnapshotBudget {
-  remaining: number;
-  seen: WeakSet<object>;
-}
-
-const snapshotJson = (value: unknown, budget: SnapshotBudget): unknown => {
-  budget.remaining -= 1;
-  if (budget.remaining < 0) throw new RangeError("snapshot budget exceeded");
-  if (value === null || typeof value === "boolean") return value;
-  if (typeof value === "number") {
-    if (!Number.isFinite(value)) throw new TypeError("non-JSON number");
-    return value;
-  }
-  if (typeof value === "string") {
-    if (value.length > budget.remaining)
-      throw new RangeError("snapshot budget exceeded");
-    budget.remaining -= UTF8.encode(value).byteLength;
-    if (budget.remaining < 0) throw new RangeError("snapshot budget exceeded");
-    return value;
-  }
-  if (typeof value !== "object") throw new TypeError("non-JSON value");
-  if (budget.seen.has(value)) throw new TypeError("cyclic value");
-  budget.seen.add(value);
-  try {
-    if (Array.isArray(value)) {
-      const array = snapshotArray(value, Math.max(0, budget.remaining));
-      if (array === null) throw new TypeError("hostile array");
-      return array.map((item) => snapshotJson(item, budget));
-    }
-    const prototype: unknown = Object.getPrototypeOf(value);
-    if (prototype !== Object.prototype && prototype !== null)
-      throw new TypeError("hostile object");
-    const keys = Reflect.ownKeys(value);
-    if (
-      keys.length > MAX_SNAPSHOT_OBJECT_KEYS ||
-      keys.length > budget.remaining ||
-      keys.some((key) => typeof key !== "string")
-    )
-      throw new TypeError("hostile object keys");
-    let keyBytes = 0;
-    for (const key of keys as string[]) {
-      if (
-        key.length > MAX_SNAPSHOT_KEY_CHARACTERS ||
-        key.length > budget.remaining
-      )
-        throw new RangeError("snapshot budget exceeded");
-      const bytes = UTF8.encode(key).byteLength;
-      if (bytes > MAX_SNAPSHOT_KEY_BYTES) throw new TypeError("hostile key");
-      keyBytes += bytes;
-      if (keyBytes > budget.remaining)
-        throw new RangeError("snapshot budget exceeded");
-    }
-    budget.remaining -= keyBytes;
-    const output: Record<string, unknown> = Object.create(null) as Record<
-      string,
-      unknown
-    >;
-    for (const key of (keys as string[]).sort()) {
-      const descriptor = Object.getOwnPropertyDescriptor(value, key);
-      if (
-        descriptor === undefined ||
-        !("value" in descriptor) ||
-        descriptor.enumerable !== true
-      )
-        throw new TypeError("hostile property");
-      output[key] = snapshotJson(descriptor.value, budget);
-    }
-    return output;
-  } finally {
-    budget.seen.delete(value);
-  }
-};
-
-const snapshotModel = (
-  value: unknown,
-  modelId: string | null,
-  maxResponseBytes: number,
-): Model | null => {
-  try {
-    if (maxResponseBytes > Math.floor(Number.MAX_SAFE_INTEGER / 2)) return null;
-    const detached = snapshotJson(value, {
-      remaining: Math.max(4096, maxResponseBytes * 2),
-      seen: new WeakSet(),
-    });
-    if (
-      !checkModelContract(detached) ||
-      (modelId !== null && detached.model_id !== modelId)
-    )
-      return null;
-    return detached;
-  } catch {
-    return null;
-  }
-};
-
 const encodeAcceptedModelDetail = (
   input: Readonly<{
     model: Model;
@@ -577,11 +482,11 @@ export const readModelDetailFromQueryV1 = async (
     )
       return { success: false, code: "integrity_failure" };
     const modelId = request.operation.identifier;
-    const model = snapshotModel(
-      response.model,
-      modelId,
-      input.limits.maxResponseBytes,
-    );
+    const model = snapshotModelDetailModel({
+      expectedModelId: modelId,
+      maxRepresentationBytes: input.limits.maxResponseBytes,
+      model: response.model,
+    });
     if (model === null) return { success: false, code: "integrity_failure" };
     const representation = encodeAcceptedModelDetail({
       model,
@@ -726,11 +631,14 @@ export const readModelDetailFromQueryV2 = async (
     )
       return { success: false, code: "integrity_failure" };
 
-    const model = snapshotModel(
-      response.model,
-      lookup.kind === "stable_id" ? lookup.value : null,
-      Math.min(input.limits.maxResponseBytes, MODEL_DETAIL_PUBLIC_MAX_BYTES),
-    );
+    const model = snapshotModelDetailModel({
+      expectedModelId: lookup.kind === "stable_id" ? lookup.value : null,
+      maxRepresentationBytes: Math.min(
+        input.limits.maxResponseBytes,
+        MODEL_DETAIL_PUBLIC_MAX_BYTES,
+      ),
+      model: response.model,
+    });
     if (
       model?.slug.state !== "known" ||
       model.slug.value !== provenance.canonicalSlug ||

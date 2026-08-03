@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { Model } from "@quant-clarity/contracts";
 
@@ -22,6 +22,7 @@ import {
   operationName,
   reconcileRequestCursor,
   representationEtag,
+  snapshotModelDetailModel,
   validateAndNormalizeRequest,
   verifyCursor,
   type ApiLimits,
@@ -234,6 +235,74 @@ describe("shared catalog query RPC contract", () => {
 });
 
 describe("shared exact ModelDetail representation", () => {
+  it("snapshots one contract-valid canonical Model with stable key order and no live references", () => {
+    const source = modelDetailModel();
+    const snapshot = snapshotModelDetailModel({
+      expectedModelId: MODEL,
+      maxRepresentationBytes: MODEL_DETAIL_PUBLIC_MAX_BYTES,
+      model: source,
+    });
+    expect(snapshot).not.toBeNull();
+    if (snapshot === null) return;
+
+    expect(snapshot).not.toBe(source);
+    expect(Object.keys(snapshot)).toEqual(Object.keys(source).sort());
+    expect(snapshot.display_name).not.toBe(source.display_name);
+    source.display_name.value = "Changed after snapshot";
+    expect(snapshot.display_name.value).toBe("Fixture Mödel");
+  });
+
+  it("rejects identity drift and hostile Model accessors without invoking them", () => {
+    const getter = vi.fn(() => modelDetailModel().display_name);
+    const hostile = modelDetailModel() as unknown as Record<string, unknown>;
+    Object.defineProperty(hostile, "display_name", {
+      enumerable: true,
+      get: getter,
+    });
+
+    expect(
+      snapshotModelDetailModel({
+        expectedModelId: MODEL,
+        maxRepresentationBytes: MODEL_DETAIL_PUBLIC_MAX_BYTES,
+        model: hostile,
+      }),
+    ).toBeNull();
+    expect(getter).not.toHaveBeenCalled();
+    expect(
+      snapshotModelDetailModel({
+        expectedModelId: "mdl_99999999-9999-4999-8999-999999999999",
+        maxRepresentationBytes: MODEL_DETAIL_PUBLIC_MAX_BYTES,
+        model: modelDetailModel(),
+      }),
+    ).toBeNull();
+  });
+
+  it("closes invalid snapshot budgets and composes with the exact byte admission boundary", () => {
+    for (const maxRepresentationBytes of [-1, 0.5, Number.MAX_SAFE_INTEGER])
+      expect(
+        snapshotModelDetailModel({
+          expectedModelId: MODEL,
+          maxRepresentationBytes,
+          model: modelDetailModel(),
+        }),
+      ).toBeNull();
+
+    const snapshot = snapshotModelDetailModel({
+      expectedModelId: MODEL,
+      maxRepresentationBytes: MODEL_DETAIL_PUBLIC_MAX_BYTES,
+      model: modelDetailAtByteLength(MODEL_DETAIL_PUBLIC_MAX_BYTES),
+    });
+    expect(snapshot).not.toBeNull();
+    if (snapshot === null) return;
+    expect(
+      encodeModelDetailRepresentation({
+        model: snapshot,
+        publicationId: PUBLICATION,
+        schemaVersion: "1.13.0",
+      }).representationBytes.byteLength,
+    ).toBe(MODEL_DETAIL_PUBLIC_MAX_BYTES);
+  });
+
   it("fixes the public byte ceiling and exact envelope/key order", () => {
     const model = modelDetailModel();
     const representation = encodeModelDetailRepresentation({

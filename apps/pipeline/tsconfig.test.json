@@ -16,6 +16,7 @@
     "worker-configuration.d.ts"
   ],
   "references": [
+    { "path": "../../packages/api-core/tsconfig.build.json" },
     { "path": "../../packages/publication-core/tsconfig.build.json" }
   ]
 }
