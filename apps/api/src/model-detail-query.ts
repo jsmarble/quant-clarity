@@ -1,20 +1,29 @@
 import {
   assertApiLimits,
   buildQueryServiceEnvelope,
+  encodeModelDetailRepresentation,
+  MODEL_DETAIL_PUBLIC_MAX_BYTES,
   type ApiLimits,
   type DeploymentEnvironment,
+  type ModelDetailLookupProvenanceV2,
   type ModelDetailQueryRpcV1,
+  type ModelDetailQueryRpcV2,
+  type ModelDetailResponse,
   type NormalizedRequest,
   type QueryServiceEnvelope,
   type ReadModelDetailV1Input,
+  type ReadModelDetailV2Input,
 } from "@quant-clarity/api-core";
 import { checkModelContract, type Model } from "@quant-clarity/contracts";
+
+export type { ModelDetailResponse } from "@quant-clarity/api-core";
 
 const AUDIENCE = "quantclarity-catalog-query-v1" as const;
 const FRESH_REQUEST_HORIZON_MS = 15 * 60 * 1000;
 const UUID_V4 =
   "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
 const MODEL_ID = new RegExp(`^mdl_${UUID_V4}$`, "u");
+const MODEL_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const PUBLICATION_ID = new RegExp(`^pub_${UUID_V4}$`, "u");
 const SCHEMA_VERSION = /^[0-9]+\.[0-9]+\.[0-9]+$/u;
 const UTF8 = new TextEncoder();
@@ -23,23 +32,13 @@ const MAX_SCHEMA_VERSION_BYTES = 512;
 const MAX_SNAPSHOT_OBJECT_KEYS = 256;
 const MAX_SNAPSHOT_KEY_CHARACTERS = 128;
 const MAX_SNAPSHOT_KEY_BYTES = 512;
+const MODEL_SLUG_MAX_BYTES = 128;
 
 const validSchemaVersion = (value: unknown): value is string =>
   typeof value === "string" &&
   value.length <= MAX_SCHEMA_VERSION_CHARACTERS &&
   UTF8.encode(value).byteLength <= MAX_SCHEMA_VERSION_BYTES &&
   SCHEMA_VERSION.test(value);
-
-export type ModelDetailResponse = Readonly<{
-  data: Model;
-  meta: Readonly<{
-    resource: "models";
-    publication_id: string;
-    schema_version: string;
-    sort: readonly ["name", "stable_id"];
-    filters: Readonly<Record<string, never>>;
-  }>;
-}>;
 
 export type ModelDetailApiInput = Readonly<{
   environment: DeploymentEnvironment;
@@ -70,6 +69,22 @@ export type ModelDetailApiOutcome =
         | "publication_not_ready"
         | "read_failure";
     }>;
+
+export type ModelDetailApiV2Input = Readonly<
+  Omit<ModelDetailApiInput, "service"> & {
+    service: ModelDetailQueryRpcV2 | Service;
+  }
+>;
+
+export type ModelDetailApiV2Outcome =
+  | Readonly<{
+      success: true;
+      detail: ModelDetailResponse;
+      lookupProvenance: ModelDetailLookupProvenanceV2;
+      publicationId: string;
+      representationBytes: Uint8Array;
+    }>
+  | Exclude<ModelDetailApiOutcome, { success: true }>;
 
 type ModelDetailNormalizedRequest = Omit<
   NormalizedRequest,
@@ -176,7 +191,15 @@ const snapshotArray = (
   }
 };
 
-const parseRequest = (value: unknown): ModelDetailNormalizedRequest | null => {
+const validModelSlug = (value: string): boolean =>
+  value.length <= MODEL_SLUG_MAX_BYTES &&
+  UTF8.encode(value).byteLength <= MODEL_SLUG_MAX_BYTES &&
+  MODEL_SLUG.test(value);
+
+const parseRequestForIdentifier = (
+  value: unknown,
+  acceptsIdentifier: (identifier: string) => boolean,
+): ModelDetailNormalizedRequest | null => {
   try {
     const request = snapshotOwnRecord(value, [
       "cursor",
@@ -210,7 +233,7 @@ const parseRequest = (value: unknown): ModelDetailNormalizedRequest | null => {
       operation?.kind !== "detail" ||
       operation.resourceType !== "model" ||
       typeof operation.identifier !== "string" ||
-      !MODEL_ID.test(operation.identifier) ||
+      !acceptsIdentifier(operation.identifier) ||
       route?.policy !== "models" ||
       routeOperation?.kind !== "detail" ||
       routeOperation.resourceType !== "model" ||
@@ -260,6 +283,15 @@ const parseRequest = (value: unknown): ModelDetailNormalizedRequest | null => {
     return null;
   }
 };
+
+const parseRequest = (value: unknown): ModelDetailNormalizedRequest | null =>
+  parseRequestForIdentifier(value, (identifier) => MODEL_ID.test(identifier));
+
+const parseRequestV2 = (value: unknown): ModelDetailNormalizedRequest | null =>
+  parseRequestForIdentifier(
+    value,
+    (identifier) => MODEL_ID.test(identifier) || validModelSlug(identifier),
+  );
 
 const validEnvironment = (value: unknown): value is DeploymentEnvironment =>
   value === "local" ||
@@ -409,7 +441,7 @@ const snapshotJson = (value: unknown, budget: SnapshotBudget): unknown => {
 
 const snapshotModel = (
   value: unknown,
-  modelId: string,
+  modelId: string | null,
   maxResponseBytes: number,
 ): Model | null => {
   try {
@@ -418,9 +450,26 @@ const snapshotModel = (
       remaining: Math.max(4096, maxResponseBytes * 2),
       seen: new WeakSet(),
     });
-    if (!checkModelContract(detached) || detached.model_id !== modelId)
+    if (
+      !checkModelContract(detached) ||
+      (modelId !== null && detached.model_id !== modelId)
+    )
       return null;
     return detached;
+  } catch {
+    return null;
+  }
+};
+
+const encodeAcceptedModelDetail = (
+  input: Readonly<{
+    model: Model;
+    publicationId: string;
+    schemaVersion: string;
+  }>,
+): ReturnType<typeof encodeModelDetailRepresentation> | null => {
+  try {
+    return encodeModelDetailRepresentation(input);
   } catch {
     return null;
   }
@@ -534,22 +583,190 @@ export const readModelDetailFromQueryV1 = async (
       input.limits.maxResponseBytes,
     );
     if (model === null) return { success: false, code: "integrity_failure" };
-    const detail: ModelDetailResponse = {
-      data: model,
-      meta: {
-        resource: "models",
-        publication_id: resolver.publicationId,
-        schema_version: response.schemaVersion,
-        sort: ["name", "stable_id"],
-        filters: {},
-      },
-    };
-    const representationBytes = UTF8.encode(JSON.stringify(detail));
+    const representation = encodeAcceptedModelDetail({
+      model,
+      publicationId: resolver.publicationId,
+      schemaVersion: response.schemaVersion,
+    });
+    if (representation === null)
+      return { success: false, code: "integrity_failure" };
+    const { detail, representationBytes } = representation;
     if (representationBytes.byteLength > input.limits.maxResponseBytes)
       return { success: false, code: "integrity_failure" };
     return {
       success: true,
       detail,
+      publicationId: resolver.publicationId,
+      representationBytes,
+    };
+  } catch {
+    return { success: false, code: "invalid_input" };
+  }
+};
+
+export const readModelDetailFromQueryV2 = async (
+  input: ModelDetailApiV2Input,
+): Promise<ModelDetailApiV2Outcome> => {
+  try {
+    assertApiLimits(input.limits);
+    const request = parseRequestV2(input.request);
+    if (
+      request === null ||
+      !validEnvironment(input.environment) ||
+      !Number.isSafeInteger(input.nowMs) ||
+      input.nowMs < 0 ||
+      input.nowMs > Number.MAX_SAFE_INTEGER - FRESH_REQUEST_HORIZON_MS
+    )
+      return { success: false, code: "invalid_input" };
+
+    const identifier = request.operation.identifier;
+    const lookup = MODEL_ID.test(identifier)
+      ? ({ kind: "stable_id", value: identifier } as const)
+      : ({ kind: "slug", value: identifier } as const);
+    const requiredAvailableUntilMs = input.nowMs + FRESH_REQUEST_HORIZON_MS;
+    let resolverValue: unknown;
+    try {
+      resolverValue = await (
+        input.service as ModelDetailQueryRpcV2
+      ).resolvePublicationV2({
+        version: 2,
+        audience: AUDIENCE,
+        environment: input.environment,
+        requestedPublicationId: request.publicationHeader,
+        requiredAvailableUntilMs,
+      });
+    } catch {
+      return { success: false, code: "read_failure" };
+    }
+    const resolver = classifyResolver(resolverValue, requiredAvailableUntilMs);
+    if (resolver.kind === "failure") return resolver.outcome;
+    if (resolver.kind === "invalid")
+      return { success: false, code: "integrity_failure" };
+    if (
+      request.publicationHeader !== null &&
+      resolver.publicationId !== request.publicationHeader
+    )
+      return { success: false, code: "integrity_failure" };
+
+    let envelope: QueryServiceEnvelope;
+    try {
+      envelope = buildQueryServiceEnvelope(
+        request,
+        resolver.publicationId,
+        input.environment,
+        null,
+        input.limits,
+      );
+    } catch {
+      return { success: false, code: "invalid_input" };
+    }
+    const readInput: ReadModelDetailV2Input = {
+      version: 2,
+      audience: AUDIENCE,
+      environment: input.environment,
+      bookmark: resolver.bookmark,
+      requiredAvailableUntilMs,
+      envelope,
+      lookup,
+    };
+    let readValue: unknown;
+    try {
+      readValue = await (
+        input.service as ModelDetailQueryRpcV2
+      ).readModelDetailV2(readInput);
+    } catch {
+      return { success: false, code: "read_failure" };
+    }
+
+    const failure = snapshotOwnRecord(readValue, ["outcome"]);
+    if (failure !== null) {
+      if (
+        failure.outcome === "integrity_failure" ||
+        failure.outcome === "read_failure"
+      )
+        return { success: false, code: failure.outcome };
+      return { success: false, code: "integrity_failure" };
+    }
+    const notFound = snapshotOwnRecord(readValue, [
+      "outcome",
+      "publicationId",
+      "schemaVersion",
+    ]);
+    if (notFound !== null) {
+      if (
+        notFound.outcome === "not_found" &&
+        notFound.publicationId === resolver.publicationId &&
+        validSchemaVersion(notFound.schemaVersion)
+      )
+        return { success: false, code: "not_found" };
+      return { success: false, code: "integrity_failure" };
+    }
+    const response = snapshotOwnRecord(readValue, [
+      "lookupProvenance",
+      "model",
+      "outcome",
+      "publicationId",
+      "schemaVersion",
+    ]);
+    const provenance = snapshotOwnRecord(response?.lookupProvenance, [
+      "canonicalSlug",
+      "matchedBy",
+      "projectionVersion",
+    ]);
+    if (
+      response?.outcome !== "model" ||
+      response.publicationId !== resolver.publicationId ||
+      !validSchemaVersion(response.schemaVersion) ||
+      provenance?.projectionVersion !== "model-slug@1" ||
+      typeof provenance.canonicalSlug !== "string" ||
+      !validModelSlug(provenance.canonicalSlug) ||
+      (provenance.matchedBy !== "stable_id" &&
+        provenance.matchedBy !== "current_slug" &&
+        provenance.matchedBy !== "historical_slug")
+    )
+      return { success: false, code: "integrity_failure" };
+
+    const model = snapshotModel(
+      response.model,
+      lookup.kind === "stable_id" ? lookup.value : null,
+      Math.min(input.limits.maxResponseBytes, MODEL_DETAIL_PUBLIC_MAX_BYTES),
+    );
+    if (
+      model?.slug.state !== "known" ||
+      model.slug.value !== provenance.canonicalSlug ||
+      (lookup.kind === "stable_id"
+        ? provenance.matchedBy !== "stable_id"
+        : (provenance.matchedBy !== "current_slug" &&
+            provenance.matchedBy !== "historical_slug") ||
+          (provenance.matchedBy === "current_slug" &&
+            provenance.canonicalSlug !== lookup.value) ||
+          (provenance.matchedBy === "historical_slug" &&
+            provenance.canonicalSlug === lookup.value))
+    )
+      return { success: false, code: "integrity_failure" };
+
+    const lookupProvenance: ModelDetailLookupProvenanceV2 = {
+      matchedBy: provenance.matchedBy,
+      canonicalSlug: provenance.canonicalSlug,
+      projectionVersion: "model-slug@1",
+    };
+    const representation = encodeAcceptedModelDetail({
+      model,
+      publicationId: resolver.publicationId,
+      schemaVersion: response.schemaVersion,
+    });
+    if (representation === null)
+      return { success: false, code: "integrity_failure" };
+    const { detail, representationBytes } = representation;
+    if (
+      representationBytes.byteLength > MODEL_DETAIL_PUBLIC_MAX_BYTES ||
+      representationBytes.byteLength > input.limits.maxResponseBytes
+    )
+      return { success: false, code: "integrity_failure" };
+    return {
+      success: true,
+      detail,
+      lookupProvenance,
       publicationId: resolver.publicationId,
       representationBytes,
     };
