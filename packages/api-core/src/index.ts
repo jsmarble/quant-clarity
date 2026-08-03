@@ -1,6 +1,7 @@
 import {
   API_ROUTE_POLICIES,
   type DatasetMetadata,
+  type Model,
 } from "@quant-clarity/contracts";
 import {
   parsePublicationPin,
@@ -1232,6 +1233,14 @@ export interface DatasetMetadataQueryRpcV1 {
 export interface CatalogQueryRpcV3
   extends CatalogQueryRpcV2, DatasetMetadataQueryRpcV1 {}
 
+export interface ModelDetailQueryRpcV1 {
+  resolvePublicationV2(input: unknown): Promise<unknown>;
+  readModelDetailV1(input: unknown): Promise<unknown>;
+}
+
+export interface CatalogQueryRpcV4
+  extends CatalogQueryRpcV3, ModelDetailQueryRpcV1 {}
+
 export type ReadDatasetMetadataV1Input = Readonly<{
   version: 1;
   audience: "quantclarity-catalog-query-v1";
@@ -1243,6 +1252,30 @@ export type ReadDatasetMetadataV1Input = Readonly<{
 
 export type ReadDatasetMetadataV1Outcome =
   | Readonly<{ outcome: "metadata"; metadata: DatasetMetadata }>
+  | Readonly<{ outcome: "integrity_failure" }>
+  | Readonly<{ outcome: "read_failure" }>;
+
+export type ReadModelDetailV1Input = Readonly<{
+  version: 1;
+  audience: "quantclarity-catalog-query-v1";
+  environment: DeploymentEnvironment;
+  bookmark: string;
+  requiredAvailableUntilMs: number;
+  envelope: QueryServiceEnvelope;
+}>;
+
+export type ReadModelDetailV1Outcome =
+  | Readonly<{
+      outcome: "model";
+      model: Model;
+      publicationId: string;
+      schemaVersion: string;
+    }>
+  | Readonly<{
+      outcome: "not_found";
+      publicationId: string;
+      schemaVersion: string;
+    }>
   | Readonly<{ outcome: "integrity_failure" }>
   | Readonly<{ outcome: "read_failure" }>;
 

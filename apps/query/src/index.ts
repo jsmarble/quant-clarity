@@ -1,10 +1,14 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
 
-import type { CatalogQueryRpcV3 } from "@quant-clarity/api-core";
-import type { ReadDatasetMetadataV1Outcome } from "@quant-clarity/api-core";
+import type {
+  CatalogQueryRpcV4,
+  ReadDatasetMetadataV1Outcome,
+  ReadModelDetailV1Outcome,
+} from "@quant-clarity/api-core";
 
 import {
   readDatasetMetadataV1,
+  readModelDetailV1,
   readModelVariantExactNameTierV1,
   readMergedExactSearchV1,
   readMergedExactSearchV2,
@@ -48,7 +52,7 @@ function fetch(): Response {
 
 export class CatalogQueryService
   extends WorkerEntrypoint<CatalogQueryEnv>
-  implements CatalogQueryRpcV3
+  implements CatalogQueryRpcV4
 {
   resolvePublicationV1(input: unknown): Promise<ResolvePublicationV1Outcome> {
     return resolvePublicationV1(
@@ -72,6 +76,14 @@ export class CatalogQueryService
       this.env.DEPLOYMENT_ENVIRONMENT,
       this.env.PUBLIC_API_ORIGIN,
       Date.now(),
+      input,
+    );
+  }
+
+  readModelDetailV1(input: unknown): Promise<ReadModelDetailV1Outcome> {
+    return readModelDetailV1(
+      this.env.SERVING_DB,
+      this.env.DEPLOYMENT_ENVIRONMENT,
       input,
     );
   }
