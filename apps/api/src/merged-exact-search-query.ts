@@ -79,7 +79,7 @@ export type MergedExactSearchCollection = Readonly<{
     publication_id: string;
     schema_version: "1.0.0";
     sort: readonly ["relevance", "stable_id"];
-    filters: Readonly<Record<string, string>>;
+    filters: Readonly<Record<string, string | boolean>>;
     semantic_degraded: SemanticDegraded;
   }>;
 }>;
@@ -146,6 +146,28 @@ const snapshotOwnRecord = (
   return snapshot;
 };
 
+const snapshotAllowedRecord = (
+  value: unknown,
+  allowedKeys: readonly string[],
+  maximumKeys: number,
+): Record<string, unknown> | null => {
+  try {
+    if (typeof value !== "object" || value === null || Array.isArray(value))
+      return null;
+    const prototype: unknown = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) return null;
+    const keys = Reflect.ownKeys(value);
+    if (
+      keys.length > maximumKeys ||
+      keys.some((key) => typeof key !== "string" || !allowedKeys.includes(key))
+    )
+      return null;
+    return snapshotOwnRecord(value, keys as string[]);
+  } catch {
+    return null;
+  }
+};
+
 const snapshotArray = (
   value: unknown,
   maximumLength: number,
@@ -210,6 +232,7 @@ type ParsedRequest = Readonly<{
   familyId: string | null;
   recordType: SearchResourceType | null;
   providerId: string | null;
+  stale: boolean | null;
 }>;
 
 const parseRequest = (value: unknown): ParsedRequest | null => {
@@ -255,20 +278,14 @@ const parseRequest = (value: unknown): ParsedRequest | null => {
     let familyId: string | null = null;
     let recordType: SearchResourceType | null = null;
     let providerId: string | null = null;
-    let safeFilters: Readonly<Record<string, string>> = {};
+    let stale: boolean | null = null;
+    let safeFilters: Readonly<Record<string, string | boolean>> = {};
     if (filters === null) {
-      const typed =
-        snapshotOwnRecord(request.filters, ["record_type"]) ??
-        snapshotOwnRecord(request.filters, ["provider"]) ??
-        snapshotOwnRecord(request.filters, ["family"]) ??
-        snapshotOwnRecord(request.filters, ["provider", "record_type"]) ??
-        snapshotOwnRecord(request.filters, ["family", "record_type"]) ??
-        snapshotOwnRecord(request.filters, ["family", "provider"]) ??
-        snapshotOwnRecord(request.filters, [
-          "family",
-          "provider",
-          "record_type",
-        ]);
+      const typed = snapshotAllowedRecord(
+        request.filters,
+        ["family", "provider", "record_type", "stale"],
+        4,
+      );
       if (
         typed === null ||
         (Object.hasOwn(typed, "record_type") &&
@@ -279,7 +296,9 @@ const parseRequest = (value: unknown): ParsedRequest | null => {
           (typeof typed.provider !== "string" ||
             !PROVIDER_ID.test(typed.provider))) ||
         (Object.hasOwn(typed, "family") &&
-          (typeof typed.family !== "string" || !FAMILY_ID.test(typed.family)))
+          (typeof typed.family !== "string" ||
+            !FAMILY_ID.test(typed.family))) ||
+        (Object.hasOwn(typed, "stale") && typeof typed.stale !== "boolean")
       )
         return null;
       familyId = Object.hasOwn(typed, "family")
@@ -291,8 +310,9 @@ const parseRequest = (value: unknown): ParsedRequest | null => {
       providerId = Object.hasOwn(typed, "provider")
         ? (typed.provider as string)
         : null;
+      stale = Object.hasOwn(typed, "stale") ? (typed.stale as boolean) : null;
       if (
-        (providerId !== null || familyId !== null) &&
+        (providerId !== null || familyId !== null || stale !== null) &&
         recordType === "provider"
       )
         return null;
@@ -300,6 +320,7 @@ const parseRequest = (value: unknown): ParsedRequest | null => {
         ...(familyId === null ? {} : { family: familyId }),
         ...(providerId === null ? {} : { provider: providerId }),
         ...(recordType === null ? {} : { record_type: recordType }),
+        ...(stale === null ? {} : { stale }),
       };
     }
     const sort = snapshotArray(request.sort, 2);
@@ -316,6 +337,7 @@ const parseRequest = (value: unknown): ParsedRequest | null => {
       familyId,
       providerId,
       recordType,
+      stale,
       request: {
         cursor: request.cursor,
         filters: safeFilters,
@@ -569,6 +591,7 @@ const classifyPage = (
   recordType: SearchResourceType | null,
   providerId: string | null,
   familyId: string | null,
+  stale: boolean | null,
   incomingContinuation: Readonly<{
     tierMarker: ExactTierMarker;
     resourceId: string;
@@ -643,7 +666,7 @@ const classifyPage = (
         !validMarkerResult(tierMarker, resourceType, matchKind) ||
         displayName === null ||
         (recordType !== null && resourceType !== recordType) ||
-        ((providerId !== null || familyId !== null) &&
+        ((providerId !== null || familyId !== null || stale !== null) &&
           resourceType === "provider") ||
         seen.has(result.resourceId) ||
         (priorMarker !== null &&
@@ -824,7 +847,9 @@ export const readMergedExactSearchFromQueryV1 = async (
       const inherited = parseRequest(request);
       if (inherited === null) return { success: false, code: "invalid_cursor" };
       if (
-        ((inherited.providerId !== null || inherited.familyId !== null) &&
+        ((inherited.providerId !== null ||
+          inherited.familyId !== null ||
+          inherited.stale !== null) &&
           continuation.lastSortTuple[0] === "exact-v1:p") ||
         (inherited.recordType === "provider" &&
           continuation.lastSortTuple[0] !== "exact-v1:p") ||
@@ -909,6 +934,8 @@ export const readMergedExactSearchFromQueryV1 = async (
       typeof request.filters.family === "string"
         ? request.filters.family
         : null;
+    const effectiveStale =
+      typeof request.filters.stale === "boolean" ? request.filters.stale : null;
     const page = classifyPage(
       pageValue,
       resolution.publicationId,
@@ -916,6 +943,7 @@ export const readMergedExactSearchFromQueryV1 = async (
       effectiveRecordType,
       effectiveProviderId,
       effectiveFamilyId,
+      effectiveStale,
       continuation === null
         ? null
         : {
@@ -971,7 +999,7 @@ export const readMergedExactSearchFromQueryV1 = async (
         publication_id: resolution.publicationId,
         schema_version: "1.0.0",
         sort: ["relevance", "stable_id"],
-        filters: request.filters as Readonly<Record<string, string>>,
+        filters: request.filters,
         semantic_degraded: page.semanticDegraded,
       },
     };

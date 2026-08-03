@@ -51,6 +51,7 @@ export type MergedExactSearchInput = Readonly<{
   query: string;
   recordType: "model" | "variant" | "provider" | null;
   eligibilityProviderId: string | null;
+  eligibilityStale?: boolean | null;
   familyId?: string | null;
   continuation: MergedExactSearchContinuation | null;
   limit: number;
@@ -99,6 +100,7 @@ type ValidatedInput = Readonly<{
   normalizedQuery: string;
   recordType: "model" | "variant" | "provider" | null;
   eligibilityProviderId: string | null;
+  eligibilityStale: boolean | null;
   familyId: string | null;
   continuation: MergedExactSearchContinuation | null;
   limit: number;
@@ -205,6 +207,7 @@ const validateInput = (value: unknown): ValidatedInput => {
     "continuation",
     "limit",
     "eligibilityProviderId",
+    ...(Object.hasOwn(input, "eligibilityStale") ? ["eligibilityStale"] : []),
     ...(Object.hasOwn(input, "familyId") ? ["familyId"] : []),
     "publicationId",
     "query",
@@ -232,6 +235,12 @@ const validateInput = (value: unknown): ValidatedInput => {
       (typeof input.eligibilityProviderId !== "string" ||
         !PROVIDER_ID.test(input.eligibilityProviderId))) ||
     (input.eligibilityProviderId !== null && input.recordType === "provider") ||
+    (Object.hasOwn(input, "eligibilityStale") &&
+      input.eligibilityStale !== null &&
+      typeof input.eligibilityStale !== "boolean") ||
+    (Object.hasOwn(input, "eligibilityStale") &&
+      input.eligibilityStale !== null &&
+      input.recordType === "provider") ||
     (Object.hasOwn(input, "familyId") &&
       input.familyId !== null &&
       (typeof input.familyId !== "string" ||
@@ -288,6 +297,9 @@ const validateInput = (value: unknown): ValidatedInput => {
     (Object.hasOwn(input, "familyId") &&
       input.familyId !== null &&
       continuation?.tierMarker === EXACT_PROVIDER_MARKER) ||
+    (Object.hasOwn(input, "eligibilityStale") &&
+      input.eligibilityStale !== null &&
+      continuation?.tierMarker === EXACT_PROVIDER_MARKER) ||
     ((input.recordType === "model" || input.recordType === "variant") &&
       continuation?.tierMarker === EXACT_PROVIDER_MARKER) ||
     ((input.recordType === "model" || input.recordType === "variant") &&
@@ -313,6 +325,9 @@ const validateInput = (value: unknown): ValidatedInput => {
     normalizedQuery,
     recordType: input.recordType,
     eligibilityProviderId: input.eligibilityProviderId,
+    eligibilityStale: Object.hasOwn(input, "eligibilityStale")
+      ? (input.eligibilityStale as boolean | null)
+      : null,
     familyId: Object.hasOwn(input, "familyId")
       ? (input.familyId as string | null)
       : null,
@@ -462,6 +477,9 @@ export const readMergedExactSearchPage = async (
           query: input.query,
           recordType: targetRecordType,
           eligibilityProviderId: input.eligibilityProviderId,
+          ...(input.eligibilityStale === null
+            ? {}
+            : { eligibilityStale: input.eligibilityStale }),
           familyId: input.familyId,
           afterResourceId: input.continuation?.resourceId ?? null,
           limit: capacity(),
@@ -524,6 +542,9 @@ export const readMergedExactSearchPage = async (
           query: input.query,
           providerId: null,
           eligibilityProviderId: input.eligibilityProviderId,
+          ...(input.eligibilityStale === null
+            ? {}
+            : { eligibilityStale: input.eligibilityStale }),
           familyId: input.familyId,
           recordType: targetRecordType,
           continuation,
@@ -575,6 +596,7 @@ export const readMergedExactSearchPage = async (
       input.normalizedQuery.length > 0 &&
       !input.query.includes("\u0000") &&
       input.eligibilityProviderId === null &&
+      input.eligibilityStale === null &&
       input.familyId === null &&
       (input.recordType === null || input.recordType === "provider")
     ) {
@@ -630,6 +652,8 @@ export const readMergedExactSearchPage = async (
           })
         : null,
     semanticDegraded:
-      input.recordType === "provider" ? "not_applicable" : "disabled",
+      input.recordType === "provider" && input.eligibilityStale === null
+        ? "not_applicable"
+        : "disabled",
   });
 };

@@ -165,7 +165,7 @@ const cursor = async (
   overrides: Partial<{
     keyring: CursorKeyring;
     query: string;
-    filters: Readonly<Record<string, string>>;
+    filters: Readonly<Record<string, string | boolean>>;
     sort: readonly string[];
     limit: number;
     publicationId: string;
@@ -552,6 +552,75 @@ describe("merged exact search API seam (SRCH-001/002, API-003/007, PRIV-006)", (
     expect(changed.resolvePublicationV2).not.toHaveBeenCalled();
   });
 
+  it("binds, inherits, and cursor-authenticates one exact boolean stale filter", async () => {
+    const service = rpc({
+      outcome: "page",
+      page: {
+        publicationId: PUBLICATION,
+        results: [row("exact-v1:c", "model", MODEL_A)],
+        nextContinuation: null,
+        semanticDegraded: "disabled",
+      },
+    });
+    const outcome = await execute(
+      service,
+      request("q=Model&stale=true&limit=2"),
+    );
+    expect(outcome).toMatchObject({
+      success: true,
+      collection: {
+        data: [{ resource_type: "model", resource_id: MODEL_A }],
+        meta: { filters: { stale: true }, semantic_degraded: "disabled" },
+      },
+    });
+    expect(service.readMergedExactSearchV2.mock.calls[0]?.[0]).toMatchObject({
+      envelope: {
+        filters: { stale: true },
+        searchPlan: { filters: { stale: true } },
+      },
+    });
+
+    const bound = await cursor({
+      filters: { stale: false },
+      marker: "exact-v1:c",
+      stableId: MODEL_A,
+    });
+    const inherited = rpc({
+      outcome: "page",
+      page: {
+        publicationId: PUBLICATION,
+        results: [],
+        nextContinuation: null,
+        semanticDegraded: "disabled",
+      },
+    });
+    await expect(
+      execute(
+        inherited,
+        request(`q=Model&cursor=${encodeURIComponent(bound)}`),
+      ),
+    ).resolves.toMatchObject({ success: true });
+    expect(inherited.readMergedExactSearchV2.mock.calls[0]?.[0]).toMatchObject({
+      envelope: { filters: { stale: false } },
+    });
+
+    const unfiltered = await cursor({
+      marker: "exact-v1:c",
+      stableId: MODEL_A,
+    });
+    for (const candidate of [
+      request(`q=Model&stale=true&cursor=${encodeURIComponent(unfiltered)}`),
+      request(`q=Model&stale=true&cursor=${encodeURIComponent(bound)}`),
+    ]) {
+      const rejected = rpc();
+      await expect(execute(rejected, candidate)).resolves.toEqual({
+        success: false,
+        code: "invalid_cursor",
+      });
+      expect(rejected.resolvePublicationV2).not.toHaveBeenCalled();
+    }
+  });
+
   it("binds one canonical family filter, composes it exactly, and inherits it from the cursor", async () => {
     const service = rpc({
       outcome: "page",
@@ -689,6 +758,7 @@ describe("merged exact search API seam (SRCH-001/002, API-003/007, PRIV-006)", (
         filters: { family: "fam_aaaaaaaa-1111-1111-8111-aaaaaaaaaaaa" },
       },
       { ...request(), filters: { family: [FAMILY] } },
+      { ...request(), filters: { stale: "true" } },
       {
         ...request(),
         filters: { provider: PROVIDER, record_type: "provider" },
@@ -696,6 +766,10 @@ describe("merged exact search API seam (SRCH-001/002, API-003/007, PRIV-006)", (
       {
         ...request(),
         filters: { family: FAMILY, record_type: "provider" },
+      },
+      {
+        ...request(),
+        filters: { stale: true, record_type: "provider" },
       },
       { ...request(), filters: { status: "active" } },
       { ...request(), sort: ["stable_id"] },

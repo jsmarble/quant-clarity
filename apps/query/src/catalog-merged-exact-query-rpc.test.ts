@@ -25,7 +25,7 @@ const MODEL = "mdl_22222222-2222-4222-8222-222222222222";
 const FAMILY = "fam_33333333-3333-4333-8333-333333333333";
 
 const envelope = (
-  filters: Record<string, string> = {},
+  filters: Record<string, string | boolean> = {},
   continuation: unknown = null,
 ) => ({
   version: 1,
@@ -49,7 +49,7 @@ const envelope = (
 });
 
 const input = (
-  filters: Record<string, string> = {},
+  filters: Record<string, string | boolean> = {},
   continuation: unknown = null,
 ) => ({
   version: 1,
@@ -61,7 +61,7 @@ const input = (
 
 const inputV2 = (
   requiredAvailableUntilMs: number,
-  filters: Record<string, string> = {},
+  filters: Record<string, string | boolean> = {},
   continuation: unknown = null,
 ) => ({
   version: 2,
@@ -152,6 +152,8 @@ describe("merged exact-search RPC (SRCH-002, API-003, API-007, CF-020)", () => {
       input({ provider: undefined as unknown as string }),
       input({ record_type: undefined as unknown as string }),
       input({ record_type: "offering" }),
+      input({ stale: "true" }),
+      input({ stale: true, record_type: "provider" }),
       input(
         {},
         {
@@ -248,6 +250,24 @@ describe("merged exact-search RPC (SRCH-002, API-003, API-007, CF-020)", () => {
         recordType: "model",
         eligibilityProviderId: provider,
       }),
+    );
+  });
+
+  it("passes an exact boolean stale eligibility filter", async () => {
+    const page = {
+      publicationId: PUBLICATION,
+      results: [],
+      nextContinuation: null,
+      semanticDegraded: "disabled",
+    } as const;
+    mocked.readPage.mockResolvedValue(page);
+    const database = new FakeDatabase();
+    await expect(
+      readMergedExactSearchV1(database.asD1(), "test", input({ stale: true })),
+    ).resolves.toEqual({ outcome: "page", page });
+    expect(mocked.readPage).toHaveBeenCalledWith(
+      database.session,
+      expect.objectContaining({ eligibilityStale: true }),
     );
   });
 

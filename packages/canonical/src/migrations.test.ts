@@ -191,6 +191,20 @@ function applyServingDatasetMetadataSummaryMigration(
   );
 }
 
+function applyServingTargetEligibilityMigration(database: DatabaseSync): void {
+  applyAtomicMigration(
+    database,
+    readFileSync(
+      resolve(
+        "migrations",
+        "serving",
+        "0014_provider_model_stale_eligibility_index.sql",
+      ),
+      "utf8",
+    ),
+  );
+}
+
 function splitMigrationStatements(sql: string): readonly string[] {
   const statements: string[] = [];
   let current = "";
@@ -6410,7 +6424,10 @@ describe("serving publication migrations (PIPE-050–PIPE-056)", () => {
   });
 
   it("adds the immutable publication dataset metadata summary in schema 1.10.0", () => {
-    const database = applyMigrations("serving");
+    const database = applyMigrations(
+      "serving",
+      "0013_publication_dataset_metadata_summary.sql",
+    );
     expect(
       database
         .prepare(
@@ -6552,6 +6569,327 @@ describe("serving publication migrations (PIPE-050–PIPE-056)", () => {
       database.close();
     }
   });
+
+  it("adds the exact target-first eligibility index in schema 1.11.0 without changing rows", () => {
+    const database = applyMigrations(
+      "serving",
+      "0013_publication_dataset_metadata_summary.sql",
+    );
+    const publicationId = id("pub", 913);
+    const providerId = id("prv", 913);
+    const targetId = id("mdl", 913);
+    const offeringId = id("off", 913);
+    insertBuildingProviderModelIdContext(
+      database,
+      publicationId,
+      providerId,
+      "model",
+      targetId,
+      [{ offeringId, rawProviderModelId: "provider/model-stale" }],
+      913,
+    );
+    insertProviderModelIdDocument(database, {
+      publicationId,
+      offeringId,
+      providerId,
+      targetType: "model",
+      targetId,
+      rawHex: Buffer.from("provider/model-stale", "utf8").toString("hex"),
+      normalizedHex: Buffer.from("provider model stale", "utf8").toString(
+        "hex",
+      ),
+    });
+    const before = database
+      .prepare(
+        `SELECT count(*) AS count,
+          min(projection_version) AS projection_version
+         FROM publication_provider_model_id_search_document
+         WHERE publication_id = ?`,
+      )
+      .get(publicationId);
+
+    applyServingTargetEligibilityMigration(database);
+
+    expect(
+      database
+        .prepare(
+          "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+        )
+        .get(),
+    ).toEqual({ schema_version: "1.11.0" });
+    expect(
+      database
+        .prepare(
+          `SELECT "unique" AS is_unique, origin, partial
+           FROM pragma_index_list('publication_provider_model_id_search_document')
+           WHERE name = 'publication_provider_model_id_target_eligibility_idx'`,
+        )
+        .get(),
+    ).toEqual({ is_unique: 0, origin: "c", partial: 0 });
+    expect(
+      database
+        .prepare(
+          "PRAGMA index_info(publication_provider_model_id_target_eligibility_idx)",
+        )
+        .all()
+        .map((row) => row.name),
+    ).toEqual([
+      "publication_id",
+      "target_resource_type",
+      "target_resource_id",
+      "offering_id",
+    ]);
+    expect(
+      database
+        .prepare(
+          `SELECT count(*) AS count,
+            min(projection_version) AS projection_version
+           FROM publication_provider_model_id_search_document
+           WHERE publication_id = ?`,
+        )
+        .get(publicationId),
+    ).toEqual(before);
+    const plan = database
+      .prepare(
+        `EXPLAIN QUERY PLAN
+         SELECT offering_id
+         FROM publication_provider_model_id_search_document
+           INDEXED BY publication_provider_model_id_target_eligibility_idx
+         WHERE publication_id = ?
+           AND target_resource_type = ?
+           AND target_resource_id = ?`,
+      )
+      .all(publicationId, "model", targetId);
+    expect(plan.map((row) => row.detail).join("\n")).toContain(
+      "publication_provider_model_id_target_eligibility_idx",
+    );
+    expect(database.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+    expect(database.prepare("PRAGMA integrity_check").get()).toEqual({
+      integrity_check: "ok",
+    });
+  });
+
+  it("requires exact clean schema 1.10.0 and rejects target eligibility object or summary corruption", () => {
+    const wrongVersion = applyMigrations(
+      "serving",
+      "0012_provider_model_eligibility_index.sql",
+    );
+    expect(() => {
+      applyServingTargetEligibilityMigration(wrongVersion);
+    }).toThrow();
+    expect(
+      wrongVersion
+        .prepare(
+          "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+        )
+        .get(),
+    ).toEqual({ schema_version: "1.9.0" });
+    wrongVersion.close();
+
+    const collision = applyMigrations(
+      "serving",
+      "0013_publication_dataset_metadata_summary.sql",
+    );
+    collision.exec(
+      "CREATE TABLE publication_provider_model_id_target_eligibility_idx(fake INTEGER)",
+    );
+    expect(() => {
+      applyServingTargetEligibilityMigration(collision);
+    }).toThrow();
+    expect(
+      collision
+        .prepare(
+          "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+        )
+        .get(),
+    ).toEqual({ schema_version: "1.10.0" });
+    collision.close();
+
+    const triggerCollision = applyMigrations(
+      "serving",
+      "0013_publication_dataset_metadata_summary.sql",
+    );
+    triggerCollision.exec(`CREATE TRIGGER publication_switch_history_target_eligibility_index_guard
+      BEFORE INSERT ON publication_switch_history BEGIN SELECT 1; END`);
+    expect(() => {
+      applyServingTargetEligibilityMigration(triggerCollision);
+    }).toThrow();
+    expect(
+      triggerCollision
+        .prepare(
+          "SELECT count(*) AS count FROM sqlite_master WHERE name = 'publication_provider_model_id_target_eligibility_idx'",
+        )
+        .get(),
+    ).toEqual({ count: 0 });
+    triggerCollision.close();
+
+    const malformedIndex = applyMigrations(
+      "serving",
+      "0013_publication_dataset_metadata_summary.sql",
+    );
+    malformedIndex.exec(
+      "DROP INDEX publication_provider_model_id_eligibility_idx",
+    );
+    malformedIndex.exec(`CREATE INDEX publication_provider_model_id_eligibility_idx
+      ON publication_provider_model_id_search_document(publication_id, offering_id)`);
+    expect(() => {
+      applyServingTargetEligibilityMigration(malformedIndex);
+    }).toThrow();
+    expect(
+      malformedIndex
+        .prepare(
+          "SELECT count(*) AS count FROM sqlite_master WHERE name = 'publication_provider_model_id_target_eligibility_idx'",
+        )
+        .get(),
+    ).toEqual({ count: 0 });
+    malformedIndex.close();
+
+    const missingSummaryGuard = applyMigrations(
+      "serving",
+      "0013_publication_dataset_metadata_summary.sql",
+    );
+    missingSummaryGuard.exec(
+      "DROP TRIGGER publication_dataset_metadata_summary_switch_guard",
+    );
+    expect(() => {
+      applyServingTargetEligibilityMigration(missingSummaryGuard);
+    }).toThrow();
+    expect(
+      missingSummaryGuard
+        .prepare(
+          "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+        )
+        .get(),
+    ).toEqual({ schema_version: "1.10.0" });
+    missingSummaryGuard.close();
+  });
+
+  it("rolls back after every migration 0014 statement boundary and remains retryable", () => {
+    const migration = readFileSync(
+      resolve(
+        "migrations",
+        "serving",
+        "0014_provider_model_stale_eligibility_index.sql",
+      ),
+      "utf8",
+    );
+    const statements = splitMigrationStatements(migration);
+    expect(statements).toHaveLength(8);
+    for (let boundary = 1; boundary <= statements.length; boundary += 1) {
+      const database = applyMigrations(
+        "serving",
+        "0013_publication_dataset_metadata_summary.sql",
+      );
+      expect(() => {
+        applyAtomicMigration(
+          database,
+          `${statements.slice(0, boundary).join("\n")}\nSELECT * FROM __injected_migration_failure__;`,
+        );
+      }).toThrow();
+      expect(
+        database
+          .prepare(
+            `SELECT schema_version,
+              (SELECT count(*) FROM sqlite_master
+               WHERE name IN (
+                 'publication_provider_model_id_target_eligibility_idx',
+                 'publication_switch_history_target_eligibility_index_guard'
+               )) AS target_eligibility_object_count
+             FROM serving_schema_metadata WHERE singleton = 1`,
+          )
+          .get(),
+      ).toEqual({
+        schema_version: "1.10.0",
+        target_eligibility_object_count: 0,
+      });
+      applyServingTargetEligibilityMigration(database);
+      expect(
+        database
+          .prepare(
+            "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+          )
+          .get(),
+      ).toEqual({ schema_version: "1.11.0" });
+      database.close();
+    }
+  });
+
+  it.each(["activate", "rollback"] as const)(
+    "atomically rejects a missing or malformed target eligibility index before %s switch history",
+    (action) => {
+      for (const replacement of [
+        null,
+        `CREATE INDEX publication_provider_model_id_target_eligibility_idx
+         ON publication_provider_model_id_search_document(publication_id, offering_id)`,
+        `CREATE INDEX publication_provider_model_id_target_eligibility_idx
+         ON publication_provider_model_id_search_document(
+           publication_id COLLATE NOCASE DESC,
+           target_resource_type COLLATE NOCASE DESC,
+           target_resource_id COLLATE NOCASE DESC,
+           offering_id COLLATE NOCASE DESC
+         )`,
+      ]) {
+        const database = applyMigrations("serving");
+        database.exec("BEGIN IMMEDIATE");
+        try {
+          database.exec(
+            "DROP INDEX publication_provider_model_id_target_eligibility_idx",
+          );
+          if (replacement !== null) database.exec(replacement);
+          expect(() =>
+            database
+              .prepare(
+                `INSERT INTO publication_switch_history(
+                  switch_id, event_version, event_hash, preflight_hash, action,
+                  expected_prior_generation,
+                  expected_prior_rollback_candidate_publication_id,
+                  expected_prior_switched_at_ms, new_generation,
+                  from_publication_id, from_closure_hash, to_publication_id,
+                  to_closure_hash, to_attestation_hash,
+                  resulting_rollback_candidate_publication_id, switched_at_ms,
+                  authorized_by_kind, authorized_identity_id
+                ) VALUES (?, '1.0.0', ?, ?, ?, 0, NULL, NULL, 1,
+                  NULL, NULL, ?, ?, ?, NULL, 0, 'pipeline', 'pipeline:target-index')`,
+              )
+              .run(
+                `switch-target-index-${action}`,
+                HASH,
+                OTHER_HASH,
+                action,
+                id("pub", 914),
+                HASH,
+                OTHER_HASH,
+              ),
+          ).toThrow(
+            replacement === null
+              ? "publication_provider_model_id_target_eligibility_idx"
+              : "switch-time target eligibility index is missing malformed or unqueryable",
+          );
+        } finally {
+          database.exec("ROLLBACK");
+        }
+        expect(
+          database
+            .prepare(
+              "PRAGMA index_info(publication_provider_model_id_target_eligibility_idx)",
+            )
+            .all()
+            .map((row) => row.name),
+        ).toEqual([
+          "publication_id",
+          "target_resource_type",
+          "target_resource_id",
+          "offering_id",
+        ]);
+        expect(
+          database
+            .prepare("SELECT count(*) AS count FROM publication_switch_history")
+            .get(),
+        ).toEqual({ count: 0 });
+        database.close();
+      }
+    },
+  );
 
   it("atomically rejects malformed metadata and colliding activation objects", () => {
     const malformed = applyMigrations(
