@@ -1007,6 +1007,7 @@ type ParsedMergedExactSearchInput = Readonly<{
   query: string;
   recordType: "model" | "variant" | "provider" | null;
   eligibilityProviderId: string | null;
+  eligibilityStale: boolean | null;
   familyId: string | null;
   continuation: MergedExactSearchContinuation | null;
   limit: number;
@@ -1017,8 +1018,9 @@ const mergedFilters = (
   value: unknown,
 ):
   | Readonly<{
-      canonical: Readonly<Record<string, string>>;
+      canonical: Readonly<Record<string, string | boolean>>;
       eligibilityProviderId: string | null;
+      eligibilityStale: boolean | null;
       familyId: string | null;
       recordType: "model" | "variant" | "provider" | null;
     }>
@@ -1036,16 +1038,21 @@ const mergedFilters = (
     if (
       keys.some(
         (key) =>
-          key !== "family" && key !== "provider" && key !== "record_type",
+          key !== "family" &&
+          key !== "provider" &&
+          key !== "record_type" &&
+          key !== "stale",
       )
     )
       return undefined;
     const hasFamily = Object.hasOwn(filter, "family");
     const hasProvider = Object.hasOwn(filter, "provider");
     const hasRecordType = Object.hasOwn(filter, "record_type");
+    const hasStale = Object.hasOwn(filter, "stale");
     const family = filter.family;
     const provider = filter.provider;
     const recordType = filter.record_type;
+    const stale = filter.stale;
     if (
       (hasFamily && (typeof family !== "string" || !FAMILY_ID.test(family))) ||
       (hasProvider &&
@@ -1054,16 +1061,19 @@ const mergedFilters = (
         recordType !== "model" &&
         recordType !== "variant" &&
         recordType !== "provider") ||
-      ((hasProvider || hasFamily) && recordType === "provider")
+      (hasStale && typeof stale !== "boolean") ||
+      ((hasProvider || hasFamily || hasStale) && recordType === "provider")
     )
       return undefined;
-    const canonical: Record<string, string> = {};
+    const canonical: Record<string, string | boolean> = {};
     if (typeof family === "string") canonical.family = family;
     if (typeof provider === "string") canonical.provider = provider;
     if (typeof recordType === "string") canonical.record_type = recordType;
+    if (typeof stale === "boolean") canonical.stale = stale;
     return Object.freeze({
       canonical: Object.freeze(canonical),
       eligibilityProviderId: typeof provider === "string" ? provider : null,
+      eligibilityStale: typeof stale === "boolean" ? stale : null,
       familyId: typeof family === "string" ? family : null,
       recordType:
         recordType === "model" ||
@@ -1206,6 +1216,7 @@ const parseMergedExactSearchInput = (
     (filters.eligibilityProviderId !== null &&
       marker === EXACT_PROVIDER_MARKER) ||
     (filters.familyId !== null && marker === EXACT_PROVIDER_MARKER) ||
+    (filters.eligibilityStale !== null && marker === EXACT_PROVIDER_MARKER) ||
     ((filters.recordType === "model" || filters.recordType === "variant") &&
       marker === EXACT_PROVIDER_MARKER) ||
     (filters.recordType === "model" &&
@@ -1228,6 +1239,7 @@ const parseMergedExactSearchInput = (
     query: plan.query,
     recordType: filters.recordType,
     eligibilityProviderId: filters.eligibilityProviderId,
+    eligibilityStale: filters.eligibilityStale,
     familyId: filters.familyId,
     continuation,
     limit: envelope.limit,
@@ -1998,6 +2010,9 @@ export const readMergedExactSearchV1 = async (
       query: parsed.query,
       recordType: parsed.recordType,
       eligibilityProviderId: parsed.eligibilityProviderId,
+      ...(parsed.eligibilityStale === null
+        ? {}
+        : { eligibilityStale: parsed.eligibilityStale }),
       familyId: parsed.familyId,
       continuation: parsed.continuation,
       limit: parsed.limit,
@@ -2033,6 +2048,9 @@ export const readMergedExactSearchV2 = async (
       query: parsed.query,
       recordType: parsed.recordType,
       eligibilityProviderId: parsed.eligibilityProviderId,
+      ...(parsed.eligibilityStale === null
+        ? {}
+        : { eligibilityStale: parsed.eligibilityStale }),
       familyId: parsed.familyId,
       continuation: parsed.continuation,
       limit: parsed.limit,

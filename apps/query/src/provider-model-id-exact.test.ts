@@ -10,8 +10,10 @@ import {
   PROVIDER_MODEL_ID_EXACT_CANDIDATE_SELECT_SQL,
   PROVIDER_MODEL_ID_EXACT_ELIGIBILITY_FAMILY_CANDIDATE_SELECT_SQL,
   PROVIDER_MODEL_ID_EXACT_ELIGIBILITY_CANDIDATE_SELECT_SQL,
+  PROVIDER_MODEL_ID_EXACT_ELIGIBILITY_STALE_FAMILY_CANDIDATE_SELECT_SQL,
   PROVIDER_MODEL_ID_EXACT_FAMILY_CANDIDATE_SELECT_SQL,
   PROVIDER_MODEL_ID_EXACT_MAX_QUERY_BYTES,
+  PROVIDER_MODEL_ID_EXACT_STALE_CANDIDATE_SELECT_SQL,
   PROVIDER_MODEL_ID_EXACT_TARGET_SELECT_SQL,
   ProviderModelIdExactError,
   readMergedProviderModelIdExactPage,
@@ -112,6 +114,7 @@ const offering = (
   providerModelId: string,
   modelId = MODEL_ID,
   offeringId = OFFERING_ID,
+  stale = false,
 ) => ({
   display_name: known("Fixture Offering"),
   endpoint_class: "serverless",
@@ -127,8 +130,8 @@ const offering = (
   provider_id: PROVIDER_ID,
   provider_model_id: providerModelId,
   source_locator: known("https://provider.example/catalog"),
-  stale: false,
-  stale_reason: null,
+  stale,
+  stale_reason: stale ? "source_refresh_failed" : null,
   status: known("active"),
   supported_regions: known(["global"]),
   tier_key: "standard",
@@ -183,10 +186,16 @@ const fixtureResults = async (
   },
   providerModelId = query,
   stableIdOrdering = false,
+  offeringStale = false,
 ) => {
   const resourceType = identity.resourceType ?? "model";
   const offeringJson = resourceJson(
-    offering(providerModelId, identity.modelId, identity.offeringId),
+    offering(
+      providerModelId,
+      identity.modelId,
+      identity.offeringId,
+      offeringStale,
+    ),
   );
   const targetJson = resourceJson(
     resourceType === "model"
@@ -432,6 +441,51 @@ describe("provider-model-ID exact reader (SRCH-002, SRCH-006, SRCH-008, SRCH-009
     expect(database.calls[0]?.values[13]).toBe(PROVIDER_ID);
   });
 
+  it("filters both the matching Offering and target eligibility by explicit stale state", async () => {
+    const staleOnly = new FakeDatabase(
+      await fixtureResults(
+        "fixture-id",
+        0,
+        undefined,
+        "fixture-id",
+        true,
+        true,
+      ),
+    );
+    await expect(
+      readMergedProviderModelIdExactPage(staleOnly.asD1(), {
+        ...input("fixture-id"),
+        eligibilityProviderId: null,
+        eligibilityStale: true,
+      }),
+    ).resolves.toMatchObject({ results: [{ resourceId: MODEL_ID }] });
+    expect(staleOnly.calls[0]?.sql).toBe(
+      PROVIDER_MODEL_ID_EXACT_STALE_CANDIDATE_SELECT_SQL,
+    );
+    expect(staleOnly.calls[0]?.values[13]).toBe(1);
+    expect(PROVIDER_MODEL_ID_EXACT_STALE_CANDIDATE_SELECT_SQL).toContain(
+      "INDEXED BY publication_provider_model_id_target_eligibility_idx",
+    );
+
+    const combined = new FakeDatabase(
+      await fixtureResults("fixture-id", 0, undefined, "fixture-id", true),
+    );
+    await readMergedProviderModelIdExactPage(combined.asD1(), {
+      ...input("fixture-id"),
+      eligibilityProviderId: PROVIDER_ID,
+      eligibilityStale: false,
+      familyId: FAMILY_ID,
+    });
+    expect(combined.calls[0]?.sql).toBe(
+      PROVIDER_MODEL_ID_EXACT_ELIGIBILITY_STALE_FAMILY_CANDIDATE_SELECT_SQL,
+    );
+    expect(combined.calls[0]?.values.slice(13)).toEqual([
+      PROVIDER_ID,
+      0,
+      FAMILY_ID,
+    ]);
+  });
+
   it("filters canonical target families before dedupe and LIMIT, including provider conjunction", async () => {
     const familyOnly = new FakeDatabase(
       await fixtureResults("fixture-id", 0, undefined, "fixture-id", true),
@@ -515,6 +569,13 @@ describe("provider-model-ID exact reader (SRCH-002, SRCH-006, SRCH-008, SRCH-009
         ...input("fixture-id"),
         eligibilityProviderId: null,
         familyId: "fam_invalid",
+      }),
+    ).rejects.toMatchObject({ code: "invalid_input" });
+    await expect(
+      readMergedProviderModelIdExactPage(merged.asD1(), {
+        ...input("fixture-id"),
+        eligibilityProviderId: null,
+        eligibilityStale: "true" as never,
       }),
     ).rejects.toMatchObject({ code: "invalid_input" });
     const standalone = new FakeDatabase([]);

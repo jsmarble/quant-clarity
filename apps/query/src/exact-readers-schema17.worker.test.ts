@@ -37,6 +37,7 @@ import {
 import {
   MODEL_VARIANT_EXACT_NAME_ELIGIBILITY_FAMILY_SELECT_SQL,
   MODEL_VARIANT_EXACT_NAME_ELIGIBILITY_SELECT_SQL,
+  MODEL_VARIANT_EXACT_NAME_STALE_SELECT_SQL,
   readModelVariantExactNamePage,
 } from "./model-variant-exact-name.js";
 import {
@@ -47,6 +48,7 @@ import { readProviderExactNamePage } from "./provider-exact-name.js";
 import {
   PROVIDER_MODEL_ID_EXACT_CANDIDATE_SELECT_SQL,
   PROVIDER_MODEL_ID_EXACT_ELIGIBILITY_FAMILY_CANDIDATE_SELECT_SQL,
+  PROVIDER_MODEL_ID_EXACT_STALE_CANDIDATE_SELECT_SQL,
   readMergedProviderModelIdExactPage,
   readProviderModelIdExactPage,
 } from "./provider-model-id-exact.js";
@@ -314,12 +316,17 @@ beforeAll(async () => {
       providerSequence: 5,
       status: null,
     },
+    {
+      rawProviderModelId: "Second/Stale",
+      providerSequence: 6,
+      stale: true,
+    },
   ]);
   await publish(fixture);
   await applyServingSwitchV4(env.SERVING_DB, await activation(fixture));
 });
 
-describe("schema-1.8 current exact readers (SRCH-002, SRCH-006, SRCH-009, QA-005, QA-006)", () => {
+describe("schema-1.11 current exact readers (SRCH-002, SRCH-004, SRCH-006, SRCH-009, QA-005, QA-006)", () => {
   it("orders normalized-name BLOBs by unsigned UTF-8 bytes across BMP and supplementary planes", async () => {
     const bmp = new TextEncoder().encode("\uE000");
     const supplementary = new TextEncoder().encode("\u{10000}");
@@ -345,7 +352,7 @@ describe("schema-1.8 current exact readers (SRCH-002, SRCH-006, SRCH-009, QA-005
       env.SERVING_DB.prepare(
         "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
       ).first(),
-    ).resolves.toEqual({ schema_version: "1.10.0" });
+    ).resolves.toEqual({ schema_version: "1.11.0" });
     await expect(
       exports.CatalogQueryService.resolvePublicationV1({
         version: 1,
@@ -1262,6 +1269,167 @@ describe("schema-1.8 current exact readers (SRCH-002, SRCH-006, SRCH-009, QA-005
         limit: 20,
       }),
     ).resolves.toMatchObject({ results: [] });
+  });
+
+  it("uses the target-first index for stale-only eligibility and exposes stale IDs only when requested", async () => {
+    const staleProvider = "prv_00000003-0000-4000-8000-000000000001";
+    const freshProvider = "prv_00000002-0000-4000-8000-000000000001";
+    const inactiveProvider = "prv_00000004-0000-4000-8000-000000000001";
+    const unknownProvider = "prv_00000005-0000-4000-8000-000000000001";
+    const secondStaleProvider = "prv_00000006-0000-4000-8000-000000000001";
+    const encode = (value: string): Uint8Array =>
+      new TextEncoder().encode(value);
+    const canonicalPlan = await env.SERVING_DB.prepare(
+      `EXPLAIN QUERY PLAN ${MODEL_VARIANT_EXACT_NAME_STALE_SELECT_SQL}`,
+    )
+      .bind(
+        PUBLICATION,
+        encode(normalizeExactSearchName("Schema 17\u0000Model")),
+        "model",
+        "",
+        1_048_576,
+        21,
+        null,
+        1,
+      )
+      .all<{ detail: string }>();
+    expect(canonicalPlan.results.map((row) => row.detail).join("\n")).toContain(
+      "publication_provider_model_id_target_eligibility_idx",
+    );
+    await expect(
+      readModelVariantExactNamePage(env.SERVING_DB, {
+        publicationId: PUBLICATION,
+        query: "Schema 17\u0000Model",
+        recordType: "model",
+        eligibilityStale: true,
+        afterResourceId: null,
+        limit: 20,
+      }),
+    ).resolves.toMatchObject({ results: [{ resourceType: "model" }] });
+    await expect(
+      readModelVariantExactNamePage(env.SERVING_DB, {
+        publicationId: PUBLICATION,
+        query: "Schema 17\u0000Model",
+        recordType: "model",
+        eligibilityStale: false,
+        familyId: "fam_00000001-0000-4000-8000-000000000001",
+        afterResourceId: null,
+        limit: 20,
+      }),
+    ).resolves.toMatchObject({ results: [{ resourceType: "model" }] });
+    await expect(
+      readModelVariantExactNamePage(env.SERVING_DB, {
+        publicationId: PUBLICATION,
+        query: "Schema 17\u0000Model",
+        recordType: "model",
+        eligibilityProviderId: staleProvider,
+        eligibilityStale: true,
+        afterResourceId: null,
+        limit: 20,
+      }),
+    ).resolves.toMatchObject({ results: [{ resourceType: "model" }] });
+    await expect(
+      readModelVariantExactNamePage(env.SERVING_DB, {
+        publicationId: PUBLICATION,
+        query: "Schema 17\u0000Model",
+        recordType: "model",
+        eligibilityProviderId: staleProvider,
+        eligibilityStale: false,
+        afterResourceId: null,
+        limit: 20,
+      }),
+    ).resolves.toMatchObject({ results: [] });
+    await expect(
+      readModelVariantExactNamePage(env.SERVING_DB, {
+        publicationId: PUBLICATION,
+        query: "Schema 17\u0000Model",
+        recordType: "model",
+        eligibilityProviderId: freshProvider,
+        eligibilityStale: true,
+        afterResourceId: null,
+        limit: 20,
+      }),
+    ).resolves.toMatchObject({ results: [] });
+    for (const eligibilityProviderId of [inactiveProvider, unknownProvider]) {
+      await expect(
+        readModelVariantExactNamePage(env.SERVING_DB, {
+          publicationId: PUBLICATION,
+          query: "Schema 17\u0000Model",
+          recordType: "model",
+          eligibilityProviderId,
+          eligibilityStale: true,
+          afterResourceId: null,
+          limit: 20,
+        }),
+      ).resolves.toMatchObject({ results: [] });
+    }
+
+    const providerPlan = await env.SERVING_DB.prepare(
+      `EXPLAIN QUERY PLAN ${PROVIDER_MODEL_ID_EXACT_STALE_CANDIDATE_SELECT_SQL}`,
+    )
+      .bind(
+        PUBLICATION,
+        encode("independent/stale"),
+        encode(normalizeExactSearchName("independent/stale")),
+        null,
+        "model",
+        -1,
+        new Uint8Array(),
+        "",
+        21,
+        1_048_576,
+        1,
+        1,
+        null,
+        1,
+      )
+      .all<{ detail: string }>();
+    expect(providerPlan.results.map((row) => row.detail).join("\n")).toContain(
+      "publication_provider_model_id_target_eligibility_idx",
+    );
+    await expect(
+      readMergedProviderModelIdExactPage(env.SERVING_DB, {
+        publicationId: PUBLICATION,
+        query: "independent/stale",
+        providerId: null,
+        eligibilityProviderId: null,
+        eligibilityStale: true,
+        recordType: "model",
+        continuation: null,
+        limit: 20,
+      }),
+    ).resolves.toMatchObject({
+      matchModes: ["normalized"],
+      results: [{ resourceType: "model", matchKind: "provider_model_id" }],
+    });
+    await expect(
+      readMergedProviderModelIdExactPage(env.SERVING_DB, {
+        publicationId: PUBLICATION,
+        query: "independent/stale",
+        providerId: null,
+        eligibilityProviderId: secondStaleProvider,
+        eligibilityStale: true,
+        familyId: "fam_00000001-0000-4000-8000-000000000001",
+        recordType: "model",
+        continuation: null,
+        limit: 20,
+      }),
+    ).resolves.toMatchObject({
+      matchModes: ["normalized"],
+      results: [{ resourceType: "model", matchKind: "provider_model_id" }],
+    });
+    await expect(
+      readMergedProviderModelIdExactPage(env.SERVING_DB, {
+        publicationId: PUBLICATION,
+        query: "independent/stale",
+        providerId: null,
+        eligibilityProviderId: null,
+        eligibilityStale: false,
+        recordType: "model",
+        continuation: null,
+        limit: 20,
+      }),
+    ).resolves.toMatchObject({ results: [], matchModes: [] });
   });
 
   it("retains a displaced rollback candidate across A-to-B-to-C for v2 and fails closed after retention", async () => {

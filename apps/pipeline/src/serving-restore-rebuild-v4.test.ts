@@ -25,6 +25,16 @@ import {
   type RestoreRebuildPortsV4,
   type VerifiedRestoreSourceProfileV4,
 } from "./serving-restore-rebuild-v4.js";
+import {
+  RESTORE_REBUILD_PHASES_V5,
+  RESTORE_SYNTHETIC_PROBE_IDS_V5,
+  createVerifiedRestoreSourceProfileV5,
+  runLocalServingRestoreRebuildV5,
+  type RestoreRebuildPhaseContextV5,
+  type RestoreRebuildPhaseOrSwitchV5,
+  type RestoreRebuildPortsV5,
+  type VerifiedRestoreSourceProfileV5,
+} from "./serving-restore-rebuild-v5.js";
 
 const PUBLICATION_ID = "pub_00000000-0000-4000-8000-000000000001" as const;
 const CROSS_PUBLICATION_ID =
@@ -177,6 +187,48 @@ const profileFor = async (
   );
 };
 
+const profileForV5 = async (
+  fixture: Fixture,
+): Promise<VerifiedRestoreSourceProfileV5> => {
+  const manifest = fixture.base.manifest;
+  const expected: BackupClosureExpectation = {
+    publicationId: manifest.publicationId,
+    closureHash: manifest.closureHash,
+    providerSliceCount: manifest.providerSlices.length,
+    resourceCount: manifest.resources.length,
+    searchDocumentCount: manifest.searchDocuments.length,
+  };
+  return createVerifiedRestoreSourceProfileV5(
+    await backupFor(fixture),
+    expected,
+    {
+      sourceSchemaVersion: manifest.versions.schema,
+      manifestContractVersion: manifest.contractVersion,
+      hashDomain: "publication-closure",
+      hashEncodingVersion: "1",
+      enabledProviderScopeVersion: manifest.enabledProviderScopeVersion,
+      publicationId: manifest.publicationId,
+      closureHash: manifest.closureHash,
+      bundleHash: manifest.bundleHash,
+      enabledProviderScopeHash: manifest.enabledProviderScopeHash,
+      providerSliceHash: manifest.providerSliceHash,
+      providerAttributionHash: manifest.providerAttributionHash,
+      resourceInventoryHash: manifest.resourceInventoryHash,
+      exactSearchInventoryHash: manifest.exactSearchInventoryHash,
+      vectorInventoryHash: manifest.vectorInventoryHash,
+      chunkRootHash: manifest.chunkRootHash,
+      manifestInputHash: HASH_C,
+      providerSliceCount: manifest.providerSlices.length,
+      providerSliceMetadataCount: manifest.providerSlices.length,
+      providerAttributionCount: manifest.providerAttributions.length,
+      resourceCount: manifest.resources.length,
+      searchDocumentCount: manifest.searchDocuments.length,
+      vectorDocumentCount: manifest.vectors.length,
+      inventoryChunkCount: manifest.chunks.length,
+    },
+  );
+};
+
 const versions: Readonly<Record<RestoreRebuildPhaseOrSwitchV4, string>> =
   Object.freeze({
     import: "backup-v1-selected-import@1",
@@ -191,7 +243,7 @@ const versions: Readonly<Record<RestoreRebuildPhaseOrSwitchV4, string>> =
   });
 
 const resultFor = (
-  profile: VerifiedRestoreSourceProfileV4,
+  profile: VerifiedRestoreSourceProfileV4 | VerifiedRestoreSourceProfileV5,
   fixture: Fixture,
   phase: RestoreRebuildPhaseOrSwitchV4,
 ): RestorePhaseCallbackResultV4 & Record<string, unknown> => {
@@ -221,6 +273,34 @@ const resultFor = (
           proof: fixture.providerModelIdProof,
         }
       : {}),
+  };
+};
+
+const portsForV5 = (
+  profile: VerifiedRestoreSourceProfileV5,
+  fixture: Fixture,
+  calls: RestoreRebuildPhaseOrSwitchV5[],
+): RestoreRebuildPortsV5 => {
+  const callback =
+    (phase: RestoreRebuildPhaseOrSwitchV5) =>
+    (context: RestoreRebuildPhaseContextV5): Promise<unknown> => {
+      calls.push(phase);
+      expect(context.profile).toBe(profile);
+      expect(context.completed.map((receipt) => receipt.phase)).toEqual(
+        calls.slice(0, -1),
+      );
+      return Promise.resolve(resultFor(profile, fixture, phase));
+    };
+  return {
+    importSelectedSources: callback("import"),
+    compareClosure: callback("closure"),
+    rebuildProviderSearch: callback("provider_search"),
+    rebuildModelSearch: callback("model_search"),
+    rebuildProviderModelIdSearch: callback("provider_model_id_search"),
+    createSeal: callback("seal"),
+    rebuildDatasetMetadataSummary: callback("metadata_summary"),
+    commitReadinessV4: callback("readiness"),
+    switchLocalV5: callback("switch"),
   };
 };
 
@@ -427,5 +507,62 @@ describe("serving restore rebuild v4", () => {
     );
     expect(run.outcome).toBe("succeeded");
     expect(calls.at(-1)).toBe("switch");
+  });
+});
+
+describe("serving restore rebuild v5 schema boundary", () => {
+  it("preserves v4 identities and advances only the v5 profile and transcript to schema 1.11", async () => {
+    const fixture = await createRestoreFixture();
+    const v4 = await profileFor(fixture);
+    const v5 = await profileForV5(fixture);
+    expect(v4).toMatchObject({
+      profileVersion: "backup-v1-restore-source@2",
+      materialization: { destinationSchemaVersion: "1.10.0" },
+    });
+    expect(v5).toMatchObject({
+      profileVersion: "backup-v1-restore-source@3",
+      materialization: { destinationSchemaVersion: "1.11.0" },
+    });
+
+    const calls: RestoreRebuildPhaseOrSwitchV5[] = [];
+    const run = await runLocalServingRestoreRebuildV5(
+      v5,
+      portsForV5(v5, fixture, calls),
+    );
+    expect(run.outcome).toBe("succeeded");
+    expect(calls).toEqual(RESTORE_REBUILD_PHASES_V5);
+    expect(run.transcript).toMatchObject({
+      transcriptVersion: "serving-restore-rebuild@5",
+      profileVersion: "backup-v1-restore-source@3",
+      destinationSchemaVersion: "1.11.0",
+      syntheticProbeIds: RESTORE_SYNTHETIC_PROBE_IDS_V5,
+    });
+    expect(run.transcript.phases.map((phase) => phase.phase)).toEqual(
+      RESTORE_REBUILD_PHASES_V5,
+    );
+  });
+
+  it("keeps v5 failures in the v5 transcript domain without exposing callback payloads", async () => {
+    const fixture = await createRestoreFixture();
+    const profile = await profileForV5(fixture);
+    const calls: RestoreRebuildPhaseOrSwitchV5[] = [];
+    const ports = portsForV5(profile, fixture, calls);
+    const run = await runLocalServingRestoreRebuildV5(profile, {
+      ...ports,
+      rebuildProviderModelIdSearch: () =>
+        Promise.reject(new Error("visitor secret payload")),
+    });
+    expect(run.outcome).toBe("failed");
+    expect(run.transcript).toMatchObject({
+      transcriptVersion: "serving-restore-rebuild@5",
+      destinationSchemaVersion: "1.11.0",
+    });
+    expect(run.transcript.phases.at(-1)).toMatchObject({
+      phase: "provider_model_id_search",
+      failureCode: "phase_callback_failed",
+    });
+    expect(JSON.stringify(run.transcript)).not.toMatch(
+      /visitor|secret|payload/iu,
+    );
   });
 });

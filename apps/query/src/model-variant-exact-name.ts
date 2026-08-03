@@ -45,17 +45,20 @@ export const MODEL_VARIANT_EXACT_NAME_MAX_TRANSFER_BYTES =
   (MODEL_VARIANT_EXACT_NAME_MAX_PAGE_SIZE + 1) *
   MODEL_VARIANT_EXACT_NAME_MAX_RESOURCE_BYTES;
 
-const providerEligibilitySql = (binding: 8 | 9): string => `
+const offeringEligibilitySql = (options: {
+  providerBinding?: number;
+  staleBinding?: number;
+}): string => `
     AND EXISTS (
       SELECT 1
       FROM publication_provider_model_id_search_document AS eligibility
-        INDEXED BY publication_provider_model_id_eligibility_idx
+        INDEXED BY ${options.providerBinding === undefined ? "publication_provider_model_id_target_eligibility_idx" : "publication_provider_model_id_eligibility_idx"}
       JOIN publication_resource AS eligibility_offering
         ON eligibility_offering.publication_id = eligibility.publication_id
        AND eligibility_offering.resource_type = 'offering'
        AND eligibility_offering.resource_id = eligibility.offering_id
       WHERE eligibility.publication_id = document.publication_id
-        AND eligibility.provider_id = ?${String(binding)}
+${options.providerBinding === undefined ? "" : `        AND eligibility.provider_id = ?${String(options.providerBinding)}\n`}
         AND eligibility.target_resource_type = document.resource_type
         AND eligibility.target_resource_id = document.resource_id
         AND eligibility.projection_version = 'provider-model-id@1'
@@ -67,14 +70,16 @@ const providerEligibilitySql = (binding: 8 | 9): string => `
         AND CAST(json_extract(eligibility_offering.resource_json, '$.provider_model_id') AS BLOB) = eligibility.raw_provider_model_id_utf8
         AND json_extract(eligibility_offering.resource_json, '$.status.state') = 'known'
         AND json_extract(eligibility_offering.resource_json, '$.status.value') = 'active'
-        AND json_extract(eligibility_offering.resource_json, '$.stale') = 0
+        AND json_type(eligibility_offering.resource_json, '$.stale') IN ('true', 'false')
+        AND json_extract(eligibility_offering.resource_json, '$.stale') = ${options.staleBinding === undefined ? "0" : `?${String(options.staleBinding)}`}
     )`;
 
 /**
  * Fixed SELECT-only statements. Unfiltered reads retain compatibility with the
- * preceding serving schema; provider-filtered reads require the 1.9.0
- * eligibility index. Projection bytes never cross the D1 boundary: the
- * display-byte comparison is returned only as a boolean.
+ * preceding serving schema; provider-filtered reads require the 1.9.0 index
+ * and stale-only reads require the 1.11.0 target-first eligibility index.
+ * Projection bytes never cross the D1 boundary: the display-byte comparison
+ * is returned only as a boolean.
  */
 const modelVariantExactNameSelectSql = (
   eligibilitySql: string,
@@ -188,7 +193,10 @@ ORDER BY row_ordinal ASC, resource_id ASC
 export const MODEL_VARIANT_EXACT_NAME_SELECT_SQL =
   modelVariantExactNameSelectSql("", "");
 export const MODEL_VARIANT_EXACT_NAME_ELIGIBILITY_SELECT_SQL =
-  modelVariantExactNameSelectSql(providerEligibilitySql(8), "");
+  modelVariantExactNameSelectSql(
+    offeringEligibilitySql({ providerBinding: 8 }),
+    "",
+  );
 export const MODEL_VARIANT_EXACT_NAME_FAMILY_SELECT_SQL =
   modelVariantExactNameSelectSql(
     "",
@@ -196,8 +204,28 @@ export const MODEL_VARIANT_EXACT_NAME_FAMILY_SELECT_SQL =
   );
 export const MODEL_VARIANT_EXACT_NAME_ELIGIBILITY_FAMILY_SELECT_SQL =
   modelVariantExactNameSelectSql(
-    providerEligibilitySql(8),
+    offeringEligibilitySql({ providerBinding: 8 }),
     "    AND json_extract(resource.resource_json, '$.family_id') = ?9",
+  );
+export const MODEL_VARIANT_EXACT_NAME_STALE_SELECT_SQL =
+  modelVariantExactNameSelectSql(
+    offeringEligibilitySql({ staleBinding: 8 }),
+    "",
+  );
+export const MODEL_VARIANT_EXACT_NAME_STALE_FAMILY_SELECT_SQL =
+  modelVariantExactNameSelectSql(
+    offeringEligibilitySql({ staleBinding: 8 }),
+    "    AND json_extract(resource.resource_json, '$.family_id') = ?9",
+  );
+export const MODEL_VARIANT_EXACT_NAME_ELIGIBILITY_STALE_SELECT_SQL =
+  modelVariantExactNameSelectSql(
+    offeringEligibilitySql({ providerBinding: 8, staleBinding: 9 }),
+    "",
+  );
+export const MODEL_VARIANT_EXACT_NAME_ELIGIBILITY_STALE_FAMILY_SELECT_SQL =
+  modelVariantExactNameSelectSql(
+    offeringEligibilitySql({ providerBinding: 8, staleBinding: 9 }),
+    "    AND json_extract(resource.resource_json, '$.family_id') = ?10",
   );
 
 export type ModelVariantExactNameInput = Readonly<{
@@ -205,6 +233,7 @@ export type ModelVariantExactNameInput = Readonly<{
   query: string;
   recordType: "model" | "variant" | null;
   eligibilityProviderId?: string | null;
+  eligibilityStale?: boolean | null;
   familyId?: string | null;
   afterResourceId: string | null;
   limit: number;
@@ -328,6 +357,7 @@ const validateInput = (
   normalizedQueryBytes: ArrayBuffer;
   recordType: "model" | "variant" | null;
   eligibilityProviderId: string | null;
+  eligibilityStale: boolean | null;
   familyId: string | null;
   afterResourceId: string;
   limit: number;
@@ -340,6 +370,7 @@ const validateInput = (
     ...(Object.hasOwn(input, "eligibilityProviderId")
       ? ["eligibilityProviderId"]
       : []),
+    ...(Object.hasOwn(input, "eligibilityStale") ? ["eligibilityStale"] : []),
     ...(Object.hasOwn(input, "familyId") ? ["familyId"] : []),
     "limit",
     "publicationId",
@@ -361,6 +392,12 @@ const validateInput = (
     utf8.encode(input.query).byteLength >
       MODEL_VARIANT_EXACT_NAME_MAX_QUERY_BYTES
   )
+    return invalidInput();
+
+  const eligibilityStale = Object.hasOwn(input, "eligibilityStale")
+    ? input.eligibilityStale
+    : null;
+  if (eligibilityStale !== null && typeof eligibilityStale !== "boolean")
     return invalidInput();
 
   const familyId = Object.hasOwn(input, "familyId") ? input.familyId : null;
@@ -443,6 +480,7 @@ const validateInput = (
     normalizedQueryBytes,
     recordType,
     eligibilityProviderId,
+    eligibilityStale,
     familyId,
     afterResourceId,
     limit: limitValue,
@@ -621,12 +659,20 @@ export const readModelVariantExactNamePage = async (
   try {
     const statement = database.prepare(
       validated.eligibilityProviderId === null
-        ? validated.familyId === null
-          ? MODEL_VARIANT_EXACT_NAME_SELECT_SQL
-          : MODEL_VARIANT_EXACT_NAME_FAMILY_SELECT_SQL
-        : validated.familyId === null
-          ? MODEL_VARIANT_EXACT_NAME_ELIGIBILITY_SELECT_SQL
-          : MODEL_VARIANT_EXACT_NAME_ELIGIBILITY_FAMILY_SELECT_SQL,
+        ? validated.eligibilityStale === null
+          ? validated.familyId === null
+            ? MODEL_VARIANT_EXACT_NAME_SELECT_SQL
+            : MODEL_VARIANT_EXACT_NAME_FAMILY_SELECT_SQL
+          : validated.familyId === null
+            ? MODEL_VARIANT_EXACT_NAME_STALE_SELECT_SQL
+            : MODEL_VARIANT_EXACT_NAME_STALE_FAMILY_SELECT_SQL
+        : validated.eligibilityStale === null
+          ? validated.familyId === null
+            ? MODEL_VARIANT_EXACT_NAME_ELIGIBILITY_SELECT_SQL
+            : MODEL_VARIANT_EXACT_NAME_ELIGIBILITY_FAMILY_SELECT_SQL
+          : validated.familyId === null
+            ? MODEL_VARIANT_EXACT_NAME_ELIGIBILITY_STALE_SELECT_SQL
+            : MODEL_VARIANT_EXACT_NAME_ELIGIBILITY_STALE_FAMILY_SELECT_SQL,
     );
     const commonBindings = [
       validated.publicationId,
@@ -641,6 +687,9 @@ export const readModelVariantExactNamePage = async (
       ...(validated.eligibilityProviderId === null
         ? []
         : [validated.eligibilityProviderId]),
+      ...(validated.eligibilityStale === null
+        ? []
+        : [validated.eligibilityStale ? 1 : 0]),
       ...(validated.familyId === null ? [] : [validated.familyId]),
     ] as const;
     const result: unknown = await statement

@@ -16,8 +16,10 @@ import {
   MODEL_VARIANT_EXACT_NAME_MAX_TRANSFER_BYTES,
   MODEL_VARIANT_EXACT_NAME_ELIGIBILITY_FAMILY_SELECT_SQL,
   MODEL_VARIANT_EXACT_NAME_ELIGIBILITY_SELECT_SQL,
+  MODEL_VARIANT_EXACT_NAME_ELIGIBILITY_STALE_FAMILY_SELECT_SQL,
   MODEL_VARIANT_EXACT_NAME_FAMILY_SELECT_SQL,
   MODEL_VARIANT_EXACT_NAME_SELECT_SQL,
+  MODEL_VARIANT_EXACT_NAME_STALE_SELECT_SQL,
   ModelVariantExactNameError,
   readModelVariantExactNamePage,
 } from "./model-variant-exact-name.js";
@@ -367,6 +369,42 @@ describe("model/variant exact-name D1 reader (SRCH-002, SRCH-006, SRCH-008, SRCH
     expect(database.calls[0]?.values[7]).toBe(
       "prv_00000001-0000-4000-8000-000000000001",
     );
+  });
+
+  it("selects fixed target-first stale eligibility and composes provider, stale, and family", async () => {
+    const displayName = "Stale Eligible Model";
+    const rows = await fixtureRows(displayName);
+    const staleOnly = databaseWithRows([hotPublication(), ...rows]);
+    await readModelVariantExactNamePage(
+      staleOnly.asD1(),
+      input(displayName, { eligibilityStale: true }),
+    );
+    expect(staleOnly.calls[0]?.sql).toBe(
+      MODEL_VARIANT_EXACT_NAME_STALE_SELECT_SQL,
+    );
+    expect(staleOnly.calls[0]?.values[7]).toBe(1);
+    expect(MODEL_VARIANT_EXACT_NAME_STALE_SELECT_SQL).toContain(
+      "INDEXED BY publication_provider_model_id_target_eligibility_idx",
+    );
+
+    const provider = "prv_00000001-0000-4000-8000-000000000001";
+    const combined = databaseWithRows([hotPublication(), ...rows]);
+    await readModelVariantExactNamePage(
+      combined.asD1(),
+      input(displayName, {
+        eligibilityProviderId: provider,
+        eligibilityStale: false,
+        familyId: FAMILY_ID,
+      }),
+    );
+    expect(combined.calls[0]?.sql).toBe(
+      MODEL_VARIANT_EXACT_NAME_ELIGIBILITY_STALE_FAMILY_SELECT_SQL,
+    );
+    expect(combined.calls[0]?.values.slice(7)).toEqual([
+      provider,
+      0,
+      FAMILY_ID,
+    ]);
   });
 
   it("applies canonical family equality before LIMIT with a fixed provider conjunction", async () => {

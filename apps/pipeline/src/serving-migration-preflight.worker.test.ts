@@ -16,7 +16,7 @@ const through = (name: string) =>
 const only = (name: string) =>
   env.TEST_MIGRATIONS.filter((migration) => migration.name === name);
 
-describe("serving migrations 0010 through 0012 structural preflights", () => {
+describe("serving migrations 0010 through 0014 structural preflights", () => {
   it("rejects portable semantic corruption and accepts exact repair", async () => {
     await applyD1Migrations(
       env.SERVING_DB,
@@ -348,5 +348,97 @@ describe("serving migrations 0010 through 0012 structural preflights", () => {
       { seqno: 3, name: "target_resource_id" },
       { seqno: 4, name: "offering_id" },
     ]);
+  });
+
+  it("adds the target-first eligibility index only over an exact schema 1.10 substrate", async () => {
+    await applyD1Migrations(
+      env.SERVING_DB,
+      through("0013_publication_dataset_metadata_summary.sql"),
+    );
+    const originalSummaryGuard = await env.SERVING_DB.prepare(
+      `SELECT sql FROM sqlite_schema
+       WHERE type = 'trigger'
+         AND name = 'publication_dataset_metadata_summary_switch_guard'`,
+    ).first<{ sql: string }>();
+    expect(originalSummaryGuard).not.toBeNull();
+    await env.SERVING_DB.exec(
+      "DROP TRIGGER publication_dataset_metadata_summary_switch_guard",
+    );
+    await expect(
+      applyD1Migrations(
+        env.SERVING_DB,
+        only("0014_provider_model_stale_eligibility_index.sql"),
+      ),
+    ).rejects.toThrow();
+    await expect(
+      env.SERVING_DB.prepare(
+        `SELECT schema_version,
+          (SELECT count(*) FROM sqlite_schema
+           WHERE name IN (
+             'publication_provider_model_id_target_eligibility_idx',
+             'publication_switch_history_target_eligibility_index_guard'
+           )) AS target_eligibility_object_count
+         FROM serving_schema_metadata WHERE singleton = 1`,
+      ).first(),
+    ).resolves.toEqual({
+      schema_version: "1.10.0",
+      target_eligibility_object_count: 0,
+    });
+    await env.SERVING_DB.prepare(originalSummaryGuard!.sql).run();
+
+    await env.SERVING_DB.exec(
+      "CREATE TABLE publication_provider_model_id_target_eligibility_idx(fake INTEGER)",
+    );
+    await expect(
+      applyD1Migrations(
+        env.SERVING_DB,
+        only("0014_provider_model_stale_eligibility_index.sql"),
+      ),
+    ).rejects.toThrow();
+    await env.SERVING_DB.exec(
+      "DROP TABLE publication_provider_model_id_target_eligibility_idx",
+    );
+
+    await applyD1Migrations(
+      env.SERVING_DB,
+      only("0014_provider_model_stale_eligibility_index.sql"),
+    );
+    await expect(
+      env.SERVING_DB.prepare(
+        "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+      ).first(),
+    ).resolves.toEqual({ schema_version: "1.11.0" });
+    const index = await env.SERVING_DB.prepare(
+      `SELECT "unique" AS is_unique, origin, partial
+       FROM pragma_index_list('publication_provider_model_id_search_document')
+       WHERE name = 'publication_provider_model_id_target_eligibility_idx'`,
+    ).first();
+    expect(index).toEqual({ is_unique: 0, origin: "c", partial: 0 });
+    const columns = await env.SERVING_DB.prepare(
+      "SELECT seqno, name FROM pragma_index_info('publication_provider_model_id_target_eligibility_idx') ORDER BY seqno",
+    ).all();
+    expect(columns.results).toEqual([
+      { seqno: 0, name: "publication_id" },
+      { seqno: 1, name: "target_resource_type" },
+      { seqno: 2, name: "target_resource_id" },
+      { seqno: 3, name: "offering_id" },
+    ]);
+    const plan = await env.SERVING_DB.prepare(
+      `EXPLAIN QUERY PLAN
+       SELECT offering_id
+       FROM publication_provider_model_id_search_document
+         INDEXED BY publication_provider_model_id_target_eligibility_idx
+       WHERE publication_id = ?1
+         AND target_resource_type = 'model'
+         AND target_resource_id = ?2`,
+    )
+      .bind(
+        "pub_ffffffff-ffff-4fff-bfff-ffffffffffff",
+        "mdl_ffffffff-ffff-4fff-bfff-ffffffffffff",
+      )
+      .all<{ detail: string }>();
+    expect(plan.results.map((row) => row.detail).join("\n")).toContain(
+      "publication_provider_model_id_target_eligibility_idx",
+    );
   });
 });
