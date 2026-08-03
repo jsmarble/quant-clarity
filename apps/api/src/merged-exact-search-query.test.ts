@@ -20,6 +20,8 @@ const OTHER_PUBLICATION = "pub_22222222-2222-4222-8222-222222222222";
 const MODEL_A = "mdl_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const MODEL_B = "mdl_bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const VARIANT = "var_cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+const FAMILY = "fam_aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
+const OTHER_FAMILY = "fam_bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb";
 const PROVIDER = "prv_dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 const OTHER_PROVIDER = "prv_ffffffff-ffff-4fff-8fff-ffffffffffff";
 const EVIDENCE = "evd_eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
@@ -550,12 +552,150 @@ describe("merged exact search API seam (SRCH-001/002, API-003/007, PRIV-006)", (
     expect(changed.resolvePublicationV2).not.toHaveBeenCalled();
   });
 
+  it("binds one canonical family filter, composes it exactly, and inherits it from the cursor", async () => {
+    const service = rpc({
+      outcome: "page",
+      page: {
+        publicationId: PUBLICATION,
+        results: [row("exact-v1:r", "variant", VARIANT)],
+        nextContinuation: null,
+        semanticDegraded: "disabled",
+      },
+    });
+    const outcome = await execute(
+      service,
+      request(
+        `q=Model&family=${FAMILY}&provider=${PROVIDER}&record_type=variant&limit=2`,
+      ),
+    );
+    expect(outcome).toMatchObject({
+      success: true,
+      collection: {
+        data: [{ resource_type: "variant", resource_id: VARIANT }],
+        meta: {
+          filters: {
+            family: FAMILY,
+            provider: PROVIDER,
+            record_type: "variant",
+          },
+        },
+      },
+    });
+    expect(service.readMergedExactSearchV2.mock.calls[0]?.[0]).toMatchObject({
+      envelope: {
+        filters: {
+          family: FAMILY,
+          provider: PROVIDER,
+          record_type: "variant",
+        },
+        searchPlan: {
+          filters: {
+            family: FAMILY,
+            provider: PROVIDER,
+            record_type: "variant",
+          },
+        },
+      },
+    });
+
+    const issuing = await execute(
+      rpc(),
+      request(`q=Model&family=${FAMILY}&limit=2`),
+    );
+    expect(issuing.success).toBe(true);
+    if (!issuing.success) return;
+    const issuedCursor = issuing.collection.page.next_cursor;
+    expect(issuedCursor).toEqual(expect.any(String));
+    const verified = await verifyCursor(
+      issuedCursor ?? "",
+      keyring,
+      NOW,
+      30,
+      crypto.subtle,
+    );
+    expect(verified).toMatchObject({
+      success: true,
+      payload: { filters: { family: FAMILY } },
+    });
+
+    const bound = await cursor({
+      filters: { family: FAMILY },
+      marker: "exact-v1:c",
+      stableId: MODEL_A,
+    });
+    const inherited = rpc({
+      outcome: "page",
+      page: {
+        publicationId: PUBLICATION,
+        results: [row("exact-v1:c", "model", MODEL_B)],
+        nextContinuation: null,
+        semanticDegraded: "disabled",
+      },
+    });
+    await expect(
+      execute(
+        inherited,
+        request(`q=Model&cursor=${encodeURIComponent(bound)}`),
+      ),
+    ).resolves.toMatchObject({ success: true });
+    expect(inherited.readMergedExactSearchV2.mock.calls[0]?.[0]).toMatchObject({
+      envelope: { filters: { family: FAMILY } },
+    });
+  });
+
+  it("rejects family cursor additions, removals, changes, and provider-tier continuations before effects", async () => {
+    const familyBound = await cursor({
+      filters: { family: FAMILY },
+      marker: "exact-v1:c",
+      stableId: MODEL_A,
+    });
+    const withoutFamily = await cursor({
+      filters: {},
+      marker: "exact-v1:c",
+      stableId: MODEL_A,
+    });
+    const providerTier = await cursor({
+      filters: { family: FAMILY },
+      marker: "exact-v1:p",
+      stableId: PROVIDER,
+    });
+    const candidates = [
+      request(
+        `q=Model&family=${OTHER_FAMILY}&cursor=${encodeURIComponent(familyBound)}`,
+      ),
+      request(
+        `q=Model&family=${FAMILY}&cursor=${encodeURIComponent(withoutFamily)}`,
+      ),
+      request(`q=Model&cursor=${encodeURIComponent(providerTier)}`),
+    ];
+    for (const candidate of candidates) {
+      const service = rpc();
+      await expect(execute(service, candidate)).resolves.toEqual({
+        success: false,
+        code: "invalid_cursor",
+      });
+      expect(service.resolvePublicationV2).not.toHaveBeenCalled();
+      expect(service.readMergedExactSearchV2).not.toHaveBeenCalled();
+    }
+  });
+
   it("rejects incompatible, malformed, unsupported, and provider-result filter shapes before effects", async () => {
     const malformed = [
       { ...request(), filters: { provider: "example-provider" } },
+      { ...request(), filters: { family: "example-family" } },
+      { ...request(), filters: { family: FAMILY.toUpperCase() } },
+      {
+        ...request(),
+        filters: { family: "fam_aaaaaaaa-1111-1111-8111-aaaaaaaaaaaa" },
+      },
+      { ...request(), filters: { family: [FAMILY] } },
       {
         ...request(),
         filters: { provider: PROVIDER, record_type: "provider" },
+      },
+      {
+        ...request(),
+        filters: { family: FAMILY, record_type: "provider" },
       },
       { ...request(), filters: { status: "active" } },
       { ...request(), sort: ["stable_id"] },
@@ -597,6 +737,22 @@ describe("merged exact search API seam (SRCH-001/002, API-003/007, PRIV-006)", (
     });
     await expect(
       execute(providerResult, request(`q=Model&provider=${PROVIDER}&limit=2`)),
+    ).resolves.toEqual({ success: false, code: "integrity_failure" });
+
+    const familyProviderResult = rpc({
+      outcome: "page",
+      page: {
+        publicationId: PUBLICATION,
+        results: [row("exact-v1:p", "provider", PROVIDER)],
+        nextContinuation: null,
+        semanticDegraded: "disabled",
+      },
+    });
+    await expect(
+      execute(
+        familyProviderResult,
+        request(`q=Model&family=${FAMILY}&limit=2`),
+      ),
     ).resolves.toEqual({ success: false, code: "integrity_failure" });
   });
 

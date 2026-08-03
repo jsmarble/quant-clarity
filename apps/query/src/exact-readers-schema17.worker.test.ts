@@ -3,6 +3,8 @@ import { applyD1Migrations } from "cloudflare:test";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import {
+  canonicalizePublicationJson,
+  hashPublicationResourceContent,
   projectServingSwitchPreflightProofV4,
   projectServingSwitchV4,
   normalizeExactSearchName,
@@ -30,6 +32,7 @@ import {
 } from "../../pipeline/test/serving-switch-v4-fixture.js";
 import { RESOLVE_PUBLICATION_V2_SELECT_SQL } from "./catalog-query-rpc.js";
 import {
+  MODEL_VARIANT_EXACT_NAME_ELIGIBILITY_FAMILY_SELECT_SQL,
   MODEL_VARIANT_EXACT_NAME_ELIGIBILITY_SELECT_SQL,
   readModelVariantExactNamePage,
 } from "./model-variant-exact-name.js";
@@ -40,6 +43,7 @@ import {
 import { readProviderExactNamePage } from "./provider-exact-name.js";
 import {
   PROVIDER_MODEL_ID_EXACT_CANDIDATE_SELECT_SQL,
+  PROVIDER_MODEL_ID_EXACT_ELIGIBILITY_FAMILY_CANDIDATE_SELECT_SQL,
   readMergedProviderModelIdExactPage,
   readProviderModelIdExactPage,
 } from "./provider-model-id-exact.js";
@@ -392,6 +396,7 @@ describe("schema-1.8 current exact readers (SRCH-002, SRCH-006, SRCH-009, QA-005
       publicationId: PUBLICATION,
       query: "beta variant",
       recordType: null,
+      familyId: "fam_00000001-0000-4000-8000-000000000001",
       afterResourceId: null,
       limit: 1,
     });
@@ -406,6 +411,7 @@ describe("schema-1.8 current exact readers (SRCH-002, SRCH-006, SRCH-009, QA-005
         publicationId: PUBLICATION,
         query: "beta variant",
         recordType: null,
+        familyId: "fam_00000001-0000-4000-8000-000000000001",
         afterResourceId: first.nextAfterResourceId,
         limit: 1,
       }),
@@ -420,6 +426,33 @@ describe("schema-1.8 current exact readers (SRCH-002, SRCH-006, SRCH-009, QA-005
         },
       ],
     });
+    await expect(
+      readModelVariantExactNamePage(env.SERVING_DB, {
+        publicationId: PUBLICATION,
+        query: "Beta Variant",
+        recordType: "variant",
+        familyId: "fam_00000001-0000-4000-8000-000000000001",
+        afterResourceId: null,
+        limit: 20,
+      }),
+    ).resolves.toMatchObject({
+      results: [
+        {
+          resourceType: "variant",
+          resourceId: "var_00000001-0000-4000-8000-000000000001",
+        },
+      ],
+    });
+    await expect(
+      readModelVariantExactNamePage(env.SERVING_DB, {
+        publicationId: PUBLICATION,
+        query: "Beta Variant",
+        recordType: "variant",
+        familyId: "fam_99999999-9999-4999-8999-999999999999",
+        afterResourceId: null,
+        limit: 20,
+      }),
+    ).resolves.toMatchObject({ results: [] });
   });
 
   it("reads a canonical target through the schema-1.7 provider-model-ID BLOB indexes", async () => {
@@ -543,6 +576,8 @@ describe("schema-1.8 current exact readers (SRCH-002, SRCH-006, SRCH-009, QA-005
     );
     const providerId = persisted.rows[0]?.provider_id;
     if (providerId === undefined) throw new Error("provider fixture missing");
+    const familyId = "fam_00000001-0000-4000-8000-000000000001";
+    const wrongFamilyId = "fam_99999999-9999-4999-8999-999999999999";
     const eligibilityPlan = await env.SERVING_DB.prepare(
       `EXPLAIN QUERY PLAN ${MODEL_VARIANT_EXACT_NAME_ELIGIBILITY_SELECT_SQL}`,
     )
@@ -560,6 +595,30 @@ describe("schema-1.8 current exact readers (SRCH-002, SRCH-006, SRCH-009, QA-005
     expect(
       eligibilityPlan.results.map((row) => row.detail).join("\n"),
     ).toContain("publication_provider_model_id_eligibility_idx");
+    const combinedPlan = await env.SERVING_DB.prepare(
+      `EXPLAIN QUERY PLAN ${MODEL_VARIANT_EXACT_NAME_ELIGIBILITY_FAMILY_SELECT_SQL}`,
+    )
+      .bind(
+        PUBLICATION,
+        encode(normalizeExactSearchName("Schema 17\u0000Model")),
+        null,
+        "",
+        1_048_576,
+        21,
+        null,
+        providerId,
+        familyId,
+      )
+      .all<{ detail: string }>();
+    const combinedPlanText = combinedPlan.results
+      .map((row) => row.detail)
+      .join("\n");
+    expect(combinedPlanText).toContain(
+      "publication_model_variant_name_exact_idx",
+    );
+    expect(combinedPlanText).toContain(
+      "publication_provider_model_id_eligibility_idx",
+    );
     await expect(
       readModelVariantExactNamePage(env.SERVING_DB, {
         publicationId: PUBLICATION,
@@ -576,6 +635,28 @@ describe("schema-1.8 current exact readers (SRCH-002, SRCH-006, SRCH-009, QA-005
         query: "Beta Variant",
         recordType: null,
         eligibilityProviderId: providerId,
+        afterResourceId: null,
+        limit: 20,
+      }),
+    ).resolves.toMatchObject({ results: [] });
+    await expect(
+      readModelVariantExactNamePage(env.SERVING_DB, {
+        publicationId: PUBLICATION,
+        query: "Schema 17\u0000Model",
+        recordType: null,
+        eligibilityProviderId: providerId,
+        familyId,
+        afterResourceId: null,
+        limit: 20,
+      }),
+    ).resolves.toMatchObject({ results: [{ resourceType: "model" }] });
+    await expect(
+      readModelVariantExactNamePage(env.SERVING_DB, {
+        publicationId: PUBLICATION,
+        query: "Schema 17\u0000Model",
+        recordType: null,
+        eligibilityProviderId: providerId,
+        familyId: wrongFamilyId,
         afterResourceId: null,
         limit: 20,
       }),
@@ -630,6 +711,319 @@ describe("schema-1.8 current exact readers (SRCH-002, SRCH-006, SRCH-009, QA-005
     ).resolves.toMatchObject({
       matchModes: ["normalized"],
       results: [{ resourceType: "model" }],
+    });
+    const providerFamilyPlan = await env.SERVING_DB.prepare(
+      `EXPLAIN QUERY PLAN ${PROVIDER_MODEL_ID_EXACT_ELIGIBILITY_FAMILY_CANDIDATE_SELECT_SQL}`,
+    )
+      .bind(
+        PUBLICATION,
+        encode(base.query),
+        encode(normalizeExactSearchName(base.query)),
+        null,
+        "model",
+        -1,
+        new Uint8Array(),
+        "",
+        21,
+        1_048_576,
+        1,
+        1,
+        null,
+        providerId,
+        familyId,
+      )
+      .all<{ detail: string }>();
+    const providerFamilyPlanText = providerFamilyPlan.results
+      .map((row) => row.detail)
+      .join("\n");
+    expect(providerFamilyPlanText).toContain(
+      "publication_provider_model_id_raw_exact_idx",
+    );
+    expect(providerFamilyPlanText).toContain(
+      "publication_provider_model_id_normalized_exact_idx",
+    );
+    expect(providerFamilyPlanText).toContain(
+      "publication_provider_model_id_eligibility_idx",
+    );
+    await expect(
+      readMergedProviderModelIdExactPage(env.SERVING_DB, {
+        ...base,
+        providerId: null,
+        eligibilityProviderId: providerId,
+        familyId,
+        recordType: "model",
+      }),
+    ).resolves.toMatchObject({
+      matchModes: ["normalized"],
+      results: [{ resourceType: "model" }],
+    });
+    await expect(
+      readMergedProviderModelIdExactPage(env.SERVING_DB, {
+        ...base,
+        providerId: null,
+        eligibilityProviderId: providerId,
+        familyId: wrongFamilyId,
+        recordType: "model",
+      }),
+    ).resolves.toMatchObject({ results: [], matchModes: [] });
+  });
+
+  it("filters wrong-family rows before LIMIT and traverses later family members in real D1", async () => {
+    const familyId = "fam_00000001-0000-4000-8000-000000000001";
+    const wrongFamilyId = "fam_99999999-9999-4999-8999-999999999999";
+    const displayName = "Family Limit Proof";
+    const providerModelId = "accounts/family-limit-proof";
+    const encode = (value: string): Uint8Array =>
+      new TextEncoder().encode(value);
+    const sourceModel = await env.SERVING_DB.prepare(
+      `SELECT resource_json
+       FROM publication_resource
+       WHERE publication_id = ?1
+         AND resource_type = 'model'
+         AND resource_id = 'mdl_00000001-0000-4000-8000-000000000001'`,
+    )
+      .bind(PUBLICATION)
+      .first<{ resource_json: string }>();
+    const sourceOffering = await env.SERVING_DB.prepare(
+      `SELECT resource.resource_json
+       FROM publication_provider_model_id_search_document AS document
+       JOIN publication_resource AS resource
+         ON resource.publication_id = document.publication_id
+        AND resource.resource_type = 'offering'
+        AND resource.resource_id = document.offering_id
+       WHERE document.publication_id = ?1
+       ORDER BY document.offering_id
+       LIMIT 1`,
+    )
+      .bind(PUBLICATION)
+      .first<{ resource_json: string }>();
+    if (sourceModel === null || sourceOffering === null)
+      throw new Error("family limit fixture source missing");
+    const modelTemplate = JSON.parse(sourceModel.resource_json) as Record<
+      string,
+      unknown
+    >;
+    const offeringTemplate = JSON.parse(sourceOffering.resource_json) as Record<
+      string,
+      unknown
+    >;
+    const providerId = offeringTemplate.provider_id;
+    if (typeof providerId !== "string")
+      throw new Error("family limit provider missing");
+
+    const triggerNames = [
+      "publication_resource_building_insert",
+      "publication_resource_post_seal_insert_guard",
+      "publication_resource_revision",
+      "publication_model_variant_name_search_document_insert_guard",
+      "publication_provider_model_id_search_document_insert_guard",
+    ] as const;
+    const triggerRows = await env.SERVING_DB.prepare(
+      `SELECT name, sql
+       FROM sqlite_master
+       WHERE type = 'trigger'
+         AND name IN (?1, ?2, ?3, ?4, ?5)
+       ORDER BY name`,
+    )
+      .bind(...triggerNames)
+      .all<{ name: string; sql: string }>();
+    expect(triggerRows.results).toHaveLength(triggerNames.length);
+    const droppedTriggers: { name: string; sql: string }[] = [];
+    let primaryFailure: unknown = null;
+    const restoreFailures: unknown[] = [];
+    try {
+      for (const trigger of triggerRows.results) {
+        if (
+          !triggerNames.includes(
+            trigger.name as (typeof triggerNames)[number],
+          ) ||
+          typeof trigger.sql !== "string"
+        )
+          throw new Error("family limit trigger metadata invalid");
+        await env.SERVING_DB.exec(`DROP TRIGGER ${trigger.name}`);
+        droppedTriggers.push(trigger);
+      }
+      for (const [ordinal, memberFamilyId] of [
+        [240, wrongFamilyId],
+        [241, familyId],
+        [242, familyId],
+      ] as const) {
+        const suffix = ordinal.toString(16).padStart(8, "0");
+        const modelId = `mdl_${suffix}-0000-4000-8000-000000000001`;
+        const offeringId = `off_${suffix}-0000-4000-8000-000000000001`;
+        const modelJson = canonicalizePublicationJson(
+          JSON.stringify({
+            ...modelTemplate,
+            display_name: {
+              ...(modelTemplate.display_name as Record<string, unknown>),
+              value: displayName,
+            },
+            family_id: memberFamilyId,
+            model_id: modelId,
+          }),
+          "object",
+        );
+        const modelHash = await hashPublicationResourceContent({
+          resourceType: "model",
+          resourceId: modelId,
+          resourceJson: modelJson,
+        });
+        const offeringJson = canonicalizePublicationJson(
+          JSON.stringify({
+            ...offeringTemplate,
+            model_resource_id: modelId,
+            offering_id: offeringId,
+            provider_model_id: providerModelId,
+          }),
+          "object",
+        );
+        const offeringHash = await hashPublicationResourceContent({
+          resourceType: "offering",
+          resourceId: offeringId,
+          resourceJson: offeringJson,
+        });
+        await env.SERVING_DB.batch([
+          env.SERVING_DB.prepare(
+            `INSERT OR IGNORE INTO publication_resource(
+               publication_id, resource_type, resource_id, resource_json, content_hash
+             ) VALUES (?1, 'model', ?2, ?3, ?4)`,
+          ).bind(PUBLICATION, modelId, modelJson, modelHash),
+          env.SERVING_DB.prepare(
+            `INSERT OR IGNORE INTO publication_resource(
+               publication_id, resource_type, resource_id, resource_json, content_hash
+             ) VALUES (?1, 'offering', ?2, ?3, ?4)`,
+          ).bind(PUBLICATION, offeringId, offeringJson, offeringHash),
+          env.SERVING_DB.prepare(
+            `INSERT OR IGNORE INTO publication_model_variant_name_search_document(
+               publication_id, resource_type, resource_id, projection_version,
+               display_name_utf8, normalized_name_utf8, resource_content_hash
+             ) VALUES (?1, 'model', ?2, 'model-variant-name@1', ?3, ?4, ?5)`,
+          ).bind(
+            PUBLICATION,
+            modelId,
+            encode(displayName),
+            encode(normalizeExactSearchName(displayName)),
+            modelHash,
+          ),
+          env.SERVING_DB.prepare(
+            `INSERT OR IGNORE INTO publication_provider_model_id_search_document(
+               publication_id, offering_id, provider_id,
+               target_resource_type, target_resource_id, projection_version,
+               raw_provider_model_id_utf8, normalized_provider_model_id_utf8,
+               offering_content_hash, target_content_hash
+             ) VALUES (
+               ?1, ?2, ?3, 'model', ?4, 'provider-model-id@1',
+               ?5, ?6, ?7, ?8
+             )`,
+          ).bind(
+            PUBLICATION,
+            offeringId,
+            providerId,
+            modelId,
+            encode(providerModelId),
+            encode(normalizeExactSearchName(providerModelId)),
+            offeringHash,
+            modelHash,
+          ),
+        ]);
+      }
+    } catch (error) {
+      primaryFailure = error;
+    } finally {
+      for (const trigger of droppedTriggers.reverse()) {
+        try {
+          await env.SERVING_DB.prepare(trigger.sql).run();
+        } catch (error) {
+          restoreFailures.push(error);
+        }
+      }
+    }
+    if (primaryFailure !== null || restoreFailures.length > 0)
+      throw new AggregateError(
+        [
+          ...(primaryFailure === null ? [] : [primaryFailure]),
+          ...restoreFailures,
+        ],
+        "family limit fixture extension failed",
+      );
+
+    const unfilteredCanonical = await readModelVariantExactNamePage(
+      env.SERVING_DB,
+      {
+        publicationId: PUBLICATION,
+        query: displayName,
+        recordType: "model",
+        afterResourceId: null,
+        limit: 1,
+      },
+    );
+    expect(unfilteredCanonical.results[0]?.resourceId).toBe(
+      "mdl_000000f0-0000-4000-8000-000000000001",
+    );
+    const canonicalFirst = await readModelVariantExactNamePage(env.SERVING_DB, {
+      publicationId: PUBLICATION,
+      query: displayName,
+      recordType: "model",
+      familyId,
+      afterResourceId: null,
+      limit: 1,
+    });
+    expect(canonicalFirst).toMatchObject({
+      results: [{ resourceId: "mdl_000000f1-0000-4000-8000-000000000001" }],
+      nextAfterResourceId: "mdl_000000f1-0000-4000-8000-000000000001",
+    });
+    await expect(
+      readModelVariantExactNamePage(env.SERVING_DB, {
+        publicationId: PUBLICATION,
+        query: displayName,
+        recordType: "model",
+        familyId,
+        afterResourceId: canonicalFirst.nextAfterResourceId,
+        limit: 1,
+      }),
+    ).resolves.toMatchObject({
+      results: [{ resourceId: "mdl_000000f2-0000-4000-8000-000000000001" }],
+      nextAfterResourceId: null,
+    });
+
+    const providerInput = {
+      publicationId: PUBLICATION,
+      query: providerModelId,
+      providerId: null,
+      eligibilityProviderId: null,
+      recordType: "model" as const,
+      continuation: null,
+      limit: 1,
+    };
+    const unfilteredProvider = await readMergedProviderModelIdExactPage(
+      env.SERVING_DB,
+      providerInput,
+    );
+    expect(unfilteredProvider.results[0]?.resourceId).toBe(
+      "mdl_000000f0-0000-4000-8000-000000000001",
+    );
+    const providerFirst = await readMergedProviderModelIdExactPage(
+      env.SERVING_DB,
+      { ...providerInput, familyId },
+    );
+    expect(providerFirst).toMatchObject({
+      matchModes: ["raw"],
+      results: [{ resourceId: "mdl_000000f1-0000-4000-8000-000000000001" }],
+      nextContinuation: {
+        matchMode: "raw",
+        resourceId: "mdl_000000f1-0000-4000-8000-000000000001",
+      },
+    });
+    await expect(
+      readMergedProviderModelIdExactPage(env.SERVING_DB, {
+        ...providerInput,
+        familyId,
+        continuation: providerFirst.nextContinuation,
+      }),
+    ).resolves.toMatchObject({
+      matchModes: ["raw"],
+      results: [{ resourceId: "mdl_000000f2-0000-4000-8000-000000000001" }],
+      nextContinuation: null,
     });
   });
 

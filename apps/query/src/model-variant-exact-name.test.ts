@@ -14,7 +14,9 @@ import {
   MODEL_VARIANT_EXACT_NAME_MAX_QUERY_UNICODE_SCALARS,
   MODEL_VARIANT_EXACT_NAME_MAX_RESOURCE_BYTES,
   MODEL_VARIANT_EXACT_NAME_MAX_TRANSFER_BYTES,
+  MODEL_VARIANT_EXACT_NAME_ELIGIBILITY_FAMILY_SELECT_SQL,
   MODEL_VARIANT_EXACT_NAME_ELIGIBILITY_SELECT_SQL,
+  MODEL_VARIANT_EXACT_NAME_FAMILY_SELECT_SQL,
   MODEL_VARIANT_EXACT_NAME_SELECT_SQL,
   ModelVariantExactNameError,
   readModelVariantExactNamePage,
@@ -367,6 +369,53 @@ describe("model/variant exact-name D1 reader (SRCH-002, SRCH-006, SRCH-008, SRCH
     );
   });
 
+  it("applies canonical family equality before LIMIT with a fixed provider conjunction", async () => {
+    const displayName = "Family Model";
+    const rows = await fixtureRows(displayName);
+    const familyOnly = databaseWithRows([hotPublication(), ...rows]);
+    await expect(
+      readModelVariantExactNamePage(
+        familyOnly.asD1(),
+        input(displayName, { familyId: FAMILY_ID, limit: 1 }),
+      ),
+    ).resolves.toMatchObject({ results: [{ resourceId: MODEL_ID }] });
+    expect(familyOnly.calls[0]?.sql).toBe(
+      MODEL_VARIANT_EXACT_NAME_FAMILY_SELECT_SQL,
+    );
+    expect(familyOnly.calls[0]?.values[7]).toBe(FAMILY_ID);
+    expect(MODEL_VARIANT_EXACT_NAME_FAMILY_SELECT_SQL).toContain(
+      "json_extract(resource.resource_json, '$.family_id') = ?8",
+    );
+    expect(
+      MODEL_VARIANT_EXACT_NAME_FAMILY_SELECT_SQL.indexOf("'$.family_id'"),
+    ).toBeLessThan(
+      MODEL_VARIANT_EXACT_NAME_FAMILY_SELECT_SQL.indexOf("  LIMIT ?6"),
+    );
+
+    const provider = "prv_00000001-0000-4000-8000-000000000001";
+    const combined = databaseWithRows([hotPublication(), ...rows]);
+    await readModelVariantExactNamePage(
+      combined.asD1(),
+      input(displayName, {
+        eligibilityProviderId: provider,
+        familyId: FAMILY_ID,
+      }),
+    );
+    expect(combined.calls[0]?.sql).toBe(
+      MODEL_VARIANT_EXACT_NAME_ELIGIBILITY_FAMILY_SELECT_SQL,
+    );
+    expect(combined.calls[0]?.values.slice(7)).toEqual([provider, FAMILY_ID]);
+
+    await expect(
+      readModelVariantExactNamePage(
+        databaseWithRows([hotPublication(), ...rows]).asD1(),
+        input(displayName, {
+          familyId: "fam_00000002-0000-4000-8000-000000000001",
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "integrity_failure" });
+  });
+
   it("enforces raw scalar/UTF-8 ceilings and reaches the derived normalization scalar cap", async () => {
     const scalarCases = ["x".repeat(199), "x".repeat(200)];
     for (const query of scalarCases) {
@@ -540,6 +589,8 @@ describe("model/variant exact-name D1 reader (SRCH-002, SRCH-006, SRCH-008, SRCH
       }),
       input("alpha", { recordType: "provider" }),
       input("alpha", { eligibilityProviderId: "prv_invalid" }),
+      input("alpha", { familyId: "fam_invalid" }),
+      input("alpha", { familyId: FAMILY_ID.toUpperCase() }),
       input("alpha", { limit: 0 }),
       input("alpha", {
         limit: MODEL_VARIANT_EXACT_NAME_MAX_PAGE_SIZE + 1,
@@ -707,18 +758,9 @@ describe("model/variant exact-name D1 reader (SRCH-002, SRCH-006, SRCH-008, SRCH
     ).rejects.toMatchObject({ code: "integrity_failure" });
   }, 30_000);
 
-  it("snapshots hostile top-level, row, and result-array properties once", async () => {
+  it("snapshots hostile row data properties and result-array length once", async () => {
     const [validRow] = await fixtureRows("Alpha Model");
     if (validRow === undefined) throw new Error("fixture row missing");
-    let inputReads = 0;
-    const hostileInput = input("Alpha Model");
-    Object.defineProperty(hostileInput, "query", {
-      enumerable: true,
-      get: () => {
-        inputReads += 1;
-        return inputReads === 1 ? "Alpha Model" : "Different Model";
-      },
-    });
     let rowReads = 0;
     const hostileRow = new Proxy(validRow, {
       get(target, property, receiver) {
@@ -742,14 +784,31 @@ describe("model/variant exact-name D1 reader (SRCH-002, SRCH-006, SRCH-008, SRCH
     await expect(
       readModelVariantExactNamePage(
         new FakeDatabase({ success: true, results: hostileResults }).asD1(),
-        hostileInput,
+        input("Alpha Model"),
       ),
     ).resolves.toMatchObject({ results: [{ resourceId: MODEL_ID }] });
-    expect({ inputReads, rowReads, lengthReads }).toEqual({
-      inputReads: 1,
-      rowReads: 1,
+    expect({ rowReads, lengthReads }).toEqual({
+      rowReads: 0,
       lengthReads: 1,
     });
+  });
+
+  it("rejects an enumerable familyId accessor without invoking it or acquiring D1", async () => {
+    let getterReads = 0;
+    const hostileInput = input("Alpha Model") as Record<string, unknown>;
+    Object.defineProperty(hostileInput, "familyId", {
+      enumerable: true,
+      get: () => {
+        getterReads += 1;
+        return FAMILY_ID;
+      },
+    });
+    const database = databaseWithRows([]);
+    await expect(
+      readModelVariantExactNamePage(database.asD1(), hostileInput as never),
+    ).rejects.toEqual(new ModelVariantExactNameError("invalid_input"));
+    expect(getterReads).toBe(0);
+    expect(database.calls).toEqual([]);
   });
 
   it("rejects canonical identity, display-byte, byte-count, and hash drift", async () => {
@@ -917,6 +976,8 @@ describe("model/variant exact-name D1 reader (SRCH-002, SRCH-006, SRCH-008, SRCH
     for (const sql of [
       MODEL_VARIANT_EXACT_NAME_SELECT_SQL,
       MODEL_VARIANT_EXACT_NAME_ELIGIBILITY_SELECT_SQL,
+      MODEL_VARIANT_EXACT_NAME_FAMILY_SELECT_SQL,
+      MODEL_VARIANT_EXACT_NAME_ELIGIBILITY_FAMILY_SELECT_SQL,
     ]) {
       expect(sql).toMatch(/^\s*WITH\b/u);
       expect(sql).toContain(

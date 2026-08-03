@@ -18,6 +18,7 @@ import { MODEL_DISPLAY_NAME_MAX_UNICODE_SCALARS } from "@quant-clarity/contracts
 const UUID_V4 =
   "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
 const PUBLICATION_ID = new RegExp(`^pub_${UUID_V4}$`, "u");
+const FAMILY_ID = new RegExp(`^fam_${UUID_V4}$`, "u");
 const MODEL_ID = new RegExp(`^mdl_${UUID_V4}$`, "u");
 const VARIANT_ID = new RegExp(`^var_${UUID_V4}$`, "u");
 const PROVIDER_ID = new RegExp(`^prv_${UUID_V4}$`, "u");
@@ -206,6 +207,7 @@ const canonicalTimestamp = (value: string): boolean => {
 
 type ParsedRequest = Readonly<{
   request: NormalizedRequest;
+  familyId: string | null;
   recordType: SearchResourceType | null;
   providerId: string | null;
 }>;
@@ -250,6 +252,7 @@ const parseRequest = (value: unknown): ParsedRequest | null => {
     const route = snapshotOwnRecord(request.route, ["operation", "policy"]);
     const routeOperation = snapshotOwnRecord(route?.operation, ["kind"]);
     const filters = snapshotOwnRecord(request.filters, []);
+    let familyId: string | null = null;
     let recordType: SearchResourceType | null = null;
     let providerId: string | null = null;
     let safeFilters: Readonly<Record<string, string>> = {};
@@ -257,7 +260,15 @@ const parseRequest = (value: unknown): ParsedRequest | null => {
       const typed =
         snapshotOwnRecord(request.filters, ["record_type"]) ??
         snapshotOwnRecord(request.filters, ["provider"]) ??
-        snapshotOwnRecord(request.filters, ["provider", "record_type"]);
+        snapshotOwnRecord(request.filters, ["family"]) ??
+        snapshotOwnRecord(request.filters, ["provider", "record_type"]) ??
+        snapshotOwnRecord(request.filters, ["family", "record_type"]) ??
+        snapshotOwnRecord(request.filters, ["family", "provider"]) ??
+        snapshotOwnRecord(request.filters, [
+          "family",
+          "provider",
+          "record_type",
+        ]);
       if (
         typed === null ||
         (Object.hasOwn(typed, "record_type") &&
@@ -266,17 +277,27 @@ const parseRequest = (value: unknown): ParsedRequest | null => {
           typed.record_type !== "provider") ||
         (Object.hasOwn(typed, "provider") &&
           (typeof typed.provider !== "string" ||
-            !PROVIDER_ID.test(typed.provider)))
+            !PROVIDER_ID.test(typed.provider))) ||
+        (Object.hasOwn(typed, "family") &&
+          (typeof typed.family !== "string" || !FAMILY_ID.test(typed.family)))
       )
         return null;
+      familyId = Object.hasOwn(typed, "family")
+        ? (typed.family as string)
+        : null;
       recordType = Object.hasOwn(typed, "record_type")
         ? (typed.record_type as SearchResourceType)
         : null;
       providerId = Object.hasOwn(typed, "provider")
         ? (typed.provider as string)
         : null;
-      if (providerId !== null && recordType === "provider") return null;
+      if (
+        (providerId !== null || familyId !== null) &&
+        recordType === "provider"
+      )
+        return null;
       safeFilters = {
+        ...(familyId === null ? {} : { family: familyId }),
         ...(providerId === null ? {} : { provider: providerId }),
         ...(recordType === null ? {} : { record_type: recordType }),
       };
@@ -292,6 +313,7 @@ const parseRequest = (value: unknown): ParsedRequest | null => {
     )
       return null;
     return {
+      familyId,
       providerId,
       recordType,
       request: {
@@ -546,6 +568,7 @@ const classifyPage = (
   limit: number,
   recordType: SearchResourceType | null,
   providerId: string | null,
+  familyId: string | null,
   incomingContinuation: Readonly<{
     tierMarker: ExactTierMarker;
     resourceId: string;
@@ -620,7 +643,8 @@ const classifyPage = (
         !validMarkerResult(tierMarker, resourceType, matchKind) ||
         displayName === null ||
         (recordType !== null && resourceType !== recordType) ||
-        (providerId !== null && resourceType === "provider") ||
+        ((providerId !== null || familyId !== null) &&
+          resourceType === "provider") ||
         seen.has(result.resourceId) ||
         (priorMarker !== null &&
           (markerIndex(tierMarker) < markerIndex(priorMarker) ||
@@ -800,7 +824,7 @@ export const readMergedExactSearchFromQueryV1 = async (
       const inherited = parseRequest(request);
       if (inherited === null) return { success: false, code: "invalid_cursor" };
       if (
-        (inherited.providerId !== null &&
+        ((inherited.providerId !== null || inherited.familyId !== null) &&
           continuation.lastSortTuple[0] === "exact-v1:p") ||
         (inherited.recordType === "provider" &&
           continuation.lastSortTuple[0] !== "exact-v1:p") ||
@@ -881,12 +905,17 @@ export const readMergedExactSearchFromQueryV1 = async (
       typeof request.filters.provider === "string"
         ? request.filters.provider
         : null;
+    const effectiveFamilyId =
+      typeof request.filters.family === "string"
+        ? request.filters.family
+        : null;
     const page = classifyPage(
       pageValue,
       resolution.publicationId,
       request.limit,
       effectiveRecordType,
       effectiveProviderId,
+      effectiveFamilyId,
       continuation === null
         ? null
         : {

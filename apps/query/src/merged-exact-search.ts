@@ -24,6 +24,7 @@ const PUBLICATION_ID = new RegExp(`^pub_${UUID_V4}$`, "u");
 const MODEL_ID = new RegExp(`^mdl_${UUID_V4}$`, "u");
 const VARIANT_ID = new RegExp(`^var_${UUID_V4}$`, "u");
 const PROVIDER_ID = new RegExp(`^prv_${UUID_V4}$`, "u");
+const FAMILY_ID = new RegExp(`^fam_${UUID_V4}$`, "u");
 const UTF8 = new TextEncoder();
 
 export const MERGED_EXACT_SEARCH_MAX_PAGE_SIZE = 20;
@@ -50,6 +51,7 @@ export type MergedExactSearchInput = Readonly<{
   query: string;
   recordType: "model" | "variant" | "provider" | null;
   eligibilityProviderId: string | null;
+  familyId?: string | null;
   continuation: MergedExactSearchContinuation | null;
   limit: number;
   requiredAvailableUntilMs?: number | null;
@@ -97,6 +99,7 @@ type ValidatedInput = Readonly<{
   normalizedQuery: string;
   recordType: "model" | "variant" | "provider" | null;
   eligibilityProviderId: string | null;
+  familyId: string | null;
   continuation: MergedExactSearchContinuation | null;
   limit: number;
   requiredAvailableUntilMs: number | null;
@@ -202,6 +205,7 @@ const validateInput = (value: unknown): ValidatedInput => {
     "continuation",
     "limit",
     "eligibilityProviderId",
+    ...(Object.hasOwn(input, "familyId") ? ["familyId"] : []),
     "publicationId",
     "query",
     "recordType",
@@ -228,6 +232,13 @@ const validateInput = (value: unknown): ValidatedInput => {
       (typeof input.eligibilityProviderId !== "string" ||
         !PROVIDER_ID.test(input.eligibilityProviderId))) ||
     (input.eligibilityProviderId !== null && input.recordType === "provider") ||
+    (Object.hasOwn(input, "familyId") &&
+      input.familyId !== null &&
+      (typeof input.familyId !== "string" ||
+        !FAMILY_ID.test(input.familyId))) ||
+    (Object.hasOwn(input, "familyId") &&
+      input.familyId !== null &&
+      input.recordType === "provider") ||
     typeof input.limit !== "number" ||
     !Number.isSafeInteger(input.limit) ||
     input.limit < 1 ||
@@ -274,6 +285,9 @@ const validateInput = (value: unknown): ValidatedInput => {
       continuation.tierMarker !== EXACT_PROVIDER_MARKER) ||
     (input.eligibilityProviderId !== null &&
       continuation?.tierMarker === EXACT_PROVIDER_MARKER) ||
+    (Object.hasOwn(input, "familyId") &&
+      input.familyId !== null &&
+      continuation?.tierMarker === EXACT_PROVIDER_MARKER) ||
     ((input.recordType === "model" || input.recordType === "variant") &&
       continuation?.tierMarker === EXACT_PROVIDER_MARKER) ||
     ((input.recordType === "model" || input.recordType === "variant") &&
@@ -299,6 +313,9 @@ const validateInput = (value: unknown): ValidatedInput => {
     normalizedQuery,
     recordType: input.recordType,
     eligibilityProviderId: input.eligibilityProviderId,
+    familyId: Object.hasOwn(input, "familyId")
+      ? (input.familyId as string | null)
+      : null,
     continuation,
     limit: input.limit,
     requiredAvailableUntilMs,
@@ -445,6 +462,7 @@ export const readMergedExactSearchPage = async (
           query: input.query,
           recordType: targetRecordType,
           eligibilityProviderId: input.eligibilityProviderId,
+          familyId: input.familyId,
           afterResourceId: input.continuation?.resourceId ?? null,
           limit: capacity(),
           requiredAvailableUntilMs: input.requiredAvailableUntilMs,
@@ -506,6 +524,7 @@ export const readMergedExactSearchPage = async (
           query: input.query,
           providerId: null,
           eligibilityProviderId: input.eligibilityProviderId,
+          familyId: input.familyId,
           recordType: targetRecordType,
           continuation,
           limit: capacity(),
@@ -556,6 +575,7 @@ export const readMergedExactSearchPage = async (
       input.normalizedQuery.length > 0 &&
       !input.query.includes("\u0000") &&
       input.eligibilityProviderId === null &&
+      input.familyId === null &&
       (input.recordType === null || input.recordType === "provider")
     ) {
       const page = pageRecord(

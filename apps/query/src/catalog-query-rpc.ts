@@ -46,6 +46,7 @@ const PUBLICATION_ID = new RegExp(`^pub_${UUID_V4}$`, "u");
 const PROVIDER_ID = new RegExp(`^prv_${UUID_V4}$`, "u");
 const MODEL_ID = new RegExp(`^mdl_${UUID_V4}$`, "u");
 const VARIANT_ID = new RegExp(`^var_${UUID_V4}$`, "u");
+const FAMILY_ID = new RegExp(`^fam_${UUID_V4}$`, "u");
 const UTF8 = new TextEncoder();
 const ENVIRONMENTS = new Set(["local", "preview", "production", "test"]);
 const AUDIENCE = "quantclarity-catalog-query-v1" as const;
@@ -889,6 +890,7 @@ type ParsedMergedExactSearchInput = Readonly<{
   query: string;
   recordType: "model" | "variant" | "provider" | null;
   eligibilityProviderId: string | null;
+  familyId: string | null;
   continuation: MergedExactSearchContinuation | null;
   limit: number;
   requiredAvailableUntilMs: number | null;
@@ -900,6 +902,7 @@ const mergedFilters = (
   | Readonly<{
       canonical: Readonly<Record<string, string>>;
       eligibilityProviderId: string | null;
+      familyId: string | null;
       recordType: "model" | "variant" | "provider" | null;
     }>
   | undefined => {
@@ -913,28 +916,38 @@ const mergedFilters = (
     const filter = ownDataRecord(value, ownKeys as string[]);
     if (filter === null) return undefined;
     const keys = Object.keys(filter);
-    if (keys.some((key) => key !== "provider" && key !== "record_type"))
+    if (
+      keys.some(
+        (key) =>
+          key !== "family" && key !== "provider" && key !== "record_type",
+      )
+    )
       return undefined;
+    const hasFamily = Object.hasOwn(filter, "family");
     const hasProvider = Object.hasOwn(filter, "provider");
     const hasRecordType = Object.hasOwn(filter, "record_type");
+    const family = filter.family;
     const provider = filter.provider;
     const recordType = filter.record_type;
     if (
+      (hasFamily && (typeof family !== "string" || !FAMILY_ID.test(family))) ||
       (hasProvider &&
         (typeof provider !== "string" || !PROVIDER_ID.test(provider))) ||
       (hasRecordType &&
         recordType !== "model" &&
         recordType !== "variant" &&
         recordType !== "provider") ||
-      (hasProvider && recordType === "provider")
+      ((hasProvider || hasFamily) && recordType === "provider")
     )
       return undefined;
     const canonical: Record<string, string> = {};
+    if (typeof family === "string") canonical.family = family;
     if (typeof provider === "string") canonical.provider = provider;
     if (typeof recordType === "string") canonical.record_type = recordType;
     return Object.freeze({
       canonical: Object.freeze(canonical),
       eligibilityProviderId: typeof provider === "string" ? provider : null,
+      familyId: typeof family === "string" ? family : null,
       recordType:
         recordType === "model" ||
         recordType === "variant" ||
@@ -1075,6 +1088,7 @@ const parseMergedExactSearchInput = (
       marker !== EXACT_PROVIDER_MARKER) ||
     (filters.eligibilityProviderId !== null &&
       marker === EXACT_PROVIDER_MARKER) ||
+    (filters.familyId !== null && marker === EXACT_PROVIDER_MARKER) ||
     ((filters.recordType === "model" || filters.recordType === "variant") &&
       marker === EXACT_PROVIDER_MARKER) ||
     (filters.recordType === "model" &&
@@ -1097,6 +1111,7 @@ const parseMergedExactSearchInput = (
     query: plan.query,
     recordType: filters.recordType,
     eligibilityProviderId: filters.eligibilityProviderId,
+    familyId: filters.familyId,
     continuation,
     limit: envelope.limit,
     requiredAvailableUntilMs,
@@ -1439,6 +1454,7 @@ export const readMergedExactSearchV1 = async (
       query: parsed.query,
       recordType: parsed.recordType,
       eligibilityProviderId: parsed.eligibilityProviderId,
+      familyId: parsed.familyId,
       continuation: parsed.continuation,
       limit: parsed.limit,
       requiredAvailableUntilMs: null,
@@ -1473,6 +1489,7 @@ export const readMergedExactSearchV2 = async (
       query: parsed.query,
       recordType: parsed.recordType,
       eligibilityProviderId: parsed.eligibilityProviderId,
+      familyId: parsed.familyId,
       continuation: parsed.continuation,
       limit: parsed.limit,
       requiredAvailableUntilMs: parsed.requiredAvailableUntilMs,
