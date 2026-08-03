@@ -19,6 +19,7 @@ const STABLE_ID = new RegExp(
   "u",
 );
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
+const SCHEMA_VERSION = /^[0-9]+\.[0-9]+\.[0-9]+$/u;
 const RFC3339_MILLISECONDS =
   /^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\.[0-9]{3}Z$/u;
 const DECIMAL = /^(?:0|[1-9][0-9]{0,23})(?:\.[0-9]{1,18})?$/u;
@@ -1321,6 +1322,55 @@ export type ReadModelDetailV2Outcome =
     }>
   | Readonly<{ outcome: "integrity_failure" }>
   | Readonly<{ outcome: "read_failure" }>;
+
+export const MODEL_DETAIL_PUBLIC_MAX_BYTES = 65_536;
+
+export type ModelDetailResponse = Readonly<{
+  data: Model;
+  meta: Readonly<{
+    resource: "models";
+    publication_id: string;
+    schema_version: string;
+    sort: readonly ["name", "stable_id"];
+    filters: Readonly<Record<string, never>>;
+  }>;
+}>;
+
+export type ModelDetailRepresentation = Readonly<{
+  detail: ModelDetailResponse;
+  representationBytes: Uint8Array;
+}>;
+
+/**
+ * Builds the sole ModelDetail wire envelope and encodes its exact JSON bytes.
+ * Callers validate and detach the canonical Model before this boundary, then
+ * apply MODEL_DETAIL_PUBLIC_MAX_BYTES without reserializing the representation.
+ */
+export function encodeModelDetailRepresentation(
+  input: Readonly<{
+    model: Model;
+    publicationId: string;
+    schemaVersion: string;
+  }>,
+): ModelDetailRepresentation {
+  parsePublicationPin(input.publicationId);
+  if (!SCHEMA_VERSION.test(input.schemaVersion))
+    throw new RangeError("Model detail schema version is invalid.");
+  const detail: ModelDetailResponse = {
+    data: input.model,
+    meta: {
+      resource: "models",
+      publication_id: input.publicationId,
+      schema_version: input.schemaVersion,
+      sort: ["name", "stable_id"],
+      filters: {},
+    },
+  };
+  const representationBytes = UTF8.encode(JSON.stringify(detail));
+  if (representationBytes.byteLength > MODEL_DETAIL_PUBLIC_MAX_BYTES)
+    throw new RangeError("Model detail representation exceeds public limit.");
+  return { detail, representationBytes };
+}
 
 export interface QueryServiceEnvelope {
   audience: "quantclarity-catalog-query-v1";

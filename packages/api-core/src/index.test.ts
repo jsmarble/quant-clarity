@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import type { Model } from "@quant-clarity/contracts";
+
 import {
   assertApiLimits,
   assertRuntimeBudgetUsage,
@@ -10,11 +12,13 @@ import {
   cacheDecision,
   classifyCost,
   corsHeaders,
+  encodeModelDetailRepresentation,
   executeReadBoundary,
   hashNormalizedQuery,
   ifNoneMatchMatches,
   issueCursor,
   matchRoute,
+  MODEL_DETAIL_PUBLIC_MAX_BYTES,
   operationName,
   reconcileRequestCursor,
   representationEtag,
@@ -58,6 +62,149 @@ const catalogQueryRpcV5Surface = {
 const PUBLICATION = "pub_00000000-0000-4000-8000-000000000001";
 const MODEL = "mdl_00000000-0000-4000-8000-000000000002";
 const PROVIDER = "prv_00000000-0000-4000-8000-000000000003";
+const FAMILY = "fam_00000000-0000-4000-8000-000000000004";
+const EVIDENCE = "evd_00000000-0000-4000-8000-000000000005";
+const OBSERVED_AT = "2026-08-03T00:00:00.000Z";
+
+const modelDetailModel = (): Model => ({
+  active_parameters: {
+    evidence_ids: [],
+    observed_at: null,
+    state: "unknown",
+    value: null,
+  },
+  architecture: {
+    evidence_ids: [],
+    observed_at: null,
+    state: "unknown",
+    value: null,
+  },
+  authoritative_checkpoint_ids: [],
+  cataloged_provider_count: {
+    derivation_version: "cataloged-provider-count@1",
+    observed_at: OBSERVED_AT,
+    value: 0,
+  },
+  checkpoints: [],
+  context_window_tokens: {
+    evidence_ids: [],
+    observed_at: null,
+    state: "unknown",
+    value: null,
+  },
+  display_name: {
+    evidence_ids: [EVIDENCE],
+    observed_at: OBSERVED_AT,
+    state: "known",
+    value: "Fixture Mödel",
+  },
+  family_id: FAMILY,
+  last_model_data_refresh: {
+    evidence_ids: [EVIDENCE],
+    observed_at: OBSERVED_AT,
+    state: "known",
+    value: OBSERVED_AT,
+  },
+  license: {
+    evidence_ids: [],
+    observed_at: null,
+    state: "unknown",
+    value: null,
+  },
+  maximum_output_tokens: {
+    evidence_ids: [],
+    observed_at: null,
+    state: "unknown",
+    value: null,
+  },
+  modalities: {
+    evidence_ids: [],
+    observed_at: null,
+    state: "unknown",
+    value: null,
+  },
+  model_id: MODEL,
+  publisher: {
+    evidence_ids: [EVIDENCE],
+    observed_at: OBSERVED_AT,
+    state: "known",
+    value: "Fixture Publisher",
+  },
+  release_date: {
+    evidence_ids: [],
+    observed_at: null,
+    state: "unknown",
+    value: null,
+  },
+  slug: {
+    evidence_ids: [EVIDENCE],
+    observed_at: OBSERVED_AT,
+    state: "known",
+    value: "fixture-model",
+  },
+  source_quantization: {
+    evidence_ids: [],
+    observed_at: null,
+    state: "unknown",
+    value: null,
+  },
+  source_weight_format: {
+    evidence_ids: [],
+    observed_at: null,
+    state: "unknown",
+    value: null,
+  },
+  status: {
+    evidence_ids: [EVIDENCE],
+    observed_at: OBSERVED_AT,
+    state: "known",
+    value: "active",
+  },
+  total_parameters: {
+    evidence_ids: [],
+    observed_at: null,
+    state: "unknown",
+    value: null,
+  },
+});
+
+const rawModelDetailByteLength = (model: Model): number =>
+  new TextEncoder().encode(
+    JSON.stringify({
+      data: model,
+      meta: {
+        resource: "models",
+        publication_id: PUBLICATION,
+        schema_version: "1.13.0",
+        sort: ["name", "stable_id"],
+        filters: {},
+      },
+    }),
+  ).byteLength;
+
+const modelDetailAtByteLength = (targetBytes: number): Model => {
+  const candidate = modelDetailModel();
+  candidate.publisher.value = "x";
+  const evidenceId = (index: number) =>
+    `evd_00000000-0000-4000-8000-${String(index).padStart(12, "0")}`;
+  candidate.display_name.evidence_ids = [evidenceId(0)];
+  const oneIdBytes = rawModelDetailByteLength(candidate);
+  candidate.display_name.evidence_ids = [evidenceId(0), evidenceId(1)];
+  const perAdditionalIdBytes = rawModelDetailByteLength(candidate) - oneIdBytes;
+  const evidenceCount =
+    1 + Math.floor((targetBytes - oneIdBytes) / perAdditionalIdBytes);
+  candidate.display_name.evidence_ids = Array.from(
+    { length: evidenceCount },
+    (_, index) => evidenceId(index),
+  );
+  const padding = targetBytes - rawModelDetailByteLength(candidate);
+  if (padding < 0 || padding > 199)
+    throw new RangeError("Unable to build exact ModelDetail test vector.");
+  candidate.publisher.value = "x".repeat(1 + padding);
+  if (rawModelDetailByteLength(candidate) !== targetBytes)
+    throw new RangeError("Exact ModelDetail test vector drifted.");
+  return candidate;
+};
 
 describe("shared catalog query RPC contract", () => {
   it("contains only the accepted hostile-boundary V2 methods", () => {
@@ -83,6 +230,99 @@ describe("shared catalog query RPC contract", () => {
       "readModelDetailV2",
       "resolvePublicationV2",
     ]);
+  });
+});
+
+describe("shared exact ModelDetail representation", () => {
+  it("fixes the public byte ceiling and exact envelope/key order", () => {
+    const model = modelDetailModel();
+    const representation = encodeModelDetailRepresentation({
+      model,
+      publicationId: PUBLICATION,
+      schemaVersion: "1.13.0",
+    });
+    const expected = `{"data":${JSON.stringify(model)},"meta":{"resource":"models","publication_id":"${PUBLICATION}","schema_version":"1.13.0","sort":["name","stable_id"],"filters":{}}}`;
+
+    expect(MODEL_DETAIL_PUBLIC_MAX_BYTES).toBe(65_536);
+    expect(new TextDecoder().decode(representation.representationBytes)).toBe(
+      expected,
+    );
+    expect(representation.representationBytes.byteLength).toBe(
+      new TextEncoder().encode(expected).byteLength,
+    );
+    expect(representation.detail).toEqual({
+      data: model,
+      meta: {
+        resource: "models",
+        publication_id: PUBLICATION,
+        schema_version: "1.13.0",
+        sort: ["name", "stable_id"],
+        filters: {},
+      },
+    });
+  });
+
+  it("encodes detached UTF-8 bytes exactly once per representation", () => {
+    const model = modelDetailModel();
+    const first = encodeModelDetailRepresentation({
+      model,
+      publicationId: PUBLICATION,
+      schemaVersion: "1.13.0",
+    });
+    const originalBytes = first.representationBytes.slice();
+    const second = encodeModelDetailRepresentation({
+      model,
+      publicationId: PUBLICATION,
+      schemaVersion: "1.13.0",
+    });
+
+    model.display_name.value = "Changed after encoding";
+
+    expect(first.representationBytes).toEqual(originalBytes);
+    expect(new TextDecoder().decode(first.representationBytes)).toContain(
+      "Fixture Mödel",
+    );
+    expect(first.representationBytes).not.toBe(second.representationBytes);
+  });
+
+  it("rejects invalid publication and schema identities before encoding", () => {
+    const model = modelDetailModel();
+    expect(() =>
+      encodeModelDetailRepresentation({
+        model,
+        publicationId: "not-a-publication",
+        schemaVersion: "1.13.0",
+      }),
+    ).toThrow(RangeError);
+    expect(() =>
+      encodeModelDetailRepresentation({
+        model,
+        publicationId: PUBLICATION,
+        schemaVersion: "latest",
+      }),
+    ).toThrow(RangeError);
+  });
+
+  it("accepts exactly 65,536 bytes and rejects 65,537 without truncation", () => {
+    const accepted = encodeModelDetailRepresentation({
+      model: modelDetailAtByteLength(MODEL_DETAIL_PUBLIC_MAX_BYTES),
+      publicationId: PUBLICATION,
+      schemaVersion: "1.13.0",
+    });
+    expect(accepted.representationBytes.byteLength).toBe(
+      MODEL_DETAIL_PUBLIC_MAX_BYTES,
+    );
+    expect(
+      JSON.parse(new TextDecoder().decode(accepted.representationBytes)),
+    ).toEqual(accepted.detail);
+
+    expect(() =>
+      encodeModelDetailRepresentation({
+        model: modelDetailAtByteLength(MODEL_DETAIL_PUBLIC_MAX_BYTES + 1),
+        publicationId: PUBLICATION,
+        schemaVersion: "1.13.0",
+      }),
+    ).toThrow("Model detail representation exceeds public limit.");
   });
 });
 
