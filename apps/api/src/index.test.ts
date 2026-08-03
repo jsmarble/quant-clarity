@@ -35,6 +35,7 @@ const metadata = (): DatasetMetadata => ({
 type Rpc = Readonly<{
   resolvePublicationV2: (input: unknown) => Promise<unknown>;
   readDatasetMetadataV1: (input: unknown) => Promise<unknown>;
+  readModelDetailV1: (input: unknown) => Promise<unknown>;
 }>;
 
 function successfulRpc(): Rpc {
@@ -56,6 +57,7 @@ function successfulRpc(): Rpc {
         metadata: metadata(),
       }),
     ),
+    readModelDetailV1: vi.fn(),
   };
 }
 
@@ -182,6 +184,7 @@ describe("public dataset metadata endpoint (API-002, API-003, API-013, API-024)"
         }),
       ),
       readDatasetMetadataV1: vi.fn(),
+      readModelDetailV1: vi.fn(),
     };
     const { env } = environment(undefined, null, rpc);
     const response = await handleRequest(
@@ -218,6 +221,7 @@ describe("public dataset metadata endpoint (API-002, API-003, API-013, API-024)"
       const rpc: Rpc = {
         resolvePublicationV2,
         readDatasetMetadataV1: vi.fn(),
+        readModelDetailV1: vi.fn(),
       };
       const { env } = environment(undefined, null, rpc);
       const response = await handleRequest(request(), env);
@@ -246,6 +250,13 @@ describe("public API privacy and protocol boundary (PRIV-002–PRIV-007)", () =>
     ["preflight", "OPTIONS", "/v1/metadata", 204],
     ["unsupported method", "POST", "/v1/metadata?unexpected=1", 405],
     ["unknown path", "GET", "/v1/not-present", 404],
+    [
+      "closed Model stable-ID path",
+      "GET",
+      "/v1/models/mdl_11111111-1111-4111-8111-111111111111",
+      404,
+    ],
+    ["closed Model slug path", "GET", "/v1/models/fixture-model", 404],
   ])(
     "rate limits the %s response path without RPC",
     async (_label, method, path, status) => {
@@ -255,6 +266,7 @@ describe("public API privacy and protocol boundary (PRIV-002–PRIV-007)", () =>
       expect(keys).toHaveLength(1);
       expect(rpc.resolvePublicationV2).not.toHaveBeenCalled();
       expect(rpc.readDatasetMetadataV1).not.toHaveBeenCalled();
+      expect(rpc.readModelDetailV1).not.toHaveBeenCalled();
     },
   );
 

@@ -41,6 +41,10 @@ import {
   readModelVariantExactNamePage,
 } from "./model-variant-exact-name.js";
 import {
+  MODEL_DETAIL_MAX_RESOURCE_BYTES,
+  MODEL_DETAIL_SELECT_SQL,
+} from "./model-detail.js";
+import {
   EXACT_PROVIDER_MODEL_ID_RAW_MARKER,
   readMergedExactSearchPage,
 } from "./merged-exact-search.js";
@@ -290,6 +294,22 @@ const metadataEnvelope = (publicationId: string): QueryServiceEnvelope => ({
   searchPlan: null,
 });
 
+const modelDetailEnvelope = (
+  publicationId: string,
+  modelId: string,
+): QueryServiceEnvelope => ({
+  version: 1,
+  audience: "quantclarity-catalog-query-v1",
+  environment: "local",
+  operation: { kind: "detail", resourceType: "model", identifier: modelId },
+  publicationId,
+  filters: {},
+  sort: ["name", "stable_id"],
+  limit: 25,
+  continuation: null,
+  searchPlan: null,
+});
+
 beforeAll(async () => {
   await applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS);
   fixture = await createServingV4Fixture(PUBLICATION, GENERATED_AT, [
@@ -445,6 +465,71 @@ describe("schema-1.11 current exact readers (SRCH-002, SRCH-004, SRCH-006, SRCH-
     expect(result.metadata.counts.active_models).toBeGreaterThan(0);
     expect(result.metadata.counts.active_offerings).toBeGreaterThan(0);
     expect(result.metadata.counts.active_providers).toBeGreaterThan(0);
+  });
+
+  it("reads one sealed Model by primary key through the named detail RPC", async () => {
+    const model = fixture.base.manifest.resources.find(
+      (resource) => resource.resourceType === "model",
+    );
+    if (model === undefined) throw new Error("fixture model missing");
+    const requiredAvailableUntilMs = Date.now() + 10 * 60_000;
+    const selected = await exports.CatalogQueryService.resolvePublicationV2({
+      version: 2,
+      audience: "quantclarity-catalog-query-v1",
+      environment: "local",
+      requestedPublicationId: null,
+      requiredAvailableUntilMs,
+    });
+    if (selected.outcome !== "selected")
+      throw new Error("fixture publication selection failed");
+
+    const plan = await env.SERVING_DB.prepare(
+      `EXPLAIN QUERY PLAN ${MODEL_DETAIL_SELECT_SQL}`,
+    )
+      .bind(
+        PUBLICATION,
+        requiredAvailableUntilMs,
+        model.resourceId,
+        MODEL_DETAIL_MAX_RESOURCE_BYTES,
+      )
+      .all<{ detail: string }>();
+    const planDetails = plan.results.map((row) => row.detail).join("\n");
+    expect(planDetails).toMatch(
+      /publication_resource(?:_lookup_idx|_[0-9]+).*publication_id=.*resource_type=.*resource_id=/u,
+    );
+
+    await expect(
+      exports.CatalogQueryService.readModelDetailV1({
+        version: 1,
+        audience: "quantclarity-catalog-query-v1",
+        environment: "local",
+        bookmark: selected.bookmark,
+        requiredAvailableUntilMs,
+        envelope: modelDetailEnvelope(PUBLICATION, model.resourceId),
+      }),
+    ).resolves.toMatchObject({
+      outcome: "model",
+      model: { model_id: model.resourceId },
+      schemaVersion: fixture.base.manifest.versions.schema,
+    });
+
+    await expect(
+      exports.CatalogQueryService.readModelDetailV1({
+        version: 1,
+        audience: "quantclarity-catalog-query-v1",
+        environment: "local",
+        bookmark: selected.bookmark,
+        requiredAvailableUntilMs,
+        envelope: modelDetailEnvelope(
+          PUBLICATION,
+          "mdl_99999999-9999-4999-8999-999999999999",
+        ),
+      }),
+    ).resolves.toEqual({
+      outcome: "not_found",
+      publicationId: PUBLICATION,
+      schemaVersion: fixture.base.manifest.versions.schema,
+    });
   });
 
   it("round-trips model NUL bytes and preserves canonical collision ordering and pagination", async () => {
@@ -1433,6 +1518,11 @@ describe("schema-1.11 current exact readers (SRCH-002, SRCH-004, SRCH-006, SRCH-
   });
 
   it("retains a displaced rollback candidate across A-to-B-to-C for v2 and fails closed after retention", async () => {
+    const retainedModel = fixture.base.manifest.resources.find(
+      (resource) => resource.resourceType === "model",
+    );
+    if (retainedModel === undefined)
+      throw new Error("retained fixture model missing");
     const fixtureB = await createServingV4Fixture(
       PUBLICATION_B,
       NOW - 15 * 60_000,
@@ -1463,19 +1553,21 @@ describe("schema-1.11 current exact readers (SRCH-002, SRCH-004, SRCH-006, SRCH-
     );
 
     const requiredAvailableUntilMs = NOW + 5 * 60_000;
-    await expect(
-      exports.CatalogQueryService.resolvePublicationV2({
+    const rollbackCandidate =
+      await exports.CatalogQueryService.resolvePublicationV2({
         version: 2,
         audience: "quantclarity-catalog-query-v1",
         environment: "local",
         requestedPublicationId: PUBLICATION,
         requiredAvailableUntilMs,
-      }),
-    ).resolves.toMatchObject({
+      });
+    expect(rollbackCandidate).toMatchObject({
       outcome: "selected",
       publicationId: PUBLICATION,
       requiredAvailableUntilMs,
     });
+    if (rollbackCandidate.outcome !== "selected")
+      throw new Error("rollback candidate publication selection failed");
 
     const firstActivatedAtB = new Date(switchedAtB).toISOString();
     const headB: StoredPublicationHead = {
@@ -1534,6 +1626,33 @@ describe("schema-1.11 current exact readers (SRCH-002, SRCH-004, SRCH-006, SRCH-
         results: [{ tierMarker: "exact-v1:c" }],
       },
     });
+    await expect(
+      exports.CatalogQueryService.readModelDetailV1({
+        version: 1,
+        audience: "quantclarity-catalog-query-v1",
+        environment: "local",
+        bookmark: retained.bookmark,
+        requiredAvailableUntilMs,
+        envelope: modelDetailEnvelope(PUBLICATION, retainedModel.resourceId),
+      }),
+    ).resolves.toMatchObject({
+      outcome: "model",
+      model: { model_id: retainedModel.resourceId },
+      schemaVersion: fixture.base.manifest.versions.schema,
+    });
+    await expect(
+      exports.CatalogQueryService.readModelDetailV1({
+        version: 1,
+        audience: "quantclarity-catalog-query-v1",
+        environment: "local",
+        bookmark: rollbackCandidate.bookmark,
+        requiredAvailableUntilMs,
+        envelope: modelDetailEnvelope(PUBLICATION, retainedModel.resourceId),
+      }),
+    ).resolves.toMatchObject({
+      outcome: "model",
+      model: { model_id: retainedModel.resourceId },
+    });
 
     await expect(
       exports.CatalogQueryService.resolvePublicationV1({
@@ -1575,6 +1694,16 @@ describe("schema-1.11 current exact readers (SRCH-002, SRCH-004, SRCH-006, SRCH-
         bookmark: retained.bookmark,
         requiredAvailableUntilMs: 0,
         envelope: rpcEnvelope(PUBLICATION, "Schema 17\u0000Model"),
+      }),
+    ).resolves.toEqual({ outcome: "integrity_failure" });
+    await expect(
+      exports.CatalogQueryService.readModelDetailV1({
+        version: 1,
+        audience: "quantclarity-catalog-query-v1",
+        environment: "local",
+        bookmark: retained.bookmark,
+        requiredAvailableUntilMs: 0,
+        envelope: modelDetailEnvelope(PUBLICATION, retainedModel.resourceId),
       }),
     ).resolves.toEqual({ outcome: "integrity_failure" });
 
@@ -1625,13 +1754,39 @@ describe("schema-1.11 current exact readers (SRCH-002, SRCH-004, SRCH-006, SRCH-
       RETAINED_HOT_PUBLICATION_WINDOW_MS;
 
     await rewriteReferences(cutoffReferenceMs - 1, cutoffReferenceMs + 1);
-    await expect(resolveA()).resolves.toMatchObject({ outcome: "selected" });
+    const selectedBeforeCutoff = await resolveA();
+    expect(selectedBeforeCutoff).toMatchObject({ outcome: "selected" });
+    if (selectedBeforeCutoff.outcome !== "selected")
+      throw new Error("retained cutoff publication selection failed");
+    await expect(
+      exports.CatalogQueryService.readModelDetailV1({
+        version: 1,
+        audience: "quantclarity-catalog-query-v1",
+        environment: "local",
+        bookmark: selectedBeforeCutoff.bookmark,
+        requiredAvailableUntilMs,
+        envelope: modelDetailEnvelope(PUBLICATION, retainedModel.resourceId),
+      }),
+    ).resolves.toMatchObject({
+      outcome: "model",
+      model: { model_id: retainedModel.resourceId },
+    });
     await rewriteReferences(cutoffReferenceMs + 1, cutoffReferenceMs - 1);
     await expect(resolveA()).resolves.toMatchObject({ outcome: "selected" });
     await rewriteReferences(cutoffReferenceMs, cutoffReferenceMs);
     await expect(resolveA()).resolves.toMatchObject({
       outcome: "publication_expired",
     });
+    await expect(
+      exports.CatalogQueryService.readModelDetailV1({
+        version: 1,
+        audience: "quantclarity-catalog-query-v1",
+        environment: "local",
+        bookmark: selectedBeforeCutoff.bookmark,
+        requiredAvailableUntilMs,
+        envelope: modelDetailEnvelope(PUBLICATION, retainedModel.resourceId),
+      }),
+    ).resolves.toEqual({ outcome: "integrity_failure" });
     await rewriteReferences(cutoffReferenceMs + 1, cutoffReferenceMs + 1);
     await expect(resolveA()).resolves.toMatchObject({ outcome: "selected" });
     await rewriteReferences(cutoffReferenceMs - 1, cutoffReferenceMs - 1);
@@ -1675,6 +1830,16 @@ describe("schema-1.11 current exact readers (SRCH-002, SRCH-004, SRCH-006, SRCH-
         bookmark: current.bookmark,
         requiredAvailableUntilMs,
         envelope: rpcEnvelope(PUBLICATION, "Schema 17\u0000Model"),
+      }),
+    ).resolves.toEqual({ outcome: "integrity_failure" });
+    await expect(
+      exports.CatalogQueryService.readModelDetailV1({
+        version: 1,
+        audience: "quantclarity-catalog-query-v1",
+        environment: "local",
+        bookmark: retained.bookmark,
+        requiredAvailableUntilMs,
+        envelope: modelDetailEnvelope(PUBLICATION, retainedModel.resourceId),
       }),
     ).resolves.toEqual({ outcome: "integrity_failure" });
     await expect(

@@ -20,6 +20,12 @@
 
 Every collection supports deterministic cursor pagination where meaningful; every detail resource has a stable ID route.
 
+### Phase 5O-A Model detail boundary
+
+[ADR 0038](../decisions/0038-publication-pinned-model-detail-read-seam.md) defines an unrouted stable-ID Model detail reader and API/query adapter seam. The closed operation accepts only an exact lowercase `mdl_` UUIDv4, selects active or exact retained-hot publication state through resolver V2, continues from the resolver bookmark with the identical availability horizon, and returns the selected publication's unchanged canonical Model in the existing `ModelDetail` contract. It uses one fixed SELECT-only exact publication-resource lookup, recomputes the canonical resource hash, and validates the complete Model and envelope contracts. It does not filter by active status or join Offering facts.
+
+This does **not** open any public Model path. `/v1/models/{model_id_or_slug}` remains wholly closed until a complete immutable publication-scoped projection covers both current canonical Model slugs and retained historical slug resolution, including collisions, readiness, and restore. Search names and aliases are not slug authority. Phase 5O-A also performs no Cache API, ETag, CORS, public response, remote binding, migration, or deployment work; serving schema stays `1.11.0`.
+
 | Resource | Collection | Detail / related routes |
 |---|---|---|
 | Models | `GET /models` | `GET /models/{model_id_or_slug}`, `GET /models/{id}/offerings` |
@@ -204,6 +210,8 @@ Suggested cache directives:
 ADR 0013 selects the optional `X-QuantClarity-Publication` header rather than a query parameter or duplicate publication-prefixed route tree. Public immutable versioned URLs remain deferred; safe application caching uses only the synthesized internal key above. The validated header value is public canonical state and is not visitor identity or telemetry.
 
 The query service resolves the active or requested hot publication through one D1 Session and returns its opaque bookmark with the head result. Resolver V2 receives only a safe-integer `requiredAvailableUntilMs`: `now + 15 minutes` for fresh work or the authenticated cursor's original expiry for continuation. It selects the current active/current rollback publication, or a historical publication whose later indexed departure from the active or rollback slot yields a seven-day cutoff strictly beyond that horizon plus 30 seconds. The same horizon enters merged-read V2 and every exact-reader publication sentinel on the bookmarked-or-newer snapshot. Resolver V1 remains compatibility-only and recognizes just the current pair. If the API misses its publication-qualified cache entry, its typed data call resumes from that bookmark so another replica cannot be older than the head already observed. The bookmark and horizon remain inside the live API-to-query call chain and are never returned, logged, traced, metered, alerted, cached, or stored. A single head-joined query is an allowed equivalent.
+
+Phase 5O-A reuses that continuity contract for its internal Model stable-ID read but intentionally stops before cache lookup or public routing. Its reader accepts the existing 1,000,000-byte canonical resource ceiling and its API adapter separately enforces the injected representation ceiling without truncation. A later public-route decision must supply publication-admission or controlled load/platform evidence showing every admitted `ModelDetail` representation fits the selected response, RPC, CPU, and latency limits.
 
 ## Frontend-to-API internal request
 
