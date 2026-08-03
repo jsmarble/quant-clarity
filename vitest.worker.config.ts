@@ -19,7 +19,10 @@ export default defineConfig({
               "apps/query/dist-worker/test-query-worker/index.js",
             ),
             modules: true,
-            bindings: { DEPLOYMENT_ENVIRONMENT: "local" },
+            bindings: {
+              DEPLOYMENT_ENVIRONMENT: "local",
+              PUBLIC_API_ORIGIN: "https://api.example.test",
+            },
             d1Databases: ["SERVING_DB"],
           },
         ],

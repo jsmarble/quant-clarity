@@ -175,6 +175,22 @@ function applyServingProviderEligibilityMigration(
   );
 }
 
+function applyServingDatasetMetadataSummaryMigration(
+  database: DatabaseSync,
+): void {
+  applyAtomicMigration(
+    database,
+    readFileSync(
+      resolve(
+        "migrations",
+        "serving",
+        "0013_publication_dataset_metadata_summary.sql",
+      ),
+      "utf8",
+    ),
+  );
+}
+
 function splitMigrationStatements(sql: string): readonly string[] {
   const statements: string[] = [];
   let current = "";
@@ -5485,7 +5501,10 @@ describe("serving publication migrations (PIPE-050–PIPE-056)", () => {
         },
       ]) {
         for (const mode of ["missing", "wrong-columns"] as const) {
-          const database = applyMigrations("serving");
+          const database = applyMigrations(
+            "serving",
+            "0012_provider_model_eligibility_index.sql",
+          );
           database.exec("BEGIN IMMEDIATE");
           try {
             database.exec(`DROP INDEX ${definition.name}`);
@@ -5572,7 +5591,10 @@ describe("serving publication migrations (PIPE-050–PIPE-056)", () => {
         "raw_provider_model_id_utf8",
         "normalized_provider_model_id_utf8",
       ] as const) {
-        const database = applyMigrations("serving");
+        const database = applyMigrations(
+          "serving",
+          "0012_provider_model_eligibility_index.sql",
+        );
         const publicationId = id("pub", 839);
         database.exec("PRAGMA foreign_keys = OFF");
         database.exec(
@@ -6114,7 +6136,10 @@ describe("serving publication migrations (PIPE-050–PIPE-056)", () => {
   });
 
   it("adds the exact nonunique provider eligibility index in schema 1.9.0", () => {
-    const database = applyMigrations("serving");
+    const database = applyMigrations(
+      "serving",
+      "0012_provider_model_eligibility_index.sql",
+    );
     expect(
       database
         .prepare(
@@ -6367,7 +6392,10 @@ describe("serving publication migrations (PIPE-050–PIPE-056)", () => {
          offering_id COLLATE NOCASE DESC
        )`,
     ]) {
-      const database = applyMigrations("serving");
+      const database = applyMigrations(
+        "serving",
+        "0012_provider_model_eligibility_index.sql",
+      );
       database.exec("DROP INDEX publication_provider_model_id_eligibility_idx");
       if (replacement !== null) database.exec(replacement);
       expect(() => {
@@ -6377,6 +6405,150 @@ describe("serving publication migrations (PIPE-050–PIPE-056)", () => {
           ? "no such index: publication_provider_model_id_eligibility_idx"
           : "switch-time provider eligibility index is missing malformed or unqueryable",
       );
+      database.close();
+    }
+  });
+
+  it("adds the immutable publication dataset metadata summary in schema 1.10.0", () => {
+    const database = applyMigrations("serving");
+    expect(
+      database
+        .prepare(
+          "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+        )
+        .get(),
+    ).toEqual({ schema_version: "1.10.0" });
+    expect(
+      database
+        .prepare(
+          `SELECT name, type FROM sqlite_master
+           WHERE name LIKE 'publication_dataset_metadata_summary%'
+           ORDER BY name`,
+        )
+        .all(),
+    ).toEqual([
+      { name: "publication_dataset_metadata_summary", type: "table" },
+      {
+        name: "publication_dataset_metadata_summary_immutable_delete",
+        type: "trigger",
+      },
+      {
+        name: "publication_dataset_metadata_summary_immutable_update",
+        type: "trigger",
+      },
+      {
+        name: "publication_dataset_metadata_summary_insert_guard",
+        type: "trigger",
+      },
+      {
+        name: "publication_dataset_metadata_summary_readiness_guard",
+        type: "trigger",
+      },
+      {
+        name: "publication_dataset_metadata_summary_switch_guard",
+        type: "trigger",
+      },
+    ]);
+    expect(
+      database
+        .prepare("PRAGMA table_info('publication_dataset_metadata_summary')")
+        .all()
+        .map((row) => row.name),
+    ).toEqual([
+      "publication_id",
+      "summary_version",
+      "closure_hash",
+      "source_resource_count",
+      "provider_slice_count",
+      "provider_slice_hash",
+      "active_model_count",
+      "active_offering_count",
+      "active_provider_count",
+      "has_stale_provider_slices",
+      "has_unavailable_provider_slices",
+      "summary_hash",
+    ]);
+    expect(database.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+    expect(database.prepare("PRAGMA integrity_check").get()).toEqual({
+      integrity_check: "ok",
+    });
+  });
+
+  it("requires exact clean schema 1.9.0 and rejects summary object collisions", () => {
+    const wrongVersion = applyMigrations(
+      "serving",
+      "0011_retained_hot_publications.sql",
+    );
+    expect(() => {
+      applyServingDatasetMetadataSummaryMigration(wrongVersion);
+    }).toThrow();
+    expect(
+      wrongVersion
+        .prepare(
+          "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+        )
+        .get(),
+    ).toEqual({ schema_version: "1.8.0" });
+
+    const collision = applyMigrations(
+      "serving",
+      "0012_provider_model_eligibility_index.sql",
+    );
+    collision.exec(
+      "CREATE TABLE publication_dataset_metadata_summary(fake INTEGER)",
+    );
+    expect(() => {
+      applyServingDatasetMetadataSummaryMigration(collision);
+    }).toThrow();
+    expect(
+      collision
+        .prepare(
+          "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+        )
+        .get(),
+    ).toEqual({ schema_version: "1.9.0" });
+  });
+
+  it("rolls back after every migration 0013 statement boundary and remains retryable", () => {
+    const migration = readFileSync(
+      resolve(
+        "migrations",
+        "serving",
+        "0013_publication_dataset_metadata_summary.sql",
+      ),
+      "utf8",
+    );
+    const statements = splitMigrationStatements(migration);
+    for (let boundary = 1; boundary <= statements.length; boundary += 1) {
+      const database = applyMigrations(
+        "serving",
+        "0012_provider_model_eligibility_index.sql",
+      );
+      expect(() => {
+        applyAtomicMigration(
+          database,
+          `${statements.slice(0, boundary).join("\n")}\nSELECT * FROM __injected_migration_failure__;`,
+        );
+      }).toThrow();
+      expect(
+        database
+          .prepare(
+            `SELECT schema_version,
+               (SELECT count(*) FROM sqlite_master
+                WHERE name LIKE 'publication_dataset_metadata_summary%')
+                 AS summary_object_count
+             FROM serving_schema_metadata WHERE singleton = 1`,
+          )
+          .get(),
+      ).toEqual({ schema_version: "1.9.0", summary_object_count: 0 });
+      applyServingDatasetMetadataSummaryMigration(database);
+      expect(
+        database
+          .prepare(
+            "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
+          )
+          .get(),
+      ).toEqual({ schema_version: "1.10.0" });
       database.close();
     }
   });

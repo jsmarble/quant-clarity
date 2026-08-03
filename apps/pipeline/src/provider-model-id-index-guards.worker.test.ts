@@ -65,7 +65,13 @@ const indexDefinitions = [
 ] as const;
 
 beforeAll(async () => {
-  await applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS);
+  await applyD1Migrations(
+    env.SERVING_DB,
+    env.TEST_MIGRATIONS.filter(
+      (migration) =>
+        migration.name <= "0012_provider_model_eligibility_index.sql",
+    ),
+  );
 });
 
 describe("schema-1.7 provider-model-ID proof index guards in pinned workerd", () => {

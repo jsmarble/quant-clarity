@@ -496,12 +496,12 @@ const openapi = {
   paths: {
     "/metadata": {
       get: {
-        summary: "Get active dataset metadata",
+        summary: "Get selected dataset metadata",
         operationId: "getMetadata",
         parameters: withReadHeaders(),
         responses: {
           "200": jsonResponse(
-            "Active dataset metadata",
+            "Selected dataset metadata",
             "DatasetMetadata",
             "metadata",
             {
@@ -510,8 +510,10 @@ const openapi = {
               api_version: "1",
               methodology_version: "1.0.0",
               methodology_effective_at: "2026-08-01T00:00:00.000Z",
-              methodology_url: "https://example.invalid/methodology/1.0.0",
-              precision_vocabulary_version: "1.0.0",
+              methodology_url:
+                "https://api.example.invalid/v1/methodologies/1.0.0",
+              precision_normalization_version: "precision-normalization@1",
+              precision_display_order_version: "precision-display-order@1",
               price_policy_version: "1.0.0",
               published_at: "2026-08-01T00:00:00.000Z",
               generated_at: "2026-08-01T00:00:00.000Z",
@@ -533,7 +535,7 @@ const openapi = {
       },
       ...protocolOperations(
         "getMetadata",
-        "Get active dataset metadata",
+        "Get selected dataset metadata",
         [],
         "metadata",
       ),

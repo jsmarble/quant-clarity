@@ -3014,6 +3014,12 @@ describe("portable backup manifest validation (BE-010–BE-012, OPS-008)", () =>
           rowCount: 2,
           byteCount: 96,
         },
+        {
+          table: "publication_dataset_metadata_summary",
+          chunkCount: 1,
+          rowCount: 1,
+          byteCount: 64,
+        },
         ...SERVING_BACKUP_TABLES.filter(
           (table) =>
             ![
@@ -3021,6 +3027,7 @@ describe("portable backup manifest validation (BE-010–BE-012, OPS-008)", () =>
               "publication_provider_slice",
               "publication_resource",
               "publication_search_document",
+              "publication_dataset_metadata_summary",
             ].includes(table),
         ).map((table) => ({
           table,
@@ -3065,6 +3072,15 @@ describe("portable backup manifest validation (BE-010–BE-012, OPS-008)", () =>
           rowCount: 2,
           byteCount: 96,
           contentHash: HASH_C,
+        },
+        {
+          table: "publication_dataset_metadata_summary",
+          ordinal: 0,
+          firstKey: "summary",
+          lastKey: "summary",
+          rowCount: 1,
+          byteCount: 64,
+          contentHash: HASH_A,
         },
       ],
     };

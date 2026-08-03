@@ -9,7 +9,8 @@
     "methodology_version",
     "methodology_effective_at",
     "methodology_url",
-    "precision_vocabulary_version",
+    "precision_normalization_version",
+    "precision_display_order_version",
     "price_policy_version",
     "published_at",
     "generated_at",
@@ -45,7 +46,12 @@
       "maxLength": 2048,
       "type": "string"
     },
-    "precision_vocabulary_version": {
+    "precision_normalization_version": {
+      "minLength": 1,
+      "maxLength": 64,
+      "type": "string"
+    },
+    "precision_display_order_version": {
       "minLength": 1,
       "maxLength": 64,
       "type": "string"

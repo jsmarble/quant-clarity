@@ -164,6 +164,26 @@ const snapshot = (committed: boolean): FakeD1Result[] => {
           state.providerModelIdSearch.documentCount,
       },
     ]),
+    result([
+      {
+        ...fixture.datasetMetadataSummary,
+        seal_closure_hash: fixture.seal.closure_hash,
+        seal_resource_count: fixture.seal.resource_count,
+        seal_provider_slice_count: fixture.seal.provider_slice_count,
+        seal_provider_slice_hash: fixture.seal.provider_slice_hash,
+        derived_active_model_count:
+          fixture.datasetMetadataSummary.active_model_count,
+        derived_active_offering_count:
+          fixture.datasetMetadataSummary.active_offering_count,
+        derived_active_provider_count:
+          fixture.datasetMetadataSummary.active_provider_count,
+        malformed_counted_resource_count: 0,
+        derived_has_stale_provider_slices:
+          fixture.datasetMetadataSummary.has_stale_provider_slices,
+        derived_has_unavailable_provider_slices:
+          fixture.datasetMetadataSummary.has_unavailable_provider_slices,
+      },
+    ]),
     result(committed ? [...state.receiptRows.bindings] : []),
     result(committed ? [...state.receiptRows.archives] : []),
     result(committed ? [...state.receiptRows.servings] : []),
@@ -284,17 +304,17 @@ describe("schema-1.7 readiness D1 adapter", () => {
     const malformed = structuredClone(exact);
     (malformed[1]?.results[0] as Record<string, unknown>).extra = true;
     const partial = structuredClone(exact);
-    partial[3] = result([]);
+    partial[4] = result([]);
     const conflict = structuredClone(exact);
     (
-      conflict[3]?.results[0] as Record<string, unknown>
+      conflict[4]?.results[0] as Record<string, unknown>
     ).provider_model_id_document_count = 2;
     const tableCountMismatch = structuredClone(exact);
     (
       tableCountMismatch[0]?.results[0] as Record<string, unknown>
     ).provider_model_id_storage_document_count = 1;
     const outOfBounds = structuredClone(exact);
-    (outOfBounds[4]?.results[0] as Record<string, unknown>).mutation_id =
+    (outOfBounds[5]?.results[0] as Record<string, unknown>).mutation_id =
       "x".repeat(129);
     for (const [rows, code] of [
       [malformed, "integrity_failure"],
@@ -323,7 +343,7 @@ describe("schema-1.7 readiness D1 adapter", () => {
       },
     });
     const hostile = snapshot(false);
-    hostile[1] = result(rotatingRows);
+    hostile[2] = result(rotatingRows);
     const fake = fakeDatabase(
       () => Promise.resolve(hostile),
       () => Promise.resolve(mutation(0)),

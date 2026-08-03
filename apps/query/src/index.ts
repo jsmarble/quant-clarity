@@ -1,8 +1,10 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
 
-import type { CatalogQueryRpcV2 } from "@quant-clarity/api-core";
+import type { CatalogQueryRpcV3 } from "@quant-clarity/api-core";
+import type { ReadDatasetMetadataV1Outcome } from "@quant-clarity/api-core";
 
 import {
+  readDatasetMetadataV1,
   readModelVariantExactNameTierV1,
   readMergedExactSearchV1,
   readMergedExactSearchV2,
@@ -22,6 +24,7 @@ import {
 type CatalogQueryEnv = CloudflareEnv & {
   SERVING_DB: D1Database;
   DEPLOYMENT_ENVIRONMENT: string;
+  PUBLIC_API_ORIGIN: string;
 };
 
 const SECURITY_HEADERS = {
@@ -45,7 +48,7 @@ function fetch(): Response {
 
 export class CatalogQueryService
   extends WorkerEntrypoint<CatalogQueryEnv>
-  implements CatalogQueryRpcV2
+  implements CatalogQueryRpcV3
 {
   resolvePublicationV1(input: unknown): Promise<ResolvePublicationV1Outcome> {
     return resolvePublicationV1(
@@ -59,6 +62,16 @@ export class CatalogQueryService
     return resolvePublicationV2(
       this.env.SERVING_DB,
       this.env.DEPLOYMENT_ENVIRONMENT,
+      input,
+    );
+  }
+
+  readDatasetMetadataV1(input: unknown): Promise<ReadDatasetMetadataV1Outcome> {
+    return readDatasetMetadataV1(
+      this.env.SERVING_DB,
+      this.env.DEPLOYMENT_ENVIRONMENT,
+      this.env.PUBLIC_API_ORIGIN,
+      Date.now(),
       input,
     );
   }

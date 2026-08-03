@@ -11,10 +11,17 @@ import {
 const MODEL_INDEX = "publication_model_variant_name_exact_idx";
 const PROVIDER_INDEX = "publication_provider_search_exact_idx";
 const PUBLICATION_ID = "pub_fefefefe-0000-4000-8000-000000000001" as const;
+const through = (name: string) =>
+  env.TEST_MIGRATIONS.filter((migration) => migration.name <= name);
+const only = (name: string) =>
+  env.TEST_MIGRATIONS.filter((migration) => migration.name === name);
 
 describe("serving migrations 0010 through 0012 structural preflights", () => {
   it("rejects portable semantic corruption and accepts exact repair", async () => {
-    await applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS.slice(0, -3));
+    await applyD1Migrations(
+      env.SERVING_DB,
+      through("0009_model_variant_name_exact_projection.sql"),
+    );
     const originals = new Map<string, string>();
     for (const indexName of [MODEL_INDEX, PROVIDER_INDEX]) {
       const row = await env.SERVING_DB.prepare(
@@ -54,7 +61,10 @@ describe("serving migrations 0010 through 0012 structural preflights", () => {
       await env.SERVING_DB.prepare(corruption.sql).run();
 
       await expect(
-        applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS.slice(-3, -2)),
+        applyD1Migrations(
+          env.SERVING_DB,
+          only("0010_provider_model_id_exact_projection.sql"),
+        ),
       ).rejects.toThrow();
       await expect(
         env.SERVING_DB.prepare(
@@ -81,7 +91,10 @@ describe("serving migrations 0010 through 0012 structural preflights", () => {
       expect(original).not.toBeNull();
       await env.SERVING_DB.exec(`DROP TRIGGER ${triggerName}`);
       await expect(
-        applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS.slice(-3, -2)),
+        applyD1Migrations(
+          env.SERVING_DB,
+          only("0010_provider_model_id_exact_projection.sql"),
+        ),
       ).rejects.toThrow();
       await expect(
         env.SERVING_DB.prepare(
@@ -119,7 +132,10 @@ describe("serving migrations 0010 through 0012 structural preflights", () => {
       BEGIN SELECT RAISE(ABORT, 'model/variant name search document is immutable'); END`,
     ).run();
 
-    await applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS.slice(-3, -2));
+    await applyD1Migrations(
+      env.SERVING_DB,
+      only("0010_provider_model_id_exact_projection.sql"),
+    );
     await expect(
       env.SERVING_DB.prepare(
         "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
@@ -152,7 +168,10 @@ describe("serving migrations 0010 through 0012 structural preflights", () => {
     expect(canonicalHistoryTrigger).not.toBeNull();
     await env.SERVING_DB.exec(`DROP TRIGGER ${historyTrigger}`);
     await expect(
-      applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS.slice(-2, -1)),
+      applyD1Migrations(
+        env.SERVING_DB,
+        only("0011_retained_hot_publications.sql"),
+      ),
     ).rejects.toThrow();
     await expect(
       env.SERVING_DB.prepare(
@@ -173,7 +192,10 @@ describe("serving migrations 0010 through 0012 structural preflights", () => {
       BEFORE UPDATE ON publication BEGIN SELECT 1; END`,
     ).run();
     await expect(
-      applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS.slice(-2, -1)),
+      applyD1Migrations(
+        env.SERVING_DB,
+        only("0011_retained_hot_publications.sql"),
+      ),
     ).rejects.toThrow();
     await env.SERVING_DB.exec(`DROP TRIGGER ${historyTrigger}`);
     await env.SERVING_DB.prepare(
@@ -182,7 +204,10 @@ describe("serving migrations 0010 through 0012 structural preflights", () => {
       BEGIN SELECT RAISE(ABORT, 'switch history is append-only'); END`,
     ).run();
     await expect(
-      applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS.slice(-2, -1)),
+      applyD1Migrations(
+        env.SERVING_DB,
+        only("0011_retained_hot_publications.sql"),
+      ),
     ).rejects.toThrow();
     await env.SERVING_DB.exec(`DROP TRIGGER ${historyTrigger}`);
     await env.SERVING_DB.prepare(canonicalHistoryTrigger!.sql).run();
@@ -203,7 +228,10 @@ describe("serving migrations 0010 through 0012 structural preflights", () => {
       "CREATE TABLE publication_switch_history_from_retained_hot_idx(fake INTEGER)",
     );
     await expect(
-      applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS.slice(-2, -1)),
+      applyD1Migrations(
+        env.SERVING_DB,
+        only("0011_retained_hot_publications.sql"),
+      ),
     ).rejects.toThrow();
     await expect(
       env.SERVING_DB.prepare(
@@ -214,7 +242,10 @@ describe("serving migrations 0010 through 0012 structural preflights", () => {
       "DROP TABLE publication_switch_history_from_retained_hot_idx",
     );
 
-    await applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS.slice(-2, -1));
+    await applyD1Migrations(
+      env.SERVING_DB,
+      only("0011_retained_hot_publications.sql"),
+    );
     await expect(
       env.SERVING_DB.prepare(
         "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
@@ -246,7 +277,10 @@ describe("serving migrations 0010 through 0012 structural preflights", () => {
   });
 
   it("adds the exact provider eligibility index and rejects corrupt substrate before mutation", async () => {
-    await applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS.slice(0, -1));
+    await applyD1Migrations(
+      env.SERVING_DB,
+      through("0011_retained_hot_publications.sql"),
+    );
     const original = await env.SERVING_DB.prepare(
       "SELECT sql FROM sqlite_schema WHERE type = 'trigger' AND name = 'publication_provider_model_id_search_document_insert_guard'",
     ).first<{ sql: string }>();
@@ -255,7 +289,10 @@ describe("serving migrations 0010 through 0012 structural preflights", () => {
       "DROP TRIGGER publication_provider_model_id_search_document_insert_guard",
     );
     await expect(
-      applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS.slice(-1)),
+      applyD1Migrations(
+        env.SERVING_DB,
+        only("0012_provider_model_eligibility_index.sql"),
+      ),
     ).rejects.toThrow();
     await expect(
       env.SERVING_DB.prepare(
@@ -277,13 +314,19 @@ describe("serving migrations 0010 through 0012 structural preflights", () => {
       "CREATE TABLE publication_provider_model_id_eligibility_idx(fake INTEGER)",
     );
     await expect(
-      applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS.slice(-1)),
+      applyD1Migrations(
+        env.SERVING_DB,
+        only("0012_provider_model_eligibility_index.sql"),
+      ),
     ).rejects.toThrow();
     await env.SERVING_DB.exec(
       "DROP TABLE publication_provider_model_id_eligibility_idx",
     );
 
-    await applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS.slice(-1));
+    await applyD1Migrations(
+      env.SERVING_DB,
+      only("0012_provider_model_eligibility_index.sql"),
+    );
     await expect(
       env.SERVING_DB.prepare(
         "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",

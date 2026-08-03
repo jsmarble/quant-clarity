@@ -1,9 +1,17 @@
-import type { QueryServiceEnvelope } from "@quant-clarity/api-core";
-import { MODEL_DISPLAY_NAME_MAX_UNICODE_SCALARS } from "@quant-clarity/contracts";
+import type {
+  QueryServiceEnvelope,
+  ReadDatasetMetadataV1Outcome,
+} from "@quant-clarity/api-core";
+import {
+  MODEL_DISPLAY_NAME_MAX_UNICODE_SCALARS,
+  type DatasetMetadata,
+} from "@quant-clarity/contracts";
 import {
   MODEL_VARIANT_NAME_SEARCH_MAX_NORMALIZED_NAME_UTF8_BYTES,
   normalizeExactSearchName,
   PROVIDER_MODEL_ID_SEARCH_MAX_NORMALIZED_UTF8_BYTES,
+  type DatasetMetadataSummaryProjection,
+  verifyDatasetMetadataSummaryHash,
 } from "@quant-clarity/publication-core";
 
 import {
@@ -37,6 +45,7 @@ import {
   RETAINED_HOT_PUBLICATION_MAX_HORIZON_MS,
   RETAINED_HOT_PUBLICATION_MAX_SWITCH_FUTURE_MS,
   RETAINED_HOT_PUBLICATION_WINDOW_MS,
+  RETAINED_HOT_REFERENCE_CTE_SQL,
   RETAINED_HOT_ROLLBACK_INDEX,
 } from "./retained-hot-publication.js";
 
@@ -47,9 +56,117 @@ const PROVIDER_ID = new RegExp(`^prv_${UUID_V4}$`, "u");
 const MODEL_ID = new RegExp(`^mdl_${UUID_V4}$`, "u");
 const VARIANT_ID = new RegExp(`^var_${UUID_V4}$`, "u");
 const FAMILY_ID = new RegExp(`^fam_${UUID_V4}$`, "u");
+const SHA256 = /^sha256:[0-9a-f]{64}$/u;
 const UTF8 = new TextEncoder();
 const ENVIRONMENTS = new Set(["local", "preview", "production", "test"]);
 const AUDIENCE = "quantclarity-catalog-query-v1" as const;
+const SEMVER =
+  /^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u;
+const MAX_METADATA_RESPONSE_BYTES = 16 * 1024;
+const MAX_PUBLIC_API_ORIGIN_BYTES = 2048;
+
+const METHODOLOGY_REGISTRY: Readonly<
+  Record<string, Readonly<{ effectiveAt: string; path: string }>>
+> = Object.freeze({
+  "1.0.0": Object.freeze({
+    effectiveAt: "2026-08-01T00:00:00.000Z",
+    path: "/v1/methodologies/1.0.0",
+  }),
+});
+
+export const DATASET_METADATA_SELECT_SQL = `
+WITH ${RETAINED_HOT_REFERENCE_CTE_SQL}, clock AS (
+  SELECT CAST(strftime('%s', 'now') AS INTEGER) * 1000 AS now_ms
+), eligible_publication AS (
+  SELECT
+    publication.publication_id,
+    publication.schema_version,
+    publication.methodology_version,
+    publication.precision_normalization_version,
+    publication.precision_display_order_version,
+    publication.price_policy_version,
+    publication.generated_at_ms,
+    publication.activated_at_ms,
+    publication.closure_hash AS publication_closure_hash,
+    seal.closure_hash AS sealed_closure_hash,
+    seal.resource_count AS sealed_resource_count,
+    seal.provider_slice_count AS sealed_provider_slice_count,
+    seal.provider_slice_hash AS sealed_provider_slice_hash,
+    summary.summary_version,
+    summary.closure_hash AS summary_closure_hash,
+    summary.source_resource_count,
+    summary.provider_slice_count AS summary_provider_slice_count,
+    summary.provider_slice_hash AS summary_provider_slice_hash,
+    summary.active_model_count AS active_models,
+    summary.active_offering_count AS active_offerings,
+    summary.active_provider_count AS active_providers,
+    summary.has_stale_provider_slices,
+    summary.has_unavailable_provider_slices,
+    summary.summary_hash
+  FROM publication
+  JOIN publication_head AS head ON head.singleton = 1
+  JOIN publication_closure_seal AS seal
+    ON seal.publication_id = publication.publication_id
+    AND seal.closure_hash = publication.closure_hash
+  JOIN publication_dataset_metadata_summary AS summary
+    ON summary.publication_id = publication.publication_id
+    AND summary.summary_version = '1.0.0'
+    AND summary.closure_hash = publication.closure_hash
+    AND summary.closure_hash = seal.closure_hash
+    AND summary.source_resource_count = publication.resource_count
+    AND summary.source_resource_count = seal.resource_count
+    AND summary.provider_slice_count = seal.provider_slice_count
+    AND summary.provider_slice_hash = seal.provider_slice_hash
+  CROSS JOIN retained_reference
+  CROSS JOIN clock
+  WHERE publication.publication_id = ?1
+    AND ?2 > clock.now_ms - ${String(RETAINED_HOT_PUBLICATION_CLOCK_SKEW_MS)}
+    AND ?2 <= clock.now_ms + ${String(RETAINED_HOT_PUBLICATION_MAX_HORIZON_MS)}
+    AND (
+      (
+        publication.publication_id = head.active_publication_id
+        AND publication.state = 'active'
+      ) OR (
+        publication.publication_id = head.rollback_candidate_publication_id
+        AND publication.state IN ('superseded', 'rolled_back')
+      ) OR (
+        publication.state IN ('superseded', 'rolled_back')
+        AND retained_reference.latest_head_reference_ms BETWEEN 0 AND
+          clock.now_ms + ${String(RETAINED_HOT_PUBLICATION_MAX_SWITCH_FUTURE_MS)}
+        AND retained_reference.latest_head_reference_ms >
+          ?2 + ${String(RETAINED_HOT_PUBLICATION_CLOCK_SKEW_MS)} -
+            ${String(RETAINED_HOT_PUBLICATION_WINDOW_MS)}
+      )
+    )
+)
+SELECT
+  eligible.publication_id,
+  eligible.schema_version,
+  eligible.methodology_version,
+  eligible.precision_normalization_version,
+  eligible.precision_display_order_version,
+  eligible.price_policy_version,
+  eligible.generated_at_ms,
+  eligible.activated_at_ms,
+  eligible.publication_closure_hash,
+  eligible.sealed_closure_hash,
+  eligible.sealed_resource_count,
+  eligible.sealed_provider_slice_count,
+  eligible.sealed_provider_slice_hash,
+  eligible.summary_version,
+  eligible.summary_closure_hash,
+  eligible.source_resource_count,
+  eligible.summary_provider_slice_count,
+  eligible.summary_provider_slice_hash,
+  eligible.active_models,
+  eligible.active_offerings,
+  eligible.active_providers,
+  eligible.has_stale_provider_slices,
+  eligible.has_unavailable_provider_slices,
+  eligible.summary_hash
+FROM eligible_publication AS eligible
+LIMIT 2
+`;
 
 export const RESOLVE_PUBLICATION_SELECT_SQL = `
 SELECT
@@ -1124,6 +1241,324 @@ const d1Rows = (value: unknown): unknown[] | null => {
   return Array.from(value.results as readonly unknown[]);
 };
 
+type DatasetMetadataRow = Readonly<{
+  publication_id: string;
+  schema_version: string;
+  methodology_version: string;
+  precision_normalization_version: string;
+  precision_display_order_version: string;
+  price_policy_version: string;
+  generated_at_ms: number;
+  activated_at_ms: number;
+  publication_closure_hash: string;
+  sealed_closure_hash: string;
+  sealed_resource_count: number;
+  sealed_provider_slice_count: number;
+  sealed_provider_slice_hash: string;
+  summary_version: "1.0.0";
+  summary_closure_hash: string;
+  source_resource_count: number;
+  summary_provider_slice_count: number;
+  summary_provider_slice_hash: string;
+  active_models: number;
+  active_offerings: number;
+  active_providers: number;
+  has_stale_provider_slices: 0 | 1;
+  has_unavailable_provider_slices: 0 | 1;
+  summary_hash: string;
+}>;
+
+type ParsedDatasetMetadataInput = Readonly<{
+  environment: QueryRpcEnvironment;
+  bookmark: string;
+  publicationId: string;
+  requiredAvailableUntilMs: number;
+}>;
+
+const boundedVersion = (value: unknown): value is string => {
+  if (typeof value !== "string") return false;
+  try {
+    return (
+      Array.from(value).length >= 1 &&
+      Array.from(value).length <= 64 &&
+      !value.includes("\u0000") &&
+      value === value.normalize("NFC") &&
+      UTF8.encode(value).byteLength <= 256
+    );
+  } catch {
+    return false;
+  }
+};
+
+const parseDatasetMetadataInput = (
+  value: unknown,
+): ParsedDatasetMetadataInput | null => {
+  const outer = ownDataRecord(value, [
+    "audience",
+    "bookmark",
+    "envelope",
+    "environment",
+    "requiredAvailableUntilMs",
+    "version",
+  ]);
+  if (
+    outer?.version !== 1 ||
+    outer.audience !== AUDIENCE ||
+    !environment(outer.environment) ||
+    typeof outer.bookmark !== "string" ||
+    outer.bookmark.length === 0 ||
+    outer.bookmark.length > 4096 ||
+    outer.bookmark === "first-primary" ||
+    outer.bookmark === "first-unconstrained" ||
+    typeof outer.requiredAvailableUntilMs !== "number" ||
+    !Number.isSafeInteger(outer.requiredAvailableUntilMs) ||
+    outer.requiredAvailableUntilMs < 0
+  )
+    return null;
+  const envelope = ownDataRecord(outer.envelope, [
+    "audience",
+    "continuation",
+    "environment",
+    "filters",
+    "limit",
+    "operation",
+    "publicationId",
+    "searchPlan",
+    "sort",
+    "version",
+  ]);
+  if (
+    envelope?.audience !== AUDIENCE ||
+    envelope.version !== 1 ||
+    envelope.environment !== outer.environment ||
+    envelope.continuation !== null ||
+    envelope.limit !== 25 ||
+    typeof envelope.publicationId !== "string" ||
+    !PUBLICATION_ID.test(envelope.publicationId) ||
+    envelope.searchPlan !== null ||
+    ownDataRecord(envelope.filters, []) === null ||
+    ownDataArray(envelope.sort, 0) === null ||
+    ownDataRecord(envelope.operation, ["kind"])?.kind !== "metadata"
+  )
+    return null;
+  return {
+    environment: outer.environment,
+    bookmark: outer.bookmark,
+    publicationId: envelope.publicationId,
+    requiredAvailableUntilMs: outer.requiredAvailableUntilMs,
+  };
+};
+
+const datasetMetadataRow = (value: unknown): value is DatasetMetadataRow => {
+  if (
+    !record(value) ||
+    !exactKeys(value, [
+      "activated_at_ms",
+      "active_models",
+      "active_offerings",
+      "active_providers",
+      "generated_at_ms",
+      "has_stale_provider_slices",
+      "has_unavailable_provider_slices",
+      "methodology_version",
+      "precision_display_order_version",
+      "precision_normalization_version",
+      "price_policy_version",
+      "publication_closure_hash",
+      "publication_id",
+      "schema_version",
+      "sealed_closure_hash",
+      "sealed_provider_slice_count",
+      "sealed_provider_slice_hash",
+      "sealed_resource_count",
+      "source_resource_count",
+      "summary_closure_hash",
+      "summary_hash",
+      "summary_provider_slice_count",
+      "summary_provider_slice_hash",
+      "summary_version",
+    ]) ||
+    typeof value.publication_id !== "string" ||
+    !PUBLICATION_ID.test(value.publication_id) ||
+    typeof value.schema_version !== "string" ||
+    !SEMVER.test(value.schema_version) ||
+    !boundedVersion(value.methodology_version) ||
+    !boundedVersion(value.precision_normalization_version) ||
+    !boundedVersion(value.precision_display_order_version) ||
+    !boundedVersion(value.price_policy_version) ||
+    value.summary_version !== "1.0.0" ||
+    typeof value.publication_closure_hash !== "string" ||
+    !SHA256.test(value.publication_closure_hash) ||
+    typeof value.sealed_closure_hash !== "string" ||
+    !SHA256.test(value.sealed_closure_hash) ||
+    typeof value.summary_closure_hash !== "string" ||
+    !SHA256.test(value.summary_closure_hash) ||
+    typeof value.sealed_provider_slice_hash !== "string" ||
+    !SHA256.test(value.sealed_provider_slice_hash) ||
+    typeof value.summary_provider_slice_hash !== "string" ||
+    !SHA256.test(value.summary_provider_slice_hash) ||
+    typeof value.summary_hash !== "string" ||
+    !SHA256.test(value.summary_hash) ||
+    (value.has_stale_provider_slices !== 0 &&
+      value.has_stale_provider_slices !== 1) ||
+    (value.has_unavailable_provider_slices !== 0 &&
+      value.has_unavailable_provider_slices !== 1)
+  )
+    return false;
+  return [
+    value.generated_at_ms,
+    value.activated_at_ms,
+    value.sealed_resource_count,
+    value.sealed_provider_slice_count,
+    value.source_resource_count,
+    value.summary_provider_slice_count,
+    value.active_models,
+    value.active_offerings,
+    value.active_providers,
+  ].every(
+    (item) =>
+      typeof item === "number" && Number.isSafeInteger(item) && item >= 0,
+  );
+};
+
+const reservedProductionHostname = (hostname: string): boolean => {
+  const normalized = hostname.toLowerCase();
+  if (
+    !normalized.includes(".") ||
+    normalized === "localhost" ||
+    normalized.endsWith(".localhost") ||
+    normalized.endsWith(".local") ||
+    normalized.endsWith(".internal") ||
+    normalized.endsWith(".invalid") ||
+    normalized.endsWith(".test") ||
+    normalized.endsWith(".example") ||
+    normalized === "example.com" ||
+    normalized.endsWith(".example.com") ||
+    normalized === "example.net" ||
+    normalized.endsWith(".example.net") ||
+    normalized === "example.org" ||
+    normalized.endsWith(".example.org") ||
+    normalized === "home.arpa" ||
+    normalized.endsWith(".home.arpa")
+  )
+    return true;
+  if (normalized.startsWith("[") && normalized.endsWith("]")) {
+    const address = normalized.slice(1, -1);
+    return (
+      address === "::" ||
+      address === "::1" ||
+      address.startsWith("fc") ||
+      address.startsWith("fd") ||
+      /^fe[89ab]/u.test(address) ||
+      address.startsWith("::ffff:127.") ||
+      address.startsWith("::ffff:10.") ||
+      address.startsWith("::ffff:192.168.")
+    );
+  }
+  const octets = normalized.split(".").map((part) => Number(part));
+  if (
+    octets.length === 4 &&
+    octets.every((part) => Number.isInteger(part) && part >= 0 && part <= 255)
+  ) {
+    const [first = -1, second = -1] = octets;
+    return (
+      first === 0 ||
+      first === 10 ||
+      first === 127 ||
+      (first === 169 && second === 254) ||
+      (first === 172 && second >= 16 && second <= 31) ||
+      (first === 192 && second === 168) ||
+      first >= 224
+    );
+  }
+  return false;
+};
+
+const publicApiOrigin = (
+  value: unknown,
+  protectedEnvironment: QueryRpcEnvironment,
+): string | null => {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    UTF8.encode(value).byteLength > MAX_PUBLIC_API_ORIGIN_BYTES
+  )
+    return null;
+  const authority = value.slice("https://".length);
+  if (
+    !value.startsWith("https://") ||
+    Array.from(authority).some((scalar) => {
+      const point = scalar.codePointAt(0);
+      return (
+        point === undefined ||
+        point <= 0x20 ||
+        point === 0x7f ||
+        "/@\\?#%".includes(scalar)
+      );
+    })
+  )
+    return null;
+  const colon = authority.lastIndexOf(":");
+  const hasPort = colon >= 0;
+  const hostname = hasPort ? authority.slice(0, colon) : authority;
+  const port = hasPort ? authority.slice(colon + 1) : null;
+  if (
+    hostname.length === 0 ||
+    hostname.length > 253 ||
+    hostname !== hostname.toLowerCase() ||
+    hostname.endsWith(".") ||
+    hostname
+      .split(".")
+      .some(
+        (label) =>
+          label.length === 0 ||
+          label.length > 63 ||
+          !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/u.test(label),
+      ) ||
+    (port !== null &&
+      (!/^(?:[1-9][0-9]{0,4})$/u.test(port) ||
+        Number(port) > 65_535 ||
+        port === "443")) ||
+    ((protectedEnvironment === "preview" ||
+      protectedEnvironment === "production") &&
+      reservedProductionHostname(hostname))
+  )
+    return null;
+  return value;
+};
+
+export const nextRefreshWindow = (
+  nowMs: number,
+): Readonly<{ starts_at: string; ends_at: string }> | null => {
+  if (
+    !Number.isSafeInteger(nowMs) ||
+    nowMs < 0 ||
+    nowMs > 8_640_000_000_000_000
+  )
+    return null;
+  const now = new Date(nowMs);
+  if (!Number.isFinite(now.getTime())) return null;
+  const midnightMs = Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate(),
+  );
+  for (let dayOffset = 0; dayOffset <= 7; dayOffset += 1) {
+    const candidateMidnightMs = midnightMs + dayOffset * 86_400_000;
+    const candidate = new Date(candidateMidnightMs);
+    const weekday = candidate.getUTCDay();
+    if (weekday !== 1 && weekday !== 4) continue;
+    const startsAtMs = candidateMidnightMs + 5 * 60 * 60 * 1000;
+    const endsAtMs = candidateMidnightMs + 17 * 60 * 60 * 1000;
+    if (dayOffset === 0 && nowMs >= endsAtMs) continue;
+    return {
+      starts_at: new Date(startsAtMs).toISOString(),
+      ends_at: new Date(endsAtMs).toISOString(),
+    };
+  }
+  return null;
+};
+
 const resolveRow = (value: unknown): value is ResolveRow =>
   record(value) &&
   exactKeys(value, [
@@ -1324,6 +1759,115 @@ export const resolvePublicationV2 = async (
       bookmark,
       requiredAvailableUntilMs: parsed.requiredAvailableUntilMs,
     };
+  } catch {
+    return { outcome: "read_failure" };
+  }
+};
+
+export const readDatasetMetadataV1 = async (
+  database: D1Database,
+  protectedEnvironment: unknown,
+  protectedPublicApiOrigin: unknown,
+  nowMs: number,
+  input: unknown,
+): Promise<ReadDatasetMetadataV1Outcome> => {
+  const parsed = parseDatasetMetadataInput(input);
+  if (
+    parsed === null ||
+    !environment(protectedEnvironment) ||
+    parsed.environment !== protectedEnvironment
+  )
+    return { outcome: "integrity_failure" };
+  const origin = publicApiOrigin(
+    protectedPublicApiOrigin,
+    protectedEnvironment,
+  );
+  const refreshWindow = nextRefreshWindow(nowMs);
+  if (origin === null || refreshWindow === null)
+    return { outcome: "integrity_failure" };
+  try {
+    const result: unknown = await database
+      .withSession(parsed.bookmark)
+      .prepare(DATASET_METADATA_SELECT_SQL)
+      .bind(parsed.publicationId, parsed.requiredAvailableUntilMs)
+      .all<DatasetMetadataRow>();
+    const rows = d1Rows(result);
+    if (rows === null) return { outcome: "read_failure" };
+    if (rows.length !== 1 || !datasetMetadataRow(rows[0]))
+      return { outcome: "integrity_failure" };
+    const row = rows[0];
+    if (
+      row.publication_id !== parsed.publicationId ||
+      row.publication_closure_hash !== row.sealed_closure_hash ||
+      row.publication_closure_hash !== row.summary_closure_hash ||
+      row.source_resource_count !== row.sealed_resource_count ||
+      row.summary_provider_slice_count !== row.sealed_provider_slice_count ||
+      row.summary_provider_slice_hash !== row.sealed_provider_slice_hash ||
+      row.generated_at_ms > row.activated_at_ms ||
+      row.generated_at_ms > 8_640_000_000_000_000 ||
+      row.activated_at_ms > 8_640_000_000_000_000 ||
+      row.active_models > row.source_resource_count ||
+      row.active_offerings > row.source_resource_count ||
+      row.active_providers > row.source_resource_count ||
+      !Object.hasOwn(METHODOLOGY_REGISTRY, row.methodology_version)
+    )
+      return { outcome: "integrity_failure" };
+    const summary: DatasetMetadataSummaryProjection = {
+      publication_id:
+        row.publication_id as DatasetMetadataSummaryProjection["publication_id"],
+      summary_version: row.summary_version,
+      closure_hash:
+        row.summary_closure_hash as DatasetMetadataSummaryProjection["closure_hash"],
+      source_resource_count: row.source_resource_count,
+      provider_slice_count: row.summary_provider_slice_count,
+      provider_slice_hash:
+        row.summary_provider_slice_hash as DatasetMetadataSummaryProjection["provider_slice_hash"],
+      active_model_count: row.active_models,
+      active_offering_count: row.active_offerings,
+      active_provider_count: row.active_providers,
+      has_stale_provider_slices: row.has_stale_provider_slices,
+      has_unavailable_provider_slices: row.has_unavailable_provider_slices,
+      summary_hash:
+        row.summary_hash as DatasetMetadataSummaryProjection["summary_hash"],
+    };
+    if (!(await verifyDatasetMetadataSummaryHash(summary)))
+      return { outcome: "integrity_failure" };
+    const methodology = METHODOLOGY_REGISTRY[row.methodology_version];
+    if (methodology === undefined) return { outcome: "integrity_failure" };
+    const degradationNotices: string[] = [];
+    if (row.has_stale_provider_slices === 1)
+      degradationNotices.push("One or more enabled provider slices are stale.");
+    if (row.has_unavailable_provider_slices === 1)
+      degradationNotices.push(
+        "One or more enabled provider slices are unavailable.",
+      );
+    degradationNotices.sort();
+    const metadata: DatasetMetadata = {
+      publication_id: row.publication_id,
+      schema_version: row.schema_version,
+      api_version: "1",
+      methodology_version: row.methodology_version,
+      methodology_effective_at: methodology.effectiveAt,
+      methodology_url: `${origin}${methodology.path}`,
+      precision_normalization_version: row.precision_normalization_version,
+      precision_display_order_version: row.precision_display_order_version,
+      price_policy_version: row.price_policy_version,
+      published_at: new Date(row.activated_at_ms).toISOString(),
+      generated_at: new Date(row.generated_at_ms).toISOString(),
+      next_refresh_window: refreshWindow,
+      counts: {
+        active_models: row.active_models,
+        active_offerings: row.active_offerings,
+        active_providers: row.active_providers,
+      },
+      degradation_notices: degradationNotices,
+    };
+    if (
+      UTF8.encode(JSON.stringify(metadata)).byteLength >
+      MAX_METADATA_RESPONSE_BYTES
+    )
+      return { outcome: "integrity_failure" };
+    return { outcome: "metadata", metadata };
   } catch {
     return { outcome: "read_failure" };
   }

@@ -1,4 +1,7 @@
-import { API_ROUTE_POLICIES } from "@quant-clarity/contracts";
+import {
+  API_ROUTE_POLICIES,
+  type DatasetMetadata,
+} from "@quant-clarity/contracts";
 import {
   parsePublicationPin,
   publicationCacheKey,
@@ -1220,6 +1223,28 @@ export interface CatalogQueryRpcV2 {
   resolvePublicationV2(input: unknown): Promise<unknown>;
   readMergedExactSearchV2(input: unknown): Promise<unknown>;
 }
+
+export interface DatasetMetadataQueryRpcV1 {
+  resolvePublicationV2(input: unknown): Promise<unknown>;
+  readDatasetMetadataV1(input: unknown): Promise<unknown>;
+}
+
+export interface CatalogQueryRpcV3
+  extends CatalogQueryRpcV2, DatasetMetadataQueryRpcV1 {}
+
+export type ReadDatasetMetadataV1Input = Readonly<{
+  version: 1;
+  audience: "quantclarity-catalog-query-v1";
+  environment: DeploymentEnvironment;
+  bookmark: string;
+  requiredAvailableUntilMs: number;
+  envelope: QueryServiceEnvelope;
+}>;
+
+export type ReadDatasetMetadataV1Outcome =
+  | Readonly<{ outcome: "metadata"; metadata: DatasetMetadata }>
+  | Readonly<{ outcome: "integrity_failure" }>
+  | Readonly<{ outcome: "read_failure" }>;
 
 export interface QueryServiceEnvelope {
   audience: "quantclarity-catalog-query-v1";

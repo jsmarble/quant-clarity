@@ -11,6 +11,7 @@ import {
   projectProviderSearchArtifactProofV2,
   projectProviderSearchProjection,
   projectProviderSearchStagingV2,
+  projectDatasetMetadataSummary,
   projectReadinessReceiptProofV3,
   projectReadinessReceiptProofV4,
   projectServingClosureSeal,
@@ -21,6 +22,7 @@ import {
   readModelVariantNameSearchStagingPersistenceV1,
   readProviderSearchStagingPersistenceV2,
   type ModelVariantNameSearchQueryableArtifactProofV3,
+  type DatasetMetadataSummaryProjection,
   type ProviderModelIdSearchQueryableArtifactProofV4,
   type ProviderModelIdSearchStagingProjectionV1,
   type ProviderSearchArtifactProofV2,
@@ -54,6 +56,7 @@ const DEFAULT_OFFERINGS = Object.freeze([
 export type ServingV4Fixture = Readonly<{
   base: ModelVariantNameSearchFixture;
   seal: ServingClosureSealProjection;
+  datasetMetadataSummary: DatasetMetadataSummaryProjection;
   providerStaging: ProviderSearchStagingProjectionV2;
   providerProjection: TrustedProviderSearchProjection;
   providerProof: ProviderSearchArtifactProofV2;
@@ -82,6 +85,8 @@ export const createServingV4Fixture = async (
   );
   const { manifest, closureRows } = providerModelIdFixture;
   const { seal } = await projectServingClosureSeal(closureRows);
+  const datasetMetadataSummary =
+    await projectDatasetMetadataSummary(closureRows);
   const providerProjection = await projectProviderSearchProjection({
     manifest,
     providerResources: closureRows.resources.filter(
@@ -300,6 +305,7 @@ export const createServingV4Fixture = async (
   return Object.freeze({
     base,
     seal,
+    datasetMetadataSummary,
     providerStaging,
     providerProjection,
     providerProof,
@@ -319,35 +325,57 @@ export const sealServingV4Fixture = (
   fixture: ServingV4Fixture,
 ): Promise<void> => {
   const seal = fixture.seal;
+  const summary = fixture.datasetMetadataSummary;
   return database
-    .prepare(
-      "INSERT INTO publication_closure_seal VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    )
-    .bind(
-      seal.publication_id,
-      seal.staging_revision,
-      seal.manifest_contract_version,
-      seal.hash_domain,
-      seal.hash_encoding_version,
-      seal.enabled_provider_scope_version,
-      seal.enabled_provider_count,
-      seal.provider_slice_count,
-      seal.provider_attribution_count,
-      seal.resource_count,
-      seal.exact_document_count,
-      seal.vector_document_count,
-      seal.chunk_count,
-      seal.bundle_hash,
-      seal.enabled_provider_scope_hash,
-      seal.provider_slice_hash,
-      seal.provider_attribution_hash,
-      seal.resource_inventory_hash,
-      seal.exact_search_inventory_hash,
-      seal.vector_inventory_hash,
-      seal.chunk_root_hash,
-      seal.closure_hash,
-      seal.sealed_at_ms,
-    )
-    .run()
+    .batch([
+      database
+        .prepare(
+          "INSERT INTO publication_closure_seal VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(
+          seal.publication_id,
+          seal.staging_revision,
+          seal.manifest_contract_version,
+          seal.hash_domain,
+          seal.hash_encoding_version,
+          seal.enabled_provider_scope_version,
+          seal.enabled_provider_count,
+          seal.provider_slice_count,
+          seal.provider_attribution_count,
+          seal.resource_count,
+          seal.exact_document_count,
+          seal.vector_document_count,
+          seal.chunk_count,
+          seal.bundle_hash,
+          seal.enabled_provider_scope_hash,
+          seal.provider_slice_hash,
+          seal.provider_attribution_hash,
+          seal.resource_inventory_hash,
+          seal.exact_search_inventory_hash,
+          seal.vector_inventory_hash,
+          seal.chunk_root_hash,
+          seal.closure_hash,
+          seal.sealed_at_ms,
+        ),
+      database
+        .prepare(
+          `INSERT INTO publication_dataset_metadata_summary VALUES
+           (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .bind(
+          summary.publication_id,
+          summary.summary_version,
+          summary.closure_hash,
+          summary.source_resource_count,
+          summary.provider_slice_count,
+          summary.provider_slice_hash,
+          summary.active_model_count,
+          summary.active_offering_count,
+          summary.active_provider_count,
+          summary.has_stale_provider_slices,
+          summary.has_unavailable_provider_slices,
+          summary.summary_hash,
+        ),
+    ])
     .then(() => undefined);
 };

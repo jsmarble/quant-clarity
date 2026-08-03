@@ -30,7 +30,10 @@ import {
   sealServingV4Fixture,
   type ServingV4Fixture,
 } from "../../pipeline/test/serving-switch-v4-fixture.js";
-import { RESOLVE_PUBLICATION_V2_SELECT_SQL } from "./catalog-query-rpc.js";
+import {
+  DATASET_METADATA_SELECT_SQL,
+  RESOLVE_PUBLICATION_V2_SELECT_SQL,
+} from "./catalog-query-rpc.js";
 import {
   MODEL_VARIANT_EXACT_NAME_ELIGIBILITY_FAMILY_SELECT_SQL,
   MODEL_VARIANT_EXACT_NAME_ELIGIBILITY_SELECT_SQL,
@@ -272,6 +275,19 @@ const rpcEnvelope = (
   },
 });
 
+const metadataEnvelope = (publicationId: string): QueryServiceEnvelope => ({
+  version: 1,
+  audience: "quantclarity-catalog-query-v1",
+  environment: "local",
+  operation: { kind: "metadata" },
+  publicationId,
+  filters: {},
+  sort: [],
+  limit: 25,
+  continuation: null,
+  searchPlan: null,
+});
+
 beforeAll(async () => {
   await applyD1Migrations(env.SERVING_DB, env.TEST_MIGRATIONS);
   fixture = await createServingV4Fixture(PUBLICATION, GENERATED_AT, [
@@ -329,7 +345,7 @@ describe("schema-1.8 current exact readers (SRCH-002, SRCH-006, SRCH-009, QA-005
       env.SERVING_DB.prepare(
         "SELECT schema_version FROM serving_schema_metadata WHERE singleton = 1",
       ).first(),
-    ).resolves.toEqual({ schema_version: "1.9.0" });
+    ).resolves.toEqual({ schema_version: "1.10.0" });
     await expect(
       exports.CatalogQueryService.resolvePublicationV1({
         version: 1,
@@ -366,6 +382,62 @@ describe("schema-1.8 current exact readers (SRCH-002, SRCH-006, SRCH-009, QA-005
         query: "Fixture\u0000Provider",
       }),
     ).rejects.toMatchObject({ code: "invalid_input" });
+  });
+
+  it("serves sealed current metadata through the V3 RPC using the fixed aggregate SELECT", async () => {
+    const requiredAvailableUntilMs = NOW + 5 * 60_000;
+    const selected = await exports.CatalogQueryService.resolvePublicationV2({
+      version: 2,
+      audience: "quantclarity-catalog-query-v1",
+      environment: "local",
+      requestedPublicationId: null,
+      requiredAvailableUntilMs,
+    });
+    if (selected.outcome !== "selected")
+      throw new Error("current publication selection failed");
+    const plan = await env.SERVING_DB.prepare(
+      `EXPLAIN QUERY PLAN ${DATASET_METADATA_SELECT_SQL}`,
+    )
+      .bind(PUBLICATION, requiredAvailableUntilMs)
+      .all<{ detail: string }>();
+    const details = plan.results.map((value) => value.detail).join("\n");
+    expect(details).toContain(RETAINED_HOT_FROM_INDEX);
+    expect(details).toContain(RETAINED_HOT_ROLLBACK_INDEX);
+    expect(details).toMatch(
+      /SEARCH summary USING INDEX .*publication_dataset_metadata_summary.*publication_id=/u,
+    );
+    expect(details).not.toContain("SCAN summary");
+    expect(details).not.toContain("publication_resource");
+    expect(details).not.toContain("publication_provider_slice");
+
+    const result = await exports.CatalogQueryService.readDatasetMetadataV1({
+      version: 1,
+      audience: "quantclarity-catalog-query-v1",
+      environment: "local",
+      bookmark: selected.bookmark,
+      requiredAvailableUntilMs,
+      envelope: metadataEnvelope(PUBLICATION),
+    });
+    expect(result).toMatchObject({
+      outcome: "metadata",
+      metadata: {
+        publication_id: PUBLICATION,
+        schema_version: "1.6.0",
+        api_version: "1",
+        methodology_version: "1.0.0",
+        methodology_effective_at: "2026-08-01T00:00:00.000Z",
+        methodology_url: "https://api.example.test/v1/methodologies/1.0.0",
+        precision_normalization_version: "1.0.0",
+        precision_display_order_version: "1.0.0",
+        price_policy_version: "1.0.0",
+        published_at: new Date(SWITCHED_AT).toISOString(),
+      },
+    });
+    if (result.outcome !== "metadata")
+      throw new Error("current metadata read failed");
+    expect(result.metadata.counts.active_models).toBeGreaterThan(0);
+    expect(result.metadata.counts.active_offerings).toBeGreaterThan(0);
+    expect(result.metadata.counts.active_providers).toBeGreaterThan(0);
   });
 
   it("round-trips model NUL bytes and preserves canonical collision ordering and pagination", async () => {

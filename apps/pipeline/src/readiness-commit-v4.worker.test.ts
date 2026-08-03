@@ -196,7 +196,140 @@ describe("schema-1.7 readiness transaction in pinned workerd", () => {
     await expect(
       applyReadinessCommitV4(env.SERVING_DB, fixture.readinessCommit),
     ).resolves.toMatchObject({ outcome: "idempotent_success" });
+    await expect(
+      env.SERVING_DB.prepare(
+        `UPDATE publication_dataset_metadata_summary
+         SET active_model_count = active_model_count + 1
+         WHERE publication_id = ?`,
+      )
+        .bind(PUBLICATION_A)
+        .run(),
+    ).rejects.toThrow("dataset metadata summary is immutable");
   });
+
+  it.each([
+    ["model", "status"],
+    ["model", "status.state"],
+    ["model", "status.value"],
+    ["model", "model_id"],
+    ["offering", "offering_id"],
+    ["offering", "stale"],
+    ["provider", "provider_id"],
+  ] as const)(
+    "rejects a counted %s resource missing %s before summary persistence",
+    async (resourceType, path) => {
+      const sequence =
+        100 +
+        [
+          "status",
+          "status.state",
+          "status.value",
+          "model_id",
+          "offering_id",
+          "stale",
+          "provider_id",
+        ].indexOf(path);
+      const publicationId =
+        `pub_cccccccc-0000-4000-8000-${sequence.toString().padStart(12, "0")}` as const;
+      const fixture = await prepareSealed(
+        publicationId,
+        Date.parse("2026-08-02T09:00:00.000Z") + sequence,
+      );
+      let changed = false;
+      const resources = fixture.base.closureRows.resources.map((resource) => {
+        if (changed || resource.resource_type !== resourceType) return resource;
+        let value = JSON.parse(resource.resource_json) as Record<
+          string,
+          unknown
+        >;
+        if (path.startsWith("status.")) {
+          const status = value.status as Record<string, unknown>;
+          const omitted = path.slice("status.".length);
+          value.status = Object.fromEntries(
+            Object.entries(status).filter(([key]) => key !== omitted),
+          );
+        } else {
+          value = Object.fromEntries(
+            Object.entries(value).filter(([key]) => key !== path),
+          );
+        }
+        changed = true;
+        return { ...resource, resource_json: JSON.stringify(value) };
+      });
+      expect(changed).toBe(true);
+      const hostileResource = resources.find(
+        (resource, index) =>
+          resource.resource_json !==
+          fixture.base.closureRows.resources[index]?.resource_json,
+      );
+      expect(hostileResource).toBeDefined();
+      const immutableResourceTrigger = await env.SERVING_DB.prepare(
+        `SELECT sql FROM sqlite_schema
+         WHERE type = 'trigger' AND name = 'publication_resource_immutable_update'`,
+      ).first<{ sql: string }>();
+      const immutableSummaryDeleteTrigger = await env.SERVING_DB.prepare(
+        `SELECT sql FROM sqlite_schema
+         WHERE type = 'trigger'
+           AND name = 'publication_dataset_metadata_summary_immutable_delete'`,
+      ).first<{ sql: string }>();
+      expect(immutableResourceTrigger).not.toBeNull();
+      expect(immutableSummaryDeleteTrigger).not.toBeNull();
+      await env.SERVING_DB.exec(
+        `DROP TRIGGER publication_resource_immutable_update;
+         DROP TRIGGER publication_dataset_metadata_summary_immutable_delete;`,
+      );
+      await env.SERVING_DB.prepare(
+        `DELETE FROM publication_dataset_metadata_summary
+         WHERE publication_id = ?`,
+      )
+        .bind(publicationId)
+        .run();
+      await env.SERVING_DB.prepare(
+        `UPDATE publication_resource SET resource_json = ?
+         WHERE publication_id = ? AND resource_type = ? AND resource_id = ?`,
+      )
+        .bind(
+          hostileResource!.resource_json,
+          publicationId,
+          hostileResource!.resource_type,
+          hostileResource!.resource_id,
+        )
+        .run();
+      await env.SERVING_DB.prepare(immutableResourceTrigger!.sql).run();
+      await env.SERVING_DB.prepare(immutableSummaryDeleteTrigger!.sql).run();
+      const summary = fixture.datasetMetadataSummary;
+      await expect(
+        env.SERVING_DB.prepare(
+          `INSERT INTO publication_dataset_metadata_summary VALUES
+           (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+          .bind(
+            summary.publication_id,
+            summary.summary_version,
+            summary.closure_hash,
+            summary.source_resource_count,
+            summary.provider_slice_count,
+            summary.provider_slice_hash,
+            summary.active_model_count,
+            summary.active_offering_count,
+            summary.active_provider_count,
+            summary.has_stale_provider_slices,
+            summary.has_unavailable_provider_slices,
+            summary.summary_hash,
+          )
+          .run(),
+      ).rejects.toThrow("dataset metadata counted resource is malformed");
+      await expect(
+        env.SERVING_DB.prepare(
+          `SELECT count(*) AS count
+           FROM publication_dataset_metadata_summary
+           WHERE publication_id = ?`,
+        )
+          .bind(publicationId)
+          .first(),
+      ).resolves.toEqual({ count: 0 });
+    },
+  );
 
   it("reconciles a committed transaction after response loss", async () => {
     const fixture = await prepareSealed(
