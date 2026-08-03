@@ -26,6 +26,7 @@ export const RESTORE_SOURCE_TABLES = Object.freeze([
 export const RESTORE_EXCLUDED_TABLES = Object.freeze([
   "serving_schema_metadata",
   "publication_closure_seal",
+  "publication_dataset_metadata_summary",
   "publication_readiness_receipt",
   "publication_archive_receipt",
   "publication_serving_receipt",

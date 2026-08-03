@@ -13,6 +13,7 @@ import {
   checkProviderContract,
   checkVariantContract,
   derivePublicationVectorId,
+  DatasetMetadataSchema,
   EvidenceIdSchema,
   FactSchema,
   type AdapterManifest,
@@ -533,7 +534,7 @@ describe("canonical public contracts (DATA-040–DATA-061, API-002–API-006)", 
       data: {
         methodology_version: "1.0.0",
         methodology_effective_at: "2026-08-01T00:00:00.000Z",
-        methodology_url: "https://example.invalid/methodology/1.0.0",
+        methodology_url: "https://api.example.invalid/v1/methodologies/1.0.0",
       },
       meta: {
         resource: "methodologies",
@@ -550,6 +551,46 @@ describe("canonical public contracts (DATA-040–DATA-061, API-002–API-006)", 
         data: { ...detail.data, content: "duplicate methodology body" },
       }),
     ).toBe(false);
+  });
+
+  it("keeps precision normalization and display-order policy versions separate in dataset metadata", () => {
+    const validate = standaloneValidator(DatasetMetadataSchema);
+    const metadata = {
+      publication_id: `pub_${UUID}`,
+      schema_version: "1.9.0",
+      api_version: "1",
+      methodology_version: "1.0.0",
+      methodology_effective_at: "2026-08-01T00:00:00.000Z",
+      methodology_url: "https://api.example.invalid/v1/methodologies/1.0.0",
+      precision_normalization_version: "precision-normalization@1",
+      precision_display_order_version: "precision-display-order@1",
+      price_policy_version: "price-policy@1",
+      published_at: "2026-08-01T00:00:00.000Z",
+      generated_at: "2026-08-01T00:00:00.000Z",
+      next_refresh_window: {
+        starts_at: "2026-08-03T05:00:00.000Z",
+        ends_at: "2026-08-03T17:00:00.000Z",
+      },
+      counts: {
+        active_models: 0,
+        active_offerings: 0,
+        active_providers: 0,
+      },
+      degradation_notices: [],
+    };
+    expect(validate(metadata)).toBe(true);
+    expect(
+      validate({
+        ...metadata,
+        precision_vocabulary_version: "ambiguous@1",
+      }),
+    ).toBe(false);
+    const {
+      precision_display_order_version: removedDisplayOrder,
+      ...missingDisplayOrder
+    } = metadata;
+    expect(removedDisplayOrder).toBe("precision-display-order@1");
+    expect(validate(missingDisplayOrder)).toBe(false);
   });
 
   it("accepts future public enum values but never known unknown", () => {

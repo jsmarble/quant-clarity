@@ -87,6 +87,7 @@ const backupFor = async (fixture: Fixture): Promise<BackupManifest> => {
       fixture.base.closureRows.searchDocuments.length,
     publication_vector_inventory: fixture.base.closureRows.vectors.length,
     publication_inventory_chunk: fixture.base.closureRows.chunks.length,
+    publication_dataset_metadata_summary: 1,
   });
   const tables = SERVING_BACKUP_TABLES.map((table) => {
     const rowCount = rows[table] ?? 0;
@@ -184,6 +185,7 @@ const versions: Readonly<Record<RestoreRebuildPhaseOrSwitchV4, string>> =
     model_search: "model-variant-name-rebuild@3",
     provider_model_id_search: "provider-model-id-rebuild@4",
     seal: "publication-closure-seal@1",
+    metadata_summary: "publication-dataset-metadata-summary@1",
     readiness: "serving-readiness@4",
     switch: "serving-switch@4",
   });
@@ -247,6 +249,7 @@ const portsFor = (
     rebuildModelSearch: callback("model_search"),
     rebuildProviderModelIdSearch: callback("provider_model_id_search"),
     createSeal: callback("seal"),
+    rebuildDatasetMetadataSummary: callback("metadata_summary"),
     commitReadinessV4: callback("readiness"),
     switchLocalV4: callback("switch"),
   };
@@ -258,7 +261,7 @@ describe("serving restore rebuild v4", () => {
     const profile = await profileFor(fixture);
     expect(profile.backupFormatVersion).toBe("1.0.0");
     expect(profile.materialization).toMatchObject({
-      destinationSchemaVersion: "1.9.0",
+      destinationSchemaVersion: "1.10.0",
       publicationState: "building",
       closureSealImported: false,
       stagingRevisionImported: false,
@@ -274,6 +277,7 @@ describe("serving restore rebuild v4", () => {
       expect.arrayContaining([
         "serving_schema_metadata",
         "publication_closure_seal",
+        "publication_dataset_metadata_summary",
         "publication_staging_revision",
         "publication_readiness_receipt",
         "publication_readiness_attestation",
@@ -296,7 +300,7 @@ describe("serving restore rebuild v4", () => {
     expect(calls).toEqual(RESTORE_REBUILD_PHASES_V4);
     expect(run.transcript).toMatchObject({
       transcriptVersion: "serving-restore-rebuild@4",
-      destinationSchemaVersion: "1.9.0",
+      destinationSchemaVersion: "1.10.0",
       syntheticProbeIds: RESTORE_SYNTHETIC_PROBE_IDS_V4,
     });
     expect(run.transcript.phases.map((phase) => phase.phase)).not.toContain(

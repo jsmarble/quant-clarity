@@ -2,6 +2,8 @@ import {
   assertServingReadinessCommitProjectionV4,
   classifyServingReadinessCommitRetryV4,
   readServingReadinessCommitPersistenceV4,
+  verifyDatasetMetadataSummaryHash,
+  type DatasetMetadataSummaryProjection,
   type PublicationState,
   type ServingArchiveReceiptRow,
   type ServingProbeReceiptRow,
@@ -78,6 +80,67 @@ const SELECT_ATTESTATION_SQL = `SELECT publication_id, environment,
   archive_receipt_hash, serving_receipt_hash, vector_receipt_hash,
   probes_receipt_hash, attestation_hash
 FROM publication_readiness_attestation WHERE publication_id = ?1`;
+
+const SELECT_DATASET_METADATA_SUMMARY_SQL = `WITH aggregate_counts AS (
+  SELECT
+    coalesce(sum(CASE WHEN resource_type = 'model'
+      AND json_extract(resource_json, '$.status.state') = 'known'
+      AND json_extract(resource_json, '$.status.value') = 'active'
+      THEN 1 ELSE 0 END), 0) AS derived_active_model_count,
+    coalesce(sum(CASE WHEN resource_type = 'offering'
+      AND json_extract(resource_json, '$.status.state') = 'known'
+      AND json_extract(resource_json, '$.status.value') = 'active'
+      AND json_extract(resource_json, '$.stale') = 0
+      THEN 1 ELSE 0 END), 0) AS derived_active_offering_count,
+    coalesce(sum(CASE WHEN resource_type = 'provider'
+      AND json_extract(resource_json, '$.status.state') = 'known'
+      AND json_extract(resource_json, '$.status.value') = 'active'
+      THEN 1 ELSE 0 END), 0) AS derived_active_provider_count,
+    coalesce(sum(CASE WHEN resource_type IN ('model', 'offering', 'provider') AND (
+      json_type(resource_json, '$.status') IS NOT 'object' OR
+      json_type(resource_json, '$.status.state') IS NOT 'text' OR
+      COALESCE(json_extract(resource_json, '$.status.state'), '__missing__') NOT IN
+        ('known', 'unknown', 'not_applicable', 'unavailable') OR
+      (json_extract(resource_json, '$.status.state') = 'known' AND
+        json_type(resource_json, '$.status.value') IS NOT 'text') OR
+      (json_extract(resource_json, '$.status.state') IS NOT 'known' AND
+        json_type(resource_json, '$.status.value') IS NOT 'null') OR
+      (resource_type = 'model' AND
+        json_extract(resource_json, '$.model_id') IS NOT resource_id) OR
+      (resource_type = 'offering' AND (
+        json_extract(resource_json, '$.offering_id') IS NOT resource_id OR
+        (json_type(resource_json, '$.stale') IS NOT 'true' AND
+          json_type(resource_json, '$.stale') IS NOT 'false')
+      )) OR
+      (resource_type = 'provider' AND
+        json_extract(resource_json, '$.provider_id') IS NOT resource_id)
+    ) THEN 1 ELSE 0 END), 0) AS malformed_counted_resource_count
+  FROM publication_resource WHERE publication_id = ?1
+)
+SELECT summary.publication_id, summary.summary_version,
+  summary.closure_hash, summary.source_resource_count,
+  summary.provider_slice_count, summary.provider_slice_hash,
+  summary.active_model_count, summary.active_offering_count,
+  summary.active_provider_count, summary.has_stale_provider_slices,
+  summary.has_unavailable_provider_slices, summary.summary_hash,
+  seal.closure_hash AS seal_closure_hash,
+  seal.resource_count AS seal_resource_count,
+  seal.provider_slice_count AS seal_provider_slice_count,
+  seal.provider_slice_hash AS seal_provider_slice_hash,
+  aggregate_counts.derived_active_model_count,
+  aggregate_counts.derived_active_offering_count,
+  aggregate_counts.derived_active_provider_count,
+  aggregate_counts.malformed_counted_resource_count,
+  EXISTS (SELECT 1 FROM publication_provider_slice
+    WHERE publication_id = ?1 AND freshness_state = 'stale')
+      AS derived_has_stale_provider_slices,
+  EXISTS (SELECT 1 FROM publication_provider_slice
+    WHERE publication_id = ?1 AND freshness_state = 'unavailable')
+      AS derived_has_unavailable_provider_slices
+FROM publication_dataset_metadata_summary AS summary
+JOIN publication_closure_seal AS seal USING (publication_id)
+CROSS JOIN aggregate_counts
+WHERE summary.publication_id = ?1`;
 
 const PROVIDER_PARITY_SQL = `
     AND (SELECT count(*) FROM publication_provider_search_document
@@ -431,6 +494,10 @@ const flagKeys = new Set<string>([
   "structured_filter_passed",
   "neutrality_passed",
   "version_isolation_passed",
+  "has_stale_provider_slices",
+  "has_unavailable_provider_slices",
+  "derived_has_stale_provider_slices",
+  "derived_has_unavailable_provider_slices",
 ]);
 const hashKeys = new Set<string>([
   "receipt_hash",
@@ -451,6 +518,7 @@ const hashKeys = new Set<string>([
   "vector_receipt_hash",
   "probes_receipt_hash",
   "attestation_hash",
+  "summary_hash",
 ]);
 const HASH = /^sha256:[0-9a-f]{64}$/u;
 
@@ -496,6 +564,7 @@ const readSnapshot = async (
   const session = database.withSession("first-primary");
   const untrusted = await session.batch([
     session.prepare(SELECT_PUBLICATION_SQL).bind(publicationId),
+    session.prepare(SELECT_DATASET_METADATA_SUMMARY_SQL).bind(publicationId),
     session.prepare(SELECT_BINDINGS_SQL).bind(publicationId),
     session.prepare(SELECT_ARCHIVE_SQL).bind(publicationId),
     session.prepare(SELECT_SERVING_SQL).bind(publicationId),
@@ -503,9 +572,9 @@ const readSnapshot = async (
     session.prepare(SELECT_PROBE_SQL).bind(publicationId),
     session.prepare(SELECT_ATTESTATION_SQL).bind(publicationId),
   ]);
-  const results = snapshotBatch(untrusted, 7);
-  const captured = new Array<readonly unknown[]>(7);
-  const maxima = [1, 4, 1, 1, 1, 1, 1] as const;
+  const results = snapshotBatch(untrusted, 8);
+  const captured = new Array<readonly unknown[]>(8);
+  const maxima = [1, 1, 4, 1, 1, 1, 1, 1] as const;
   for (let index = 0; index < results.length; index += 1)
     captured[index] = snapshotResult(results[index], maxima[index] ?? 0);
   const publication = captured[0];
@@ -559,26 +628,101 @@ const readSnapshot = async (
       persistence.providerModelIdSearch.documentCount
   )
     throw new ReadinessCommitV4Error("integrity_failure");
+
+  const summaryRows = captured[1] ?? [];
+  const summaryRow = summaryRows[0];
+  const summaryKeys = [
+    "publication_id",
+    "summary_version",
+    "closure_hash",
+    "source_resource_count",
+    "provider_slice_count",
+    "provider_slice_hash",
+    "active_model_count",
+    "active_offering_count",
+    "active_provider_count",
+    "has_stale_provider_slices",
+    "has_unavailable_provider_slices",
+    "summary_hash",
+    "seal_closure_hash",
+    "seal_resource_count",
+    "seal_provider_slice_count",
+    "seal_provider_slice_hash",
+    "derived_active_model_count",
+    "derived_active_offering_count",
+    "derived_active_provider_count",
+    "malformed_counted_resource_count",
+    "derived_has_stale_provider_slices",
+    "derived_has_unavailable_provider_slices",
+  ] as const;
+  if (
+    summaryRows.length !== 1 ||
+    !isRecord(summaryRow) ||
+    !exactKeys(summaryRow, summaryKeys)
+  )
+    throw new ReadinessCommitV4Error("integrity_failure");
+  for (const key of summaryKeys)
+    if (!validScalar(key, summaryRow[key]))
+      throw new ReadinessCommitV4Error("integrity_failure");
+  const summary = Object.freeze({
+    publication_id: summaryRow.publication_id,
+    summary_version: summaryRow.summary_version,
+    closure_hash: summaryRow.closure_hash,
+    source_resource_count: summaryRow.source_resource_count,
+    provider_slice_count: summaryRow.provider_slice_count,
+    provider_slice_hash: summaryRow.provider_slice_hash,
+    active_model_count: summaryRow.active_model_count,
+    active_offering_count: summaryRow.active_offering_count,
+    active_provider_count: summaryRow.active_provider_count,
+    has_stale_provider_slices: summaryRow.has_stale_provider_slices,
+    has_unavailable_provider_slices: summaryRow.has_unavailable_provider_slices,
+    summary_hash: summaryRow.summary_hash,
+  }) as DatasetMetadataSummaryProjection;
+  const expectedServing = persistence.receiptRows.servings[0];
+  if (
+    expectedServing === undefined ||
+    !(await verifyDatasetMetadataSummaryHash(summary)) ||
+    summary.publication_id !== publicationId ||
+    summary.closure_hash !== persistence.transition.closure_hash ||
+    summary.source_resource_count !== expectedServing.resource_count ||
+    summary.provider_slice_count !== expectedServing.provider_slice_count ||
+    summary.provider_slice_hash !== expectedServing.provider_slice_hash ||
+    summaryRow.seal_closure_hash !== summary.closure_hash ||
+    summaryRow.seal_resource_count !== summary.source_resource_count ||
+    summaryRow.seal_provider_slice_count !== summary.provider_slice_count ||
+    summaryRow.seal_provider_slice_hash !== summary.provider_slice_hash ||
+    summaryRow.malformed_counted_resource_count !== 0 ||
+    summaryRow.derived_active_model_count !== summary.active_model_count ||
+    summaryRow.derived_active_offering_count !==
+      summary.active_offering_count ||
+    summaryRow.derived_active_provider_count !==
+      summary.active_provider_count ||
+    summaryRow.derived_has_stale_provider_slices !==
+      summary.has_stale_provider_slices ||
+    summaryRow.derived_has_unavailable_provider_slices !==
+      summary.has_unavailable_provider_slices
+  )
+    throw new ReadinessCommitV4Error("integrity_failure");
   return Object.freeze({
     publicationState: state as PublicationState,
     publicationReadyAtMs: readyAtMs,
     publicationClosureHash: closureHash,
     receiptRows: Object.freeze({
       bindings: decode<ServingReadinessReceiptBindingRow>(
-        captured[1] ?? [],
+        captured[2] ?? [],
         bindingKeys,
       ),
       archives: decode<ServingArchiveReceiptRow>(
-        captured[2] ?? [],
+        captured[3] ?? [],
         archiveKeys,
       ),
-      servings: decode<ServingReceiptRowV4>(captured[3] ?? [], servingKeys),
-      vectors: decode<ServingVectorReceiptRow>(captured[4] ?? [], vectorKeys),
-      probes: decode<ServingProbeReceiptRow>(captured[5] ?? [], probeKeys),
+      servings: decode<ServingReceiptRowV4>(captured[4] ?? [], servingKeys),
+      vectors: decode<ServingVectorReceiptRow>(captured[5] ?? [], vectorKeys),
+      probes: decode<ServingProbeReceiptRow>(captured[6] ?? [], probeKeys),
     }) satisfies ServingReadinessReceiptRowsV4,
     attestation:
       decode<ServingReadinessAttestationProjectionV4>(
-        captured[6] ?? [],
+        captured[7] ?? [],
         attestationKeys,
       )[0] ?? null,
   });

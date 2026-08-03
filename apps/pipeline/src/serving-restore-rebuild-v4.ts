@@ -58,7 +58,7 @@ export type VerifiedRestoreSourceProfileV4 = Readonly<{
   backupRootHash: string;
   closureSource: RestoreClosureSourceV1;
   materialization: Readonly<{
-    destinationSchemaVersion: "1.9.0";
+    destinationSchemaVersion: "1.10.0";
     destinationIsolation: "fresh-local-schema";
     publicationState: "building";
     readyAtMs: null;
@@ -102,7 +102,7 @@ export const createVerifiedRestoreSourceProfileV4 = async (
     backupRootHash: validated.backupRootHash,
     closureSource: validated.closureSource,
     materialization: Object.freeze({
-      destinationSchemaVersion: "1.9.0" as const,
+      destinationSchemaVersion: "1.10.0" as const,
       destinationIsolation: "fresh-local-schema" as const,
       publicationState: "building" as const,
       readyAtMs: null,
@@ -143,6 +143,7 @@ export const RESTORE_REBUILD_PHASES_V4 = Object.freeze([
   "model_search",
   "provider_model_id_search",
   "seal",
+  "metadata_summary",
   "readiness",
 ] as const);
 export const RESTORE_REBUILD_PHASES = RESTORE_REBUILD_PHASES_V4;
@@ -156,6 +157,7 @@ const PHASE_VERSIONS_V4 = Object.freeze({
   model_search: "model-variant-name-rebuild@3",
   provider_model_id_search: "provider-model-id-rebuild@4",
   seal: "publication-closure-seal@1",
+  metadata_summary: "publication-dataset-metadata-summary@1",
   readiness: "serving-readiness@4",
   switch: "serving-switch@4",
 } as const);
@@ -200,6 +202,7 @@ export type RestoreRebuildPortsV4 = Readonly<{
   rebuildModelSearch: RestorePhaseCallbackV4;
   rebuildProviderModelIdSearch: RestorePhaseCallbackV4;
   createSeal: RestorePhaseCallbackV4;
+  rebuildDatasetMetadataSummary: RestorePhaseCallbackV4;
   commitReadinessV4: RestorePhaseCallbackV4;
   switchLocalV4?: RestorePhaseCallbackV4;
 }>;
@@ -216,7 +219,7 @@ export type RestoreRebuildTranscriptV4 = Readonly<{
   transcriptVersion: typeof RESTORE_REBUILD_TRANSCRIPT_VERSION_V4;
   profileVersion: typeof RESTORE_SOURCE_PROFILE_VERSION_V4;
   backupFormatVersion: "1.0.0";
-  destinationSchemaVersion: "1.9.0";
+  destinationSchemaVersion: "1.10.0";
   backupRootHash: string;
   closureHash: string;
   selectedTableCount: number;
@@ -364,7 +367,10 @@ const validatePhaseResultV4 = (
       (count !== 1 || hash !== profile.closureSource.closureHash)) ||
     ((phase === "provider_search" || phase === "model_search") &&
       count > profile.closureSource.resourceCount) ||
-    ((phase === "seal" || phase === "readiness" || phase === "switch") &&
+    ((phase === "seal" ||
+      phase === "metadata_summary" ||
+      phase === "readiness" ||
+      phase === "switch") &&
       count !== 1) ||
     (phase === "seal" && hash !== profile.closureSource.closureHash)
   )
@@ -413,7 +419,7 @@ const transcriptV4 = (
     transcriptVersion: RESTORE_REBUILD_TRANSCRIPT_VERSION_V4,
     profileVersion: RESTORE_SOURCE_PROFILE_VERSION_V4,
     backupFormatVersion: "1.0.0",
-    destinationSchemaVersion: "1.9.0",
+    destinationSchemaVersion: "1.10.0",
     backupRootHash: profile.backupRootHash,
     closureHash: profile.closureSource.closureHash,
     selectedTableCount: profile.selectedSources.length,
@@ -429,6 +435,7 @@ const portFieldsV4 = [
   "rebuildModelSearch",
   "rebuildProviderModelIdSearch",
   "createSeal",
+  "rebuildDatasetMetadataSummary",
   "commitReadinessV4",
 ] as const;
 
@@ -505,6 +512,8 @@ export const runLocalServingRestoreRebuildV4 = async (
       provider_model_id_search:
         callbackValues.rebuildProviderModelIdSearch as RestorePhaseCallbackV4,
       seal: callbackValues.createSeal as RestorePhaseCallbackV4,
+      metadata_summary:
+        callbackValues.rebuildDatasetMetadataSummary as RestorePhaseCallbackV4,
       readiness: callbackValues.commitReadinessV4 as RestorePhaseCallbackV4,
       switch: switchCallback as RestorePhaseCallbackV4 | undefined,
     });

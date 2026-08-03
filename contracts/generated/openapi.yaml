@@ -16,7 +16,7 @@
   "paths": {
     "/metadata": {
       "get": {
-        "summary": "Get active dataset metadata",
+        "summary": "Get selected dataset metadata",
         "operationId": "getMetadata",
         "parameters": [
           {
@@ -42,7 +42,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Active dataset metadata",
+            "description": "Selected dataset metadata",
             "headers": {
               "Access-Control-Allow-Origin": {
                 "description": "Public non-credentialed read access.",
@@ -95,8 +95,9 @@
                   "api_version": "1",
                   "methodology_version": "1.0.0",
                   "methodology_effective_at": "2026-08-01T00:00:00.000Z",
-                  "methodology_url": "https://example.invalid/methodology/1.0.0",
-                  "precision_vocabulary_version": "1.0.0",
+                  "methodology_url": "https://api.example.invalid/v1/methodologies/1.0.0",
+                  "precision_normalization_version": "precision-normalization@1",
+                  "precision_display_order_version": "precision-display-order@1",
                   "price_policy_version": "1.0.0",
                   "published_at": "2026-08-01T00:00:00.000Z",
                   "generated_at": "2026-08-01T00:00:00.000Z",
@@ -518,7 +519,7 @@
       },
       "head": {
         "operationId": "getMetadataHead",
-        "summary": "Get active dataset metadata headers",
+        "summary": "Get selected dataset metadata headers",
         "parameters": [
           {
             "name": "X-QuantClarity-Publication",
@@ -910,7 +911,7 @@
       },
       "options": {
         "operationId": "getMetadataOptions",
-        "summary": "Get active dataset metadata CORS capabilities",
+        "summary": "Get selected dataset metadata CORS capabilities",
         "parameters": [],
         "responses": {
           "204": {
@@ -29449,7 +29450,8 @@
           "methodology_version",
           "methodology_effective_at",
           "methodology_url",
-          "precision_vocabulary_version",
+          "precision_normalization_version",
+          "precision_display_order_version",
           "price_policy_version",
           "published_at",
           "generated_at",
@@ -29485,7 +29487,12 @@
             "maxLength": 2048,
             "type": "string"
           },
-          "precision_vocabulary_version": {
+          "precision_normalization_version": {
+            "minLength": 1,
+            "maxLength": 64,
+            "type": "string"
+          },
+          "precision_display_order_version": {
             "minLength": 1,
             "maxLength": 64,
             "type": "string"

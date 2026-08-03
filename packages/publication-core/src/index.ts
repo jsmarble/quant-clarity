@@ -83,6 +83,7 @@ export const PROVIDER_MODEL_ID_SEARCH_RAW_EXACT_INDEX_NAME =
   "publication_provider_model_id_raw_exact_idx" as const;
 export const PROVIDER_MODEL_ID_SEARCH_NORMALIZED_EXACT_INDEX_NAME =
   "publication_provider_model_id_normalized_exact_idx" as const;
+export const DATASET_METADATA_SUMMARY_VERSION = "1.0.0" as const;
 
 export const assertProviderModelIdSearchResourceByteBudget = (
   resourceByteLengths: readonly number[],
@@ -4556,6 +4557,240 @@ export interface ServingClosureSealProjection {
   readonly sealed_at_ms: number;
 }
 
+export type DatasetMetadataSummaryProjection = Readonly<{
+  publication_id: PublicationId;
+  summary_version: typeof DATASET_METADATA_SUMMARY_VERSION;
+  closure_hash: Sha256;
+  source_resource_count: number;
+  provider_slice_count: number;
+  provider_slice_hash: Sha256;
+  active_model_count: number;
+  active_offering_count: number;
+  active_provider_count: number;
+  has_stale_provider_slices: 0 | 1;
+  has_unavailable_provider_slices: 0 | 1;
+  summary_hash: Sha256;
+}>;
+
+type DatasetMetadataSummaryAuthority = Omit<
+  DatasetMetadataSummaryProjection,
+  "summary_hash"
+>;
+
+const datasetMetadataSummaryHash = async (
+  summary: DatasetMetadataSummaryAuthority,
+): Promise<Sha256> =>
+  digest("publication-dataset-metadata-summary", [
+    field("summary_version", "text", summary.summary_version),
+    field("publication_id", "identifier", summary.publication_id),
+    field("closure_hash", "digest", summary.closure_hash),
+    field(
+      "source_resource_count",
+      "integer",
+      String(summary.source_resource_count),
+    ),
+    field(
+      "provider_slice_count",
+      "integer",
+      String(summary.provider_slice_count),
+    ),
+    field("provider_slice_hash", "digest", summary.provider_slice_hash),
+    field("active_model_count", "integer", String(summary.active_model_count)),
+    field(
+      "active_offering_count",
+      "integer",
+      String(summary.active_offering_count),
+    ),
+    field(
+      "active_provider_count",
+      "integer",
+      String(summary.active_provider_count),
+    ),
+    field(
+      "has_stale_provider_slices",
+      "boolean",
+      String(summary.has_stale_provider_slices === 1),
+    ),
+    field(
+      "has_unavailable_provider_slices",
+      "boolean",
+      String(summary.has_unavailable_provider_slices === 1),
+    ),
+  ]);
+
+const activeKnownStatus = (value: {
+  readonly status:
+    | Readonly<{ state: "known"; value: string }>
+    | Readonly<{ state: string; value: null }>;
+}): boolean =>
+  value.status.state === "known" && value.status.value === "active";
+
+/**
+ * Builds the immutable O(1)-read dataset summary from the same persisted
+ * canonical rows that produce the publication seal. Counted resources are
+ * independently contract- and identity-validated; Variants never count as
+ * Models and stale Offerings never count as active.
+ */
+export const projectDatasetMetadataSummary = async (
+  rows: ServingClosureRows,
+): Promise<DatasetMetadataSummaryProjection> => {
+  const closure = await projectServingClosureSeal(rows);
+  let activeModelCount = 0;
+  let activeOfferingCount = 0;
+  let activeProviderCount = 0;
+
+  for (const resource of rows.resources) {
+    if (
+      resource.resource_type !== "model" &&
+      resource.resource_type !== "offering" &&
+      resource.resource_type !== "provider"
+    )
+      continue;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(resource.resource_json) as unknown;
+    } catch {
+      throw new TypeError("dataset metadata counted resource JSON is invalid");
+    }
+    if (resource.resource_type === "model") {
+      if (
+        !checkModelContract(parsed) ||
+        parsed.model_id !== resource.resource_id
+      )
+        throw new TypeError(
+          "dataset metadata Model resource is not contract-valid",
+        );
+      if (activeKnownStatus(parsed)) activeModelCount += 1;
+      continue;
+    }
+    if (resource.resource_type === "offering") {
+      if (
+        !checkOfferingContract(parsed) ||
+        parsed.offering_id !== resource.resource_id
+      )
+        throw new TypeError(
+          "dataset metadata Offering resource is not contract-valid",
+        );
+      if (activeKnownStatus(parsed) && !parsed.stale) activeOfferingCount += 1;
+      continue;
+    }
+    if (
+      !checkProviderContract(parsed) ||
+      parsed.provider_id !== resource.resource_id
+    )
+      throw new TypeError(
+        "dataset metadata Provider resource is not contract-valid",
+      );
+    if (activeKnownStatus(parsed)) activeProviderCount += 1;
+  }
+
+  const authority: DatasetMetadataSummaryAuthority = Object.freeze({
+    publication_id: closure.seal.publication_id,
+    summary_version: DATASET_METADATA_SUMMARY_VERSION,
+    closure_hash: closure.seal.closure_hash,
+    source_resource_count: closure.seal.resource_count,
+    provider_slice_count: closure.seal.provider_slice_count,
+    provider_slice_hash: closure.seal.provider_slice_hash,
+    active_model_count: activeModelCount,
+    active_offering_count: activeOfferingCount,
+    active_provider_count: activeProviderCount,
+    has_stale_provider_slices: rows.providerSlices.some(
+      (slice) => slice.freshness_state === "stale",
+    )
+      ? 1
+      : 0,
+    has_unavailable_provider_slices: rows.providerSlices.some(
+      (slice) => slice.freshness_state === "unavailable",
+    )
+      ? 1
+      : 0,
+  });
+  return Object.freeze({
+    ...authority,
+    summary_hash: await datasetMetadataSummaryHash(authority),
+  });
+};
+
+/** Recomputes the domain-separated digest over every stored authority field. */
+export const verifyDatasetMetadataSummaryHash = async (
+  summaryValue: unknown,
+): Promise<boolean> => {
+  let summary: Readonly<Record<string, unknown>>;
+  try {
+    summary = ownDataRecordSnapshot(
+      summaryValue,
+      [
+        "publication_id",
+        "summary_version",
+        "closure_hash",
+        "source_resource_count",
+        "provider_slice_count",
+        "provider_slice_hash",
+        "active_model_count",
+        "active_offering_count",
+        "active_provider_count",
+        "has_stale_provider_slices",
+        "has_unavailable_provider_slices",
+        "summary_hash",
+      ],
+      "dataset metadata summary",
+    );
+  } catch {
+    return false;
+  }
+  if (
+    summary.summary_version !== DATASET_METADATA_SUMMARY_VERSION ||
+    typeof summary.publication_id !== "string" ||
+    !PUBLICATION_ID.test(summary.publication_id) ||
+    typeof summary.closure_hash !== "string" ||
+    !HASH.test(summary.closure_hash) ||
+    typeof summary.provider_slice_hash !== "string" ||
+    !HASH.test(summary.provider_slice_hash) ||
+    typeof summary.summary_hash !== "string" ||
+    !HASH.test(summary.summary_hash)
+  )
+    return false;
+  if (
+    typeof summary.source_resource_count !== "number" ||
+    typeof summary.provider_slice_count !== "number" ||
+    typeof summary.active_model_count !== "number" ||
+    typeof summary.active_offering_count !== "number" ||
+    typeof summary.active_provider_count !== "number"
+  )
+    return false;
+  for (const count of [
+    summary.source_resource_count,
+    summary.provider_slice_count,
+    summary.active_model_count,
+    summary.active_offering_count,
+    summary.active_provider_count,
+  ])
+    if (!isNonnegativeSafeInteger(count)) return false;
+  if (
+    summary.provider_slice_count < 1 ||
+    (summary.has_stale_provider_slices !== 0 &&
+      summary.has_stale_provider_slices !== 1) ||
+    (summary.has_unavailable_provider_slices !== 0 &&
+      summary.has_unavailable_provider_slices !== 1)
+  )
+    return false;
+  const authority: DatasetMetadataSummaryAuthority = {
+    publication_id: summary.publication_id as PublicationId,
+    summary_version: DATASET_METADATA_SUMMARY_VERSION,
+    closure_hash: summary.closure_hash as Sha256,
+    source_resource_count: summary.source_resource_count,
+    provider_slice_count: summary.provider_slice_count,
+    provider_slice_hash: summary.provider_slice_hash as Sha256,
+    active_model_count: summary.active_model_count,
+    active_offering_count: summary.active_offering_count,
+    active_provider_count: summary.active_provider_count,
+    has_stale_provider_slices: summary.has_stale_provider_slices,
+    has_unavailable_provider_slices: summary.has_unavailable_provider_slices,
+  };
+  const summaryHash = summary.summary_hash;
+  return summaryHash === (await datasetMetadataSummaryHash(authority));
+};
+
 const assertPersistedModelFamilyClosure = (
   resources: readonly PersistedResourceDescriptor[],
 ): void => {
@@ -7469,6 +7704,7 @@ export const SERVING_BACKUP_TABLES = [
   "publication_vector_inventory",
   "publication_inventory_chunk",
   "publication_closure_seal",
+  "publication_dataset_metadata_summary",
   "publication_readiness_receipt",
   "publication_archive_receipt",
   "publication_serving_receipt",
@@ -7711,6 +7947,8 @@ export const validateBackupManifest = async (
   );
   if (summaries.get("publication")?.rowCount !== 1)
     errors.push("backup must contain exactly one publication row");
+  if (summaries.get("publication_dataset_metadata_summary")?.rowCount !== 1)
+    errors.push("backup must contain exactly one dataset metadata summary row");
   if (
     summaries.get("publication_provider_slice")?.rowCount !==
     manifest.expectedProviderSliceCount

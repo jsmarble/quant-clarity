@@ -252,7 +252,14 @@ export const DatasetMetadataSchema = Type.Object(
     methodology_version: Type.String({ minLength: 1, maxLength: 64 }),
     methodology_effective_at: timestamp(),
     methodology_url: Type.String({ format: "uri", maxLength: 2048 }),
-    precision_vocabulary_version: Type.String({ minLength: 1, maxLength: 64 }),
+    precision_normalization_version: Type.String({
+      minLength: 1,
+      maxLength: 64,
+    }),
+    precision_display_order_version: Type.String({
+      minLength: 1,
+      maxLength: 64,
+    }),
     price_policy_version: Type.String({ minLength: 1, maxLength: 64 }),
     published_at: timestamp(),
     generated_at: timestamp(),

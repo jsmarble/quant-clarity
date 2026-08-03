@@ -49,6 +49,7 @@ const selectedCounts: Readonly<Record<string, number>> = Object.freeze({
 const excludedCounts: Readonly<Record<string, number>> = Object.freeze({
   serving_schema_metadata: 1,
   publication_closure_seal: 1,
+  publication_dataset_metadata_summary: 1,
   publication_readiness_receipt: 4,
   publication_archive_receipt: 1,
   publication_serving_receipt: 1,

@@ -22,6 +22,7 @@ import {
   verifyCursor,
   type ApiLimits,
   type CatalogQueryRpcV2,
+  type CatalogQueryRpcV3,
   type CursorKeyring,
   type CursorPayload,
   type NormalizedRequest,
@@ -34,6 +35,12 @@ const catalogQueryRpcV2Surface = {
     Promise.resolve(input),
 } satisfies CatalogQueryRpcV2;
 
+const catalogQueryRpcV3Surface = {
+  ...catalogQueryRpcV2Surface,
+  readDatasetMetadataV1: (input: unknown): Promise<unknown> =>
+    Promise.resolve(input),
+} satisfies CatalogQueryRpcV3;
+
 const PUBLICATION = "pub_00000000-0000-4000-8000-000000000001";
 const MODEL = "mdl_00000000-0000-4000-8000-000000000002";
 const PROVIDER = "prv_00000000-0000-4000-8000-000000000003";
@@ -41,6 +48,11 @@ const PROVIDER = "prv_00000000-0000-4000-8000-000000000003";
 describe("shared catalog query RPC contract", () => {
   it("contains only the accepted hostile-boundary V2 methods", () => {
     expect(Object.keys(catalogQueryRpcV2Surface).sort()).toEqual([
+      "readMergedExactSearchV2",
+      "resolvePublicationV2",
+    ]);
+    expect(Object.keys(catalogQueryRpcV3Surface).sort()).toEqual([
+      "readDatasetMetadataV1",
       "readMergedExactSearchV2",
       "resolvePublicationV2",
     ]);

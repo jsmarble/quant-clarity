@@ -123,7 +123,7 @@ IDs, resource type, publication ID, and relationship IDs are structural fields; 
 | `Price` | `price_id`, `offering_id`, role, price class, `amount_decimal`, currency, currency provenance, unit, conditions, `is_standard_comparable`, effective interval, observed time, evidence IDs |
 | `PrecisionObservation` | `precision_id`, `offering_id`, normalized format, summary format, raw field/value/definition, optional format variant, component facts, exact applicability tuple, observed time, evidence IDs |
 | `EvidenceSummary` | the evidence summary shape above, plus subject resource ID and applicability-safe field name; never private payload/key |
-| `Metadata` | publication/dataset ID, schema version, API version, methodology version/effective date/URL, precision-vocabulary version, price-policy version, published time, next planned refresh window start/end, generated time, active provider/offering/model counts, degradation notices |
+| `Metadata` | selected publication/dataset ID, schema version, API version, methodology version/effective date/URL, independent precision-normalization and precision-display-order versions, price-policy version, immutable first-publication time, next planned refresh window start/end, generated time, active provider/offering/model counts, degradation notices |
 | `Methodology` | methodology version, effective time, and stable human-readable methodology URL; this versioned policy metadata is not a duplicate canonical fact entity |
 
 `total_parameters` and `active_parameters` include raw value, normalized decimal string, and `exact|approximate|unknown`. Checkpoint relationships expose publisher organization, repository/artifact URL and ID, revision/commit, publication date, declared weight format, quantization, file/checkpoint format, role, and evidenced lineage edges. Model Facts projects only model/variant/checkpoint fields. Offering Facts projects the exact offering scope, serving/component precision, three independent price roles, status/freshness, observations, and evidence. Neither view duplicates canonical entities.
@@ -189,7 +189,7 @@ Suggested cache directives:
 |---|---|
 | Active path-only detail | browser `max-age=0, must-revalidate`; internal CDN cache by publication plus stable resource ID for 5 minutes |
 | Collections, lists, filters, sorts, cursors, any query string | `private, no-store` |
-| Metadata head | `no-store` to browsers; edge microcache at most 5 seconds only if the whole request remains pinned to the resolved value |
+| Metadata | `private, no-store`; strong representation ETag only, with no Cache API or edge microcache |
 | Search | `private, no-store` to prevent verbatim query persistence |
 | Errors/429 | `no-store` |
 
