@@ -49,7 +49,7 @@ import {
   RETAINED_HOT_ROLLBACK_INDEX,
 } from "./retained-hot-publication.js";
 
-export { readModelDetailV1 } from "./model-detail.js";
+export { readModelDetailV1, readModelDetailV2 } from "./model-detail.js";
 
 const UUID_V4 =
   "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
