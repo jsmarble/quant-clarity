@@ -43,8 +43,25 @@ import {
 
 const HASH_C = `sha256:${"c".repeat(64)}` as const;
 const UUID_PROVIDER = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const UUID_FAMILY = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 const UUID_MODEL = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const MAXIMUM_AGE_MS = 60 * 60 * 1000;
+
+const canonicalJson = (value: unknown): string => {
+  if (value === null) return "null";
+  if (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  )
+    return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`)
+    .join(",")}}`;
+};
 
 export type ReadyPublicationFixture = Readonly<{
   rows: ServingClosureRows;
@@ -74,6 +91,7 @@ export const createReadyPublicationFixture = async (
   }> = {},
 ): Promise<ReadyPublicationFixture> => {
   const providerId = `prv_${UUID_PROVIDER}`;
+  const familyId = `fam_${UUID_FAMILY}`;
   const modelId = `mdl_${UUID_MODEL}`;
   const providerSliceId = `prn_${publicationId.slice(4)}`;
   const providerRunId = `pvr_${publicationId.slice(4)}`;
@@ -82,13 +100,68 @@ export const createReadyPublicationFixture = async (
     "model",
     modelId,
   );
+  const evidenceId = "evd_cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+  const observedAt = iso(generatedAtMs);
+  const knownFact = (value: unknown) => ({
+    evidence_ids: [evidenceId],
+    observed_at: observedAt,
+    state: "known",
+    value,
+  });
+  const unknownFact = {
+    evidence_ids: [],
+    observed_at: null,
+    state: "unknown",
+    value: null,
+  };
   const resourceBase = {
     resourceType: "model" as const,
     resourceId: modelId,
-    resourceJson: `{"name":"Model ${publicationId.slice(4, 8)}"}`,
+    resourceJson: canonicalizePublicationJson(
+      canonicalJson({
+        active_parameters: unknownFact,
+        architecture: unknownFact,
+        authoritative_checkpoint_ids: [],
+        cataloged_provider_count: {
+          derivation_version: "cataloged-provider-count@1",
+          observed_at: observedAt,
+          value: 0,
+        },
+        checkpoints: [],
+        context_window_tokens: unknownFact,
+        display_name: knownFact(`Model ${publicationId.slice(4, 8)}`),
+        family_id: familyId,
+        last_model_data_refresh: knownFact(observedAt),
+        license: unknownFact,
+        maximum_output_tokens: unknownFact,
+        modalities: unknownFact,
+        model_id: modelId,
+        publisher: knownFact("Fixture Publisher"),
+        release_date: unknownFact,
+        slug: knownFact(`model-${publicationId.slice(4, 8)}`),
+        source_quantization: unknownFact,
+        source_weight_format: unknownFact,
+        status: knownFact("active"),
+        total_parameters: unknownFact,
+      }),
+      "object",
+    ),
   };
-  const evidenceId = "evd_cccccccc-cccc-4ccc-8ccc-cccccccccccc";
-  const observedAt = iso(generatedAtMs);
+  const familyResourceBase = {
+    resourceType: "model_family" as const,
+    resourceId: familyId,
+    resourceJson: canonicalizePublicationJson(
+      canonicalJson({
+        display_name: knownFact(`Family ${publicationId.slice(4, 8)}`),
+        family_id: familyId,
+        last_model_data_refresh: knownFact(observedAt),
+        model_ids: [modelId],
+        publisher: knownFact("Fixture Publisher"),
+        slug: knownFact(`family-${publicationId.slice(4, 8)}`),
+      }),
+      "object",
+    ),
+  };
   const providerResourceBase = {
     resourceType: "provider" as const,
     resourceId: providerId,
@@ -147,10 +220,18 @@ export const createReadyPublicationFixture = async (
       contentHash: await hashPublicationResourceContent(resourceBase),
     },
     {
+      ...familyResourceBase,
+      contentHash: await hashPublicationResourceContent(familyResourceBase),
+    },
+    {
       ...providerResourceBase,
       contentHash: await hashPublicationResourceContent(providerResourceBase),
     },
-  ];
+  ].sort((left, right) => {
+    const leftKey = `${left.resourceType}:${left.resourceId}`;
+    const rightKey = `${right.resourceType}:${right.resourceId}`;
+    return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
+  });
   const documentBase = {
     resourceType: "model" as const,
     resourceId: modelId,
@@ -315,7 +396,7 @@ export const createReadyPublicationFixture = async (
     manifestContractVersion: "1.0.0",
     enabledProviderScopeVersion: "fixture@1",
     bundleHash: manifest.bundleHash,
-    stagingRevision: 10,
+    stagingRevision: 11,
     sealedAtMs,
   };
   const { seal } = await projectServingClosureSeal(rows);

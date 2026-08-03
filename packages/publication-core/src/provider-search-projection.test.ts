@@ -188,12 +188,57 @@ async function input(
       ),
     ),
   );
+  const familyId = id("fam", 100);
   const modelId = id("mdl", 100);
-  const modelResourceJson = "{}";
+  const modelResourceJson = canonicalizePublicationJson(
+    canonicalJson({
+      active_parameters: unknownFact(),
+      architecture: unknownFact(),
+      authoritative_checkpoint_ids: [],
+      cataloged_provider_count: {
+        derivation_version: "cataloged-provider-count@1",
+        observed_at: observedAt,
+        value: 0,
+      },
+      checkpoints: [],
+      context_window_tokens: unknownFact(),
+      display_name: fact("Unrelated model", 100),
+      family_id: familyId,
+      last_model_data_refresh: fact(observedAt, 101),
+      license: unknownFact(),
+      maximum_output_tokens: unknownFact(),
+      modalities: unknownFact(),
+      model_id: modelId,
+      publisher: fact("Publisher", 102),
+      release_date: unknownFact(),
+      slug: fact("unrelated-model", 103),
+      source_quantization: unknownFact(),
+      source_weight_format: unknownFact(),
+      status: fact("active", 104),
+      total_parameters: unknownFact(),
+    }),
+    "object",
+  );
   const modelResourceHash = await hashPublicationResourceContent({
     resourceType: "model",
     resourceId: modelId,
     resourceJson: modelResourceJson,
+  });
+  const familyResourceJson = canonicalizePublicationJson(
+    canonicalJson({
+      display_name: fact("Unrelated family", 105),
+      family_id: familyId,
+      last_model_data_refresh: fact(observedAt, 106),
+      model_ids: [modelId],
+      publisher: fact("Publisher", 107),
+      slug: fact("unrelated-family", 108),
+    }),
+    "object",
+  );
+  const familyResourceHash = await hashPublicationResourceContent({
+    resourceType: "model_family",
+    resourceId: familyId,
+    resourceJson: familyResourceJson,
   });
   const modelDocumentId = await derivePublicationVectorId(
     publicationId as `pub_${string}`,
@@ -229,6 +274,12 @@ async function input(
     ...(options.includeModel
       ? [
           {
+            resourceType: "model_family" as const,
+            resourceId: familyId,
+            resourceJson: familyResourceJson,
+            contentHash: familyResourceHash,
+          },
+          {
             resourceType: "model" as const,
             resourceId: modelId,
             resourceJson: modelResourceJson,
@@ -243,13 +294,11 @@ async function input(
       resourceId,
       contentHash,
     }))
-    .sort((left, right) =>
-      left.resourceId < right.resourceId
-        ? -1
-        : left.resourceId > right.resourceId
-          ? 1
-          : 0,
-    );
+    .sort((left, right) => {
+      const leftKey = `${left.resourceType}:${left.resourceId}`;
+      const rightKey = `${right.resourceType}:${right.resourceId}`;
+      return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
+    });
   const resourceChunks =
     resourceDescriptors.length === 0
       ? []
@@ -257,8 +306,8 @@ async function input(
           {
             kind: "resources" as const,
             ordinal: 0,
-            firstKey: `provider:${resourceDescriptors[0]!.resourceId}`,
-            lastKey: `provider:${resourceDescriptors.at(-1)!.resourceId}`,
+            firstKey: `${resourceDescriptors[0]!.resourceType}:${resourceDescriptors[0]!.resourceId}`,
+            lastKey: `${resourceDescriptors.at(-1)!.resourceType}:${resourceDescriptors.at(-1)!.resourceId}`,
             itemCount: resourceDescriptors.length,
             contentHash:
               await hashPublicationResourceChunk(resourceDescriptors),

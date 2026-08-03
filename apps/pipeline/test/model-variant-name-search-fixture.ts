@@ -229,6 +229,7 @@ export const createModelVariantNameSearchFixture = async (
   };
   const statusFact = (value: FixtureModelStatus) =>
     value === null ? unknownFact() : knownFact(value, observedAt, 6);
+  const familyId = id("fam", 1);
   const modelId = id("mdl", 1);
   const variantId = id("var", 1);
   const providerId = id("prv", 1);
@@ -242,7 +243,7 @@ export const createModelVariantNameSearchFixture = async (
     },
     checkpoints: [],
     context_window_tokens: unknownFact(),
-    family_id: id("fam", 1),
+    family_id: familyId,
     last_model_data_refresh: knownFact(observedAt, observedAt, 2),
     license: unknownFact(),
     maximum_output_tokens: unknownFact(),
@@ -316,6 +317,31 @@ export const createModelVariantNameSearchFixture = async (
       };
     }),
   );
+  const familyResourceJson = canonicalizePublicationJson(
+    canonicalJson({
+      display_name: knownFact("Fixture Family", observedAt, 25),
+      family_id: familyId,
+      last_model_data_refresh: knownFact(observedAt, observedAt, 26),
+      model_ids: modelDisplayNames.map((_, index) => id("mdl", index + 1)),
+      publisher: knownFact(
+        neutrality.modelPublisher ?? "Fixture Publisher",
+        observedAt,
+        27,
+      ),
+      slug: knownFact("fixture-family", observedAt, 28),
+    }),
+    "object",
+  );
+  const familyResource = {
+    resourceType: "model_family" as const,
+    resourceId: familyId,
+    resourceJson: familyResourceJson,
+    contentHash: await hashPublicationResourceContent({
+      resourceType: "model_family",
+      resourceId: familyId,
+      resourceJson: familyResourceJson,
+    }),
+  };
   const providerResourceJson = canonicalizePublicationJson(
     canonicalJson({
       active_offering_count: {
@@ -356,6 +382,7 @@ export const createModelVariantNameSearchFixture = async (
     }),
   };
   const resources = [
+    familyResource,
     ...searchableResources,
     ...(availableProvider ? [providerResource] : []),
   ].sort((left, right) =>
@@ -542,10 +569,11 @@ export const createModelVariantNameSearchFixture = async (
     manifestContractVersion: "1.0.0",
     enabledProviderScopeVersion: manifest.enabledProviderScopeVersion,
     bundleHash: manifest.bundleHash,
-    // Slice+metadata and three chunks contribute five revisions; every
-    // resource contributes its resource, broad-search, and vector rows.
+    // Slice+metadata and three chunks contribute five revisions; the family
+    // contributes one resource row, and every searchable resource contributes
+    // its resource, broad-search, and vector rows.
     stagingRevision:
-      5 + searchableResources.length * 3 + (availableProvider ? 2 : 0),
+      6 + searchableResources.length * 3 + (availableProvider ? 2 : 0),
     sealedAtMs: generatedAtMs + 60_000,
   };
   const projection = await projectModelVariantNameSearchProjection({

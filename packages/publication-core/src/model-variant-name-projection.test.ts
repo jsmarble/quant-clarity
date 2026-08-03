@@ -16,6 +16,7 @@ import {
   assertModelVariantNameSearchResourceByteBudget,
   assertModelVariantNameSearchStagingProjectionV1,
   assertModelVariantNameSearchQueryableArtifactProofV3,
+  buildImmutableManifest,
   buildImmutableManifestFromPersistedContent,
   canonicalizePublicationJson,
   derivePublicationVectorId,
@@ -211,6 +212,17 @@ function commonResource(displayName: string | null, sequence: number) {
   };
 }
 
+function modelFamily(modelIds: readonly string[]) {
+  return {
+    display_name: known("Example Family", 8),
+    family_id: id("fam", 1),
+    last_model_data_refresh: known(observedAt, 9),
+    model_ids: [...modelIds],
+    publisher: known("Example Publisher", 10),
+    slug: known("example-family", 11),
+  };
+}
+
 function model(
   sequence: number,
   displayName: string | null,
@@ -338,6 +350,7 @@ type ProjectionFixtureInput = ModelVariantNameSearchProjectionInput &
 async function projectionInput(
   source: readonly CanonicalResource[],
   options: Readonly<{
+    allowInvalidSearchResourceForProjectionTest?: boolean;
     providerAffiliate?: boolean;
     relatedContextVersion?: 1 | 2;
   }> = {},
@@ -360,7 +373,28 @@ async function projectionInput(
       };
     }),
   );
+  const familyJson = canonicalizePublicationJson(
+    canonicalJson(
+      modelFamily(
+        source
+          .filter((resource) => resource.resourceType === "model")
+          .map((resource) => resource.resourceId),
+      ),
+    ),
+    "object",
+  );
+  const familyResource: PersistedResourceDescriptor = {
+    resourceType: "model_family",
+    resourceId: id("fam", 1),
+    resourceJson: familyJson,
+    contentHash: await hashPublicationResourceContent({
+      resourceType: "model_family",
+      resourceId: id("fam", 1),
+      resourceJson: familyJson,
+    }),
+  };
   const persistedResources: PersistedResourceDescriptor[] = [
+    familyResource,
     ...searchableResources,
   ];
   const hasProviderContext =
@@ -474,7 +508,9 @@ async function projectionInput(
       ),
     },
   ];
-  const manifest = await buildImmutableManifestFromPersistedContent({
+  const manifestInput: Parameters<
+    typeof buildImmutableManifestFromPersistedContent
+  >[0] = {
     contractVersion: "1.0.0",
     publicationId: publicationId as `pub_${string}`,
     sourceRunId: id("run", 1),
@@ -538,7 +574,10 @@ async function projectionInput(
     vectors,
     chunks,
     bundleHash: `sha256:${"b".repeat(64)}`,
-  });
+  };
+  const manifest = options.allowInvalidSearchResourceForProjectionTest
+    ? await buildImmutableManifest(manifestInput)
+    : await buildImmutableManifestFromPersistedContent(manifestInput);
   const closureRows: ServingClosureRows = {
     publication: {
       publication_id: manifest.publicationId,
@@ -930,7 +969,9 @@ describe("trusted model/variant canonical-name projection (SRCH-002, SRCH-006, S
   ])(
     "rejects invalid known-name %s resources",
     async (_label, value, error) => {
-      const input = await projectionInput([source("model", 1, value)]);
+      const input = await projectionInput([source("model", 1, value)], {
+        allowInvalidSearchResourceForProjectionTest: true,
+      });
       await expect(
         projectModelVariantNameSearchProjection(input),
       ).rejects.toThrow(error);
@@ -938,9 +979,12 @@ describe("trusted model/variant canonical-name projection (SRCH-002, SRCH-006, S
   );
 
   it("rejects an outer/canonical identity mismatch", async () => {
-    const input = await projectionInput([
-      source("model", 1, model(2, "Wrong identity"), id("mdl", 1)),
-    ]);
+    const input = await projectionInput(
+      [source("model", 1, model(2, "Wrong identity"), id("mdl", 1))],
+      {
+        allowInvalidSearchResourceForProjectionTest: true,
+      },
+    );
     await expect(
       projectModelVariantNameSearchProjection(input),
     ).rejects.toThrow(/identity does not match/u);

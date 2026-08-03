@@ -8,6 +8,7 @@ import {
   AdapterBatchSchema,
   AdapterManifestSchema,
   CandidateFactSchema,
+  checkModelFamilyContract,
   checkModelContract,
   checkProviderContract,
   checkVariantContract,
@@ -18,6 +19,7 @@ import {
   type FactState,
   type IdPrefix,
   MethodologyDetailSchema,
+  type ModelFamily,
   ModelFamilySchema,
   ModelSchema,
   PriceSchema,
@@ -379,8 +381,150 @@ describe("canonical public contracts (DATA-040–DATA-061, API-002–API-006)", 
       last_model_data_refresh: knownFact("2026-08-01T00:00:00.000Z"),
     };
     expect(validate(family)).toBe(true);
+    expect(checkModelFamilyContract(family)).toBe(true);
+    expectTypeOf<ModelFamily>().toEqualTypeOf<
+      Static<typeof ModelFamilySchema>
+    >();
     expect(validate({ ...family, display_name: "Example Family" })).toBe(false);
+    expect(
+      checkModelFamilyContract({ ...family, display_name: "Example Family" }),
+    ).toBe(false);
     expect(validate({ ...family, slug: "example-family" })).toBe(false);
+    expect(
+      checkModelFamilyContract({ ...family, slug: "example-family" }),
+    ).toBe(false);
+    expect(checkModelFamilyContract({ ...family, unexpected: true })).toBe(
+      false,
+    );
+  });
+
+  it("enforces exact ModelFamily and member identifier prefixes and uniqueness", () => {
+    const family = {
+      family_id: `fam_${UUID}`,
+      slug: knownFact("example-family"),
+      display_name: knownFact("Example Family"),
+      publisher: knownFact("Example Publisher"),
+      model_ids: [`mdl_${UUID}`, "mdl_00000000-0000-4000-8000-000000000002"],
+      last_model_data_refresh: knownFact("2026-08-01T00:00:00.000Z"),
+    };
+
+    expect(checkModelFamilyContract(family)).toBe(true);
+    expect(
+      checkModelFamilyContract({
+        ...family,
+        family_id: `mdl_${UUID}`,
+      }),
+    ).toBe(false);
+    expect(
+      checkModelFamilyContract({
+        ...family,
+        model_ids: [`fam_${UUID}`],
+      }),
+    ).toBe(false);
+    expect(
+      checkModelFamilyContract({
+        ...family,
+        model_ids: [`mdl_${UUID}`, `mdl_${UUID}`],
+      }),
+    ).toBe(false);
+  });
+
+  it("counts ModelFamily display-name and publisher bounds in Unicode scalars without mutation", () => {
+    const family = {
+      family_id: `fam_${UUID}`,
+      slug: knownFact("astral-family"),
+      display_name: knownFact("🙂".repeat(200)),
+      publisher: knownFact("🚀".repeat(200)),
+      model_ids: [],
+      last_model_data_refresh: knownFact("2026-08-01T00:00:00.000Z"),
+    };
+    const before = JSON.stringify(family);
+
+    expect(checkModelFamilyContract(family)).toBe(true);
+    expect(JSON.stringify(family)).toBe(before);
+    expect(
+      checkModelFamilyContract({
+        ...family,
+        display_name: knownFact("🙂".repeat(201)),
+      }),
+    ).toBe(false);
+    expect(
+      checkModelFamilyContract({
+        ...family,
+        publisher: knownFact("🚀".repeat(201)),
+      }),
+    ).toBe(false);
+    expect(
+      checkModelFamilyContract({
+        ...family,
+        display_name: knownFact("invalid\ud800scalar"),
+      }),
+    ).toBe(false);
+  });
+
+  it("rejects hostile ModelFamily accessors without invoking them or throwing", () => {
+    const family = {
+      family_id: `fam_${UUID}`,
+      slug: knownFact("example-family"),
+      display_name: knownFact("Example Family"),
+      publisher: knownFact("Example Publisher"),
+      model_ids: [`mdl_${UUID}`],
+      last_model_data_refresh: knownFact("2026-08-01T00:00:00.000Z"),
+    };
+
+    let topLevelReads = 0;
+    const topLevelAccessor = { ...family } as Record<string, unknown>;
+    Object.defineProperty(topLevelAccessor, "display_name", {
+      enumerable: true,
+      get() {
+        topLevelReads += 1;
+        return family.display_name;
+      },
+    });
+    expect(checkModelFamilyContract(topLevelAccessor)).toBe(false);
+    expect(topLevelReads).toBe(0);
+
+    let nestedReads = 0;
+    const displayNameAccessor = { ...family.display_name } as Record<
+      string,
+      unknown
+    >;
+    Object.defineProperty(displayNameAccessor, "value", {
+      enumerable: true,
+      get() {
+        nestedReads += 1;
+        return "Example Family";
+      },
+    });
+    expect(
+      checkModelFamilyContract({
+        ...family,
+        display_name: displayNameAccessor,
+      }),
+    ).toBe(false);
+    expect(nestedReads).toBe(0);
+
+    let modelIdReads = 0;
+    const modelIds = [...family.model_ids];
+    Object.defineProperty(modelIds, "0", {
+      enumerable: true,
+      get() {
+        modelIdReads += 1;
+        return `mdl_${UUID}`;
+      },
+    });
+    expect(checkModelFamilyContract({ ...family, model_ids: modelIds })).toBe(
+      false,
+    );
+    expect(modelIdReads).toBe(0);
+
+    const hostileProxy = new Proxy(family, {
+      ownKeys() {
+        throw new Error("hostile ownKeys");
+      },
+    });
+    expect(() => checkModelFamilyContract(hostileProxy)).not.toThrow();
+    expect(checkModelFamilyContract(hostileProxy)).toBe(false);
   });
 
   it("keeps versioned methodology metadata distinct from canonical facts", () => {

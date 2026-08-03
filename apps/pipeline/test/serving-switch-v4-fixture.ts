@@ -72,11 +72,13 @@ export const createServingV4Fixture = async (
   publicationId: `pub_${string}`,
   generatedAtMs: number,
   offerings: readonly ProviderModelIdOfferingFixture[] = DEFAULT_OFFERINGS,
+  includeVariant = false,
 ): Promise<ServingV4Fixture> => {
   const providerModelIdFixture = await createProviderModelIdSearchFixture(
     publicationId,
     generatedAtMs,
     offerings,
+    includeVariant,
   );
   const { manifest, closureRows } = providerModelIdFixture;
   const { seal } = await projectServingClosureSeal(closureRows);
@@ -128,14 +130,27 @@ export const createServingV4Fixture = async (
     queryability:
       projectModelVariantNameSearchQueryabilityPlanV3(modelStorageProof),
   });
+  const providerModelIdTargetIds = new Set(
+    closureRows.resources
+      .filter((resource) => resource.resource_type === "offering")
+      .map((resource) => {
+        const value = JSON.parse(resource.resource_json) as Record<
+          string,
+          unknown
+        >;
+        return value.model_resource_id;
+      })
+      .filter((value): value is string => typeof value === "string"),
+  );
   const providerModelIdProjection =
     await projectProviderModelIdSearchProjection({
       manifest,
       resources: closureRows.resources.filter(
         (resource) =>
           resource.resource_type === "offering" ||
-          resource.resource_type === "model" ||
-          resource.resource_type === "variant",
+          ((resource.resource_type === "model" ||
+            resource.resource_type === "variant") &&
+            providerModelIdTargetIds.has(resource.resource_id)),
       ),
     });
   const providerModelIdStaging = providerModelIdFixture.staging;
