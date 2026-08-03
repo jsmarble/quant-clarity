@@ -26,6 +26,12 @@ Every collection supports deterministic cursor pagination where meaningful; ever
 
 This does **not** open any public Model path. `/v1/models/{model_id_or_slug}` remains wholly closed until a complete immutable publication-scoped projection covers both current canonical Model slugs and retained historical slug resolution, including collisions, readiness, and restore. Search names and aliases are not slug authority. Phase 5O-A also performs no Cache API, ETag, CORS, public response, remote binding, migration, or deployment work; serving schema stays `1.11.0`.
 
+### Phase 5O-B1 Model slug projection boundary
+
+[ADR 0039](../decisions/0039-publication-model-slug-projection-core.md) defines a pure, unrouted `model-slug@1` projector. It accepts one trusted immutable manifest, exact canonical Models whose current slug Facts are known, and caller-supplied Model `slug_history` for that publication. The publication boundary is derived exclusively from trusted `manifest.generatedAt`; there is no separate boundary input. Slugs are exact 1–128-character lowercase ASCII route values; no alias, search normalization, or inferred value is authority. Every begun assignment remains reserved to its Model, same-Model repetitions deduplicate, and a multi-Model collision or current-interval mismatch fails. Separate hashes bind the complete supplied history and the resolved current/historical mapping.
+
+B1 does not authenticate that its caller supplied every canonical D1 history row, so it cannot gate readiness or answer a request. Phase 5O-B2 must add fixed canonical extraction or an archived authoritative input plus serving schema `1.12.0`, exact indexed storage, closure/readiness/switch proofs, and backup/restore. `/v1/models/{model_id_or_slug}`, query RPC, Cache API, CORS/ETag handling, and remote deployment remain closed. Whether an eventual API slug request redirects or returns the canonical Model directly remains undecided until Phase 5O-B3.
+
 | Resource | Collection | Detail / related routes |
 |---|---|---|
 | Models | `GET /models` | `GET /models/{model_id_or_slug}`, `GET /models/{id}/offerings` |
