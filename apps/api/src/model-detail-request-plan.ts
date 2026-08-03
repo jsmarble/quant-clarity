@@ -1,0 +1,197 @@
+import {
+  assertApiLimits,
+  validIfNoneMatch,
+  validateAndNormalizeRequest,
+  type ApiError,
+  type ApiLimits,
+  type NormalizedRequest,
+  type RequestInput,
+} from "@quant-clarity/api-core";
+
+const UUID_V4 =
+  "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
+const MODEL_ID = new RegExp(`^mdl_${UUID_V4}$`, "u");
+const MODEL_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
+const MODEL_SLUG_MAX_BYTES = 128;
+const MODEL_PATH_PREFIX = "/v1/models/";
+const UTF8 = new TextEncoder();
+
+export type ModelDetailRequestPlan =
+  | Readonly<{ error: ApiError; kind: "error" }>
+  | Readonly<{ kind: "preflight" }>
+  | Readonly<{
+      identifier: string;
+      identifierKind: "stable_id" | "slug";
+      ifNoneMatch: string | null;
+      kind: "lookup";
+      request: NormalizedRequest;
+    }>;
+
+export type ModelDetailRequestPlanInput = Readonly<
+  RequestInput & { ifNoneMatch: string | null }
+>;
+
+const INPUT_KEYS = [
+  "bodyBytes",
+  "hasQueryString",
+  "ifNoneMatch",
+  "method",
+  "pathname",
+  "publicationHeader",
+  "rawQuery",
+] as const;
+const INPUT_KEY_SET: ReadonlySet<string> = new Set(INPUT_KEYS);
+
+const snapshotInput = (value: unknown): ModelDetailRequestPlanInput | null => {
+  try {
+    if (typeof value !== "object" || value === null || Array.isArray(value))
+      return null;
+    const keys = Reflect.ownKeys(value);
+    if (
+      keys.length !== INPUT_KEYS.length ||
+      keys.some((key) => typeof key !== "string" || !INPUT_KEY_SET.has(key))
+    )
+      return null;
+    const output = Object.create(null) as Record<string, unknown>;
+    for (const key of INPUT_KEYS) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (descriptor === undefined || !("value" in descriptor)) return null;
+      output[key] = descriptor.value;
+    }
+    if (
+      typeof output.bodyBytes !== "number" ||
+      typeof output.hasQueryString !== "boolean" ||
+      (output.ifNoneMatch !== null && typeof output.ifNoneMatch !== "string") ||
+      typeof output.method !== "string" ||
+      typeof output.pathname !== "string" ||
+      (output.publicationHeader !== null &&
+        typeof output.publicationHeader !== "string") ||
+      typeof output.rawQuery !== "string"
+    )
+      return null;
+    return output as ModelDetailRequestPlanInput;
+  } catch {
+    return null;
+  }
+};
+
+const failure = (
+  code: ApiError["code"],
+  message: string,
+  status: ApiError["status"],
+): ModelDetailRequestPlan => ({
+  error: { code, message, status },
+  kind: "error",
+});
+
+const modelPathHasInvalidSyntax = (pathname: string): boolean => {
+  if (!pathname.startsWith(MODEL_PATH_PREFIX)) return false;
+  const identifier = pathname.slice(MODEL_PATH_PREFIX.length);
+  return (
+    identifier.length === 0 ||
+    identifier.includes("/") ||
+    (!MODEL_ID.test(identifier) &&
+      (!MODEL_SLUG.test(identifier) ||
+        UTF8.encode(identifier).byteLength > MODEL_SLUG_MAX_BYTES))
+  );
+};
+
+const modelIdentifierKind = (
+  identifier: string,
+): "stable_id" | "slug" | null => {
+  if (MODEL_ID.test(identifier)) return "stable_id";
+  return MODEL_SLUG.test(identifier) &&
+    UTF8.encode(identifier).byteLength <= MODEL_SLUG_MAX_BYTES
+    ? "slug"
+    : null;
+};
+
+/** Pure B3-B request plan. It performs no limiter, cache, query, or logging effect. */
+export const planModelDetailRequest = (
+  input: ModelDetailRequestPlanInput,
+  limits: ApiLimits,
+): ModelDetailRequestPlan => {
+  try {
+    const requestInput = snapshotInput(input);
+    if (requestInput === null)
+      return failure(
+        "invalid_parameter",
+        "The Model detail request is malformed.",
+        400,
+      );
+    assertApiLimits(limits);
+    if (requestInput.hasQueryString) {
+      const pathnameBytes = UTF8.encode(requestInput.pathname).byteLength;
+      const queryBytes = UTF8.encode(requestInput.rawQuery).byteLength;
+      if (
+        pathnameBytes > limits.maxPathBytes ||
+        queryBytes > limits.maxQueryBytes ||
+        pathnameBytes + queryBytes + 1 > limits.maxUrlBytes
+      )
+        return failure(
+          "query_too_large",
+          "The request target exceeds the configured size limit.",
+          413,
+        );
+    }
+    const validation = validateAndNormalizeRequest(
+      requestInput.hasQueryString
+        ? { ...requestInput, hasQueryString: false, rawQuery: "" }
+        : requestInput,
+      limits,
+    );
+    if (!validation.success) {
+      if (
+        validation.error.code === "resource_not_found" &&
+        modelPathHasInvalidSyntax(requestInput.pathname)
+      )
+        return failure(
+          "invalid_parameter",
+          "The Model identifier path is malformed.",
+          400,
+        );
+      return { error: validation.error, kind: "error" };
+    }
+
+    const operation = validation.request.operation;
+    if (operation.kind !== "detail" || operation.resourceType !== "model")
+      return failure(
+        "resource_not_found",
+        "The requested resource does not exist.",
+        404,
+      );
+    if (requestInput.hasQueryString)
+      return failure(
+        "invalid_parameter",
+        "This route does not accept a query string.",
+        400,
+      );
+    if (!validIfNoneMatch(requestInput.ifNoneMatch))
+      return failure(
+        "invalid_parameter",
+        "If-None-Match is malformed or exceeds the configured size limit.",
+        400,
+      );
+    const identifierKind = modelIdentifierKind(operation.identifier);
+    if (identifierKind === null)
+      return failure(
+        "invalid_parameter",
+        "The Model identifier path is malformed.",
+        400,
+      );
+    if (validation.request.method === "OPTIONS") return { kind: "preflight" };
+    return {
+      identifier: operation.identifier,
+      identifierKind,
+      ifNoneMatch: requestInput.ifNoneMatch,
+      kind: "lookup",
+      request: validation.request,
+    };
+  } catch {
+    return failure(
+      "invalid_parameter",
+      "The Model detail request is malformed.",
+      400,
+    );
+  }
+};
