@@ -10,7 +10,7 @@
 ## Protocol
 
 - JSON uses UTF-8 and `application/json`; OpenAPI is JSON and YAML. GET and HEAD are resource methods, OPTIONS provides non-credentialed CORS, and every mutation method returns `405` with `Allow`.
-- Every data `GET` and `HEAD` accepts optional `If-None-Match` and `X-QuantClarity-Publication` request headers and every data response includes the selected publication. Without the publication header or an authenticated cursor, the API resolves the active publication. A cursor implicitly pins its publication and must agree with the header when both are present. Data responses include `ETag`; responses vary on the validated publication header and representation dimensions only. Public responses do not expose a retained request-correlation identifier.
+- Every data `GET` and `HEAD` accepts optional `If-None-Match` and `X-QuantClarity-Publication` request headers. Without the publication header or an authenticated cursor, the API resolves the active publication. A cursor implicitly pins its publication and must agree with the header when both are present. Every successful representation response (`200` or `304`) includes its strong `ETag`; redirects and errors do not. Every outcome with a truthful selected/current publication includes that publication and varies on the validated publication header and representation dimensions only. Public responses do not expose a retained request-correlation identifier.
 - A malformed pin is rejected. An expired, insufficient-horizon, unavailable, unknown, or never-public pin returns the same generic `409 publication_expired` with the current publication header and no candidate-state detail. CORS allows exactly `If-None-Match` and the publication request header and exposes exactly `ETag` and the publication response header.
 - Clients must ignore additive fields and tolerate unknown enum values. A removed field or changed meaning requires `/v2` or at least six months of published deprecation.
 - Unknown scalar facts are `null`; state-bearing fields use documented extensible enums. Zero is numeric string `"0"`, never null. Collections are always arrays.
@@ -30,7 +30,7 @@ This does **not** open any public Model path. `/v1/models/{model_id_or_slug}` re
 
 [ADR 0039](../decisions/0039-publication-model-slug-projection-core.md) defines a pure, unrouted `model-slug@1` projector. It accepts one trusted immutable manifest, exact canonical Models whose current slug Facts are known, and caller-supplied Model `slug_history` for that publication. The publication boundary is derived exclusively from trusted `manifest.generatedAt`; there is no separate boundary input. Slugs are exact 1–128-character lowercase ASCII route values; no alias, search normalization, or inferred value is authority. Every begun assignment remains reserved to its Model, same-Model repetitions deduplicate, and a multi-Model collision or current-interval mismatch fails. Separate hashes bind the complete supplied history and the resolved current/historical mapping.
 
-B1 does not authenticate that its caller supplied every canonical D1 history row, so it cannot gate readiness or answer a request. Phase 5O-B2 must add fixed canonical extraction or an archived authoritative input plus serving schema `1.12.0`, exact indexed storage, closure/readiness/switch proofs, and backup/restore. `/v1/models/{model_id_or_slug}`, query RPC, Cache API, CORS/ETag handling, and remote deployment remain closed. Whether an eventual API slug request redirects or returns the canonical Model directly remains undecided until Phase 5O-B3.
+B1 does not authenticate that its caller supplied every canonical D1 history row, so it cannot gate readiness or answer a request. Phase 5O-B2 must add fixed canonical extraction or an archived authoritative input plus serving schema `1.12.0`, exact indexed storage, closure/readiness/switch proofs, and backup/restore. `/v1/models/{model_id_or_slug}`, query RPC, Cache API, CORS/ETag handling, and remote deployment remain closed. [ADR 0044](../decisions/0044-public-model-detail-http-cache.md) later resolves B3: stable IDs, current slugs, and explicitly pinned historical slugs return the same canonical `200`, while unpinned historical slugs redirect with a bodyless `308` to the verified stable-ID path.
 
 ### Phase 5O-B2A canonical Model slug capture boundary
 
@@ -49,6 +49,10 @@ Serving schema `1.12.0` is a dormant staging boundary only. Its immutable proof 
 [ADR 0042](../decisions/0042-model-slug-lifecycle-authority.md) and [Phase 5O-B2C-C](phase-5o-b2c-c-model-slug-internal-read.md) define additive `readModelDetailV2`. One closed lookup discriminates an exact lowercase Model stable ID from a strict 1–128-character lowercase ASCII slug. Relative to a resolver-V2-selected publication, the query Worker uses one bookmark-continuous Session and one fixed SELECT to require the immutable closure and staged artifact proof, force the exact-slug and current-Model indexes, validate the selected mapping/resource/hash/current-slug path, and return the unchanged canonical Model with `stable_id`, `current_slug`, or `historical_slug` provenance. The returned canonical slug comes from the verified current mapping; the historical submitted slug is never returned.
 
 This operation remains internal and unrouted. The V1 stable-ID operation stays compatible, and the public handler, OpenAPI, Cache API, CORS, ETag, redirect/direct-response decision, remote configuration, and deployment remain unchanged. Phase 5O-B3 owns those public semantics and their load/conformance evidence.
+
+### Phase 5O-B3 public Model HTTP/cache boundary
+
+[ADR 0044](../decisions/0044-public-model-detail-http-cache.md) and [Phase 5O-B3](phase-5o-b3-model-detail-http-cache.md) fix the implementation boundary before routing. Stable IDs, current slugs, and explicitly pinned historical slugs return byte-identical canonical `ModelDetail` JSON; unpinned historical slugs return a bodyless relative `308` to the verified stable-ID path. Only a query-free stable-ID request may use the manual Cache API, under a publication-qualified canonical key after validation, transient limiting, and resolver V2. Public-gateway pre-invocation Workers Caching remains explicitly disabled. A pre-open audit must prove every currently serveable publication fits the 65,536-byte Model-detail ceiling, and the only activation/rollback head-mutation path must repeat that exact guard for every future target. Implementation, remote/load evidence, production configuration, deployment, and release acceptance remain pending.
 
 | Resource | Collection | Detail / related routes |
 |---|---|---|
@@ -225,17 +229,21 @@ Suggested cache directives:
 
 | Response | Browser/CDN policy |
 |---|---|
-| Active path-only detail | browser `max-age=0, must-revalidate`; internal CDN cache by publication plus stable resource ID for 5 minutes |
+| Stable-ID path-only detail | `private, max-age=0, must-revalidate`; internal Cache API by publication plus stable resource ID for 5 minutes |
+| Current-slug detail | `private, no-store`; no Cache API |
+| Unpinned historical redirect or explicitly pinned historical detail | `private, no-store`; no Cache API |
 | Collections, lists, filters, sorts, cursors, any query string | `private, no-store` |
 | Metadata | `private, no-store`; strong representation ETag only, with no Cache API or edge microcache |
 | Search | `private, no-store` to prevent verbatim query persistence |
-| Errors/429 | `no-store` |
+| Errors/429 | `private, no-store` |
 
 ADR 0013 selects the optional `X-QuantClarity-Publication` header rather than a query parameter or duplicate publication-prefixed route tree. Public immutable versioned URLs remain deferred; safe application caching uses only the synthesized internal key above. The validated header value is public canonical state and is not visitor identity or telemetry.
 
 The query service resolves the active or requested hot publication through one D1 Session and returns its opaque bookmark with the head result. Resolver V2 receives only a safe-integer `requiredAvailableUntilMs`: `now + 15 minutes` for fresh work or the authenticated cursor's original expiry for continuation. It selects the current active/current rollback publication, or a historical publication whose later indexed departure from the active or rollback slot yields a seven-day cutoff strictly beyond that horizon plus 30 seconds. The same horizon enters merged-read V2 and every exact-reader publication sentinel on the bookmarked-or-newer snapshot. Resolver V1 remains compatibility-only and recognizes just the current pair. If the API misses its publication-qualified cache entry, its typed data call resumes from that bookmark so another replica cannot be older than the head already observed. The bookmark and horizon remain inside the live API-to-query call chain and are never returned, logged, traced, metered, alerted, cached, or stored. A single head-joined query is an allowed equivalent.
 
 Phase 5O-A reuses that continuity contract for its internal Model stable-ID read but intentionally stops before cache lookup or public routing. Its reader accepts the existing 1,000,000-byte canonical resource ceiling and its API adapter separately enforces the injected representation ceiling without truncation. A later public-route decision must supply publication-admission or controlled load/platform evidence showing every admitted `ModelDetail` representation fits the selected response, RPC, CPU, and latency limits.
+
+ADR 0044 selects the existing 65,536-byte public ceiling. Before route opening, B3 audits every Model in every currently serveable publication. Thereafter, the only activation/rollback head-mutation path serializes every target Model's exact `ModelDetail` envelope and rejects any target with an oversized representation before mutation; recovery/rebuild targets pass the same guard before they can serve. Runtime overflow after that admission is a publication-integrity failure, never a truncated response or a request-size `413`.
 
 ## Frontend-to-API internal request
 
