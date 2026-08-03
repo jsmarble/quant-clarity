@@ -61,6 +61,16 @@ export const MODEL_VARIANT_NAME_SEARCH_MAX_NORMALIZED_NAME_UTF8_BYTES =
   MODEL_VARIANT_NAME_SEARCH_MAX_NORMALIZED_NAME_UNICODE_SCALARS * 4;
 export const MODEL_FAMILY_CLOSURE_MAX_RELEVANT_RESOURCES = 100_000;
 export const MODEL_FAMILY_CLOSURE_MAX_MEMBERSHIP_EDGES = 100_000;
+export const MODEL_SLUG_PROJECTION_VERSION = "model-slug@1" as const;
+// Coarse hostile-input guards. The lower encoded-byte budgets below are the
+// effective Worker-memory admission limits for ordinary publication inputs.
+export const MODEL_SLUG_MAX_MODELS = 25_000;
+export const MODEL_SLUG_MAX_HISTORY_ROWS = 50_000;
+export const MODEL_SLUG_MAX_RESOURCE_BYTES =
+  PUBLICATION_RESOURCE_JSON_MAX_BYTES;
+export const MODEL_SLUG_MAX_TOTAL_RESOURCE_BYTES = 16 * 1_024 * 1_024;
+export const MODEL_SLUG_MAX_SOURCE_HISTORY_INVENTORY_BYTES = 8 * 1_024 * 1_024;
+export const MODEL_SLUG_MAX_MAPPING_INVENTORY_BYTES = 8 * 1_024 * 1_024;
 export const PROVIDER_MODEL_ID_SEARCH_PROJECTION_VERSION =
   "provider-model-id@1" as const;
 export const PROVIDER_MODEL_ID_SEARCH_MAX_RESOURCES = 10_000;
@@ -2120,6 +2130,576 @@ export const projectModelVariantNameSearchProjection = async (
   return Object.freeze(projection) as TrustedModelVariantNameSearchProjection;
 };
 
+const MODEL_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
+const MODEL_SLUG_MAX_CHARACTERS = 128;
+const MODEL_ID = new RegExp(`^mdl_${UUID_V4}$`, "u");
+const SLUG_HISTORY_ID = new RegExp(`^slg_${UUID_V4}$`, "u");
+
+export type ModelSlugHistorySourceRow = Readonly<{
+  slug_history_id: string;
+  resource_id: string;
+  resource_type: "model";
+  slug: string;
+  valid_from_ms: number;
+  valid_to_ms: number | null;
+}>;
+
+export type ModelSlugMappingProjection = Readonly<{
+  projectionVersion: typeof MODEL_SLUG_PROJECTION_VERSION;
+  slug: string;
+  modelId: string;
+  resolution: "current" | "historical";
+  targetContentHash: Sha256;
+}>;
+
+export type ModelSlugProjectionInput = Readonly<{
+  manifest: TrustedImmutablePublicationManifest;
+  resources: readonly ServingResourceClosureRow[];
+  historyRows: readonly ModelSlugHistorySourceRow[];
+}>;
+
+const modelSlugSourceHistoryFields = (
+  row: ModelSlugHistorySourceRow,
+): readonly CanonicalField[] => [
+  field("slug_history_id", "identifier", row.slug_history_id),
+  field("resource_id", "identifier", row.resource_id),
+  field("resource_type", "text", row.resource_type),
+  field("slug", "text", row.slug),
+  field("valid_from_ms", "integer", String(row.valid_from_ms)),
+  row.valid_to_ms === null
+    ? field("valid_to_ms", "null", "null")
+    : field("valid_to_ms", "integer", String(row.valid_to_ms)),
+];
+
+const modelSlugMappingFields = (
+  mapping: ModelSlugMappingProjection,
+): readonly CanonicalField[] => [
+  field("projection_version", "text", mapping.projectionVersion),
+  field("slug", "text", mapping.slug),
+  field("model_id", "identifier", mapping.modelId),
+  field("resolution", "text", mapping.resolution),
+  field("target_content_hash", "digest", mapping.targetContentHash),
+];
+
+const initializeModelSlugInventoryByteBudget = (
+  recordCount: number,
+  maximumRecords: number,
+  maximumBytes: number,
+  domain: string,
+  label: string,
+): number => {
+  if (
+    !Number.isSafeInteger(recordCount) ||
+    recordCount < 0 ||
+    recordCount > maximumRecords
+  )
+    throw new RangeError(`${label} is invalid or too large`);
+  const bytes = canonicalTupleEncodedByteLength(`${domain}:root`, [
+    field("items", "list", String(recordCount)),
+  ]);
+  if (!Number.isSafeInteger(bytes) || bytes > maximumBytes)
+    throw new RangeError(`${label} is too large`);
+  return bytes;
+};
+
+const advanceModelSlugInventoryByteBudget = (
+  currentBytes: number,
+  recordBytes: number,
+  maximumBytes: number,
+  label: string,
+): number => {
+  if (
+    !Number.isSafeInteger(currentBytes) ||
+    currentBytes < 0 ||
+    !Number.isSafeInteger(recordBytes) ||
+    recordBytes < 0
+  )
+    throw new TypeError(`${label} byte length is invalid`);
+  const prefixedRecordBytes = recordBytes + 8;
+  if (!Number.isSafeInteger(prefixedRecordBytes))
+    throw new RangeError(`${label} is too large`);
+  const nextBytes = currentBytes + prefixedRecordBytes;
+  if (!Number.isSafeInteger(nextBytes) || nextBytes > maximumBytes)
+    throw new RangeError(`${label} is too large`);
+  return nextBytes;
+};
+
+export const advanceModelSlugResourceByteBudget = (
+  currentBytes: number,
+  resourceBytes: number,
+): number => {
+  if (
+    !Number.isSafeInteger(currentBytes) ||
+    currentBytes < 0 ||
+    !Number.isSafeInteger(resourceBytes) ||
+    resourceBytes < 0
+  )
+    throw new TypeError("model slug resource byte length is invalid");
+  if (resourceBytes > MODEL_SLUG_MAX_RESOURCE_BYTES)
+    throw new RangeError("model slug resource input is too large");
+  const nextBytes = currentBytes + resourceBytes;
+  if (
+    !Number.isSafeInteger(nextBytes) ||
+    nextBytes > MODEL_SLUG_MAX_TOTAL_RESOURCE_BYTES
+  )
+    throw new RangeError("model slug resource input is too large");
+  return nextBytes;
+};
+
+export const initializeModelSlugSourceHistoryInventoryByteBudget = (
+  recordCount: number,
+): number =>
+  initializeModelSlugInventoryByteBudget(
+    recordCount,
+    MODEL_SLUG_MAX_HISTORY_ROWS,
+    MODEL_SLUG_MAX_SOURCE_HISTORY_INVENTORY_BYTES,
+    "publication-model-slug-source-history",
+    "model slug source-history inventory",
+  );
+
+export const advanceModelSlugSourceHistoryInventoryByteBudget = (
+  currentBytes: number,
+  row: ModelSlugHistorySourceRow,
+): number =>
+  advanceModelSlugInventoryByteBudget(
+    currentBytes,
+    canonicalTupleEncodedByteLength(
+      "publication-model-slug-source-history:record",
+      modelSlugSourceHistoryFields(row),
+    ),
+    MODEL_SLUG_MAX_SOURCE_HISTORY_INVENTORY_BYTES,
+    "model slug source-history inventory",
+  );
+
+export const initializeModelSlugMappingInventoryByteBudget = (
+  recordCount: number,
+): number =>
+  initializeModelSlugInventoryByteBudget(
+    recordCount,
+    MODEL_SLUG_MAX_HISTORY_ROWS,
+    MODEL_SLUG_MAX_MAPPING_INVENTORY_BYTES,
+    "publication-model-slug-mappings",
+    "model slug mapping inventory",
+  );
+
+export const advanceModelSlugMappingInventoryByteBudget = (
+  currentBytes: number,
+  mapping: ModelSlugMappingProjection,
+): number =>
+  advanceModelSlugInventoryByteBudget(
+    currentBytes,
+    canonicalTupleEncodedByteLength(
+      "publication-model-slug-mappings:record",
+      modelSlugMappingFields(mapping),
+    ),
+    MODEL_SLUG_MAX_MAPPING_INVENTORY_BYTES,
+    "model slug mapping inventory",
+  );
+
+export const assertModelSlugResourceByteBudget = (
+  resourceByteLengths: readonly number[],
+): void => {
+  const lengths = denseArraySnapshot(
+    resourceByteLengths,
+    MODEL_SLUG_MAX_MODELS,
+    "model slug resource byte lengths",
+  );
+  let totalResourceBytes = 0;
+  for (const value of lengths) {
+    if (typeof value !== "number")
+      throw new TypeError("model slug resource byte length is invalid");
+    totalResourceBytes = advanceModelSlugResourceByteBudget(
+      totalResourceBytes,
+      value,
+    );
+  }
+};
+
+const modelSlugProjectionBrand: unique symbol = Symbol("ModelSlugProjection");
+const trustedModelSlugProjections = new WeakSet<object>();
+
+export type TrustedModelSlugProjection = Readonly<{
+  publicationId: PublicationId;
+  closureHash: Sha256;
+  publicationBoundaryMs: number;
+  projectionVersion: typeof MODEL_SLUG_PROJECTION_VERSION;
+  mappings: readonly ModelSlugMappingProjection[];
+  modelCount: number;
+  sourceHistoryCount: number;
+  sourceHistoryHash: Sha256;
+  mappingCount: number;
+  currentMappingCount: number;
+  historicalMappingCount: number;
+  mappingInventoryHash: Sha256;
+  readonly [modelSlugProjectionBrand]: true;
+}>;
+
+export const assertModelSlugProjection: (
+  value: unknown,
+) => asserts value is TrustedModelSlugProjection = (value) => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !(modelSlugProjectionBrand in value) ||
+    value[modelSlugProjectionBrand] !== true ||
+    !trustedModelSlugProjections.has(value)
+  )
+    throw new TypeError("model slug projection is not trusted");
+};
+
+type ModelSlugResourceSnapshot = Readonly<{
+  resource_type: "model";
+  resource_id: string;
+  resource_json: string;
+  content_hash: Sha256;
+  parsed: Model;
+}>;
+
+const modelSlugSourceHistoryHash = async (
+  historyRows: readonly ModelSlugHistorySourceRow[],
+): Promise<Sha256> =>
+  hashRecords(
+    "publication-model-slug-source-history",
+    historyRows.map(modelSlugSourceHistoryFields),
+  );
+
+const modelSlugMappingInventoryHash = async (
+  mappings: readonly ModelSlugMappingProjection[],
+): Promise<Sha256> =>
+  hashRecords(
+    "publication-model-slug-mappings",
+    mappings.map(modelSlugMappingFields),
+  );
+
+const compareModelSlugHistoryRows = (
+  left: ModelSlugHistorySourceRow,
+  right: ModelSlugHistorySourceRow,
+): number => {
+  const modelOrder = compareAscii(left.resource_id, right.resource_id);
+  if (modelOrder !== 0) return modelOrder;
+  if (left.valid_from_ms !== right.valid_from_ms)
+    return left.valid_from_ms < right.valid_from_ms ? -1 : 1;
+  if (left.valid_to_ms !== right.valid_to_ms) {
+    if (left.valid_to_ms === null) return 1;
+    if (right.valid_to_ms === null) return -1;
+    return left.valid_to_ms < right.valid_to_ms ? -1 : 1;
+  }
+  const slugOrder = compareAscii(left.slug, right.slug);
+  return slugOrder === 0
+    ? compareAscii(left.slug_history_id, right.slug_history_id)
+    : slugOrder;
+};
+
+/**
+ * Derives a publication-scoped Model slug projection from a caller-supplied
+ * snapshot of the exact manifest Model set and canonical slug-history query.
+ * B2 must authenticate source completeness at the persistence boundary. Slugs
+ * retain their exact source bytes; aliases and search normalization are not
+ * inputs and cannot authorize a route mapping.
+ */
+export const projectModelSlugProjection = async (
+  callerInput: ModelSlugProjectionInput,
+): Promise<TrustedModelSlugProjection> => {
+  const input = ownDataRecordSnapshot(
+    callerInput,
+    ["historyRows", "manifest", "resources"],
+    "model slug projection input",
+  );
+  const manifest = input.manifest;
+  assertImmutablePublicationManifest(manifest);
+  const publicationBoundaryMs = assertTimestamp(
+    manifest.generatedAt,
+    "model slug publication boundary",
+  );
+  const callerResources = denseArraySnapshot(
+    input.resources,
+    MODEL_SLUG_MAX_MODELS,
+    "model slug resources",
+  );
+  const callerHistoryRows = denseArraySnapshot(
+    input.historyRows,
+    MODEL_SLUG_MAX_HISTORY_ROWS,
+    "model slug history rows",
+  );
+
+  const manifestModels = manifest.resources.filter(
+    (resource) => resource.resourceType === "model",
+  );
+  if (manifestModels.length > MODEL_SLUG_MAX_MODELS)
+    throw new RangeError("model slug manifest model inventory is too large");
+  if (callerResources.length !== manifestModels.length)
+    throw new TypeError(
+      "model slug resources do not exactly match the trusted manifest",
+    );
+  const manifestModelsById = new Map(
+    manifestModels.map((resource) => [resource.resourceId, resource]),
+  );
+
+  const resources: ModelSlugResourceSnapshot[] = [];
+  const seenResourceIds = new Set<string>();
+  let totalResourceBytes = 0;
+  for (const value of callerResources) {
+    const resource = ownDataRecordSnapshot(
+      value,
+      ["content_hash", "resource_id", "resource_json", "resource_type"],
+      "model slug resource",
+    );
+    const resourceType = resource.resource_type;
+    const resourceId = resource.resource_id;
+    const resourceJson = resource.resource_json;
+    const contentHash = resource.content_hash;
+    if (
+      resourceType !== "model" ||
+      typeof resourceId !== "string" ||
+      !MODEL_ID.test(resourceId) ||
+      typeof resourceJson !== "string" ||
+      typeof contentHash !== "string" ||
+      !HASH.test(contentHash)
+    )
+      throw new TypeError("model slug resource is invalid");
+    if (seenResourceIds.has(resourceId))
+      throw new TypeError("model slug resources contain a duplicate");
+    seenResourceIds.add(resourceId);
+    if (manifestModelsById.get(resourceId)?.contentHash !== contentHash)
+      throw new TypeError(
+        "model slug resource does not match the trusted manifest",
+      );
+    if (resourceJson.length > MODEL_SLUG_MAX_RESOURCE_BYTES)
+      throw new RangeError("model slug resource input is too large");
+    const resourceBytes = utf8.encode(resourceJson).byteLength;
+    if (resourceBytes > MODEL_SLUG_MAX_RESOURCE_BYTES)
+      throw new RangeError("model slug resource input is too large");
+    totalResourceBytes = advanceModelSlugResourceByteBudget(
+      totalResourceBytes,
+      resourceBytes,
+    );
+    canonicalizePublicationJson(resourceJson, "object");
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(resourceJson) as unknown;
+    } catch {
+      throw new TypeError("model slug resource is not contract-valid");
+    }
+    if (!checkModelContract(parsed) || parsed.model_id !== resourceId)
+      throw new TypeError("model slug resource is not contract-valid");
+    if (
+      parsed.slug.state !== "known" ||
+      typeof parsed.slug.value !== "string" ||
+      parsed.slug.value.length < 1 ||
+      parsed.slug.value.length > MODEL_SLUG_MAX_CHARACTERS ||
+      !MODEL_SLUG.test(parsed.slug.value)
+    )
+      throw new TypeError("model slug current Fact must be known and valid");
+    resources.push(
+      Object.freeze({
+        resource_type: "model" as const,
+        resource_id: resourceId,
+        resource_json: resourceJson,
+        content_hash: contentHash,
+        parsed,
+      }),
+    );
+  }
+  if (seenResourceIds.size !== manifestModelsById.size)
+    throw new TypeError(
+      "model slug resources do not exactly match the trusted manifest",
+    );
+
+  const historyRows: ModelSlugHistorySourceRow[] = [];
+  const seenHistoryIds = new Set<string>();
+  const seenModelIntervals = new Set<string>();
+  let sourceHistoryInventoryBytes =
+    initializeModelSlugSourceHistoryInventoryByteBudget(
+      callerHistoryRows.length,
+    );
+  for (const value of callerHistoryRows) {
+    const row = ownDataRecordSnapshot(
+      value,
+      [
+        "resource_id",
+        "resource_type",
+        "slug",
+        "slug_history_id",
+        "valid_from_ms",
+        "valid_to_ms",
+      ],
+      "model slug history row",
+    );
+    const historyId = row.slug_history_id;
+    const resourceId = row.resource_id;
+    const resourceType = row.resource_type;
+    const slug = row.slug;
+    const validFromMs = row.valid_from_ms;
+    const validToMs = row.valid_to_ms;
+    if (
+      typeof historyId !== "string" ||
+      !SLUG_HISTORY_ID.test(historyId) ||
+      typeof resourceId !== "string" ||
+      !MODEL_ID.test(resourceId) ||
+      resourceType !== "model" ||
+      typeof slug !== "string" ||
+      slug.length < 1 ||
+      slug.length > MODEL_SLUG_MAX_CHARACTERS ||
+      !MODEL_SLUG.test(slug) ||
+      typeof validFromMs !== "number" ||
+      !Number.isSafeInteger(validFromMs) ||
+      validFromMs < 0 ||
+      validFromMs > publicationBoundaryMs ||
+      (validToMs !== null &&
+        (typeof validToMs !== "number" ||
+          !Number.isSafeInteger(validToMs) ||
+          validToMs <= validFromMs ||
+          validToMs > publicationBoundaryMs))
+    )
+      throw new TypeError("model slug history row is invalid");
+    if (!seenResourceIds.has(resourceId))
+      throw new TypeError("model slug history target is missing");
+    const historyRow = Object.freeze({
+      slug_history_id: historyId,
+      resource_id: resourceId,
+      resource_type: "model" as const,
+      slug,
+      valid_from_ms: validFromMs,
+      valid_to_ms: validToMs,
+    });
+    sourceHistoryInventoryBytes =
+      advanceModelSlugSourceHistoryInventoryByteBudget(
+        sourceHistoryInventoryBytes,
+        historyRow,
+      );
+    const intervalKey = `${resourceId}\u0000${String(validFromMs)}\u0000${validToMs === null ? "null" : String(validToMs)}`;
+    if (seenHistoryIds.has(historyId) || seenModelIntervals.has(intervalKey))
+      throw new TypeError("model slug history rows contain a duplicate");
+    seenHistoryIds.add(historyId);
+    seenModelIntervals.add(intervalKey);
+    historyRows.push(historyRow);
+  }
+  historyRows.sort(compareModelSlugHistoryRows);
+
+  const historiesByModel = new Map<string, ModelSlugHistorySourceRow[]>();
+  const slugTargets = new Map<string, string>();
+  for (const row of historyRows) {
+    const priorTarget = slugTargets.get(row.slug);
+    if (priorTarget !== undefined && priorTarget !== row.resource_id)
+      throw new TypeError("model slug maps to more than one Model");
+    slugTargets.set(row.slug, row.resource_id);
+    const modelHistory = historiesByModel.get(row.resource_id);
+    if (modelHistory === undefined)
+      historiesByModel.set(row.resource_id, [row]);
+    else modelHistory.push(row);
+  }
+
+  const resourcesById = new Map(
+    resources.map((resource) => [resource.resource_id, resource]),
+  );
+  const mappingsBySlug = new Map<string, ModelSlugMappingProjection>();
+  for (const resource of [...resources].sort((left, right) =>
+    compareAscii(left.resource_id, right.resource_id),
+  )) {
+    const history = historiesByModel.get(resource.resource_id) ?? [];
+    for (let index = 1; index < history.length; index += 1) {
+      const previous = history[index - 1];
+      const current = history[index];
+      if (
+        previous === undefined ||
+        current === undefined ||
+        previous.valid_to_ms === null ||
+        current.valid_from_ms < previous.valid_to_ms
+      )
+        throw new TypeError("model slug history intervals overlap");
+    }
+    const active = history.filter(
+      (row) =>
+        row.valid_from_ms <= publicationBoundaryMs &&
+        (row.valid_to_ms === null || publicationBoundaryMs < row.valid_to_ms),
+    );
+    if (active.length !== 1 || active[0]?.slug !== resource.parsed.slug.value)
+      throw new TypeError(
+        "model slug history does not have one matching active interval",
+      );
+    for (const row of history) {
+      const resolution =
+        row.slug_history_id === active[0].slug_history_id
+          ? ("current" as const)
+          : ("historical" as const);
+      const prior = mappingsBySlug.get(row.slug);
+      if (prior === undefined || resolution === "current")
+        mappingsBySlug.set(
+          row.slug,
+          Object.freeze({
+            projectionVersion: MODEL_SLUG_PROJECTION_VERSION,
+            slug: row.slug,
+            modelId: resource.resource_id,
+            resolution,
+            targetContentHash: resource.content_hash,
+          }),
+        );
+    }
+  }
+  if (historiesByModel.size !== resourcesById.size)
+    throw new TypeError("model slug history inventory is incomplete");
+
+  const mappings = [...mappingsBySlug.values()];
+  let mappingInventoryBytes = initializeModelSlugMappingInventoryByteBudget(
+    mappings.length,
+  );
+  for (const mapping of mappings)
+    mappingInventoryBytes = advanceModelSlugMappingInventoryByteBudget(
+      mappingInventoryBytes,
+      mapping,
+    );
+  mappings.sort((left, right) => {
+    const slugOrder = compareAscii(left.slug, right.slug);
+    return slugOrder === 0
+      ? compareAscii(left.modelId, right.modelId)
+      : slugOrder;
+  });
+  if (new Set(mappings.map((mapping) => mapping.slug)).size !== mappings.length)
+    throw new TypeError("model slug mappings contain a collision");
+
+  for (const resource of resources) {
+    const computedHash = await hashPublicationResourceContent({
+      resourceType: resource.resource_type,
+      resourceId: resource.resource_id,
+      resourceJson: resource.resource_json,
+    });
+    if (computedHash !== resource.content_hash)
+      throw new TypeError("model slug resource content hash does not match");
+  }
+
+  const frozenHistoryRows = Object.freeze(historyRows);
+  const frozenMappings = Object.freeze(mappings);
+  const currentMappingCount = frozenMappings.filter(
+    (mapping) => mapping.resolution === "current",
+  ).length;
+  const historicalMappingCount = frozenMappings.length - currentMappingCount;
+  const sourceHistoryHash = await modelSlugSourceHistoryHash(frozenHistoryRows);
+  const mappingInventoryHash =
+    await modelSlugMappingInventoryHash(frozenMappings);
+  const projection = {
+    publicationId: manifest.publicationId,
+    closureHash: manifest.closureHash,
+    publicationBoundaryMs,
+    projectionVersion: MODEL_SLUG_PROJECTION_VERSION,
+    mappings: frozenMappings,
+    modelCount: resources.length,
+    sourceHistoryCount: frozenHistoryRows.length,
+    sourceHistoryHash,
+    mappingCount: frozenMappings.length,
+    currentMappingCount,
+    historicalMappingCount,
+    mappingInventoryHash,
+  };
+  Object.defineProperty(projection, modelSlugProjectionBrand, {
+    value: true,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  trustedModelSlugProjections.add(projection);
+  return Object.freeze(projection) as TrustedModelSlugProjection;
+};
+
 export type ProviderModelIdSearchDocumentProjection = Readonly<{
   projectionVersion: typeof PROVIDER_MODEL_ID_SEARCH_PROJECTION_VERSION;
   offeringId: string;
@@ -2364,6 +2944,8 @@ const ownDataRecordSnapshot = (
   }
   if (prototype !== Object.prototype && prototype !== null)
     throw new TypeError(`${label} is invalid`);
+  if (ownKeys.length !== expectedKeys.length)
+    throw new TypeError(`${label} is invalid`);
   if (ownKeys.some((key) => typeof key !== "string"))
     throw new TypeError(`${label} is invalid`);
   const stringOwnKeys = ownKeys as readonly string[];
@@ -2380,7 +2962,11 @@ const ownDataRecordSnapshot = (
     } catch {
       throw new TypeError(`${label} is invalid`);
     }
-    if (descriptor === undefined || !("value" in descriptor))
+    if (
+      descriptor === undefined ||
+      !("value" in descriptor) ||
+      descriptor.enumerable !== true
+    )
       throw new TypeError(`${label} is invalid`);
     snapshot[key] = descriptor.value;
   }
