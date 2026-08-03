@@ -8,6 +8,7 @@ import {
   AdapterBatchSchema,
   AdapterManifestSchema,
   CandidateFactSchema,
+  checkEvidenceSummaryContract,
   checkModelFamilyContract,
   checkModelContract,
   checkProviderContract,
@@ -15,6 +16,7 @@ import {
   derivePublicationVectorId,
   DatasetMetadataSchema,
   EvidenceIdSchema,
+  EvidenceSummarySchema,
   FactSchema,
   type AdapterManifest,
   type FactState,
@@ -47,6 +49,22 @@ const StringFactSchema = FactSchema(
   "StringFact",
 );
 type StringFact = Static<typeof StringFactSchema>;
+
+const EVIDENCE_SUMMARY_FIXTURE = {
+  authenticated_only: false,
+  evidence_id: "evd_00000000-0000-4000-8000-000000000001",
+  extraction_method: "structured_fixture",
+  extraction_version: "fixture@1",
+  field: "provider_record",
+  integrity_hash: `sha256:${"a".repeat(64)}`,
+  observed_at: "2026-08-01T00:00:00.000Z",
+  source_locator: "fixture:1",
+  source_owner: "QuantClarity fixture",
+  source_type: "synthetic_fixture",
+  source_url: null,
+  subject_resource_id: "prv_00000000-0000-4000-8000-000000000001",
+  value: "",
+} as const;
 
 function validator() {
   const ajv = new Ajv2020({ allErrors: true, strict: true });
@@ -144,6 +162,107 @@ describe("public fact contract (API-005, DATA-060)", () => {
 });
 
 describe("canonical public contracts (DATA-040–DATA-061, API-002–API-006)", () => {
+  it("validates complete EvidenceSummary resources with the public schema", () => {
+    const validate = standaloneValidator(EvidenceSummarySchema);
+    expect(validate(EVIDENCE_SUMMARY_FIXTURE)).toBe(true);
+    expect(checkEvidenceSummaryContract(EVIDENCE_SUMMARY_FIXTURE)).toBe(true);
+    expect(
+      checkEvidenceSummaryContract({
+        ...EVIDENCE_SUMMARY_FIXTURE,
+        visitor_id: "forbidden",
+      }),
+    ).toBe(false);
+    expect(
+      checkEvidenceSummaryContract({
+        ...EVIDENCE_SUMMARY_FIXTURE,
+        observed_at: "2026-08-01T00:00:00.000+00:00",
+      }),
+    ).toBe(false);
+    for (const [sourceUrl, expected] of [
+      ["https://example.test/source", true],
+      ["urn:isbn:0451450523", true],
+      ["mailto:data@example.test", true],
+      ["https://", true],
+      ["not a URI", false],
+      ["https://example.test/\u0000", false],
+      ["https://example.test/%ZZ", false],
+      ["https://[bad]/", false],
+    ] as const) {
+      const candidate = {
+        ...EVIDENCE_SUMMARY_FIXTURE,
+        source_url: sourceUrl,
+      };
+      const schemaResult = validate(candidate);
+      expect(schemaResult, sourceUrl).toBe(expected);
+      expect(checkEvidenceSummaryContract(candidate), sourceUrl).toBe(
+        schemaResult,
+      );
+    }
+    for (const [field, maximum] of [
+      ["source_owner", 200],
+      ["value", 1_000],
+    ] as const) {
+      for (const [length, expected] of [
+        [maximum, true],
+        [maximum + 1, false],
+      ] as const) {
+        const candidate = {
+          ...EVIDENCE_SUMMARY_FIXTURE,
+          [field]: "\u{1f642}".repeat(length),
+        };
+        const schemaResult = validate(candidate);
+        expect(schemaResult, `${field}:${String(length)}`).toBe(expected);
+        expect(
+          checkEvidenceSummaryContract(candidate),
+          `${field}:${String(length)}`,
+        ).toBe(schemaResult);
+      }
+    }
+
+    expect(
+      checkEvidenceSummaryContract({
+        ...EVIDENCE_SUMMARY_FIXTURE,
+        source_owner: "bad\ud800scalar",
+      }),
+    ).toBe(false);
+    expect(
+      checkEvidenceSummaryContract({
+        ...EVIDENCE_SUMMARY_FIXTURE,
+        value: "bad\udfffscalar",
+      }),
+    ).toBe(false);
+
+    const inherited = Object.create({ visitor_id: "forbidden" }) as Record<
+      string,
+      unknown
+    >;
+    Object.assign(inherited, EVIDENCE_SUMMARY_FIXTURE);
+    expect(checkEvidenceSummaryContract(inherited)).toBe(false);
+    expect(
+      checkEvidenceSummaryContract({
+        ...EVIDENCE_SUMMARY_FIXTURE,
+        [Symbol("visitor")]: true,
+      }),
+    ).toBe(false);
+    let getterReads = 0;
+    const accessor = { ...EVIDENCE_SUMMARY_FIXTURE } as Record<string, unknown>;
+    Object.defineProperty(accessor, "source_owner", {
+      enumerable: true,
+      get() {
+        getterReads += 1;
+        return EVIDENCE_SUMMARY_FIXTURE.source_owner;
+      },
+    });
+    expect(checkEvidenceSummaryContract(accessor)).toBe(false);
+    expect(getterReads).toBe(0);
+    const proxy = new Proxy(EVIDENCE_SUMMARY_FIXTURE, {
+      ownKeys() {
+        throw new Error("hostile ownKeys trap");
+      },
+    });
+    expect(checkEvidenceSummaryContract(proxy)).toBe(false);
+  });
+
   const knownFact = (value: unknown) => ({
     state: "known",
     value,

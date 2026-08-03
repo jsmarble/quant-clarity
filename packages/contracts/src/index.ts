@@ -7,6 +7,7 @@ import {
 } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { publicationVectorId } from "@quant-clarity/domain/publication-consistency";
+import { fullFormats } from "ajv-formats/dist/formats.js";
 
 const UUID_V4 =
   "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
@@ -439,6 +440,11 @@ const isCanonicalContractDate = (value: string): boolean => {
   );
 };
 
+const ajvUriFormat = fullFormats.uri;
+if (typeof ajvUriFormat !== "function")
+  throw new TypeError("Ajv full URI format validator is unavailable");
+const isContractUri = (value: string): boolean => ajvUriFormat(value);
+
 const workerSafeBoundedUnicodeString = (
   value: unknown,
   maximumUnicodeScalars: number,
@@ -771,8 +777,10 @@ const workerSafeModelOrVariantCandidate = (value: unknown): unknown => {
 const checkContractSchema = (schema: TSchema, value: unknown): boolean => {
   const previousDate = FormatRegistry.Get("date");
   const previousDateTime = FormatRegistry.Get("date-time");
+  const previousUri = FormatRegistry.Get("uri");
   FormatRegistry.Set("date", isCanonicalContractDate);
   FormatRegistry.Set("date-time", isCanonicalContractTimestamp);
+  FormatRegistry.Set("uri", isContractUri);
   try {
     return Value.Check(schema, value);
   } finally {
@@ -780,6 +788,8 @@ const checkContractSchema = (schema: TSchema, value: unknown): boolean => {
     else FormatRegistry.Set("date", previousDate);
     if (previousDateTime === undefined) FormatRegistry.Delete("date-time");
     else FormatRegistry.Set("date-time", previousDateTime);
+    if (previousUri === undefined) FormatRegistry.Delete("uri");
+    else FormatRegistry.Set("uri", previousUri);
   }
 };
 
@@ -1063,6 +1073,64 @@ export const EvidenceSummarySchema = Type.Object(
   },
   { $id: "EvidenceSummary", additionalProperties: false },
 );
+
+export type EvidenceSummary = Static<typeof EvidenceSummarySchema>;
+
+const EVIDENCE_SUMMARY_KEYS = Object.freeze([
+  "evidence_id",
+  "subject_resource_id",
+  "field",
+  "value",
+  "source_type",
+  "source_owner",
+  "source_url",
+  "source_locator",
+  "authenticated_only",
+  "observed_at",
+  "extraction_method",
+  "extraction_version",
+  "integrity_hash",
+] as const);
+
+const workerSafeEvidenceSummaryUri = (value: unknown): unknown => {
+  if (value === null || typeof value !== "string") return value;
+  const bounded = workerSafeBoundedUnicodeString(value, 2_048);
+  if (typeof bounded !== "string" || bounded === value) return bounded;
+  return isContractUri(value) ? "x:" : value;
+};
+
+const workerSafeEvidenceSummaryCandidate = (value: unknown): unknown => {
+  const summary = ownDataRecordSnapshot(value, EVIDENCE_SUMMARY_KEYS);
+  if (summary === null) return Object.freeze({ invalidEvidenceSummary: true });
+  return Object.freeze({
+    ...summary,
+    value: workerSafeBoundedUnicodeString(summary.value, 1_000),
+    source_type: workerSafeBoundedUnicodeString(summary.source_type, 64),
+    source_owner: workerSafeBoundedUnicodeString(summary.source_owner, 200),
+    source_url: workerSafeEvidenceSummaryUri(summary.source_url),
+    source_locator: workerSafeBoundedUnicodeString(
+      summary.source_locator,
+      2_048,
+    ),
+    extraction_method: workerSafeBoundedUnicodeString(
+      summary.extraction_method,
+      64,
+    ),
+    extraction_version: workerSafeBoundedUnicodeString(
+      summary.extraction_version,
+      128,
+    ),
+  });
+};
+
+/** Complete EvidenceSummary validation using the public contract schema. */
+export const checkEvidenceSummaryContract = (
+  value: unknown,
+): value is EvidenceSummary =>
+  checkContractSchema(
+    EvidenceSummarySchema,
+    workerSafeEvidenceSummaryCandidate(value),
+  );
 
 export const ApiPageSchema = Type.Object(
   {

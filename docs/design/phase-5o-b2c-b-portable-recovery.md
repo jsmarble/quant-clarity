@@ -2,7 +2,7 @@
 
 | Attribute | Decision |
 |---|---|
-| Status | B1 codec/verifier locally implemented; accepted-bound workerd evidence, B2, and B3 planned |
+| Status | B1 row/byte accepted profile implemented; maximum-object profile, B2, and B3 planned |
 | Governing ADRs | [ADR 0042](../decisions/0042-model-slug-lifecycle-authority.md), [ADR 0043](../decisions/0043-byte-authentic-publication-recovery.md) |
 | Requirements | `DATA-001`, `PIPE-044`, `PIPE-050`–`PIPE-056`, `BE-003`, `BE-007`, `BE-010`–`BE-012`, `CF-008`, `SEC-011`, `SEC-012`, `PRIV-003`, `PRIV-006`, `PRIV-007`, `PRIV-011`, `OPS-006`, `OPS-008`, `QA-006` |
 | Serving schema | Exact fresh `1.13.0` target only |
@@ -14,7 +14,9 @@ B2C-B closes the gap between publication descriptor hashes and recoverable bytes
 
 This phase is deliberately split. B1 makes base bytes authentic and portable. B2 binds both artifacts and reconstructs one serving publication in an isolated target. B3 supplies the canonical/evidence, migration-away, protected-access-audit, remote R2/D1/Vectorize, and measured exercise evidence required for full disaster-recovery acceptance. Local B1 or B2 evidence does not advance `BE-010`, `OPS-008`, `REL-AC-21`, `REL-AC-23`, or `GATE-restore-and-rebuild`.
 
-The B1 codec and verifier are implemented locally with independent byte/hash vectors, hostile fake-R2 coverage, and pinned-workerd R2 round-trip/corruption evidence. The maximum accepted 24 MiB/50,000-row decoded-set exercise is not yet present, so B1's configured upper bound is not operationally accepted and the phase remains open.
+The B1 codec and verifier are implemented locally with independent byte/hash vectors, hostile fake-R2 coverage, pinned-workerd R2 round-trip/corruption evidence, and a joint row/byte accepted-profile exercise. The deterministic fixture contains exactly 50,000 source rows backed by complete public-contract-valid Provider and EvidenceSummary resources and produces 25,148,376 encoded bytes including its root, 17,448 bytes below the 24 MiB cap. The production admission formula uses source bytes, not the root, and yields exactly 84,267,088 bytes under the fixed 96 MiB budget; a stricter test calculation including the root yields 84,285,360 bytes. The pinned workerd test creates 18 objects, checks the largest is within 64 KiB of and not above 2 MiB, rereads every exact key and metadata/size, repeats the archive with an identical locator and unchanged object inventory, and completes the full manifest and closure replay again. Unit evidence accepts exactly 1,024 nonempty read-body chunks and fails closed at 1,025. Workerd exposes no trustworthy per-test peak-heap measurement, so this evidence is successful runtime execution plus the reviewed conservative admission formula, not a claim of measured production peak memory.
+
+This closes the joint maximum-row/near-maximum-byte profile only. It does not provide a positive 64-object profile: the current deterministic chunker, eight fixed relations, 2 MiB object target, and 24 MiB aggregate cap do not naturally make that defense-in-depth guard jointly reachable. A separate maximum-object feasibility/acceptance decision and remote private-bucket, lock, and operational recovery evidence remain pending; B1 is not described as fully complete from this profile alone.
 
 ## B1: `publication-recovery-base@1`
 
@@ -150,7 +152,7 @@ D1 Time Travel remains a separate in-place operational recovery tool, not the is
 | Boundary | Required local evidence | Required remote/operational evidence |
 |---|---|---|
 | B1 bytes | Independent golden hash vectors; hostile shape/encoding/metadata/body/key/range/count tests; create-only retry and ambiguous-write reconciliation | Private bucket binding, exact prefix, indefinite lock/public-access drift checks |
-| B1 semantics | Full persisted-content, inventory, family, closure, and bundle replay from downloaded bytes only | Worst-accepted-size Worker limits and R2 readback |
+| B1 semantics | Full persisted-content, inventory, family, closure, and bundle replay from downloaded bytes only; pinned-workerd joint 50,000-row/25,148,376-byte R2 round trip with an 84,267,088-byte production admission estimate; deterministic repeat archive; exact 18-object inventory; 1,024/1,025 stream-chunk boundary | Maximum-object feasibility/profile, remote worst-accepted-size Worker limits, and private-R2 readback |
 | B2 catalog | Independent catalog/two-artifact-root vectors; protected-root substitution and fallback rejection | Protected registry and recovery authorization controls |
 | B2 restore | No destination access before verification; fixed-SQL inertness; failure injection; exact retry; complete D1/FTS/Vectorize/projection/readiness parity | Fresh isolated D1/R2/Vectorize behavior and eventual-visibility measurements |
 | B3 portability | Offline non-Cloudflare round trip with corrupt/missing file rejection | Full canonical/evidence/publication recovery and migration-away exercise |
