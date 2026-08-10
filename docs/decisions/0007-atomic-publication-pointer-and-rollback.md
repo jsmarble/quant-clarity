@@ -65,3 +65,7 @@ Official references:
 ## Addendum: explicit read transport
 
 ADR 0013 defines the previously unresolved transport for this decision. Public clients use the optional `X-QuantClarity-Publication` request header; authenticated cursors carry the same pin and must agree with that header. Frontend service-bound requests sign the pin. Query head resolution returns a request-lifetime D1 bookmark that a cache-miss data query resumes, or performs an equivalent single head-joined read. Application Cache API keys use a synthesized same-origin reserved path containing only validated publication, resource, stable ID, and representation fields. Public immutable versioned URLs remain deferred.
+
+## Addendum: recoverable namespace bytes
+
+[Proposed ADR 0045](0045-publication-bound-embedding-recovery.md) would make an older publication's namespace rebuildable from product-owner-approved canonical publication recovery bytes rather than a current Workers AI alias. Rollback still selects an already retained and freshly verified namespace; disaster recovery into a new index must restore and fully reread the archived values, then either pass current-query-policy compatibility or use the narrowly authorized disaster-only exact-readiness state.

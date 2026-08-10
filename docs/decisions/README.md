@@ -78,5 +78,6 @@ Accepted ADRs describe implementation choices; they do not amend product require
 - [ADR 0040](0040-canonical-model-slug-history-capture.md) — drained canonical Model-slug history capture and saga handoff
 - [ADR 0041](0041-model-slug-sidecar-archive-and-staging.md) — locked content-addressed Model-slug sidecar and dormant serving staging
 - [ADR 0042](0042-model-slug-lifecycle-authority.md) — archive-bound Model-slug seal, readiness v5, and exact-generation lifecycle authority
-- [ADR 0043](0043-byte-authentic-publication-recovery.md) — byte-authentic publication archive, protected backup-v2 root, and isolated rebuild boundary
+- [ADR 0043](0043-byte-authentic-publication-recovery.md) — byte-authentic base publication archive and isolated rebuild prerequisite
 - [ADR 0044](0044-public-model-detail-http-cache.md) — public Model detail HTTP semantics, stable-ID-only Cache API, and response admission
+- [ADR 0045](0045-publication-bound-embedding-recovery.md) — proposed publication-bound byte-authentic embedding recovery; product-owner `BE-011` decision pending

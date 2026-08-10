@@ -65,3 +65,7 @@ B2B does not seal, mark ready, switch, change the active head, add an RPC, or op
 - [Cloudflare R2 Workers API](https://developers.cloudflare.com/r2/api/workers/workers-api-reference/)
 - [Cloudflare R2 consistency model](https://developers.cloudflare.com/r2/reference/consistency/)
 - [Cloudflare R2 bucket locks](https://developers.cloudflare.com/r2/buckets/bucket-locks/)
+
+## Addendum: recovery set successor
+
+[Proposed ADR 0045](0045-publication-bound-embedding-recovery.md) would supersede only this ADR's later-recovery assumption that the base archive plus Model-slug sidecar is the complete publication recovery set. The accepted Model-slug artifact format, writer, verifier, and local evidence remain unchanged. If product-owner-approved, future recovery uses the independently verified base, Model-slug, and publication-embedding artifacts through `backup-v3@1`; the embedding sidecar is canonical publication recovery data only, and no sidecar becomes canonical fact authority.
