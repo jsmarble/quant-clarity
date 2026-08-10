@@ -145,6 +145,8 @@ Exit evidence: primary journeys pass the preview-applicable inputs of `GATE-manu
 
 ## Phase 7 — CI/CD, operations, and first preview candidate
 
+[Phase 5P-A](phase-5p-a-predeployment-embargo.md) implements the deny-by-default repository prerequisite to this phase: independently discovered package, Wrangler, workflow, and local-action files plus npm lifecycle policy/lock inputs must match a closed non-secret inventory and reviewed content digests. CI validates them outside npm hooks before strictly allowlisted dependency rebuilds; `verify` repeats the check, keeps every environment unprovisioned, allows only approved telemetry-disabled Wrangler dry runs, and rejects authority/configuration drift before project-defined build or test scripts. It creates no deployment authority, branch protection, or remote evidence and advances no traceability status.
+
 1. Make every automated trace ID resolve to a test/report artifact and fail CI on missing/orphan/duplicate mappings.
 2. Reconcile the already bounded preview resources only through checked-in inventory and idempotent commands; run drift detection and protect production destructive operations.
 3. Add protected GitHub deployment environments, resource-scoped rotatable Cloudflare credentials, approval gates, artifact/SBOM retention, dry runs, migrations, and independent code/data rollback.

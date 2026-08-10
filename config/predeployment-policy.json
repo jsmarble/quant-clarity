@@ -1,0 +1,154 @@
+{
+  "schema_version": "1.0.0",
+  "deployment_authorized": false,
+  "environment_inventory": {
+    "path": "config/environments.json",
+    "config_sha256": "ac359634dd64a45b00b10a12c6f4d73a81f60868d319f632fad3a9d2c8016280"
+  },
+  "environment_names": ["local", "test", "preview", "production"],
+  "npm_configuration": {
+    "path": ".npmrc",
+    "file_sha256": "b064fdec6289515f012b8950927d91235deaadbff3742707d134d177ba256500"
+  },
+  "npm_lockfile": {
+    "path": "package-lock.json",
+    "file_sha256": "04eb7ccca281061afdfc2e0a5a40f08ed1b4cd8be04a32109b0ea4982d676e5c"
+  },
+  "package_manifests": [
+    {
+      "path": "package.json",
+      "authority_sha256": "7cb1daffdf94dc5f2c0c7e62807fc2f87277213364d15f47f528ac9eae35fcb9"
+    },
+    {
+      "path": "apps/api/package.json",
+      "authority_sha256": "6964b59686c85b1ab9dbc98d4b95207752d812952533031fe35c8c4803a28343"
+    },
+    {
+      "path": "apps/pipeline/package.json",
+      "authority_sha256": "6964b59686c85b1ab9dbc98d4b95207752d812952533031fe35c8c4803a28343"
+    },
+    {
+      "path": "apps/query/package.json",
+      "authority_sha256": "6964b59686c85b1ab9dbc98d4b95207752d812952533031fe35c8c4803a28343"
+    },
+    {
+      "path": "apps/web/package.json",
+      "authority_sha256": "801a17e336b11158fe6eb82a8230ac543c646caff145d38e558f37f9852ceef8"
+    },
+    {
+      "path": "packages/acquisition/package.json",
+      "authority_sha256": "04403868bc0a943b6390c9c84db8bb98dbbeab891e22c3104db15aee758138e2"
+    },
+    {
+      "path": "packages/adapters/fireworks/package.json",
+      "authority_sha256": "04403868bc0a943b6390c9c84db8bb98dbbeab891e22c3104db15aee758138e2"
+    },
+    {
+      "path": "packages/api-core/package.json",
+      "authority_sha256": "a680526b418b9b6c9d8368302b53217ecfadaf85cf1a0ad94cda8c4826f153af"
+    },
+    {
+      "path": "packages/canonical/package.json",
+      "authority_sha256": "04403868bc0a943b6390c9c84db8bb98dbbeab891e22c3104db15aee758138e2"
+    },
+    {
+      "path": "packages/contracts/package.json",
+      "authority_sha256": "04403868bc0a943b6390c9c84db8bb98dbbeab891e22c3104db15aee758138e2"
+    },
+    {
+      "path": "packages/domain/package.json",
+      "authority_sha256": "04403868bc0a943b6390c9c84db8bb98dbbeab891e22c3104db15aee758138e2"
+    },
+    {
+      "path": "packages/pipeline-core/package.json",
+      "authority_sha256": "a680526b418b9b6c9d8368302b53217ecfadaf85cf1a0ad94cda8c4826f153af"
+    },
+    {
+      "path": "packages/publication-core/package.json",
+      "authority_sha256": "a680526b418b9b6c9d8368302b53217ecfadaf85cf1a0ad94cda8c4826f153af"
+    },
+    {
+      "path": "packages/testing/package.json",
+      "authority_sha256": "04403868bc0a943b6390c9c84db8bb98dbbeab891e22c3104db15aee758138e2"
+    }
+  ],
+  "wrangler_configs": [
+    {
+      "app": "api",
+      "path": "apps/api/wrangler.jsonc",
+      "worker_name": "quant-clarity-api-local",
+      "config_sha256": "bbcd9e871366b4e441475093d6b051e7270a65e64e5888d3f615c01a8b7fea43",
+      "allowed_root_keys": [
+        "$schema",
+        "cache",
+        "compatibility_date",
+        "main",
+        "name",
+        "observability",
+        "preview_urls",
+        "ratelimits",
+        "services",
+        "workers_dev"
+      ]
+    },
+    {
+      "app": "pipeline",
+      "path": "apps/pipeline/wrangler.jsonc",
+      "worker_name": "quant-clarity-pipeline-local",
+      "config_sha256": "5b420b5eea5e78a1dd705007531bb4064e3ae5d9998221d4d21c1e5930b9cff9",
+      "allowed_root_keys": [
+        "$schema",
+        "compatibility_date",
+        "compatibility_flags",
+        "main",
+        "name",
+        "observability",
+        "preview_urls",
+        "workers_dev"
+      ]
+    },
+    {
+      "app": "query",
+      "path": "apps/query/wrangler.jsonc",
+      "worker_name": "quant-clarity-query-local",
+      "config_sha256": "6ac0a4d46f040a66857da3a73847a053718de5a227d40d61cfe18d6cbe10b7f5",
+      "allowed_root_keys": [
+        "$schema",
+        "compatibility_date",
+        "main",
+        "name",
+        "observability",
+        "preview_urls",
+        "vars",
+        "workers_dev"
+      ]
+    },
+    {
+      "app": "web",
+      "path": "apps/web/wrangler.jsonc",
+      "worker_name": "quant-clarity-web-local",
+      "config_sha256": "83e916e103ee1485bebad6091a8a7143a7336770cac2d6daf10450d43dbef3e0",
+      "allowed_root_keys": [
+        "$schema",
+        "assets",
+        "compatibility_date",
+        "compatibility_flags",
+        "main",
+        "name",
+        "observability",
+        "preview_urls",
+        "ratelimits",
+        "services",
+        "vars",
+        "workers_dev"
+      ]
+    }
+  ],
+  "workflow_files": [
+    {
+      "path": ".github/workflows/ci.yml",
+      "file_sha256": "f36893a9608b1ae4a4074318592096ef8807bc577bd1b2cfb78bf0ddf708474a"
+    }
+  ],
+  "allowed_wrangler_mode": "telemetry_disabled_dry_run_only"
+}

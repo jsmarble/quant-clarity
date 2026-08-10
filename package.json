@@ -26,6 +26,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint . --max-warnings=0",
+    "predeployment:check": "tsx tools/check-predeployment.ts",
     "privacy:check": "tsx tools/check-privacy.ts",
     "supply-chain:check": "tsx tools/check-licenses.ts && npm audit --audit-level=high && npm sbom --sbom-format cyclonedx >/dev/null",
     "test": "vitest run",
@@ -36,7 +37,7 @@
     "test:watch": "vitest",
     "typecheck": "tsc -b && tsc -p tsconfig.playwright.json --noEmit && npm run typecheck --workspaces --if-present",
     "unicode:check": "node packages/publication-core/unicode/generate-unicode-17.mjs --check",
-    "verify": "npm run format:check && npm run lint && npm run typecheck && npm run cf:types:check && npm run contracts:check && npm run docs:check && npm run environments:check && npm run unicode:check && npm run supply-chain:check && npm test && npm run test:workers && npm run build && npm run test:web && npm run test:web:production && npm run privacy:check"
+    "verify": "npm run predeployment:check && npm run format:check && npm run lint && npm run typecheck && npm run cf:types:check && npm run contracts:check && npm run docs:check && npm run environments:check && npm run unicode:check && npm run supply-chain:check && npm test && npm run test:workers && npm run build && npm run test:web && npm run test:web:production && npm run privacy:check"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.12.1",
