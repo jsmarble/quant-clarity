@@ -160,6 +160,7 @@ export function validatePublicWorkerConfig(
 
 const apiRootKeys = [
   "$schema",
+  "cache",
   "compatibility_date",
   "main",
   "name",
@@ -169,6 +170,14 @@ const apiRootKeys = [
   "services",
   "workers_dev",
 ] as const;
+
+function isExactDisabledApiCache(value: unknown): boolean {
+  return (
+    isObject(value) &&
+    hasExactKeys(value, ["enabled"]) &&
+    value.enabled === false
+  );
+}
 
 function isExactApiObservability(value: unknown): boolean {
   if (
@@ -256,6 +265,8 @@ export function validateApiWorkerConfig(value: unknown): string[] {
   if (value.main !== "src/index.ts") errors.push("main must be src/index.ts");
   if (value.compatibility_date !== "2026-08-01")
     errors.push("compatibility_date must be 2026-08-01");
+  if (!isExactDisabledApiCache(value.cache))
+    errors.push("cache must contain only enabled: false");
   if (!isExactApiObservability(value.observability))
     errors.push(
       "observability must contain only the exact disabled logs and traces configuration",

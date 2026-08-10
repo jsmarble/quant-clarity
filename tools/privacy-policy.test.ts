@@ -45,6 +45,7 @@ function safeApiConfig(): Record<string, unknown> {
     name: "quant-clarity-api-local",
     main: "src/index.ts",
     compatibility_date: "2026-08-01",
+    cache: { enabled: false },
     ...safeConfig(),
     services: [
       {
@@ -213,7 +214,6 @@ describe("zero-visitor-data static policy (GATE-zero-visitor-data)", () => {
       ["route", "api.example.test/*"],
       ["streaming_tail_consumers", [{ service: "sink" }]],
       ["secrets", { API_KEY: "placeholder" }],
-      ["cache", { binding: "CACHE" }],
       ["websearch", { binding: "SEARCH" }],
       ["stream", { binding: "STREAM" }],
       ["media", { binding: "MEDIA" }],
@@ -228,6 +228,24 @@ describe("zero-visitor-data static policy (GATE-zero-visitor-data)", () => {
       candidate[key] = value;
       expect(validateApiWorkerConfig(candidate), key).toContain(
         `${key} is not an allowlisted public API configuration field`,
+      );
+    }
+  });
+
+  it("requires exact pre-invocation cache disablement on the public API", () => {
+    for (const cache of [
+      undefined,
+      { enabled: true },
+      { enabled: false, cross_version_cache: false },
+      { binding: "CACHE" },
+    ]) {
+      const candidate = safeApiConfig();
+      if (cache === undefined) delete candidate.cache;
+      else candidate.cache = cache;
+      expect(validateApiWorkerConfig(candidate)).toContain(
+        cache === undefined
+          ? "cache is required in the public API configuration"
+          : "cache must contain only enabled: false",
       );
     }
   });
