@@ -41,6 +41,7 @@ function safeInputs(): PredeploymentInputs {
   const scripts = {
     build:
       "WRANGLER_SEND_METRICS=false wrangler deploy --dry-run --outdir dist",
+    "preview-plan:check": "tsx tools/check-cloudflare-preview-plan.ts",
   };
   const npmConfiguration = "engine-strict=true\n";
   const npmLockfile = '{"lockfileVersion":3}\n';
@@ -218,6 +219,28 @@ describe("predeployment embargo", () => {
       inputs.packageManifests["package.json"] as Record<string, unknown>
     ).scripts as Record<string, string>;
     scripts["traceability:check"] = "tsx tools/check-verification-artifacts.ts";
+    expect(validatePredeploymentPolicy(inputs)).toContain(
+      "package.json scripts/allowScripts do not match the approved digest",
+    );
+  });
+
+  it("rejects removal or mutation of the preview proposal gate", () => {
+    const inputs = clone(safeInputs());
+    const scripts = (
+      inputs.packageManifests["package.json"] as Record<string, unknown>
+    ).scripts as Record<string, string>;
+    scripts["preview-plan:check"] = "true";
+    expect(validatePredeploymentPolicy(inputs)).toContain(
+      "package.json scripts/allowScripts do not match the approved digest",
+    );
+  });
+
+  it("rejects deletion of the preview proposal gate", () => {
+    const inputs = clone(safeInputs());
+    const scripts = (
+      inputs.packageManifests["package.json"] as Record<string, unknown>
+    ).scripts as Record<string, string>;
+    delete scripts["preview-plan:check"];
     expect(validatePredeploymentPolicy(inputs)).toContain(
       "package.json scripts/allowScripts do not match the approved digest",
     );
