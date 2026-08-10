@@ -71,7 +71,11 @@
         ],
         "rate_limiters": ["READ_LIMITER", "ROTATION_LIMITER"],
         "protected_secret_names": ["RATE_LIMIT_HMAC_KEY"],
-        "variables": [{ "name": "DEPLOYMENT_ENV", "value": "preview" }],
+        "variables": [
+          { "name": "API_TRANSPORT_POLICY", "value": null },
+          { "name": "DEPLOYMENT_ENV", "value": "preview" },
+          { "name": "PUBLIC_API_ORIGIN", "value": null }
+        ],
         "storage": [],
         "ai": [],
         "pipeline_control": []
@@ -333,6 +337,7 @@
     "cloudflare_permission_scope_validation",
     "preview_smoke_mechanism_design",
     "preview_api_query_environment_configuration_and_remote_mismatch_probe",
+    "preview_api_public_origin_transport_and_remote_conformance",
     "publication_rollback_authority_design",
     "rate_limiter_namespace_audit",
     "retention_lock_policy_approval"

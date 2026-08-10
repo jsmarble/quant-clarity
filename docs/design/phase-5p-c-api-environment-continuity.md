@@ -19,7 +19,7 @@ The handler forwards one snapshot to `resolvePublicationV2.environment`, `readDa
 
 ## Configuration and proof
 
-The tracked local configuration defines only `DEPLOYMENT_ENV=local`. The zero-visitor-data policy owns that exact variable shape alongside the exact local `CATALOG_QUERY` target, two limiter bindings, disabled pre-invocation cache, and fully disabled public observability. The predeployment manifest binds the parsed configuration digest and root-key allowlist; generated Cloudflare declarations bind the literal local value.
+This increment established the exact `DEPLOYMENT_ENV=local` binding. Successor [Phase 5P-D](phase-5p-d-unrouted-model-detail-runtime.md) adds exact local `PUBLIC_API_ORIGIN` and `API_TRANSPORT_POLICY` bindings for the still-unrouted Model-detail composition without changing the environment value or API/query continuity. The zero-visitor-data policy owns the complete current variable shape alongside the exact local `CATALOG_QUERY` target, two limiter bindings, disabled pre-invocation cache, and fully disabled public observability. The predeployment manifest binds the parsed configuration digest and root-key allowlist; generated Cloudflare declarations bind all literal values.
 
 Unit tests prove all four valid values propagate without coercion and missing, hostile, padded, case-varied, boxed, array, numeric, and unknown values cannot reach RPC or the protected clock. They cover bodyless HEAD failure, planned response suppression, IPv6 dual-limit settlement, binding-access exceptions, and configuration precedence without response detail leakage. Existing hardened limiter tests cover exact result shapes, capability faults, address/secret bounds, and request-lifetime opaque keys.
 

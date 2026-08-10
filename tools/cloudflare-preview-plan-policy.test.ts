@@ -19,16 +19,40 @@ describe("Cloudflare preview plan proposal", () => {
     expect(validateCloudflarePreviewPlan(safePlan())).toEqual([]);
   });
 
-  it("retains the protected preview environment and remote mismatch gate", () => {
+  it("retains the protected preview configuration gates", () => {
     const plan = object(safePlan());
     const gates = plan.pending_gates as string[];
-    const required =
-      "preview_api_query_environment_configuration_and_remote_mismatch_probe";
-    expect(gates).toContain(required);
+    const required = [
+      "preview_api_query_environment_configuration_and_remote_mismatch_probe",
+      "preview_api_public_origin_transport_and_remote_conformance",
+    ];
+    expect(gates).toEqual(expect.arrayContaining(required));
 
-    gates.splice(gates.indexOf(required), 1);
+    gates.splice(gates.indexOf(required[1]!), 1);
     expect(validateCloudflarePreviewPlan(plan)).toContain(
       "preview plan must exactly mirror the code-owned proposal",
+    );
+  });
+
+  it("keeps preview API origin and transport values unresolved", () => {
+    const plan = object(safePlan());
+    const workers = plan.workers as Record<string, unknown>[];
+    const bindings = object(workers[1]!.bindings);
+    const variables = bindings.variables as Record<string, unknown>[];
+
+    expect(variables).toEqual([
+      { name: "API_TRANSPORT_POLICY", value: null },
+      { name: "DEPLOYMENT_ENV", value: "preview" },
+      { name: "PUBLIC_API_ORIGIN", value: null },
+    ]);
+
+    variables[0]!.value = "preview_https";
+    variables[2]!.value = "https://api.preview.example.test";
+    expect(validateCloudflarePreviewPlan(plan)).toEqual(
+      expect.arrayContaining([
+        "preview plan must exactly mirror the code-owned proposal",
+        "$.workers[1].bindings.variables[2].value contains a prohibited remote endpoint",
+      ]),
     );
   });
 

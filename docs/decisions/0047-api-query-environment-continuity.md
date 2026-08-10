@@ -20,7 +20,7 @@ Limiter failure or malformed capability returns the existing static `503`. A mis
 
 The query Worker remains the second enforcement point: each RPC compares its input environment to the query Worker's protected `DEPLOYMENT_ENVIRONMENT` before D1 access. This equality is defense in depth, not proof of environment isolation by itself. Dedicated-account isolation, environment-specific Worker and service names, distinct data/search bindings, protected identities, and remote access probes remain required.
 
-The tracked local API Wrangler configuration owns exactly `DEPLOYMENT_ENV=local`. Its closed configuration validator rejects omission, any different local value, additional variables, crossed service names, and unapproved capability roots. Wrangler-generated declarations own the literal binding type. Preview and production configuration remain absent and unauthorized.
+This decision's local configuration increment initially owned exactly `DEPLOYMENT_ENV=local`. Successor [ADR 0048](0048-unrouted-model-detail-protected-runtime.md) adds the separately validated local `PUBLIC_API_ORIGIN` and `API_TRANSPORT_POLICY` variables required by the still-unrouted Model-detail composition; it does not weaken this binding's exact value or environment/query continuity. The closed configuration validator rejects omission, any different local environment, crossed service names, and unapproved capability roots. Wrangler-generated declarations own the literal binding types. Preview and production deployable configuration remain absent and unauthorized.
 
 The metadata handler now uses the existing hardened public-read limiter shared with Model detail. It bounds source and secret inputs, derives only request-lifetime HMAC actor keys, validates exact limiter outcomes, settles both applicable IPv6 controls, and gives a limiter fault precedence over denial. This creates no log, trace, metric, cookie, request identifier, browser state, visitor cache key, or durable visitor record.
 
@@ -28,7 +28,7 @@ The metadata handler now uses the existing hardened public-read limiter shared w
 
 - Local, test, preview, and production API builds can run the same source without a hidden `local` fallback.
 - Crossed API/query environments fail before storage access and expose only the bounded public failure.
-- The local Wrangler variable, generated type, privacy configuration policy, and predeployment digest are one reviewed unit.
+- The local Wrangler variables, generated types, privacy configuration policy, and predeployment digest are one reviewed unit; ADR 0048 owns the additive origin/transport tuple.
 - ADR 0046's local `api_environment_plumbing` gate is replaced by the narrower `preview_api_query_environment_configuration_and_remote_mismatch_probe` gate. The topology remains non-provisionable, and its owner, legal, spending, jurisdiction, permission, smoke, rollback, limiter, retention, protected-environment, and deployment gates also remain pending.
 - This decision authorizes local implementation and verification only. It creates no Cloudflare resource, route, secret, remote identifier, deployment workflow, production authority, or release evidence.
 
@@ -44,7 +44,7 @@ The metadata handler now uses the existing hardened public-read limiter shared w
 
 - Unit tests forward each exact environment through resolver and read envelopes, reject missing and hostile values without coercion, prove a single binding read, preserve protected-policy response precedence, and make no query call or clock read after invalid configuration.
 - IPv4 and IPv6 tests exercise the shared transient limiter; both IPv6 controls settle, malformed/faulting outcomes fail closed, and no raw address or derived key escapes.
-- The local configuration policy accepts only `DEPLOYMENT_ENV=local`, and Wrangler type-drift checks require the generated literal binding.
+- At this increment the local configuration policy accepted only `DEPLOYMENT_ENV=local`; ADR 0048's successor policy preserves that exact value while adding exact local origin and transport literals. Wrangler type-drift checks require all generated literal bindings.
 - Actual multi-Worker workerd tests prove the runtime API binding is `local`, a `preview` RPC into the local query Worker returns `integrity_failure`, and a matching `local` RPC proceeds to the expected storage-read failure in the empty fixture.
 - Predeployment, privacy, type, Worker-runtime, documentation, traceability, and full verification gates must pass. Remote preview mismatch and cross-account isolation evidence remain pending.
 

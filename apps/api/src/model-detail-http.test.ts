@@ -124,7 +124,7 @@ const harness = (options: HarnessOptions = {}) => {
       },
     },
     environment: "local",
-    nowMs: NOW_MS,
+    nowMs: () => NOW_MS,
     protectedCacheOrigin: ORIGIN,
     queryService: service,
     rateLimitSecret: SECRET,
@@ -232,25 +232,32 @@ describe("closed Model detail HTTP orchestration (API-020–API-025, PRIV-006)",
 
   it("returns fixed 429 only after both applicable controls deny or allow", async () => {
     const state = harness({ readLimit: false });
-    const response = await handleModelDetailHttp(request(), state.capabilities);
+    const nowMs = vi.fn(() => NOW_MS);
+    const response = await handleModelDetailHttp(request(), {
+      ...state.capabilities,
+      nowMs,
+    });
 
     expect(response.status).toBe(429);
     expect(response.headers.get("Retry-After")).toBe("60");
     expect(state.events).toEqual(["limit.read", "limit.rotation"]);
     expect(state.service.resolvePublicationV2).not.toHaveBeenCalled();
+    expect(nowMs).not.toHaveBeenCalled();
   });
 
   it("limits OPTIONS before returning the fixed bodyless preflight", async () => {
     const state = harness();
+    const nowMs = vi.fn(() => NOW_MS);
     const response = await handleModelDetailHttp(
       request(undefined, { method: "OPTIONS" }),
-      state.capabilities,
+      { ...state.capabilities, nowMs },
     );
 
     expect(response.status).toBe(204);
     expect(response.body).toBeNull();
     expect(state.events).toEqual(["limit.read", "limit.rotation"]);
     expect(response.headers.get("Access-Control-Max-Age")).toBe("600");
+    expect(nowMs).not.toHaveBeenCalled();
   });
 
   it("composes limit, resolver, stable-ID cache miss, canonical read, and fill once", async () => {
@@ -331,6 +338,42 @@ describe("closed Model detail HTTP orchestration (API-020–API-025, PRIV-006)",
     expect(state.service.resolvePublicationV2).not.toHaveBeenCalled();
   });
 
+  it("keeps a clean denial ahead of downstream-only configuration failure", async () => {
+    const state = harness({ readLimit: false });
+    const response = await handleModelDetailHttp(request(), {
+      ...state.capabilities,
+      protectedCacheOrigin: null,
+    });
+
+    expect(response.status).toBe(429);
+    expect(state.events).toEqual(["limit.read", "limit.rotation"]);
+    expect(state.service.resolvePublicationV2).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      "throwing",
+      (): number => {
+        throw new Error("private clock diagnostic");
+      },
+    ],
+    ["negative", (): number => -1],
+    ["non-integer", (): number => 1.5],
+  ] as const)(
+    "fails closed for a %s clock after admission",
+    async (_label, nowMs) => {
+      const state = harness();
+      const response = await handleModelDetailHttp(request(), {
+        ...state.capabilities,
+        nowMs,
+      });
+
+      expect(response.status).toBe(503);
+      expect(state.events).toEqual(["limit.read", "limit.rotation"]);
+      expect(state.service.resolvePublicationV2).not.toHaveBeenCalled();
+    },
+  );
+
   it("fails a crossed environment policy with environment-derived HSTS after limiting", async () => {
     const state = harness();
     const response = await handleModelDetailHttp(request(), {
@@ -344,6 +387,20 @@ describe("closed Model detail HTTP orchestration (API-020–API-025, PRIV-006)",
     expect(response.headers.get("Strict-Transport-Security")).toBe(
       "max-age=31536000; includeSubDomains",
     );
+    expect(state.service.resolvePublicationV2).not.toHaveBeenCalled();
+  });
+
+  it("keeps global environment policy failure ahead of a clean denial", async () => {
+    const state = harness({ readLimit: false });
+    const response = await handleModelDetailHttp(request(), {
+      ...state.capabilities,
+      environment: null,
+      transportPolicy: null,
+    });
+
+    expect(response.status).toBe(503);
+    expect(state.events).toEqual(["limit.read", "limit.rotation"]);
+    expect(response.headers.has("Strict-Transport-Security")).toBe(false);
     expect(state.service.resolvePublicationV2).not.toHaveBeenCalled();
   });
 

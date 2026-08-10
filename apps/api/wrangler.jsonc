@@ -9,7 +9,9 @@
     "enabled": false,
   },
   "vars": {
+    "API_TRANSPORT_POLICY": "local_test",
     "DEPLOYMENT_ENV": "local",
+    "PUBLIC_API_ORIGIN": "https://api.example.test",
   },
   "observability": {
     "enabled": false,

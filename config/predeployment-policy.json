@@ -77,7 +77,7 @@
       "app": "api",
       "path": "apps/api/wrangler.jsonc",
       "worker_name": "quant-clarity-api-local",
-      "config_sha256": "db9f2b54b417abb15548758830bd6b4d067427d03549ef1f753f193179cc2b36",
+      "config_sha256": "a57da8dd9db0e934549fe44eaa798f2d191508e8946537852ab245a3e3e68c39",
       "allowed_root_keys": [
         "$schema",
         "cache",

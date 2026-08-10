@@ -224,8 +224,14 @@ function isExactApiService(value: unknown): boolean {
 function isExactApiVariables(value: unknown): boolean {
   return (
     isObject(value) &&
-    hasExactKeys(value, ["DEPLOYMENT_ENV"]) &&
-    value.DEPLOYMENT_ENV === "local"
+    hasExactKeys(value, [
+      "API_TRANSPORT_POLICY",
+      "DEPLOYMENT_ENV",
+      "PUBLIC_API_ORIGIN",
+    ]) &&
+    value.API_TRANSPORT_POLICY === "local_test" &&
+    value.DEPLOYMENT_ENV === "local" &&
+    value.PUBLIC_API_ORIGIN === "https://api.example.test"
   );
 }
 
@@ -281,7 +287,9 @@ export function validateApiWorkerConfig(value: unknown): string[] {
       "observability must contain only the exact disabled logs and traces configuration",
     );
   if (!isExactApiVariables(value.vars))
-    errors.push("vars must contain only DEPLOYMENT_ENV: local");
+    errors.push(
+      "vars must contain only the exact local API transport policy, deployment environment, and public origin",
+    );
 
   const services = value.services;
   if (
