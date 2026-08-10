@@ -1,0 +1,96 @@
+{
+  "schema_version": "1.0.0",
+  "gate_id": "GATE-gdpr-accountability",
+  "status": "release_blocked",
+  "gate_passed": false,
+  "release_authorized": false,
+  "compliance_claim_allowed": false,
+  "scope_requirement_ids": [
+    "LEG-005",
+    "PRIV-005",
+    "PRIV-008",
+    "PRIV-009",
+    "PRIV-010",
+    "SEC-012"
+  ],
+  "review_policy": {
+    "owner_role": "authorized_legal_product_owner",
+    "cadence": "annual_and_material_change",
+    "maximum_age_days": 366
+  },
+  "public_artifacts": [
+    {
+      "path": "apps/web/src/pages/privacy/index.astro",
+      "sha256": "a7b9022fcd28734e027a1a89ef9ab2a2f8c9c08776fbe4af768e5aeb6200175f"
+    },
+    {
+      "path": "docs/compliance/gdpr-accountability.md",
+      "sha256": "ec68add87071d807f20acd8eee2ecc32c71967af8fa86a76113037f1947b9012"
+    },
+    {
+      "path": "docs/compliance/privacy-notice.md",
+      "sha256": "86f3b4f8f8e219a68b8bb38eb2394e127bcfa648faa539ad5956702ee46e877d"
+    },
+    {
+      "path": "docs/compliance/processing-record.md",
+      "sha256": "c855085410a492f0b20862f8c41b127a88bb72ae64d6e6aad66e48bdf33afefe"
+    }
+  ],
+  "evidence_categories": [
+    {
+      "id": "privacy_notice_and_formal_contact",
+      "requirement_ids": ["LEG-005", "PRIV-005"],
+      "status": "draft",
+      "private_approval_reference": null,
+      "approved_on": null,
+      "next_review_due": null
+    },
+    {
+      "id": "cloudflare_processor_terms_transfers_subprocessors_locations",
+      "requirement_ids": ["PRIV-008"],
+      "status": "pending",
+      "private_approval_reference": null,
+      "approved_on": null,
+      "next_review_due": null
+    },
+    {
+      "id": "processing_record_and_legal_determinations",
+      "requirement_ids": ["PRIV-009"],
+      "status": "draft",
+      "private_approval_reference": null,
+      "approved_on": null,
+      "next_review_due": null
+    },
+    {
+      "id": "rights_request_procedure",
+      "requirement_ids": ["PRIV-010"],
+      "status": "pending",
+      "private_approval_reference": null,
+      "approved_on": null,
+      "next_review_due": null
+    },
+    {
+      "id": "restricted_and_audited_evidence_access",
+      "requirement_ids": ["SEC-012"],
+      "status": "pending",
+      "private_approval_reference": null,
+      "approved_on": null,
+      "next_review_due": null
+    },
+    {
+      "id": "authorized_owner_signoff",
+      "requirement_ids": [
+        "LEG-005",
+        "PRIV-005",
+        "PRIV-008",
+        "PRIV-009",
+        "PRIV-010",
+        "SEC-012"
+      ],
+      "status": "pending",
+      "private_approval_reference": null,
+      "approved_on": null,
+      "next_review_due": null
+    }
+  ]
+}

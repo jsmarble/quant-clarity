@@ -85,3 +85,4 @@ Accepted ADRs describe implementation choices; they do not amend product require
 - [ADR 0047](0047-api-query-environment-continuity.md) — validated API-to-query deployment-environment continuity
 - [ADR 0048](0048-unrouted-model-detail-protected-runtime.md) — exact protected local Model-detail runtime assembly without public routing
 - [ADR 0049](0049-public-methodology-detail.md) — exact historical methodology metadata over a dedicated publication-context read and shared immutable registry
+- [ADR 0050](0050-gdpr-accountability-readiness.md) — deterministic pending-only GDPR accountability readiness without engineering compliance authority
