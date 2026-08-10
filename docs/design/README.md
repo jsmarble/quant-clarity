@@ -10,6 +10,8 @@ The current model/variant exact-name follow-up is split by [ADR 0026](../decisio
 
 [ADR 0049](../decisions/0049-public-methodology-detail.md) and [Phase 5Q](phase-5q-public-methodology-detail.md) accept a local/test-only API slice: registered GET/HEAD use resolver V2 then one dedicated bookmark-continuous SELECT-only publication-context read, while registry/environment closure withholds unregistered and preview/production `404` responses until after limiting and prevents downstream reads. Every methodology response is `private, no-store`. The slice opens no remote route, uses no Cache API, leaves the human-readable methodology/change-log frontend separate, and keeps every mapped traceability row `Planned` until full gate evidence exists.
 
+[ADR 0050](../decisions/0050-gdpr-accountability-readiness.md) and [Phase 5R](phase-5r-gdpr-accountability-readiness.md) define a deterministic pending-only GDPR accountability inventory. The closed manifest hash-binds the working notice and public-safe drafts, requires exact missing-evidence categories, and refuses approval, release, or compliance claims. Its passing local checker proves only continued release blocking; authorized owner records and the deployed-notice hash remain necessary for `GATE-gdpr-accountability`, and every mapped row stays `Planned`.
+
 ## Design rules
 
 - Trace each component and consequential behavior to PRD requirement IDs.

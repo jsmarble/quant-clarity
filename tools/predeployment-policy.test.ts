@@ -41,6 +41,7 @@ function safeInputs(): PredeploymentInputs {
   const scripts = {
     build:
       "WRANGLER_SEND_METRICS=false wrangler deploy --dry-run --outdir dist",
+    "gdpr-accountability:check": "tsx tools/check-gdpr-accountability.ts",
     "preview-plan:check": "tsx tools/check-cloudflare-preview-plan.ts",
   };
   const npmConfiguration = "engine-strict=true\n";
@@ -241,6 +242,17 @@ describe("predeployment embargo", () => {
       inputs.packageManifests["package.json"] as Record<string, unknown>
     ).scripts as Record<string, string>;
     delete scripts["preview-plan:check"];
+    expect(validatePredeploymentPolicy(inputs)).toContain(
+      "package.json scripts/allowScripts do not match the approved digest",
+    );
+  });
+
+  it("rejects deletion of the GDPR accountability blocker gate", () => {
+    const inputs = clone(safeInputs());
+    const scripts = (
+      inputs.packageManifests["package.json"] as Record<string, unknown>
+    ).scripts as Record<string, string>;
+    delete scripts["gdpr-accountability:check"];
     expect(validatePredeploymentPolicy(inputs)).toContain(
       "package.json scripts/allowScripts do not match the approved digest",
     );

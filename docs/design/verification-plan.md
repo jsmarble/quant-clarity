@@ -14,6 +14,8 @@ Each traceability primary ID becomes a test/report anchor in code or an operatio
 
 Version 1 makes no claim about test execution results or evidence needed beyond local implementation. `Planned` rows need no entry. A `Designed`, `Verified`, `Accepted`, or `Released` row is rejected with a successor-schema requirement; those states need separately designed authorities and cannot be represented by adding fields to this registry. Registry membership does not advance a trace status or pass a composite gate.
 
+[`config/gdpr-accountability.json`](../../config/gdpr-accountability.json) is a separate pending-only readiness manifest, not a verification-artifact entry. Its checker hash-binds the working notice and public-safe accountability drafts, verifies the exact missing-evidence inventory, requires the six mapped rows to remain `Planned`, and rejects approval, release, or compliance claims. A passing `npm run gdpr-accountability:check` means only that the repository is deterministically release-blocked; it is not `GATE-gdpr-accountability` evidence of an authorized decision.
+
 | Gate | Constituent trace IDs | Inputs / environment | Pass/fail assertion | Retained artifact | Owner |
 |---|---|---|---|---|---|
 | `GATE-applicability-integrity` | `CT-DATA-051`, `QGA-QA-010`, `QGA-QA-012` | Gold fixtures for exact, base-object, alias, tier, class, and region cases; local + preview D1 | No known claim publishes outside an equal/proven applicability tuple; ambiguous cases are unknown/quarantined | JUnit/property report and candidate publication manifest | Data engineering |
@@ -68,6 +70,8 @@ Version 1 makes no claim about test execution results or evidence needed beyond 
 | `RGA-REL-AC-22` | `GATE-repository-release`, `GATE-gdpr-accountability` |
 | `RGA-REL-AC-23` | `GATE-restore-and-rebuild`, `GATE-publication-chaos` |
 | `RGA-REL-AC-24` | `GATE-repository-release` |
+
+Open question: the `REL-AC-19` traceability row lists concrete evidence through `PVT-PRIV-012`, but the current `RGA-REL-AC-19` mapping includes only `GATE-zero-visitor-data` and `GATE-gdpr-accountability`. Neither composite gate contains `PVT-PRIV-012`; that verification belongs to `GATE-referral-zero-tracking`. This plan records the text-versus-mapping omission without adding or removing a gate, changing the PRD, or interpreting which source is intended. `REL-AC-19` remains `Planned` until an authorized clarification is recorded.
 
 ## Release coordinator behavior
 

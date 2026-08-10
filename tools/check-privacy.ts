@@ -30,6 +30,7 @@ for (const candidate of configuredRoots.map((path) => resolve(path))) {
   if (exists) publicRoots.push(candidate);
 }
 const textExtensions = new Set([
+  ".astro",
   ".css",
   ".html",
   ".js",
