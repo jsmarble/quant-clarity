@@ -11,7 +11,7 @@
 
 B2C-A makes the archived Model-slug sidecar a mandatory publication-lifecycle authority. Serving migration `0016`, closure-seal guards, the v5 proof core, fixed readiness and switch adapters, rollback's read-only sidecar verification, and the B2B writer's schema-`1.13.0` compatibility land together. No intermediate combination is compatible.
 
-The slice remains local and controlled. It adds no backup-v2 exporter/restore, internal slug query RPC, public route, redirect, cache, Cloudflare resource, remote migration, provisioning, or deployment. A locally active test publication is not a production-ready publication.
+The slice remains local and controlled. It adds no portable exporter/restore (the former backup-v2 forecast is superseded), internal slug query RPC, public route, redirect, cache, Cloudflare resource, remote migration, provisioning, or deployment. A locally active test publication is not a production-ready publication.
 
 ## Atomic schema cutover
 
@@ -158,7 +158,7 @@ The readiness and switch batches use fixed prepared SQL and bound values only. S
 | `DATA-001`, `PIPE-044`, `PIPE-050`–`PIPE-052`, `QA-006` | Pristine 1.13 cutover, seal-bound artifact/mapping closure, v5 atomic readiness and switch failure injection | Remote D1/R2/Vectorize and deployed publication chaos |
 | `PIPE-053`–`PIPE-056` | Fresh archive-bound activation/rollback, exact generation/history, retained-hot target checks, head preservation | Operational rollback timing and multi-PoP/cache evidence |
 | `BE-002`–`BE-007` | Immutable indexed mapping, exact content parity, controlled writer/read-only verifier boundaries | Complete deployed database and identity evidence |
-| `BE-010`–`BE-012` | Backup-v1 rejection at 1.13 and explicit protected two-artifact recovery authority | B2C-B backup-v2, isolated restore, migration-away, RPO/RTO evidence |
+| `BE-010`–`BE-012` | Backup-v1 rejection at 1.13; proposed ADR 0045 would supersede the planned two-artifact authority after owner approval | B2C-B schema-1.14 lifecycle v6, backup-v3, isolated restore, migration-away, RPO/RTO evidence |
 | `SEC-011`, `SEC-012` | Hostile bounded private-R2 read; no canonical query or public R2 surface | Remote egress/bucket-policy verification |
 | `PRIV-003`, `PRIV-006`, `PRIV-007`, `PRIV-011` | Controlled publication facts only; no visitor surface, persistence, cache, or telemetry | Deployed infrastructure/accountability verification |
 
@@ -168,7 +168,7 @@ No traceability status advances solely from B2C-A local evidence. `DATA-001` rem
 
 ### B2C-B: backup and isolated restore
 
-B2C-B owns `backup-v2@1` with format version `2.0.0`, the protected two-artifact recovery catalog, `backup-v2-restore-source@1`, `serving-restore-rebuild@6`, independent sidecar read verification, fresh schema-`1.13.0` reconstruction, FTS/Vectorize rebuild, and RPO/RTO exercise evidence. It must never treat backed-up proof/mapping rows or current canonical D1 as restore truth.
+Proposed ADR 0045 would supersede this phase's unimplemented B2C-B forecast after product-owner acceptance. B2C-B would then own publication-time `publication-embedding-artifact@1`, schema-`1.14.0` lifecycle v6, protected three-artifact `backup-v3@1`, `backup-v3-restore-source@1`, `serving-restore-rebuild@6`, independent sidecar read verification, FTS rebuild, exact accepted Vectorize-value restoration, fail-closed current-query-policy compatibility, and RPO/RTO exercise evidence. It must never treat backed-up proof/mapping rows, current Vectorize, or current canonical D1 as restore truth.
 
 ### B2C-C: internal publication-pinned lookup
 

@@ -1,6 +1,6 @@
 # Phase 5O-B3: Public Model detail HTTP and stable-ID cache
 
-Status: implementation in progress; B3-A admission and pre-open audit plus the closed, unrouted B3-B Model-detail HTTP composition, manual stable-ID cache boundary, and generated Model-detail OpenAPI contract implemented locally; protected audit invocation/evidence, recovery admission, protected environment binding, public routing, and release evidence pending
+Status: implementation in progress; B3-A admission and pre-open audit plus the closed, unrouted B3-B Model-detail HTTP composition, manual stable-ID cache boundary, and generated Model-detail OpenAPI contract implemented locally; proposed ADR 0045 would require product-owner-approved schema-1.14 lifecycle-v6 three-artifact recovery admission before routing; protected audit invocation/evidence, recovery admission, protected environment binding, public routing, and release evidence pending
 
 Primary requirements: `DATA-001`–`DATA-015`, `DATA-060`–`DATA-065`, `API-001`–`API-005`, `API-011`–`API-014`, `API-016`, `API-017`, `API-020`–`API-027`, `BE-002`, `BE-003`, `BE-007`–`BE-009`, `CF-008`, `CF-020`, `CF-021`, `CF-023`, `NFR-001`, `NFR-002`, `SEC-001`, `SEC-007`, `SEC-008`, `SEC-011`, `PRIV-003`, `PRIV-004`, `PRIV-006`, `PRIV-007`, `PRIV-011`, `OPS-001`–`OPS-003`, `QA-004`, `QA-006`–`QA-008`, `QA-014`
 
@@ -103,4 +103,4 @@ All rows include the fixed CORS and security headers appropriate to their status
 
 ## Non-claims and release blockers
 
-Local B3 completion does not by itself complete `API-002`, `API-012`, `API-020`–`API-027`, `CF-008`, `CF-023`, `NFR-001`, `NFR-002`, `QA-004`, `QA-008`, `QA-014`, or any release gate. The complete resource set, remote D1/service/cache behavior, controlled cold/warm and tenfold profiles, multi-PoP cache-filled switch/rollback, NAT/IPv6 limiter evidence, production account privacy audit, DPA/transfer/subprocessor review, ROPA and other GDPR accountability decisions, legal/dataset terms, B2C-B recovery, RPO/RTO, protected configuration, provisioning, and deployment remain pending.
+Local B3 completion does not by itself complete `API-002`, `API-012`, `API-020`–`API-027`, `CF-008`, `CF-023`, `NFR-001`, `NFR-002`, `QA-004`, `QA-008`, `QA-014`, or any release gate. The complete resource set, remote D1/service/cache behavior, controlled cold/warm and tenfold profiles, multi-PoP cache-filled switch/rollback, NAT/IPv6 limiter evidence, production account privacy audit, DPA/transfer/subprocessor review, ROPA and other GDPR accountability decisions, legal/dataset terms, ADR-0045/schema-`1.14.0` `backup-v3@1` recovery, RPO/RTO, protected configuration, provisioning, and deployment remain pending.

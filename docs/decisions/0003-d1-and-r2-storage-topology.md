@@ -18,7 +18,7 @@ Use three storage roles:
 - `serving` D1: disposable, denormalized, publication-version-keyed API and page projections plus exact/keyword search documents. It contains no credentials, raw authenticated payloads, or unrelated source content. Public reads access it only through the internal query Worker.
 - Private R2 buckets: redacted raw evidence, immutable normalized observation archives, publication bundles and manifests, logical ordinary-table exports, fixture-source audit material, and disaster-recovery artifacts. Object metadata records integrity hashes and retention class.
 
-Serving projections are reproducible from an integrity-hashed R2 publication bundle. Keep active and rollback-ready projections online; archive all completed publications to R2. Retain redacted evidence for at least 24 months and normalized price/precision history for the life of the service. Export ordinary base tables from both D1 databases to R2 on a tested schedule in addition to D1 Time Travel. Canonical export drains/acquires the single-writer lease and records one Time Travel bookmark/high-water boundary; serving export selects one immutable publication closure. Hash/count every chunk and retry if the ending boundary changes. Because D1 export does not support databases containing virtual tables, never treat the serving FTS5 index as portable backup data: export `publication_search_document` rows and rebuild FTS5 and Vectorize deterministically during restore.
+Serving projections are reproducible from an integrity-hashed R2 publication bundle. Keep active and rollback-ready projections online; archive all completed publications to R2. Retain redacted evidence for at least 24 months and normalized price/precision history for the life of the service. Export ordinary base tables from both D1 databases to R2 on a tested schedule in addition to D1 Time Travel. Canonical export drains/acquires the single-writer lease and records one Time Travel bookmark/high-water boundary; serving export selects one immutable publication closure. Hash/count every chunk and retry if the ending boundary changes. Because D1 export does not support databases containing virtual tables, never treat the serving FTS5 index as portable backup data: export `publication_search_document` rows and rebuild FTS5 deterministically during restore. Vectorize identity and metadata remain derived, while proposed ADR 0045 would restore exact accepted value bytes from separate canonical publication recovery data after product-owner approval.
 
 Official references:
 
@@ -48,7 +48,11 @@ Official references:
 
 - Prove database constraints reject orphan offerings, unsupported evidence links, duplicate active identities, and prices without offerings.
 - Rebuild a blank serving D1 database from one R2 publication bundle and compare resource hashes.
-- Restore canonical D1 through Time Travel and from an R2 logical export in separate exercises; restore serving D1 from base rows and prove FTS5/Vectorize rebuild parity.
+- Restore canonical D1 through Time Travel and from an R2 logical export in separate exercises; restore serving D1 from base rows, prove deterministic FTS5 parity, and—if ADR 0045 is accepted—prove exact archived Float32 restoration and complete Vectorize parity.
 - Demonstrate the 24-hour RPO/RTO and four-hour publication rollback objectives.
 - Scan serving D1 and public bundles for credentials, personal data, and authenticated raw payloads.
 - Model initial and 100-provider storage growth against current D1 and R2 limits and cost.
+
+## Addendum: byte-authentic vector recovery
+
+[Proposed ADR 0045](0045-publication-bound-embedding-recovery.md) would narrow “Vectorize rebuild” for an existing publication after product-owner approval: identity, metadata, and FTS remain deterministically derived, while exact accepted document-vector values are restored from separately byte-verified canonical publication recovery data because Workers AI exposes no immutable revision contract. Current Vectorize is never backup authority, and current-alias query compatibility remains a fail-closed semantic-readiness gate.

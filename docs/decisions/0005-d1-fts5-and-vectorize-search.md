@@ -63,3 +63,7 @@ Official references:
 ## Addendum: publication-qualified vector identity
 
 ADR 0013 resolves the vector-identity detail left implicit here. The publication ID is the Vectorize namespace, while the index-wide vector ID is the SHA-256 of a versioned publication/resource tuple and maps back to the stable canonical model or variant through serving D1. Stable canonical IDs are not reused directly as vector IDs across namespaces. This addendum changes no retrieval, neutrality, or canonical-evidence rule in this ADR.
+
+## Addendum: embedding-output recovery
+
+[Proposed ADR 0045](0045-publication-bound-embedding-recovery.md) would resolve the recovery detail left implicit here after product-owner acceptance of its `BE-011` interpretation. New publications would bind exact accepted document-vector bytes as canonical publication recovery data before Vectorize insertion; disaster recovery would restore those bytes instead of re-inferencing through a mutable hosted alias. Semantic querying remains disabled until the current query policy passes the complete acceptance set against the restored corpus. Exact/keyword/structured fallback, D1 canonical rehydration, and neutrality remain unchanged.

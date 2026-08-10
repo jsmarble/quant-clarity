@@ -3,14 +3,14 @@
 | Attribute | Value |
 |---|---|
 | Status | Accepted planning model; USD 25 control target approved 2026-08-01 |
-| Rate snapshot | Official Cloudflare pricing checked 2026-08-01 |
+| Rate snapshot | Official Cloudflare pricing checked 2026-08-10 |
 | Currency | USD; taxes and domain registration excluded |
 | Parent design | [`system-design.md`](system-design.md) |
 | Related requirements | `SM-09`, `API-021`, `API-025`–`API-027`, `CF-020`–`CF-025`, `NFR-008`, `PIPE-037`, `QA-008` |
 
 ## Current rates used
 
-Rates must be rechecked before every production release and after announced Workflows billing begins on 2026-08-10.
+Rates must be rechecked before every production release. Workflows step and state billing began on 2026-08-10 and is included below.
 
 | Service | Included / base | Overage used in model | Official source |
 |---|---|---|---|
@@ -38,17 +38,25 @@ Cloudflare's current queried-dimension formula is `(queries against an index + v
 | Publication writes/month | 250,000 | 2,500,000 | 40,000,000 |
 | Active search vectors | 500 | 5,000 | 200,000 |
 | Stored vector generations | 3 (active, previous, building) | 3 | 3 |
+| Publications/year | 104 | 104 | 104 |
+| Document embedding calls/publication | 500 | 5,000 | 200,000 (profile not admitted) |
+| Planning document tokens/call | 512 average; 4,096 fail-safe ceiling | 512; 4,096 | 512; 4,096 |
+| Document embedding calls/month | 4,333 | 43,333 | 1,733,333 |
+| Document-embedding Workflow steps/month | 659 | 849 | 9,299 |
 | Modeled semantic query requests/month (forecast and controlled tests only) | 10,000 | 100,000 | 1,000,000 |
 | Nominal Vectorize calls/request | 1.2 | 1.2 | 1.2 |
 | Worst filtered calls/request | 8 | 8 | 8 |
-| Embedding dimensions | 768 provisional | 768 | 768 |
+| Embedding dimensions | 1,024 (ADR 0045) | 1,024 | 1,024 |
 | Query embedding tokens | 50/query | 50/query | 60/query |
 | Workflow steps/month | 4,000 | 40,000 | 400,000 |
 | Browser hours/month | 0 structured-first | 5 | 10 |
 | Redacted evidence growth/month | 0.35 GB | 3.5 GB | 4 GB (catalog batching required) |
 | Evidence steady-state at 24 months | 8.4 GB | 84 GB | 96 GB |
+| Raw embedding-sidecar values/year before framing | 0.213 GB | 2.13 GB | 85.2 GB (profile not admitted) |
 
 Dynamic requests and semantic queries are planning forecasts, never production visitor counters imported into QuantClarity. They assume roughly four SSR/API calls per visitor plus external API traffic. Service-binding calls add combined CPU but no second paid inbound request under Workers Standard pricing. Publication-write assumptions include base rows and index amplification; D1 `meta.rows_written` is measured only on non-visitor pipeline/control-plane work.
+
+Proposed ADR 0045 replaces the provisional 768 dimensions with Qwen3's documented 1,024 dimensions and retains exact publication-time document vectors in private R2. Sidecar calculations below assume no compression, use only the 4,096 raw value bytes per vector, and therefore understate framing, manifests, and operations. Document-inference calculations assume 104 complete publications/year, one call per vector per publication, and 512 input tokens per document; the separately shown 4,096-token fail-safe ceiling is deliberately not inferred from the byte ceiling and must be replaced by measured tokenizer results before activation. Workflow-step calculations use `ceil(vectors / 200) + 63 chunk/root/write-and-proof steps + 10 fixed steps` per publication. Individual AI calls remain subrequests inside those steps and require a configured greater-than-50,000 per-instance limit at the accepted maximum. Workflow state cost conservatively assumes the paid plan's default 30-day retention for successful, failed, and retrying instances; no unapproved shortening or deletion is credited. At scale, raw accepted values alone imply roughly `0.819 GB × 104/12 = 7.10 GB-month`, before framing. The proposed v1 recovery formats cap below the 200,000-vector scale profile; scale figures are sensitivity evidence, not an approved operating envelope.
 
 Normalized price/precision history is retained for the life of the service and archived by provider/year as integrity-hashed logical rows in R2 after its indexed operational window. Using four normalized records per offering per refresh, 104 refreshes/year, and 500 compressed bytes/record gives:
 
@@ -71,11 +79,11 @@ The 100,000-offering profile is a contract/scale proof, not the initial USD 25 o
 | Workers | 50k requests; 0.5M CPU-ms, both included | 5.00 minimum |
 | D1 | 5M reads; 0.25M writes; <1 GB, included | 0.00 |
 | R2 | 8.4 GB steady state; operations far below included | 0.00 |
-| Vectorize | stored `3×500×768=1.152M`; nominal queried active `(12k calls+500 vectors)×768=9.6M`, included | 0.00 |
-| Workers AI embeddings | `10k×50=0.5M` tokens × USD 0.012/M before daily free allocation | ≤0.01 |
-| Workflows | 4k steps, <0.1 GB state, included | 0.00 |
+| Vectorize | stored `3×500×1,024=1.536M`; nominal queried active `(12k calls+500 vectors)×1,024=12.8M`, included | 0.00 |
+| Workers AI embeddings | query `10k×50=0.5M` plus publication document `4,333×512=2.218M` tokens, all × USD 0.012/M before daily free allocation | ≤0.04 |
+| Workflows | 4k total steps including about 659 document-embedding steps; about 2.048 MB raw accepted vector state/publication, included | 0.00 |
 | Browser Run | 0 hours | 0.00 |
-| **Projected base** | rounded with no extraction model | **USD 5.01/month** |
+| **Projected base** | rounded with no extraction model | **USD 5.04/month** |
 
 ### Tenfold
 
@@ -83,12 +91,12 @@ The 100,000-offering profile is a contract/scale proof, not the initial USD 25 o
 |---|---|---:|
 | Workers | 0.5M requests; 5M CPU-ms, included | 5.00 minimum |
 | D1 | 50M reads; 2.5M writes; serving plus canonical storage assumed 3 GB, included | 0.00 |
-| R2 | five-year evidence/history `(84+0.832-10)×0.015`; operations included | 1.12 |
-| Vectorize | stored `3×5k×768=11.52M` (negligible storage overage); nominal queried active `(120k calls+5k vectors)×768=96M`; queried overage dominates | 0.46 |
-| Workers AI embeddings | 5M tokens × USD 0.012/M | 0.06 |
-| Workflows | 40k steps, <1 GB, included | 0.00 |
+| R2 | five-year evidence/history/sidecar raw values `(84+0.832+10.65-10)×0.015`; operations included | 1.28 |
+| Vectorize | stored `3×5k×1,024=15.36M` (negligible storage overage); nominal queried active `(120k calls+5k vectors)×1,024=128M`; queried overage dominates | 0.78 |
+| Workers AI embeddings | query `5M` plus publication document `43,333×512=22.187M` tokens, all × USD 0.012/M | 0.33 |
+| Workflows | 40k total steps including about 849 document-embedding steps; about 20.48 MB raw accepted vector state/publication, included | 0.00 |
 | Browser Run | 5 hours, included | 0.00 |
-| **Projected tenfold** | excludes unapproved generative extraction | **USD 6.64/month** |
+| **Projected tenfold** | excludes unapproved generative extraction | **USD 7.39/month** |
 
 ### 100,000-offering scale profile
 
@@ -96,15 +104,15 @@ The 100,000-offering profile is a contract/scale proof, not the initial USD 25 o
 |---|---|---:|
 | Workers | 5M requests, 60M CPU-ms; CPU overage `30M×0.02/M` | 5.60 |
 | D1 | 1B reads included; 40M writes included; 8 GB across serving/canonical databases gives about 3 GB over included | 2.25 |
-| R2 | five-year evidence/history `(96+104-10)×0.015` | 2.85 |
-| Vectorize queried | nominal `(1.2M calls+200k vectors)×768=1.0752B`; overage `1.0252B×0.01/M` | 10.25 |
-| Vectorize stored | `3×200k×768=460.8M`; overage `450.8M×0.05/100M` | 0.23 |
-| Workers AI embeddings | 60M tokens × USD 0.012/M | 0.72 |
-| Workflows | 400k steps, included | 0.00 |
+| R2 | five-year evidence/history/raw sidecar values `(96+104+425.98-10)×0.015`; framing/operations excluded | 9.24 |
+| Vectorize queried | nominal `(1.2M calls+200k vectors)×1,024=1.4336B`; overage `1.3836B×0.01/M` | 13.84 |
+| Vectorize stored | `3×200k×1,024=614.4M`; overage `604.4M×0.05/100M` | 0.30 |
+| Workers AI embeddings | query `60M` plus publication document `1.733M×512=887.467M` tokens, all × USD 0.012/M | 11.37 |
+| Workflows | 400k total steps included; about 9,299 are document-embedding steps; default-retained raw state about 7.10 GB-month gives `(7.10-1)×0.20`, before framing and not admitted | 1.22 |
 | Browser Run | 10 hours, included | 0.00 |
-| **Projected scale profile** | nominal 1.2 calls/request, before generative extraction and extra databases | **USD 21.90/month** |
+| **Projected scale profile** | nominal 1.2 calls/request; not admitted by v1 recovery formats | **USD 43.82/month** |
 
-Worst-case eight-batch filtered fan-out at scale is `(8M calls+200k vectors)×768=6.2976B` queried dimensions, or USD 62.48 after the included 50M. Replacing the nominal USD 10.25 queried charge with USD 62.48 yields an approximately USD 74.13 worst-case scale month. This is outside the initial budget. Static per-request ceilings and transient rate limits constrain amplification; Cloudflare account-level billing controls trigger operator semantic disablement without a QuantClarity monthly visitor counter.
+Worst-case eight-batch filtered fan-out at scale is `(8M calls+200k vectors)×1,024=8.3968B` queried dimensions, or USD 83.47 after the included 50M. Replacing the nominal USD 13.84 queried charge with USD 83.47 yields an approximately USD 113.45 worst-case scale month after the document-embedding and default Workflow-state-retention corrections. At the 4,096-token fail-safe ceiling, publication document inference alone is about USD 0.21/month at base, USD 2.13 at tenfold, and USD 85.20 at scale before retries. Three attempts at the 512-token planning average cost about USD 0.08, USD 0.80, and USD 31.95/month respectively for document inference alone. Failed/retrying state can increase the 30-day average and is not credited as free; measured admission must include it. Admission rejects a publication before inference when its fixed token, call, subrequest, Workflow-state, or cost ceiling cannot fit; no automatic retry may bypass that reservation. This is outside the initial budget and the v1 recovery format. Static per-request ceilings and transient rate limits constrain amplification; Cloudflare account-level billing controls trigger operator semantic disablement without a QuantClarity monthly visitor counter.
 
 The scale estimate is sensitive to forecast semantic volume, controlled-test batch factor, evidence growth, D1 storage split, and publication write amplification. It must be replaced with controlled test results and account-level cost review before claiming 100,000-offering readiness, never live visitor telemetry imported into the application.
 

@@ -20,7 +20,7 @@
 ## Material corrections incorporated
 
 - Publication head resolution now precedes publication-keyed cache selection for API and SSR; cache purge is not a correctness mechanism.
-- Serving backup exports ordinary rows and deterministically rebuilds FTS5/Vectorize; canonical backup has a drained-writer bookmark/high-water consistency boundary.
+- Serving backup exports ordinary rows and deterministically rebuilds FTS5; canonical backup has a drained-writer bookmark/high-water consistency boundary. Proposed ADR 0045 would instead restore exact accepted Vectorize value bytes from separate canonical publication recovery data and remains product-owner-gated.
 - Pre-retention streaming DLP/redaction discards failed source input before any durable object, Workflow state, hash, log, fixture, or AI request.
 - Typed claim scopes separate model/checkpoint/provider facts from exact-offering precision/price applicability; publisher organizations are independent of inference providers.
 - Public API resource fields/nullability/provenance, next refresh metadata, exact price behavior, stable IDs, and Model/Offering Facts projections are normative.

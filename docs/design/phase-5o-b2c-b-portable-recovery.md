@@ -2,17 +2,17 @@
 
 | Attribute | Decision |
 |---|---|
-| Status | B1 local accepted profiles implemented; B2 and B3 planned |
-| Governing ADRs | [ADR 0042](../decisions/0042-model-slug-lifecycle-authority.md), [ADR 0043](../decisions/0043-byte-authentic-publication-recovery.md) |
+| Status | B1 local accepted profiles implemented; ADR 0045 embedding authority proposed and product-owner-gated; B2 and B3 blocked/planned |
+| Governing ADRs | [ADR 0042](../decisions/0042-model-slug-lifecycle-authority.md), [ADR 0043](../decisions/0043-byte-authentic-publication-recovery.md), [ADR 0045](../decisions/0045-publication-bound-embedding-recovery.md) |
 | Requirements | `DATA-001`, `PIPE-044`, `PIPE-050`–`PIPE-056`, `BE-003`, `BE-007`, `BE-010`–`BE-012`, `CF-008`, `SEC-011`, `SEC-012`, `PRIV-003`, `PRIV-006`, `PRIV-007`, `PRIV-011`, `OPS-006`, `OPS-008`, `QA-006` |
-| Serving schema | Exact fresh `1.13.0` target only |
+| Serving schema | Exact fresh `1.14.0` target only for B2; B1 remains schema-`1.13.0` source authority |
 | Public surface | None |
 
 ## Purpose and scope
 
-B2C-B closes the gap between publication descriptor hashes and recoverable bytes. The complete serving recovery set is one byte-verified base archive plus the independently byte-verified `model-slug-history-artifact@1` sidecar, selected by one independently protected backup-v2 catalog digest.
+B2C-B closes the gap between publication descriptor hashes and recoverable bytes. Proposed ADR 0045 would supersede the planned two-artifact `backup-v2` boundary before it is implemented. The proposed complete serving recovery set is one byte-verified base archive plus independently byte-verified `model-slug-history-artifact@1` and `publication-embedding-artifact@1` sidecars, selected by one independently protected `backup-v3@1` format-`3.0.0` catalog digest. No B2 work begins until the product owner accepts ADR 0045's `BE-011` interpretation.
 
-This phase is deliberately split. B1 makes base bytes authentic and portable. B2 binds both artifacts and reconstructs one serving publication in an isolated target. B3 supplies the canonical/evidence, migration-away, protected-access-audit, remote R2/D1/Vectorize, and measured exercise evidence required for full disaster-recovery acceptance. Local B1 or B2 evidence does not advance `BE-010`, `OPS-008`, `REL-AC-21`, `REL-AC-23`, or `GATE-restore-and-rebuild`.
+This phase is deliberately split. B1 makes base bytes authentic and portable. B2 first implements the dormant embedding sidecar, then binds all three artifacts and reconstructs one serving publication in an isolated target. B3 supplies the canonical/evidence, migration-away, protected-access-audit, remote R2/D1/Vectorize, and measured exercise evidence required for full disaster-recovery acceptance. Local B1 or B2 evidence does not advance `BE-010`, `OPS-008`, `REL-AC-21`, `REL-AC-23`, or `GATE-restore-and-rebuild`.
 
 The B1 codec and verifier are implemented locally with independent byte/hash vectors, hostile fake-R2 coverage, pinned-workerd R2 round-trip/corruption evidence, and accepted row/byte and object-count profiles. The deterministic row/byte fixture contains exactly 50,000 source rows backed by complete public-contract-valid Provider and EvidenceSummary resources and produces 25,148,376 encoded bytes including its root, 17,448 bytes below the 24 MiB cap. The production admission formula uses source bytes, not the root, and yields exactly 84,267,088 bytes under the fixed 96 MiB budget; a stricter test calculation including the root yields 84,285,360 bytes. The pinned workerd test creates 18 objects, checks the largest is within 64 KiB of and not above 2 MiB, rereads every exact key and metadata/size, repeats the archive with an identical locator and unchanged object inventory, and completes the full manifest and closure replay again. A separate contract-valid 64-row fixture is independently and canonically packed into 63 source objects plus its root; pinned workerd R2 lists exactly 64 objects and the production verifier reconstructs the exact manifest and closure authority. The same rows packed into 64 source objects plus root are rejected by the unit hostile-R2 verifier after exactly one root read, before any source-chunk read. Unit evidence also accepts exactly 1,024 nonempty read-body chunks and fails closed at 1,025. Workerd exposes no trustworthy per-test peak-heap measurement, so this evidence is successful runtime execution plus the reviewed conservative admission formula, not a claim of measured production peak memory.
 
@@ -87,11 +87,17 @@ That final replay mints a nominal `VerifiedPublicationRecoveryBase`. It proves b
 
 Failures use closed static classes such as invalid input, limit exceeded, conflict, object absent, transport unavailable, integrity failure, and semantic closure failure. They do not contain raw keys, bytes, imported text, credentials, vendor request IDs, exception messages, or visitor-derived values. Failure before complete verification returns no verified value. The writer may leave only immutable content-addressed objects; it never mutates serving or canonical D1.
 
-## B2: `backup-v2@1` and isolated serving rebuild
+## B2: `publication-embedding-artifact@1`, `backup-v3@1`, and isolated serving rebuild
+
+### Embedding sidecar
+
+After ADR acceptance, the first B2 increment is the dormant runtime-neutral codec, conditional-create writer, hostile exact-key reader, and nominal verified authority defined by ADR 0045. It receives only already validated document-vector values and trusted publication/base closure authority; it invokes neither Workers AI nor Vectorize. Its exact little-endian binary32 rows, greedy bounded chunk packing, independent domains, 256 KiB root, 4 MiB chunks, 63-chunk ceiling, 256 MiB aggregate ceiling, and three-artifact cross-bindings require independent golden vectors, hostile fake-R2 cases, and pinned-workerd R2 round trips before lifecycle integration.
+
+Later B2 increments add the bounded resumable document-embedding Workflow, schema-`1.14.0` lifecycle-v6 proof family, publication-time sidecar-first insertion, and clean-index restore. Inference steps cover at most 200 documents; only durably accepted step output becomes immutable batch authority, and after sidecar proof staging every retry decodes it without inference. The configured 25,000-step and greater-than-50,000-subrequest limits, at-most-1-GiB instance state, token reservation, and retry breaker require remote proof. Public query embeddings remain disabled pending `CF-009`; post-recovery semantic search remains disabled until the current query policy passes the complete acceptance set against the restored corpus.
 
 ### Protected catalog
 
-Format `2.0.0` binds exact environment, schema, publication, closure, base bundle, B1 manifest and chunk inventory, sidecar key/digest/bytes, writer-drained source boundary, all 26 application-owned ordinary serving-table export summaries for migration-away completeness, and one fixed non-visitor backup run identity. B2C logical export explicitly selects those 26 tables. It never selects the two FTS virtual tables, their ten shadow tables, or runtime control tables such as `_cf_METADATA` and `d1_migrations`; native full D1 export cannot be used while the FTS virtual tables exist.
+Format `3.0.0` binds exact environment, schema, publication, closure, base bundle, B1 manifest/chunk inventory, Model-slug sidecar locator/digest/bytes, embedding-sidecar root/chunk/output-inventory locator/digests/bytes, writer-drained source boundary, every application-owned ordinary serving-table export summary for migration-away completeness, and one fixed non-visitor backup run identity. The planned format `2.0.0` is never emitted or accepted. The schema-`1.14.0` migration must first define and test the exact ordinary-table inventory, including any namespace-claim, artifact-proof, semantic-control, and recovery-receipt tables; the format then freezes that names-and-schema-hashes inventory rather than inheriting schema `1.13.0`'s count of 26. It never selects FTS virtual/shadow tables or runtime control tables such as `_cf_METADATA` and `d1_migrations`; native full D1 export cannot be used while the FTS virtual tables exist.
 
 The catalog is canonical, content-addressed, create-only, and fully reread. Restore accepts it only against a separately protected expected digest from the release/backup registry. It does not use list, `latest`, ETag, R2 timestamps, current D1, or a self-declared digest to select authority. A fallback catalog must itself be present in the protected registry and explicitly authorized.
 
@@ -108,20 +114,22 @@ The eight B1 source relations are selected for reconstruction. These categories 
 
 ### Restore source and phase order
 
-`backup-v2-restore-source@1` is nominal authority over one fully preverified catalog, base archive, sidecar, and complete protected parent-publication identity chain. The destination capability cannot be acquired or invoked during source verification. The catalog distinguishes publications selected for complete active/rollback reconstruction from older parents needed only for referential closure. Selected publications are rebuilt completely. Earlier parents become fixed unreachable failed dependency anchors derived from independently verified immutable parent-base authority; no unverified identifier or backed-up mutable state can satisfy the foreign key. `serving-restore-rebuild@6` then uses one exact run/catalog/environment/destination binding and this fixed phase order:
+`backup-v3-restore-source@1` is nominal authority over one fully preverified catalog, base archive, Model-slug sidecar, embedding sidecar, and complete protected parent-publication identity chain. The embedding verifier recomputes resource/search/input identities and closed metadata from the verified base rather than accepting sidecar claims. The destination capability cannot be acquired or invoked during source verification. The catalog distinguishes publications selected for complete active/rollback reconstruction from older parents needed only for referential closure. Selected publications are rebuilt completely. Earlier parents become fixed unreachable failed dependency anchors derived from independently verified immutable parent-base authority; no unverified identifier or backed-up mutable state can satisfy the foreign key. `serving-restore-rebuild@6` then uses one exact run/catalog/environment/destination binding and this fixed phase order:
 
 1. prove an unused isolated destination and acquire a restore lease;
-2. apply reviewed migrations to exact schema `1.13.0`;
+2. apply reviewed migrations to exact schema `1.14.0`;
 3. import the eight verified source relations with fixed prepared statements into one unreachable `building` publication;
 4. reproject provider search, Model/Variant names, provider-model IDs, dataset summary, and Model slugs from trusted source bytes;
-5. rebuild both FTS indexes and a clean publication-qualified Vectorize namespace;
-6. read back and verify closure, projection, index, version-isolation, filter, neutrality, and deterministic hit/miss parity;
-7. seal and create fresh v5 archive, serving, vector, probe, readiness, and attestation evidence; and
-8. return a read-only transcript with head selection omitted by default.
+5. rebuild both FTS indexes, create exact Vectorize configuration and metadata indexes in the proven-empty isolated index, then stream-insert archived values; an outcome-unknown asynchronous insert is never blindly retried, and incomplete bounded reconciliation permanently abandons that destination;
+6. wait for mutations and read back the complete paginated ID set plus every bounded value/metadata byte before verifying closure, projection, index, version-isolation, filter, and neutrality parity;
+7. keep semantic search disabled until the current alias/query policy passes the complete digest-bound semantic acceptance set and a protected, at-most-24-hour compatibility receipt is minted against the restored corpus;
+8. seal and create fresh lifecycle-v6 archive, vector, serving, probe, readiness, and attestation evidence;
+9. run Model-detail admission; and
+10. return a read-only transcript with head selection omitted by default.
 
 Every phase returns a concrete-adapter-minted nominal proof bound to the exact restore run and destination. Callbacks cannot authorize progress by echoing expected hashes. Mutation between preverification and import is prevented by immutable content addresses and rechecked identity. Failure injection at every phase must leave only an isolated, unsealed/unready/unrouted target and must preserve current production state.
 
-B2 code may not begin its Vectorize phase until a separate accepted embedding-rebuild ADR freezes exact document-to-input derivation, model/revision, dimensions, metric, normalization, vector IDs, namespace, and metadata. `embedding_version` plus a stored input hash cannot reproduce vector bytes, and a fake port cannot close that gap.
+Proposed ADR 0045 rejects mutable-alias re-inference as recovery authority but does not resolve the prerequisite until the product owner accepts its `BE-011` interpretation. B2 work is blocked until then and may proceed only through the accepted publication-time, byte-authentic three-artifact design. A fake Vectorize callback, backup-time Vectorize export, or current-alias re-inference cannot close the boundary.
 
 ## B3: operational recovery and migration-away evidence
 
@@ -130,7 +138,7 @@ B3 adds the parts outside one serving publication:
 - writer-drained logical canonical D1 and authenticated evidence/evidence-link archives;
 - a Cloudflare-independent downloaded package and deterministic offline verifier;
 - exact least-privilege backup writer, restore reader, lock administrator, deployment, public, and query identities;
-- indefinite lock/public-access drift evidence for base, sidecar, and catalog prefixes;
+- indefinite lock/public-access drift evidence for base, both sidecars, and catalog prefixes;
 - immutable non-visitor attempted/completed archive-access receipts and a documented direct-S3/break-glass audit path;
 - cold isolated canonical, serving, R2, and Vectorize recovery, including active and rollback-required generations;
 - corrupt-newest protected fallback, dependency-outage, and worst-accepted-size exercises; and
@@ -153,8 +161,9 @@ D1 Time Travel remains a separate in-place operational recovery tool, not the is
 |---|---|---|
 | B1 bytes | Independent golden hash vectors; hostile shape/encoding/metadata/body/key/range/count tests; create-only retry and ambiguous-write reconciliation | Private bucket binding, exact prefix, indefinite lock/public-access drift checks |
 | B1 semantics | Full persisted-content, inventory, family, closure, and bundle replay from downloaded bytes only; pinned-workerd joint 50,000-row/25,148,376-byte R2 round trip with an 84,267,088-byte production admission estimate; deterministic repeat archive; exact 18-object inventory; pinned-workerd 63-source-plus-root replay and unit 64-source-plus-root early rejection; 1,024/1,025 stream-chunk boundary | Remote worst-accepted-size Worker limits and private-R2 readback |
-| B2 catalog | Independent catalog/two-artifact-root vectors; protected-root substitution and fallback rejection | Protected registry and recovery authorization controls |
-| B2 restore | No destination access before verification; fixed-SQL inertness; failure injection; exact retry; complete D1/FTS/Vectorize/projection/readiness parity | Fresh isolated D1/R2/Vectorize behavior and eventual-visibility measurements |
+| B2 embedding | Independent input/value/inventory/chunk/root vectors; exact binary32, shape, bounds, packing, sidecar-first retry, and hostile readback | Bounded Workflow/rate/cost evidence and private locked R2 readback |
+| B2 catalog | Independent catalog/three-artifact-root vectors; protected-root substitution and fallback rejection | Protected registry and recovery authorization controls |
+| B2 restore | No destination access before three-artifact verification; fixed-SQL inertness; failure injection; exact retry; complete D1/FTS/Vectorize-byte/projection/lifecycle-v6 parity; semantic remains disabled on alias incompatibility | Fresh isolated D1/R2/Vectorize behavior, full value readback, query-compatibility, and eventual-visibility measurements |
 | B3 portability | Offline non-Cloudflare round trip with corrupt/missing file rejection | Full canonical/evidence/publication recovery and migration-away exercise |
 | Privacy/audit | Canary scans and static-error tests; no visitor inputs/capabilities | Redacted immutable access receipts and documented break-glass audit evidence |
 | RPO/RTO | No local timing claim | Complete cold exercise ≤24 hours from newest verified point ≤24 hours old, twice yearly |

@@ -123,8 +123,13 @@ No component in these slices accepts a public `Request`, URL, query, header, coo
 ## References
 
 - [ADR 0042: Model-slug lifecycle authority](0042-model-slug-lifecycle-authority.md)
+- [ADR 0045: Publication-bound embedding recovery](0045-publication-bound-embedding-recovery.md)
 - [Cloudflare D1 import/export limitations](https://developers.cloudflare.com/d1/best-practices/import-export-data/)
 - [Cloudflare D1 Time Travel](https://developers.cloudflare.com/d1/reference/time-travel/)
 - [Cloudflare R2 Audit Logs](https://developers.cloudflare.com/r2/platform/audit-logs/)
 - [Cloudflare R2 bucket locks](https://developers.cloudflare.com/r2/buckets/bucket-locks/)
 - [Cloudflare Workers limits](https://developers.cloudflare.com/workers/platform/limits/)
+
+## Addendum: embedding bytes and catalog v3
+
+Proposed ADR 0045 would supersede this ADR's unimplemented two-artifact `backup-v2@1`/format-`2.0.0`/schema-`1.13.0` B2C-B2 boundary before any such catalog is emitted. B1 `publication-recovery-base@1` and all of its accepted local evidence remain unchanged. Product-owner acceptance of the proposed `BE-011` interpretation is required before B2C-B2 may use a publication-time byte-authentic `publication-embedding-artifact@1`, three-artifact `backup-v3@1` format `3.0.0`, `backup-v3-restore-source@1`, schema `1.14.0`, lifecycle v6, archived exact document-vector values, and fail-closed current-query-policy compatibility. The embedding sidecar would be canonical publication recovery data, not canonical fact evidence or imported lifecycle truth. All three artifacts must verify and cross-bind before destination access.
