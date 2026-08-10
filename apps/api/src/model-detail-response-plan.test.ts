@@ -195,6 +195,7 @@ describe("Model detail pure response plan (API-002–API-004, API-011–API-013)
     );
 
     expect(get.status).toBe(200);
+    expect(get.method).toBe("GET");
     expect(get.bodyBytes).toEqual(representation.representationBytes);
     expect(get.headers).toMatchObject({
       "Cache-Control": "private, max-age=0, must-revalidate",
@@ -207,6 +208,7 @@ describe("Model detail pure response plan (API-002–API-004, API-011–API-013)
     expect(head).toMatchObject({
       bodyBytes: null,
       headers: get.headers,
+      method: "HEAD",
       status: 200,
     });
     expectFixedPublicHeaders(get.headers);

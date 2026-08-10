@@ -48,6 +48,7 @@ export type ModelDetailResponsePlanInput = Readonly<{
 export type ModelDetailResponsePlan = Readonly<{
   bodyBytes: Uint8Array | null;
   headers: Readonly<Record<string, string>>;
+  method: "GET" | "HEAD";
   status: 200 | 304 | 308 | 404 | 409 | 503;
 }>;
 
@@ -257,12 +258,14 @@ const headers = (
 });
 
 const response = (
+  method: "GET" | "HEAD",
   status: ModelDetailResponsePlan["status"],
   responseHeaders: Record<string, string>,
   bodyBytes: Uint8Array | null,
 ): ModelDetailResponsePlan => ({
   bodyBytes: bodyBytes === null ? null : new Uint8Array(bodyBytes),
   headers: Object.freeze({ ...responseHeaders }),
+  method,
   status,
 });
 
@@ -275,6 +278,7 @@ const errorResponse = (
 ): ModelDetailResponsePlan => {
   const bodyBytes = UTF8.encode(JSON.stringify({ error: { code, message } }));
   return response(
+    method,
     status,
     {
       ...headers("private, no-store", publicationId),
@@ -409,6 +413,7 @@ export const planModelDetailResponse = async (
       request.publicationHeader === null
     )
       return response(
+        request.method,
         308,
         {
           ...headers("private, no-store", outcome.publicationId),
@@ -438,8 +443,9 @@ export const planModelDetailResponse = async (
       ETag: etag,
     };
     if (ifNoneMatchMatches(request.ifNoneMatch, etag))
-      return response(304, successHeaders, null);
+      return response(request.method, 304, successHeaders, null);
     return response(
+      request.method,
       200,
       {
         ...successHeaders,
