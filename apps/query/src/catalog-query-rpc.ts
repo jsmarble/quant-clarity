@@ -1,6 +1,8 @@
-import type {
-  QueryServiceEnvelope,
-  ReadDatasetMetadataV1Outcome,
+import {
+  methodologyRegistryEntry,
+  type QueryServiceEnvelope,
+  type ReadDatasetMetadataV1Outcome,
+  type ReadMethodologyContextV1Outcome,
 } from "@quant-clarity/api-core";
 import {
   MODEL_DISPLAY_NAME_MAX_UNICODE_SCALARS,
@@ -64,17 +66,10 @@ const ENVIRONMENTS = new Set(["local", "preview", "production", "test"]);
 const AUDIENCE = "quantclarity-catalog-query-v1" as const;
 const SEMVER =
   /^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u;
+const SCHEMA_VERSION = /^[0-9]+\.[0-9]+\.[0-9]+$/u;
+const METHODOLOGY_VERSION = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u;
 const MAX_METADATA_RESPONSE_BYTES = 16 * 1024;
 const MAX_PUBLIC_API_ORIGIN_BYTES = 2048;
-
-const METHODOLOGY_REGISTRY: Readonly<
-  Record<string, Readonly<{ effectiveAt: string; path: string }>>
-> = Object.freeze({
-  "1.0.0": Object.freeze({
-    effectiveAt: "2026-08-01T00:00:00.000Z",
-    path: "/v1/methodologies/1.0.0",
-  }),
-});
 
 export const DATASET_METADATA_SELECT_SQL = `
 WITH ${RETAINED_HOT_REFERENCE_CTE_SQL}, clock AS (
@@ -167,6 +162,46 @@ SELECT
   eligible.has_unavailable_provider_slices,
   eligible.summary_hash
 FROM eligible_publication AS eligible
+LIMIT 2
+`;
+
+export const METHODOLOGY_CONTEXT_SELECT_SQL = `
+WITH ${RETAINED_HOT_REFERENCE_CTE_SQL}, clock AS (
+  SELECT CAST(strftime('%s', 'now') AS INTEGER) * 1000 AS now_ms
+)
+SELECT publication.publication_id, publication.schema_version
+FROM publication_head AS head
+JOIN publication AS publication
+  ON publication.publication_id = ?1
+JOIN publication_closure_seal AS seal
+  ON seal.publication_id = publication.publication_id
+ AND seal.closure_hash = publication.closure_hash
+CROSS JOIN retained_reference AS retained
+CROSS JOIN clock
+WHERE head.singleton = 1
+  AND ?2 > clock.now_ms -
+    ${String(RETAINED_HOT_PUBLICATION_CLOCK_SKEW_MS)}
+  AND ?2 <= clock.now_ms +
+    ${String(RETAINED_HOT_PUBLICATION_MAX_HORIZON_MS)}
+  AND (
+    (
+      head.active_publication_id = publication.publication_id
+      AND publication.state = 'active'
+    )
+    OR (
+      head.rollback_candidate_publication_id = publication.publication_id
+      AND publication.state IN ('superseded', 'rolled_back')
+    )
+    OR (
+      publication.state IN ('superseded', 'rolled_back')
+      AND retained.latest_head_reference_ms BETWEEN 0 AND
+        clock.now_ms +
+          ${String(RETAINED_HOT_PUBLICATION_MAX_SWITCH_FUTURE_MS)}
+      AND retained.latest_head_reference_ms >
+        ?2 + ${String(RETAINED_HOT_PUBLICATION_CLOCK_SKEW_MS)} -
+          ${String(RETAINED_HOT_PUBLICATION_WINDOW_MS)}
+    )
+  )
 LIMIT 2
 `;
 
@@ -1363,6 +1398,95 @@ const parseDatasetMetadataInput = (
   };
 };
 
+type ParsedMethodologyContextInput = Readonly<{
+  bookmark: string;
+  environment: QueryRpcEnvironment;
+  publicationId: string;
+  requiredAvailableUntilMs: number;
+  version: string;
+}>;
+
+const parseMethodologyContextInput = (
+  value: unknown,
+): ParsedMethodologyContextInput | null => {
+  const outer = ownDataRecord(value, [
+    "audience",
+    "bookmark",
+    "envelope",
+    "environment",
+    "requiredAvailableUntilMs",
+    "version",
+  ]);
+  if (
+    outer?.version !== 1 ||
+    outer.audience !== AUDIENCE ||
+    !environment(outer.environment) ||
+    typeof outer.bookmark !== "string" ||
+    outer.bookmark.length === 0 ||
+    outer.bookmark.length > 4096 ||
+    outer.bookmark === "first-primary" ||
+    outer.bookmark === "first-unconstrained" ||
+    typeof outer.requiredAvailableUntilMs !== "number" ||
+    !Number.isSafeInteger(outer.requiredAvailableUntilMs) ||
+    outer.requiredAvailableUntilMs < 0
+  )
+    return null;
+  const envelope = ownDataRecord(outer.envelope, [
+    "audience",
+    "continuation",
+    "environment",
+    "filters",
+    "limit",
+    "operation",
+    "publicationId",
+    "searchPlan",
+    "sort",
+    "version",
+  ]);
+  const operation = ownDataRecord(envelope?.operation, ["kind", "version"]);
+  const sort = ownDataArray(envelope?.sort, 1);
+  if (
+    envelope?.audience !== AUDIENCE ||
+    envelope.version !== 1 ||
+    envelope.environment !== outer.environment ||
+    envelope.continuation !== null ||
+    envelope.limit !== 25 ||
+    typeof envelope.publicationId !== "string" ||
+    !PUBLICATION_ID.test(envelope.publicationId) ||
+    envelope.searchPlan !== null ||
+    ownDataRecord(envelope.filters, []) === null ||
+    sort?.[0] !== "version" ||
+    operation?.kind !== "methodology_detail" ||
+    typeof operation.version !== "string" ||
+    !METHODOLOGY_VERSION.test(operation.version)
+  )
+    return null;
+  return {
+    bookmark: outer.bookmark,
+    environment: outer.environment,
+    publicationId: envelope.publicationId,
+    requiredAvailableUntilMs: outer.requiredAvailableUntilMs,
+    version: operation.version,
+  };
+};
+
+type MethodologyContextRow = Readonly<{
+  publication_id: string;
+  schema_version: string;
+}>;
+
+const methodologyContextRow = (
+  value: unknown,
+): value is MethodologyContextRow =>
+  record(value) &&
+  exactKeys(value, ["publication_id", "schema_version"]) &&
+  typeof value.publication_id === "string" &&
+  PUBLICATION_ID.test(value.publication_id) &&
+  typeof value.schema_version === "string" &&
+  value.schema_version.length <= 128 &&
+  UTF8.encode(value.schema_version).byteLength <= 512 &&
+  SCHEMA_VERSION.test(value.schema_version);
+
 const datasetMetadataRow = (value: unknown): value is DatasetMetadataRow => {
   if (
     !record(value) ||
@@ -1823,7 +1947,7 @@ export const readDatasetMetadataV1 = async (
       row.active_models > row.source_resource_count ||
       row.active_offerings > row.source_resource_count ||
       row.active_providers > row.source_resource_count ||
-      !Object.hasOwn(METHODOLOGY_REGISTRY, row.methodology_version)
+      methodologyRegistryEntry(row.methodology_version) === null
     )
       return { outcome: "integrity_failure" };
     const summary: DatasetMetadataSummaryProjection = {
@@ -1846,8 +1970,8 @@ export const readDatasetMetadataV1 = async (
     };
     if (!(await verifyDatasetMetadataSummaryHash(summary)))
       return { outcome: "integrity_failure" };
-    const methodology = METHODOLOGY_REGISTRY[row.methodology_version];
-    if (methodology === undefined) return { outcome: "integrity_failure" };
+    const methodology = methodologyRegistryEntry(row.methodology_version);
+    if (methodology === null) return { outcome: "integrity_failure" };
     const degradationNotices: string[] = [];
     if (row.has_stale_provider_slices === 1)
       degradationNotices.push("One or more enabled provider slices are stale.");
@@ -1882,6 +2006,48 @@ export const readDatasetMetadataV1 = async (
     )
       return { outcome: "integrity_failure" };
     return { outcome: "metadata", metadata };
+  } catch {
+    return { outcome: "read_failure" };
+  }
+};
+
+export const readMethodologyContextV1 = async (
+  database: D1Database,
+  protectedEnvironment: unknown,
+  protectedPublicApiOrigin: unknown,
+  input: unknown,
+): Promise<ReadMethodologyContextV1Outcome> => {
+  const parsed = parseMethodologyContextInput(input);
+  if (
+    parsed === null ||
+    !environment(protectedEnvironment) ||
+    parsed.environment !== protectedEnvironment
+  )
+    return { outcome: "integrity_failure" };
+  const origin = publicApiOrigin(
+    protectedPublicApiOrigin,
+    protectedEnvironment,
+  );
+  if (origin === null) return { outcome: "integrity_failure" };
+  try {
+    const result: unknown = await database
+      .withSession(parsed.bookmark)
+      .prepare(METHODOLOGY_CONTEXT_SELECT_SQL)
+      .bind(parsed.publicationId, parsed.requiredAvailableUntilMs)
+      .all<MethodologyContextRow>();
+    const rows = d1Rows(result);
+    if (rows === null) return { outcome: "read_failure" };
+    if (rows.length !== 1 || !methodologyContextRow(rows[0]))
+      return { outcome: "integrity_failure" };
+    const row = rows[0];
+    if (row.publication_id !== parsed.publicationId)
+      return { outcome: "integrity_failure" };
+    return {
+      outcome: "context",
+      publicationId: row.publication_id,
+      publicApiOrigin: origin,
+      schemaVersion: row.schema_version,
+    };
   } catch {
     return { outcome: "read_failure" };
   }

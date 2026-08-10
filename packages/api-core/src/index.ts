@@ -2,6 +2,7 @@ import {
   API_ROUTE_POLICIES,
   checkModelContract,
   type DatasetMetadata,
+  type Methodology,
   type Model,
 } from "@quant-clarity/contracts";
 import {
@@ -37,6 +38,80 @@ const IF_NONE_MATCH_LIST = new RegExp(
   String.raw`^[\t ]*${ENTITY_TAG}(?:[\t ]*,[\t ]*${ENTITY_TAG})*[\t ]*$`,
   "u",
 );
+
+export type MethodologyRegistryEntry = Readonly<{
+  effectiveAt: string;
+  path: `/v1/methodologies/${string}`;
+  version: string;
+}>;
+
+const METHODOLOGY_REGISTRY: Readonly<Record<string, MethodologyRegistryEntry>> =
+  Object.freeze({
+    "1.0.0": Object.freeze({
+      effectiveAt: "2026-08-01T00:00:00.000Z",
+      path: "/v1/methodologies/1.0.0",
+      version: "1.0.0",
+    }),
+  });
+
+/** Returns one immutable, code-owned methodology entry or null. */
+export function methodologyRegistryEntry(
+  version: unknown,
+): MethodologyRegistryEntry | null {
+  try {
+    if (
+      typeof version !== "string" ||
+      !METHODOLOGY_VERSION.test(version) ||
+      !Object.hasOwn(METHODOLOGY_REGISTRY, version)
+    )
+      return null;
+    const entry: unknown = METHODOLOGY_REGISTRY[version];
+    if (
+      typeof entry !== "object" ||
+      entry === null ||
+      Array.isArray(entry) ||
+      Object.getPrototypeOf(entry) !== Object.prototype ||
+      !Object.isFrozen(entry)
+    )
+      return null;
+    const keys = Reflect.ownKeys(entry);
+    if (
+      keys.length !== 3 ||
+      keys.some(
+        (key) =>
+          typeof key !== "string" ||
+          !new Set(["effectiveAt", "path", "version"]).has(key),
+      )
+    )
+      return null;
+    const values: Record<string, unknown> = Object.create(null) as Record<
+      string,
+      unknown
+    >;
+    for (const key of ["effectiveAt", "path", "version"] as const) {
+      const descriptor = Object.getOwnPropertyDescriptor(entry, key);
+      if (
+        descriptor === undefined ||
+        !("value" in descriptor) ||
+        descriptor.enumerable !== true
+      )
+        return null;
+      values[key] = descriptor.value;
+    }
+    if (
+      values.version !== version ||
+      values.path !== `/v1/methodologies/${version}` ||
+      typeof values.effectiveAt !== "string" ||
+      !RFC3339_MILLISECONDS.test(values.effectiveAt) ||
+      new Date(Date.parse(values.effectiveAt)).toISOString() !==
+        values.effectiveAt
+    )
+      return null;
+    return entry as MethodologyRegistryEntry;
+  } catch {
+    return null;
+  }
+}
 
 export interface ApiLimits {
   defaultPageSize: number;
@@ -1255,6 +1330,33 @@ export interface ModelDetailQueryRpcV2 extends ModelDetailQueryRpcV1 {
 export interface CatalogQueryRpcV5
   extends CatalogQueryRpcV4, ModelDetailQueryRpcV2 {}
 
+export interface MethodologyContextQueryRpcV1 {
+  resolvePublicationV2: (input: unknown) => Promise<unknown>;
+  readMethodologyContextV1: (input: unknown) => Promise<unknown>;
+}
+
+export interface CatalogQueryRpcV6
+  extends CatalogQueryRpcV5, MethodologyContextQueryRpcV1 {}
+
+export type ReadMethodologyContextV1Input = Readonly<{
+  version: 1;
+  audience: "quantclarity-catalog-query-v1";
+  environment: DeploymentEnvironment;
+  bookmark: string;
+  requiredAvailableUntilMs: number;
+  envelope: QueryServiceEnvelope;
+}>;
+
+export type ReadMethodologyContextV1Outcome =
+  | Readonly<{
+      outcome: "context";
+      publicationId: string;
+      publicApiOrigin: string;
+      schemaVersion: string;
+    }>
+  | Readonly<{ outcome: "integrity_failure" }>
+  | Readonly<{ outcome: "read_failure" }>;
+
 export type ReadDatasetMetadataV1Input = Readonly<{
   version: 1;
   audience: "quantclarity-catalog-query-v1";
@@ -1534,6 +1636,150 @@ export function encodeModelDetailRepresentation(
   const representationBytes = UTF8.encode(JSON.stringify(detail));
   if (representationBytes.byteLength > MODEL_DETAIL_PUBLIC_MAX_BYTES)
     throw new RangeError("Model detail representation exceeds public limit.");
+  return { detail, representationBytes };
+}
+
+export const METHODOLOGY_DETAIL_PUBLIC_MAX_BYTES = 4096;
+
+export type MethodologyDetailResponse = Readonly<{
+  data: Methodology;
+  meta: Readonly<{
+    resource: "methodologies";
+    publication_id: string;
+    schema_version: string;
+    sort: readonly ["version"];
+    filters: Readonly<Record<string, never>>;
+  }>;
+}>;
+
+export type MethodologyDetailRepresentation = Readonly<{
+  detail: MethodologyDetailResponse;
+  representationBytes: Uint8Array;
+}>;
+
+const snapshotMethodologyEncoderInput = (
+  value: unknown,
+): Readonly<{
+  publicApiOrigin: string;
+  publicationId: string;
+  schemaVersion: string;
+  version: string;
+}> | null => {
+  try {
+    if (typeof value !== "object" || value === null || Array.isArray(value))
+      return null;
+    const prototype: unknown = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) return null;
+    const expected = [
+      "publicApiOrigin",
+      "publicationId",
+      "schemaVersion",
+      "version",
+    ] as const;
+    const keys = Reflect.ownKeys(value);
+    if (
+      keys.length !== expected.length ||
+      keys.some(
+        (key) =>
+          typeof key !== "string" ||
+          !(expected as readonly string[]).includes(key),
+      )
+    )
+      return null;
+    const snapshot: Record<string, unknown> = Object.create(null) as Record<
+      string,
+      unknown
+    >;
+    for (const key of expected) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (
+        descriptor === undefined ||
+        !("value" in descriptor) ||
+        descriptor.enumerable !== true ||
+        typeof descriptor.value !== "string"
+      )
+        return null;
+      snapshot[key] = descriptor.value;
+    }
+    return snapshot as {
+      publicApiOrigin: string;
+      publicationId: string;
+      schemaVersion: string;
+      version: string;
+    };
+  } catch {
+    return null;
+  }
+};
+
+/** Builds the exact public envelope for one code-owned methodology version. */
+export function encodeMethodologyDetailRepresentation(
+  input: Readonly<{
+    publicApiOrigin: string;
+    publicationId: string;
+    schemaVersion: string;
+    version: string;
+  }>,
+): MethodologyDetailRepresentation {
+  const snapshot = snapshotMethodologyEncoderInput(input);
+  if (snapshot === null)
+    throw new TypeError("Methodology detail encoder input is invalid.");
+  if (
+    snapshot.publicationId.length > 40 ||
+    snapshot.schemaVersion.length > 128 ||
+    snapshot.publicApiOrigin.length > 2048 ||
+    snapshot.version.length > 64
+  )
+    throw new RangeError("Methodology detail encoder input is too large.");
+  parsePublicationPin(snapshot.publicationId);
+  if (!SCHEMA_VERSION.test(snapshot.schemaVersion))
+    throw new RangeError("Methodology detail schema version is invalid.");
+  const methodology = methodologyRegistryEntry(snapshot.version);
+  if (methodology === null)
+    throw new RangeError("Methodology version is not registered.");
+  if (
+    UTF8.encode(snapshot.publicApiOrigin).byteLength > 2048 ||
+    snapshot.publicApiOrigin.endsWith("/")
+  )
+    throw new RangeError("Public API origin is invalid.");
+  let origin: URL;
+  try {
+    origin = new URL(snapshot.publicApiOrigin);
+  } catch {
+    throw new RangeError("Public API origin is invalid.");
+  }
+  if (
+    origin.protocol !== "https:" ||
+    origin.origin !== snapshot.publicApiOrigin ||
+    origin.username !== "" ||
+    origin.password !== "" ||
+    origin.pathname !== "/" ||
+    origin.search !== "" ||
+    origin.hash !== ""
+  )
+    throw new RangeError("Public API origin is invalid.");
+  const methodologyUrl = `${snapshot.publicApiOrigin}${methodology.path}`;
+  if (methodologyUrl.length > 2048)
+    throw new RangeError("Methodology URL exceeds the public contract limit.");
+  const detail: MethodologyDetailResponse = {
+    data: {
+      methodology_version: methodology.version,
+      methodology_effective_at: methodology.effectiveAt,
+      methodology_url: methodologyUrl,
+    },
+    meta: {
+      resource: "methodologies",
+      publication_id: snapshot.publicationId,
+      schema_version: snapshot.schemaVersion,
+      sort: ["version"],
+      filters: {},
+    },
+  };
+  const representationBytes = UTF8.encode(JSON.stringify(detail));
+  if (representationBytes.byteLength > METHODOLOGY_DETAIL_PUBLIC_MAX_BYTES)
+    throw new RangeError(
+      "Methodology detail representation exceeds public limit.",
+    );
   return { detail, representationBytes };
 }
 

@@ -1,14 +1,16 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
 
 import type {
-  CatalogQueryRpcV5,
+  CatalogQueryRpcV6,
   ReadDatasetMetadataV1Outcome,
+  ReadMethodologyContextV1Outcome,
   ReadModelDetailV1Outcome,
   ReadModelDetailV2Outcome,
 } from "@quant-clarity/api-core";
 
 import {
   readDatasetMetadataV1,
+  readMethodologyContextV1,
   readModelDetailV1,
   readModelDetailV2,
   readModelVariantExactNameTierV1,
@@ -54,7 +56,7 @@ function fetch(): Response {
 
 export class CatalogQueryService
   extends WorkerEntrypoint<CatalogQueryEnv>
-  implements CatalogQueryRpcV5
+  implements CatalogQueryRpcV6
 {
   resolvePublicationV1(input: unknown): Promise<ResolvePublicationV1Outcome> {
     return resolvePublicationV1(
@@ -78,6 +80,17 @@ export class CatalogQueryService
       this.env.DEPLOYMENT_ENVIRONMENT,
       this.env.PUBLIC_API_ORIGIN,
       Date.now(),
+      input,
+    );
+  }
+
+  readMethodologyContextV1(
+    input: unknown,
+  ): Promise<ReadMethodologyContextV1Outcome> {
+    return readMethodologyContextV1(
+      this.env.SERVING_DB,
+      this.env.DEPLOYMENT_ENVIRONMENT,
+      this.env.PUBLIC_API_ORIGIN,
       input,
     );
   }

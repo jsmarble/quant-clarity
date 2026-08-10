@@ -5,14 +5,14 @@ import {
 } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 
-import type { CatalogQueryRpcV5 } from "@quant-clarity/api-core";
+import type { CatalogQueryRpcV6 } from "@quant-clarity/api-core";
 
 import {
   captureModelDetailRuntimeCapabilities,
   handleModelDetailRuntime,
 } from "./model-detail-runtime.js";
 
-const catalogQuery = env.CATALOG_QUERY as unknown as CatalogQueryRpcV5;
+const catalogQuery = env.CATALOG_QUERY as unknown as CatalogQueryRpcV6;
 const PUBLICATION = "pub_11111111-1111-4111-8111-111111111111";
 const MODEL = "mdl_44444444-4444-4444-8444-444444444444";
 const FAMILY = "fam_33333333-3333-4333-8333-333333333333";
@@ -134,6 +134,28 @@ describe("local named catalog query service binding (API-003, API-010, CF-002, C
           publicationId: PUBLICATION,
           filters: {},
           sort: [],
+          limit: 25,
+          continuation: null,
+          searchPlan: null,
+        },
+      }),
+    ).resolves.toEqual({ outcome: "read_failure" });
+
+    await expect(
+      catalogQuery.readMethodologyContextV1({
+        version: 1,
+        audience: "quantclarity-catalog-query-v1",
+        environment: "local",
+        bookmark: "bookmark-test-only",
+        requiredAvailableUntilMs: Date.now() + 5 * 60_000,
+        envelope: {
+          version: 1,
+          audience: "quantclarity-catalog-query-v1",
+          environment: "local",
+          operation: { kind: "methodology_detail", version: "1.0.0" },
+          publicationId: PUBLICATION,
+          filters: {},
+          sort: ["version"],
           limit: 25,
           continuation: null,
           searchPlan: null,

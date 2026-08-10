@@ -12,12 +12,14 @@ import {
   cacheDecision,
   classifyCost,
   corsHeaders,
+  encodeMethodologyDetailRepresentation,
   encodeModelDetailRepresentation,
   executeReadBoundary,
   hashNormalizedQuery,
   ifNoneMatchMatches,
   issueCursor,
   matchRoute,
+  methodologyRegistryEntry,
   MODEL_DETAIL_PUBLIC_MAX_BYTES,
   operationName,
   reconcileRequestCursor,
@@ -30,6 +32,7 @@ import {
   type CatalogQueryRpcV3,
   type CatalogQueryRpcV4,
   type CatalogQueryRpcV5,
+  type CatalogQueryRpcV6,
   type CursorKeyring,
   type CursorPayload,
   type NormalizedRequest,
@@ -59,6 +62,12 @@ const catalogQueryRpcV5Surface = {
   readModelDetailV2: (input: unknown): Promise<unknown> =>
     Promise.resolve(input),
 } satisfies CatalogQueryRpcV5;
+
+const catalogQueryRpcV6Surface = {
+  ...catalogQueryRpcV5Surface,
+  readMethodologyContextV1: (input: unknown): Promise<unknown> =>
+    Promise.resolve(input),
+} satisfies CatalogQueryRpcV6;
 
 const PUBLICATION = "pub_00000000-0000-4000-8000-000000000001";
 const MODEL = "mdl_00000000-0000-4000-8000-000000000002";
@@ -231,6 +240,113 @@ describe("shared catalog query RPC contract", () => {
       "readModelDetailV2",
       "resolvePublicationV2",
     ]);
+    expect(Object.keys(catalogQueryRpcV6Surface).sort()).toEqual([
+      "readDatasetMetadataV1",
+      "readMergedExactSearchV2",
+      "readMethodologyContextV1",
+      "readModelDetailV1",
+      "readModelDetailV2",
+      "resolvePublicationV2",
+    ]);
+  });
+});
+
+describe("shared exact MethodologyDetail representation", () => {
+  it("uses one immutable validated registry entry and exact detail envelope", () => {
+    const entry = methodologyRegistryEntry("1.0.0");
+    expect(entry).toEqual({
+      effectiveAt: "2026-08-01T00:00:00.000Z",
+      path: "/v1/methodologies/1.0.0",
+      version: "1.0.0",
+    });
+    expect(Object.isFrozen(entry)).toBe(true);
+    const representation = encodeMethodologyDetailRepresentation({
+      publicApiOrigin: "https://api.example.test",
+      publicationId: PUBLICATION,
+      schemaVersion: "1.13.0",
+      version: "1.0.0",
+    });
+    expect(representation.detail).toEqual({
+      data: {
+        methodology_version: "1.0.0",
+        methodology_effective_at: "2026-08-01T00:00:00.000Z",
+        methodology_url: "https://api.example.test/v1/methodologies/1.0.0",
+      },
+      meta: {
+        resource: "methodologies",
+        publication_id: PUBLICATION,
+        schema_version: "1.13.0",
+        sort: ["version"],
+        filters: {},
+      },
+    });
+    expect(new TextDecoder().decode(representation.representationBytes)).toBe(
+      JSON.stringify(representation.detail),
+    );
+  });
+
+  it.each(["", "2.0.0", "invalid version", "__proto__", "v".repeat(65)])(
+    "fails closed for unregistered or malformed version %j",
+    (version) => {
+      expect(methodologyRegistryEntry(version)).toBeNull();
+      expect(() =>
+        encodeMethodologyDetailRepresentation({
+          publicApiOrigin: "https://api.example.test",
+          publicationId: PUBLICATION,
+          schemaVersion: "1.13.0",
+          version,
+        }),
+      ).toThrow();
+    },
+  );
+
+  it.each([
+    "http://api.example.test",
+    "https://user@api.example.test",
+    "https://api.example.test/",
+    "https://api.example.test/path",
+    "https://api.example.test?query=1",
+  ])("rejects non-exact protected origin %j", (publicApiOrigin) => {
+    expect(() =>
+      encodeMethodologyDetailRepresentation({
+        publicApiOrigin,
+        publicationId: PUBLICATION,
+        schemaVersion: "1.13.0",
+        version: "1.0.0",
+      }),
+    ).toThrow(/origin/u);
+  });
+
+  it("rejects accessor-backed input without invoking it", () => {
+    let reads = 0;
+    const input = {
+      get publicApiOrigin() {
+        reads += 1;
+        return "https://api.example.test";
+      },
+      publicationId: PUBLICATION,
+      schemaVersion: "1.13.0",
+      version: "1.0.0",
+    };
+    expect(() => encodeMethodologyDetailRepresentation(input)).toThrow(
+      /input/u,
+    );
+    expect(reads).toBe(0);
+  });
+
+  it("rejects an origin whose composed methodology URL exceeds the contract", () => {
+    const publicApiOrigin = `https://${"a".repeat(2020)}.test`;
+    expect(new TextEncoder().encode(publicApiOrigin).byteLength).toBeLessThan(
+      2048,
+    );
+    expect(() =>
+      encodeMethodologyDetailRepresentation({
+        publicApiOrigin,
+        publicationId: PUBLICATION,
+        schemaVersion: "1.13.0",
+        version: "1.0.0",
+      }),
+    ).toThrow(/URL exceeds/u);
   });
 });
 
