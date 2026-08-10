@@ -3,9 +3,11 @@ import { describe, expect, it, vi } from "vitest";
 import type { ApiLimits, NormalizedRequest } from "@quant-clarity/api-core";
 
 import {
+  executeAfterModelDetailPublicationResolutionV2,
   readModelDetailFromQueryV2,
   type ModelDetailApiV2Input,
   type ModelDetailApiV2Outcome,
+  type ResolvedModelDetailReadV2,
 } from "./model-detail-query.js";
 
 const PUBLICATION = "pub_11111111-1111-4111-8111-111111111111";
@@ -120,8 +122,10 @@ const modelOutcome = (lookupProvenance: unknown) => ({
 
 const rpc = (readOutcome: unknown) => ({
   readModelDetailV1: vi.fn(),
-  readModelDetailV2: vi.fn(() => Promise.resolve(readOutcome)),
-  resolvePublicationV2: vi.fn((inputValue: unknown) => {
+  readModelDetailV2: vi.fn((): Promise<unknown> =>
+    Promise.resolve(readOutcome),
+  ),
+  resolvePublicationV2: vi.fn((inputValue: unknown): Promise<unknown> => {
     const input = inputValue as { requiredAvailableUntilMs: number };
     return Promise.resolve({
       bookmark: "bookmark-model-detail-v2",
@@ -145,6 +149,36 @@ const execute = (
     service,
     ...overrides,
   });
+
+const resolveOnly = async (
+  identifier: string,
+  service: ReturnType<typeof rpc>,
+  overrides: Partial<ModelDetailApiV2Input> = {},
+) => {
+  let resolved: ResolvedModelDetailReadV2 | null = null;
+  const outcome = await executeAfterModelDetailPublicationResolutionV2(
+    {
+      environment: "test",
+      limits,
+      nowMs: NOW_MS,
+      request: request(identifier),
+      service,
+      ...overrides,
+    },
+    (value) => {
+      resolved = value;
+      return Promise.resolve({
+        success: false,
+        code: "not_found",
+        publicationId: value.publicationId,
+      });
+    },
+  );
+  return {
+    outcome,
+    resolved: resolved as ResolvedModelDetailReadV2 | null,
+  };
+};
 
 describe("stable-ID and slug Model detail API/query V2 seam", () => {
   it.each([
@@ -197,6 +231,77 @@ describe("stable-ID and slug Model detail API/query V2 seam", () => {
       expect(service.readModelDetailV1).not.toHaveBeenCalled();
     },
   );
+
+  it("binds an explicit publication pin during selection", async () => {
+    const service = rpc(modelOutcome(provenance("stable_id")));
+    const pinnedRequest = {
+      ...request(MODEL_ID),
+      publicationHeader: PUBLICATION,
+    };
+    const { resolved } = await resolveOnly(MODEL_ID, service, {
+      request: pinnedRequest,
+    });
+    expect(resolved).toMatchObject({ publicationId: PUBLICATION });
+    expect(service.resolvePublicationV2).toHaveBeenCalledWith(
+      expect.objectContaining({ requestedPublicationId: PUBLICATION }),
+    );
+  });
+
+  it("rejects a resolver-selected publication that crosses the explicit pin", async () => {
+    const service = rpc(modelOutcome(provenance("stable_id")));
+    service.resolvePublicationV2.mockImplementationOnce(
+      (inputValue: unknown): Promise<unknown> => {
+        const input = inputValue as { requiredAvailableUntilMs: number };
+        return Promise.resolve({
+          bookmark: "bookmark-model-detail-v2",
+          outcome: "selected",
+          publicationId: "pub_22222222-2222-4222-8222-222222222222",
+          requiredAvailableUntilMs: input.requiredAvailableUntilMs,
+        });
+      },
+    );
+    const { outcome, resolved } = await resolveOnly(MODEL_ID, service, {
+      request: { ...request(MODEL_ID), publicationHeader: PUBLICATION },
+    });
+    expect(outcome).toEqual({ code: "integrity_failure", success: false });
+    expect(resolved).toBeNull();
+    expect(service.readModelDetailV2).not.toHaveBeenCalled();
+  });
+
+  it("contains resolver exceptions and hostile values before selection", async () => {
+    const hostile = Object.create(null) as Record<string, unknown>;
+    let getterCalls = 0;
+    Object.defineProperty(hostile, "outcome", {
+      enumerable: true,
+      get: () => {
+        getterCalls += 1;
+        return "selected";
+      },
+    });
+    for (const resolver of [
+      () => Promise.reject(new Error("private resolver diagnostic")),
+      () => Promise.resolve(hostile),
+      () =>
+        Promise.resolve({
+          bookmark: "bookmark-model-detail-v2",
+          extra: "visitor-canary",
+          outcome: "selected",
+          publicationId: PUBLICATION,
+          requiredAvailableUntilMs: REQUIRED_UNTIL_MS,
+        }),
+    ]) {
+      const service = rpc(modelOutcome(provenance("stable_id")));
+      service.resolvePublicationV2.mockImplementationOnce(resolver);
+      const { outcome, resolved } = await resolveOnly(MODEL_ID, service);
+      expect(outcome.success).toBe(false);
+      if (outcome.success) continue;
+      expect(["integrity_failure", "read_failure"]).toContain(outcome.code);
+      expect(JSON.stringify(outcome)).not.toContain("visitor-canary");
+      expect(resolved).toBeNull();
+      expect(service.readModelDetailV2).not.toHaveBeenCalled();
+    }
+    expect(getterCalls).toBe(0);
+  });
 
   it("emits byte-identical canonical detail for every lookup class without provenance or submitted-history leakage", async () => {
     const cases = [
@@ -394,5 +499,320 @@ describe("stable-ID and slug Model detail API/query V2 seam", () => {
       code: "read_failure",
       success: false,
     });
+  });
+});
+
+describe("resolver-minted Model detail V2 read continuation", () => {
+  it.each([
+    [MODEL_ID, "stable_id"],
+    [CURRENT_SLUG, "slug"],
+    [HISTORICAL_SLUG, "slug"],
+  ] as const)(
+    "exposes minimal frozen %s cache facts without reading",
+    async (identifier, lookupKind) => {
+      const service = rpc(modelOutcome(provenance("stable_id")));
+      const { outcome, resolved } = await resolveOnly(identifier, service);
+
+      expect(outcome).toEqual({
+        code: "not_found",
+        publicationId: PUBLICATION,
+        success: false,
+      });
+      expect(resolved).not.toBeNull();
+      if (resolved === null) return;
+      expect(resolved).toMatchObject({
+        lookup: { kind: lookupKind, value: identifier },
+        publicationId: PUBLICATION,
+      });
+      expect(Object.keys(resolved).sort()).toEqual([
+        "lookup",
+        "publicationId",
+        "readCanonical",
+      ]);
+      expect(Object.isFrozen(resolved)).toBe(true);
+      expect(Object.isFrozen(resolved.lookup)).toBe(true);
+      expect(Object.isFrozen(resolved.readCanonical)).toBe(true);
+      expect(JSON.stringify(resolved)).not.toMatch(
+        /request|method|header|conditional|host|source|address|actor|bookmark|cache|service|limit/iu,
+      );
+      expect(service.resolvePublicationV2).toHaveBeenCalledOnce();
+      expect(service.readModelDetailV2).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    [MODEL_ID, "stable_id", "stable_id"],
+    [CURRENT_SLUG, "slug", "current_slug"],
+    [HISTORICAL_SLUG, "slug", "historical_slug"],
+  ] as const)(
+    "reads the resolver-selected %s exactly once without re-resolving",
+    async (identifier, lookupKind, matchedBy) => {
+      const service = rpc(modelOutcome(provenance(matchedBy)));
+      const outcome = await executeAfterModelDetailPublicationResolutionV2(
+        {
+          environment: "test",
+          limits,
+          nowMs: NOW_MS,
+          request: request(identifier),
+          service,
+        },
+        ({ readCanonical }) => readCanonical(),
+      );
+
+      expect(outcome).toMatchObject({ success: true });
+      expect(service.resolvePublicationV2).toHaveBeenCalledOnce();
+      expect(service.readModelDetailV2).toHaveBeenCalledOnce();
+      expect(service.readModelDetailV2).toHaveBeenCalledWith({
+        audience: "quantclarity-catalog-query-v1",
+        bookmark: "bookmark-model-detail-v2",
+        environment: "test",
+        envelope: {
+          audience: "quantclarity-catalog-query-v1",
+          continuation: null,
+          environment: "test",
+          filters: {},
+          limit: 25,
+          operation: {
+            identifier,
+            kind: "detail",
+            resourceType: "model",
+          },
+          publicationId: PUBLICATION,
+          searchPlan: null,
+          sort: ["name", "stable_id"],
+          version: 1,
+        },
+        lookup: { kind: lookupKind, value: identifier },
+        requiredAvailableUntilMs: REQUIRED_UNTIL_MS,
+        version: 2,
+      });
+    },
+  );
+
+  it("preserves resolve then read ordering in the compatibility wrapper", async () => {
+    const events: string[] = [];
+    const service = {
+      readModelDetailV1: vi.fn(),
+      resolvePublicationV2: vi.fn((inputValue: unknown) => {
+        events.push("resolve");
+        const input = inputValue as { requiredAvailableUntilMs: number };
+        return Promise.resolve({
+          bookmark: "bookmark-model-detail-v2",
+          outcome: "selected",
+          publicationId: PUBLICATION,
+          requiredAvailableUntilMs: input.requiredAvailableUntilMs,
+        });
+      }),
+      readModelDetailV2: vi.fn(() => {
+        events.push("read");
+        return Promise.resolve(modelOutcome(provenance("stable_id")));
+      }),
+    };
+
+    await expect(execute(MODEL_ID, service)).resolves.toMatchObject({
+      success: true,
+    });
+    expect(events).toEqual(["resolve", "read"]);
+  });
+
+  it.each([
+    [
+      "expired pin",
+      {
+        currentPublicationId: PUBLICATION,
+        outcome: "publication_expired",
+      },
+      { code: "publication_expired", currentPublicationId: PUBLICATION },
+    ],
+    [
+      "not ready",
+      { outcome: "publication_not_ready" },
+      { code: "publication_not_ready" },
+    ],
+    [
+      "resolver integrity failure",
+      { outcome: "integrity_failure" },
+      { code: "integrity_failure" },
+    ],
+    [
+      "resolver read failure",
+      { outcome: "read_failure" },
+      { code: "read_failure" },
+    ],
+  ] as const)(
+    "stops before the continuation for %s",
+    async (_label, resolverOutcome, expected) => {
+      const service = rpc(modelOutcome(provenance("stable_id")));
+      service.resolvePublicationV2.mockResolvedValueOnce(resolverOutcome);
+      const continuation = vi.fn(() =>
+        Promise.resolve<ModelDetailApiV2Outcome>({
+          code: "read_failure",
+          success: false,
+        }),
+      );
+      const outcome = await executeAfterModelDetailPublicationResolutionV2(
+        {
+          environment: "test",
+          limits,
+          nowMs: NOW_MS,
+          request: request(MODEL_ID),
+          service,
+        },
+        continuation,
+      );
+      expect(outcome).toEqual({ success: false, ...expected });
+      expect(continuation).not.toHaveBeenCalled();
+      expect(service.readModelDetailV2).not.toHaveBeenCalled();
+    },
+  );
+
+  it("keeps the read bound to private selection facts when public cache facts are copied or replaced", async () => {
+    const originalRequest = request(MODEL_ID);
+    const resolverResult = {
+      bookmark: "bookmark-model-detail-v2",
+      outcome: "selected",
+      publicationId: PUBLICATION,
+      requiredAvailableUntilMs: REQUIRED_UNTIL_MS,
+    };
+    const service = rpc(modelOutcome(provenance("stable_id")));
+    service.resolvePublicationV2.mockResolvedValueOnce(resolverResult);
+
+    const outcome = await executeAfterModelDetailPublicationResolutionV2(
+      {
+        environment: "test",
+        limits,
+        nowMs: NOW_MS,
+        request: originalRequest,
+        service,
+      },
+      async (authority) => {
+        const forged = {
+          ...authority,
+          lookup: { kind: "slug", value: CURRENT_SLUG } as const,
+          publicationId: "pub_22222222-2222-4222-8222-222222222222",
+        };
+        (originalRequest.operation as { identifier: string }).identifier =
+          CURRENT_SLUG;
+        resolverResult.bookmark = "changed-bookmark";
+        resolverResult.publicationId =
+          "pub_22222222-2222-4222-8222-222222222222";
+        return forged.readCanonical();
+      },
+    );
+
+    expect(outcome).toMatchObject({
+      lookup: { kind: "stable_id", value: MODEL_ID },
+      publicationId: PUBLICATION,
+      success: true,
+    });
+    expect(service.readModelDetailV2).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bookmark: "bookmark-model-detail-v2",
+        lookup: { kind: "stable_id", value: MODEL_ID },
+      }),
+    );
+  });
+
+  it("fails closed on a second use of the one-shot read continuation", async () => {
+    const service = rpc(modelOutcome(provenance("stable_id")));
+    let second: ModelDetailApiV2Outcome | undefined;
+    const first = await executeAfterModelDetailPublicationResolutionV2(
+      {
+        environment: "test",
+        limits,
+        nowMs: NOW_MS,
+        request: request(MODEL_ID),
+        service,
+      },
+      async ({ readCanonical }) => {
+        const firstRead = await readCanonical();
+        second = await readCanonical();
+        return firstRead;
+      },
+    );
+
+    expect(first).toMatchObject({ success: true });
+    expect(second).toEqual({ code: "integrity_failure", success: false });
+    expect(service.readModelDetailV2).toHaveBeenCalledOnce();
+  });
+
+  it("expires a retained read continuation when orchestration returns", async () => {
+    const service = rpc(modelOutcome(provenance("stable_id")));
+    let retainedRead: ResolvedModelDetailReadV2["readCanonical"] | undefined;
+    const outcome = await executeAfterModelDetailPublicationResolutionV2(
+      {
+        environment: "test",
+        limits,
+        nowMs: NOW_MS,
+        request: request(MODEL_ID),
+        service,
+      },
+      ({ publicationId, readCanonical }) => {
+        retainedRead = readCanonical;
+        return Promise.resolve({
+          code: "not_found",
+          publicationId,
+          success: false,
+        });
+      },
+    );
+
+    expect(outcome).toEqual({
+      code: "not_found",
+      publicationId: PUBLICATION,
+      success: false,
+    });
+    expect(retainedRead).toBeDefined();
+    if (retainedRead === undefined) return;
+    await expect(retainedRead()).resolves.toEqual({
+      code: "integrity_failure",
+      success: false,
+    });
+    expect(service.readModelDetailV2).not.toHaveBeenCalled();
+  });
+
+  it("snapshots hostile top-level members once before the first await", async () => {
+    const service = rpc(modelOutcome(provenance("stable_id")));
+    let serviceReads = 0;
+    let limitsReads = 0;
+    const hostileInput = {
+      environment: "test",
+      get limits() {
+        limitsReads += 1;
+        if (limitsReads > 1) return { ...limits, maxResponseBytes: 0 };
+        return limits;
+      },
+      nowMs: NOW_MS,
+      request: request(MODEL_ID),
+      get service() {
+        serviceReads += 1;
+        if (serviceReads > 1) throw new Error("second service access");
+        return service;
+      },
+    } as ModelDetailApiV2Input;
+
+    await expect(
+      readModelDetailFromQueryV2(hostileInput),
+    ).resolves.toMatchObject({ success: true });
+    expect(limitsReads).toBe(1);
+    expect(serviceReads).toBe(1);
+    expect(service.readModelDetailV2).toHaveBeenCalledOnce();
+  });
+
+  it("contains continuation exceptions without invoking the canonical reader", async () => {
+    const service = rpc(modelOutcome(provenance("stable_id")));
+    const outcome = await executeAfterModelDetailPublicationResolutionV2(
+      {
+        environment: "test",
+        limits,
+        nowMs: NOW_MS,
+        request: request(MODEL_ID),
+        service,
+      },
+      () => Promise.reject(new Error("private cache diagnostic")),
+    );
+
+    expect(outcome).toEqual({ code: "read_failure", success: false });
+    expect(service.readModelDetailV2).not.toHaveBeenCalled();
   });
 });
