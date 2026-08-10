@@ -242,10 +242,11 @@ describe("stable-ID Model detail API/query seam", () => {
   ] as const)(
     "preserves the static reader %s outcome",
     async (code, readerOutcome) => {
-      await expect(execute(rpc(readerOutcome))).resolves.toEqual({
-        code,
-        success: false,
-      });
+      await expect(execute(rpc(readerOutcome))).resolves.toEqual(
+        code === "not_found"
+          ? { code, publicationId: PUBLICATION, success: false }
+          : { code, success: false },
+      );
     },
   );
 

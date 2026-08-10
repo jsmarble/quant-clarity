@@ -7,6 +7,7 @@ import {
   type ApiLimits,
   type DeploymentEnvironment,
   type ModelDetailLookupProvenanceV2,
+  type ModelDetailLookupV2,
   type ModelDetailQueryRpcV1,
   type ModelDetailQueryRpcV2,
   type ModelDetailResponse,
@@ -62,10 +63,14 @@ export type ModelDetailApiOutcome =
     }>
   | Readonly<{
       success: false;
+      code: "not_found";
+      publicationId: string;
+    }>
+  | Readonly<{
+      success: false;
       code:
         | "integrity_failure"
         | "invalid_input"
-        | "not_found"
         | "publication_not_ready"
         | "read_failure";
     }>;
@@ -80,6 +85,7 @@ export type ModelDetailApiV2Outcome =
   | Readonly<{
       success: true;
       detail: ModelDetailResponse;
+      lookup: ModelDetailLookupV2;
       lookupProvenance: ModelDetailLookupProvenanceV2;
       publicationId: string;
       representationBytes: Uint8Array;
@@ -466,7 +472,11 @@ export const readModelDetailFromQueryV1 = async (
         notFound.publicationId === resolver.publicationId &&
         validSchemaVersion(notFound.schemaVersion)
       )
-        return { success: false, code: "not_found" };
+        return {
+          success: false,
+          code: "not_found",
+          publicationId: resolver.publicationId,
+        };
       return { success: false, code: "integrity_failure" };
     }
     const response = snapshotOwnRecord(readValue, [
@@ -603,7 +613,11 @@ export const readModelDetailFromQueryV2 = async (
         notFound.publicationId === resolver.publicationId &&
         validSchemaVersion(notFound.schemaVersion)
       )
-        return { success: false, code: "not_found" };
+        return {
+          success: false,
+          code: "not_found",
+          publicationId: resolver.publicationId,
+        };
       return { success: false, code: "integrity_failure" };
     }
     const response = snapshotOwnRecord(readValue, [
@@ -674,6 +688,7 @@ export const readModelDetailFromQueryV2 = async (
     return {
       success: true,
       detail,
+      lookup,
       lookupProvenance,
       publicationId: resolver.publicationId,
       representationBytes,

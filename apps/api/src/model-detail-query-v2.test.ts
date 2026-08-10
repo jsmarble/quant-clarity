@@ -160,6 +160,7 @@ describe("stable-ID and slug Model detail API/query V2 seam", () => {
       expect(outcome).toMatchObject({ success: true });
       if (!outcome.success) return;
       expect(outcome.publicationId).toBe(PUBLICATION);
+      expect(outcome.lookup).toEqual({ kind: lookupKind, value: identifier });
       expect(outcome.lookupProvenance).toEqual(provenance(matchedBy));
       expect(outcome.detail.data).toEqual(model());
       expect(service.resolvePublicationV2).toHaveBeenCalledWith({
@@ -378,6 +379,7 @@ describe("stable-ID and slug Model detail API/query V2 seam", () => {
     });
     await expect(execute(HISTORICAL_SLUG, service)).resolves.toEqual({
       code: "not_found",
+      publicationId: PUBLICATION,
       success: false,
     });
     expect(service.readModelDetailV2).toHaveBeenCalledOnce();
