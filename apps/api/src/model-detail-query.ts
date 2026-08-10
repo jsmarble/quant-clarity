@@ -92,6 +92,55 @@ export type ModelDetailApiV2Outcome =
     }>
   | Exclude<ModelDetailApiOutcome, { success: true }>;
 
+type ModelDetailSelectionV2 = Readonly<{
+  audience: "quantclarity-catalog-query-v1";
+  bookmark: string;
+  environment: DeploymentEnvironment;
+  kind: "model_detail_v2_selection";
+  lookup: ModelDetailLookupV2;
+  maxRepresentationBytes: number;
+  publicationId: string;
+  requiredAvailableUntilMs: number;
+  version: 1;
+}>;
+
+type ModelDetailSelectionV2Outcome =
+  | Readonly<{ selection: ModelDetailSelectionV2; success: true }>
+  | Exclude<
+      ModelDetailApiV2Outcome,
+      Readonly<{ success: true }> | Readonly<{ code: "not_found" }>
+    >;
+
+export type ModelDetailSelectedReadV2Outcome =
+  | Extract<ModelDetailApiV2Outcome, Readonly<{ success: true }>>
+  | Extract<ModelDetailApiV2Outcome, Readonly<{ code: "not_found" }>>
+  | Readonly<{
+      success: false;
+      code: "integrity_failure" | "invalid_input" | "read_failure";
+    }>;
+
+type ReadSelectedModelDetailV2Input = Readonly<{
+  limits: ApiLimits;
+  selection: ModelDetailSelectionV2;
+  service: Pick<ModelDetailQueryRpcV2, "readModelDetailV2"> | Service;
+}>;
+
+/**
+ * Resolver-minted, request-lifetime capability for same-isolate cache
+ * orchestration. It exposes only canonical cache-selection facts and an opaque,
+ * one-shot canonical read. It is not an RPC, cache, persistence, logging, or
+ * public-response contract.
+ */
+export type ResolvedModelDetailReadV2 = Readonly<{
+  lookup: ModelDetailLookupV2;
+  publicationId: string;
+  readCanonical: () => Promise<ModelDetailSelectedReadV2Outcome>;
+}>;
+
+export type ResolvedModelDetailContinuationV2 = (
+  resolved: ResolvedModelDetailReadV2,
+) => Promise<ModelDetailApiV2Outcome>;
+
 type ModelDetailNormalizedRequest = Omit<
   NormalizedRequest,
   "operation" | "route"
@@ -202,6 +251,36 @@ const validModelSlug = (value: string): boolean =>
   UTF8.encode(value).byteLength <= MODEL_SLUG_MAX_BYTES &&
   MODEL_SLUG.test(value);
 
+const modelDetailNormalizedRequest = (
+  identifier: string,
+  method: "GET" | "HEAD",
+  publicationHeader: string | null,
+): ModelDetailNormalizedRequest => ({
+  cursor: null,
+  filters: {},
+  hasQueryString: false,
+  limit: 25,
+  limitProvided: false,
+  method,
+  operation: {
+    identifier,
+    kind: "detail",
+    resourceType: "model",
+  },
+  publicationHeader,
+  query: null,
+  route: {
+    operation: {
+      identifier,
+      kind: "detail",
+      resourceType: "model",
+    },
+    policy: "models",
+  },
+  sort: ["name", "stable_id"],
+  sortProvided: false,
+});
+
 const parseRequestForIdentifier = (
   value: unknown,
   acceptsIdentifier: (identifier: string) => boolean,
@@ -260,31 +339,11 @@ const parseRequestForIdentifier = (
           !PUBLICATION_ID.test(request.publicationHeader)))
     )
       return null;
-    return {
-      cursor: null,
-      filters: {},
-      hasQueryString: false,
-      limit: 25,
-      limitProvided: false,
-      method: request.method,
-      operation: {
-        identifier: operation.identifier,
-        kind: "detail",
-        resourceType: "model",
-      },
-      publicationHeader: request.publicationHeader,
-      query: null,
-      route: {
-        operation: {
-          identifier: operation.identifier,
-          kind: "detail",
-          resourceType: "model",
-        },
-        policy: "models",
-      },
-      sort: ["name", "stable_id"],
-      sortProvided: false,
-    };
+    return modelDetailNormalizedRequest(
+      operation.identifier,
+      request.method,
+      request.publicationHeader,
+    );
   } catch {
     return null;
   }
@@ -314,7 +373,7 @@ type ResolverClassification =
     }>
   | Readonly<{
       kind: "failure";
-      outcome: Exclude<ModelDetailApiOutcome, { success: true }>;
+      outcome: Exclude<ModelDetailSelectionV2Outcome, { success: true }>;
     }>
   | Readonly<{ kind: "invalid" }>;
 
@@ -384,6 +443,101 @@ const encodeAcceptedModelDetail = (
   } catch {
     return null;
   }
+};
+
+type ParsedModelDetailSelectionV2 = Readonly<{
+  bookmark: string;
+  environment: DeploymentEnvironment;
+  lookup: ModelDetailLookupV2;
+  maxRepresentationBytes: number;
+  publicationId: string;
+  requiredAvailableUntilMs: number;
+}>;
+
+const freezeLookup = (lookup: ModelDetailLookupV2): ModelDetailLookupV2 =>
+  Object.freeze({ ...lookup });
+
+const modelDetailSelection = (
+  input: Readonly<{
+    bookmark: string;
+    environment: DeploymentEnvironment;
+    lookup: ModelDetailLookupV2;
+    maxRepresentationBytes: number;
+    publicationId: string;
+    requiredAvailableUntilMs: number;
+  }>,
+): ModelDetailSelectionV2 => {
+  const lookup = freezeLookup(input.lookup);
+  return Object.freeze({
+    audience: AUDIENCE,
+    bookmark: input.bookmark,
+    environment: input.environment,
+    kind: "model_detail_v2_selection",
+    lookup,
+    maxRepresentationBytes: input.maxRepresentationBytes,
+    publicationId: input.publicationId,
+    requiredAvailableUntilMs: input.requiredAvailableUntilMs,
+    version: 1,
+  });
+};
+
+const parseSelectionLookup = (value: unknown): ModelDetailLookupV2 | null => {
+  const lookup = snapshotOwnRecord(value, ["kind", "value"]);
+  if (
+    typeof lookup?.value !== "string" ||
+    (lookup.kind !== "stable_id" && lookup.kind !== "slug") ||
+    (lookup.kind === "stable_id"
+      ? !MODEL_ID.test(lookup.value)
+      : !validModelSlug(lookup.value))
+  )
+    return null;
+  return { kind: lookup.kind, value: lookup.value };
+};
+
+const parseModelDetailSelection = (
+  value: unknown,
+): ParsedModelDetailSelectionV2 | null => {
+  const selection = snapshotOwnRecord(value, [
+    "audience",
+    "bookmark",
+    "environment",
+    "kind",
+    "lookup",
+    "maxRepresentationBytes",
+    "publicationId",
+    "requiredAvailableUntilMs",
+    "version",
+  ]);
+  const lookup = parseSelectionLookup(selection?.lookup);
+  if (
+    selection?.version !== 1 ||
+    selection.audience !== AUDIENCE ||
+    selection.kind !== "model_detail_v2_selection" ||
+    !validEnvironment(selection.environment) ||
+    typeof selection.bookmark !== "string" ||
+    selection.bookmark.length === 0 ||
+    selection.bookmark.length > 4096 ||
+    selection.bookmark === "first-primary" ||
+    selection.bookmark === "first-unconstrained" ||
+    lookup === null ||
+    !Number.isSafeInteger(selection.maxRepresentationBytes) ||
+    (selection.maxRepresentationBytes as number) < 1 ||
+    (selection.maxRepresentationBytes as number) >
+      MODEL_DETAIL_PUBLIC_MAX_BYTES ||
+    typeof selection.publicationId !== "string" ||
+    !PUBLICATION_ID.test(selection.publicationId) ||
+    !Number.isSafeInteger(selection.requiredAvailableUntilMs) ||
+    (selection.requiredAvailableUntilMs as number) < 0
+  )
+    return null;
+  return {
+    bookmark: selection.bookmark,
+    environment: selection.environment,
+    lookup: freezeLookup(lookup),
+    maxRepresentationBytes: selection.maxRepresentationBytes as number,
+    publicationId: selection.publicationId,
+    requiredAvailableUntilMs: selection.requiredAvailableUntilMs as number,
+  };
 };
 
 export const readModelDetailFromQueryV1 = async (
@@ -519,18 +673,27 @@ export const readModelDetailFromQueryV1 = async (
   }
 };
 
-export const readModelDetailFromQueryV2 = async (
+const resolveModelDetailPublicationV2 = async (
   input: ModelDetailApiV2Input,
-): Promise<ModelDetailApiV2Outcome> => {
+): Promise<ModelDetailSelectionV2Outcome> => {
   try {
-    assertApiLimits(input.limits);
-    const request = parseRequestV2(input.request);
+    const environment = input.environment;
+    const limits = input.limits;
+    const nowMs = input.nowMs;
+    const requestValue = input.request;
+    const service = input.service;
+    assertApiLimits(limits);
+    const maxRepresentationBytes = Math.min(
+      limits.maxResponseBytes,
+      MODEL_DETAIL_PUBLIC_MAX_BYTES,
+    );
+    const request = parseRequestV2(requestValue);
     if (
       request === null ||
-      !validEnvironment(input.environment) ||
-      !Number.isSafeInteger(input.nowMs) ||
-      input.nowMs < 0 ||
-      input.nowMs > Number.MAX_SAFE_INTEGER - FRESH_REQUEST_HORIZON_MS
+      !validEnvironment(environment) ||
+      !Number.isSafeInteger(nowMs) ||
+      nowMs < 0 ||
+      nowMs > Number.MAX_SAFE_INTEGER - FRESH_REQUEST_HORIZON_MS
     )
       return { success: false, code: "invalid_input" };
 
@@ -538,15 +701,15 @@ export const readModelDetailFromQueryV2 = async (
     const lookup = MODEL_ID.test(identifier)
       ? ({ kind: "stable_id", value: identifier } as const)
       : ({ kind: "slug", value: identifier } as const);
-    const requiredAvailableUntilMs = input.nowMs + FRESH_REQUEST_HORIZON_MS;
+    const requiredAvailableUntilMs = nowMs + FRESH_REQUEST_HORIZON_MS;
     let resolverValue: unknown;
     try {
       resolverValue = await (
-        input.service as ModelDetailQueryRpcV2
+        service as ModelDetailQueryRpcV2
       ).resolvePublicationV2({
         version: 2,
         audience: AUDIENCE,
-        environment: input.environment,
+        environment,
         requestedPublicationId: request.publicationHeader,
         requiredAvailableUntilMs,
       });
@@ -563,31 +726,70 @@ export const readModelDetailFromQueryV2 = async (
     )
       return { success: false, code: "integrity_failure" };
 
+    return {
+      selection: modelDetailSelection({
+        bookmark: resolver.bookmark,
+        environment,
+        lookup,
+        maxRepresentationBytes,
+        publicationId: resolver.publicationId,
+        requiredAvailableUntilMs,
+      }),
+      success: true,
+    };
+  } catch {
+    return { success: false, code: "invalid_input" };
+  }
+};
+
+const readSelectedModelDetailFromQueryV2 = async (
+  input: ReadSelectedModelDetailV2Input,
+): Promise<ModelDetailSelectedReadV2Outcome> => {
+  try {
+    const top = snapshotOwnRecord(input, ["limits", "selection", "service"]);
+    if (top === null) return { success: false, code: "integrity_failure" };
+    const limits = top.limits as ApiLimits;
+    try {
+      assertApiLimits(limits);
+    } catch {
+      return { success: false, code: "invalid_input" };
+    }
+    const selection = parseModelDetailSelection(top.selection);
+    if (
+      selection?.maxRepresentationBytes !==
+      Math.min(limits.maxResponseBytes, MODEL_DETAIL_PUBLIC_MAX_BYTES)
+    )
+      return { success: false, code: "integrity_failure" };
+    const request = modelDetailNormalizedRequest(
+      selection.lookup.value,
+      "GET",
+      null,
+    );
     let envelope: QueryServiceEnvelope;
     try {
       envelope = buildQueryServiceEnvelope(
         request,
-        resolver.publicationId,
-        input.environment,
+        selection.publicationId,
+        selection.environment,
         null,
-        input.limits,
+        limits,
       );
     } catch {
-      return { success: false, code: "invalid_input" };
+      return { success: false, code: "integrity_failure" };
     }
     const readInput: ReadModelDetailV2Input = {
       version: 2,
       audience: AUDIENCE,
-      environment: input.environment,
-      bookmark: resolver.bookmark,
-      requiredAvailableUntilMs,
+      environment: selection.environment,
+      bookmark: selection.bookmark,
+      requiredAvailableUntilMs: selection.requiredAvailableUntilMs,
       envelope,
-      lookup,
+      lookup: selection.lookup,
     };
     let readValue: unknown;
     try {
       readValue = await (
-        input.service as ModelDetailQueryRpcV2
+        top.service as ModelDetailQueryRpcV2
       ).readModelDetailV2(readInput);
     } catch {
       return { success: false, code: "read_failure" };
@@ -610,13 +812,13 @@ export const readModelDetailFromQueryV2 = async (
     if (notFound !== null) {
       if (
         notFound.outcome === "not_found" &&
-        notFound.publicationId === resolver.publicationId &&
+        notFound.publicationId === selection.publicationId &&
         validSchemaVersion(notFound.schemaVersion)
       )
         return {
           success: false,
           code: "not_found",
-          publicationId: resolver.publicationId,
+          publicationId: selection.publicationId,
         };
       return { success: false, code: "integrity_failure" };
     }
@@ -634,7 +836,7 @@ export const readModelDetailFromQueryV2 = async (
     ]);
     if (
       response?.outcome !== "model" ||
-      response.publicationId !== resolver.publicationId ||
+      response.publicationId !== selection.publicationId ||
       !validSchemaVersion(response.schemaVersion) ||
       provenance?.projectionVersion !== "model-slug@1" ||
       typeof provenance.canonicalSlug !== "string" ||
@@ -646,24 +848,22 @@ export const readModelDetailFromQueryV2 = async (
       return { success: false, code: "integrity_failure" };
 
     const model = snapshotModelDetailModel({
-      expectedModelId: lookup.kind === "stable_id" ? lookup.value : null,
-      maxRepresentationBytes: Math.min(
-        input.limits.maxResponseBytes,
-        MODEL_DETAIL_PUBLIC_MAX_BYTES,
-      ),
+      expectedModelId:
+        selection.lookup.kind === "stable_id" ? selection.lookup.value : null,
+      maxRepresentationBytes: selection.maxRepresentationBytes,
       model: response.model,
     });
     if (
       model?.slug.state !== "known" ||
       model.slug.value !== provenance.canonicalSlug ||
-      (lookup.kind === "stable_id"
+      (selection.lookup.kind === "stable_id"
         ? provenance.matchedBy !== "stable_id"
         : (provenance.matchedBy !== "current_slug" &&
             provenance.matchedBy !== "historical_slug") ||
           (provenance.matchedBy === "current_slug" &&
-            provenance.canonicalSlug !== lookup.value) ||
+            provenance.canonicalSlug !== selection.lookup.value) ||
           (provenance.matchedBy === "historical_slug" &&
-            provenance.canonicalSlug === lookup.value))
+            provenance.canonicalSlug === selection.lookup.value))
     )
       return { success: false, code: "integrity_failure" };
 
@@ -674,7 +874,7 @@ export const readModelDetailFromQueryV2 = async (
     };
     const representation = encodeAcceptedModelDetail({
       model,
-      publicationId: resolver.publicationId,
+      publicationId: selection.publicationId,
       schemaVersion: response.schemaVersion,
     });
     if (representation === null)
@@ -682,18 +882,110 @@ export const readModelDetailFromQueryV2 = async (
     const { detail, representationBytes } = representation;
     if (
       representationBytes.byteLength > MODEL_DETAIL_PUBLIC_MAX_BYTES ||
-      representationBytes.byteLength > input.limits.maxResponseBytes
+      representationBytes.byteLength > selection.maxRepresentationBytes
     )
       return { success: false, code: "integrity_failure" };
     return {
       success: true,
       detail,
-      lookup,
+      lookup: selection.lookup,
       lookupProvenance,
-      publicationId: resolver.publicationId,
+      publicationId: selection.publicationId,
       representationBytes,
     };
   } catch {
     return { success: false, code: "invalid_input" };
   }
+};
+
+interface ModelDetailReadStateV2 {
+  current: ReadSelectedModelDetailV2Input | null;
+}
+
+const modelDetailReadControlsV2 = (state: ModelDetailReadStateV2) => {
+  let active = true;
+  const readCanonical = Object.freeze(
+    async (): Promise<ModelDetailSelectedReadV2Outcome> => {
+      const current = state.current;
+      if (!active || current === null)
+        return { success: false, code: "integrity_failure" };
+      state.current = null;
+      return readSelectedModelDetailFromQueryV2(current);
+    },
+  );
+  return Object.freeze({
+    readCanonical,
+    revoke: Object.freeze(() => {
+      active = false;
+      state.current = null;
+    }),
+  });
+};
+
+const modelDetailReadCapabilityV2 = (
+  initialState: ReadSelectedModelDetailV2Input,
+): Readonly<{
+  resolved: ResolvedModelDetailReadV2;
+  revoke: () => void;
+}> => {
+  const lookup = freezeLookup(initialState.selection.lookup);
+  const publicationId = initialState.selection.publicationId;
+  const controls = modelDetailReadControlsV2({ current: initialState });
+  return Object.freeze({
+    resolved: Object.freeze({
+      lookup,
+      publicationId,
+      readCanonical: controls.readCanonical,
+    }),
+    revoke: controls.revoke,
+  });
+};
+
+/**
+ * Resolves the publication before invoking cache orchestration. The continuation
+ * receives no bookmark, request, service, limits, or forgeable selected-read
+ * input; its one-shot read closure retains those values privately.
+ */
+export const executeAfterModelDetailPublicationResolutionV2 = async (
+  input: ModelDetailApiV2Input,
+  continuation: ResolvedModelDetailContinuationV2,
+): Promise<ModelDetailApiV2Outcome> => {
+  let captured: ModelDetailApiV2Input;
+  try {
+    captured = {
+      environment: input.environment,
+      limits: input.limits,
+      nowMs: input.nowMs,
+      request: input.request,
+      service: input.service,
+    };
+    if (typeof continuation !== "function")
+      return { success: false, code: "invalid_input" };
+  } catch {
+    return { success: false, code: "invalid_input" };
+  }
+
+  const selected = await resolveModelDetailPublicationV2(captured);
+  if (!selected.success) return selected;
+  const capability = modelDetailReadCapabilityV2({
+    limits: captured.limits,
+    selection: selected.selection,
+    service: captured.service,
+  });
+  try {
+    return await continuation(capability.resolved);
+  } catch {
+    return { success: false, code: "read_failure" };
+  } finally {
+    capability.revoke();
+  }
+};
+
+export const readModelDetailFromQueryV2 = async (
+  input: ModelDetailApiV2Input,
+): Promise<ModelDetailApiV2Outcome> => {
+  return executeAfterModelDetailPublicationResolutionV2(
+    input,
+    ({ readCanonical }) => readCanonical(),
+  );
 };
