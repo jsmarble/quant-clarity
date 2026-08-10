@@ -1,15 +1,18 @@
 import {
   ifNoneMatchMatches,
+  methodologyRegistryEntry,
   representationEtag,
   validIfNoneMatch,
   validateAndNormalizeRequest,
   type ApiLimits,
+  type CatalogQueryRpcV6,
   type DeploymentEnvironment,
   type NormalizedRequest,
 } from "@quant-clarity/api-core";
 import type { ErrorEnvelope } from "@quant-clarity/contracts";
 
 import { readDatasetMetadataFromQueryV1 } from "./dataset-metadata-query.js";
+import { readMethodologyDetailFromQueryV1 } from "./methodology-detail-query.js";
 import { limitPublicReadRequest } from "./public-read-limiter.js";
 
 type Env = Omit<
@@ -19,6 +22,7 @@ type Env = Omit<
   | "PUBLIC_API_ORIGIN"
   | "RATE_LIMIT_HMAC_KEY"
 > & {
+  API_TRANSPORT_POLICY: unknown;
   DEPLOYMENT_ENV: unknown;
   RATE_LIMIT_HMAC_KEY: unknown;
 };
@@ -102,6 +106,15 @@ type ProtocolPlan =
       kind: "metadata";
       request: NormalizedRequest;
     }>
+  | Readonly<{
+      ifNoneMatch: string | null;
+      kind: "methodology_detail";
+      request: NormalizedRequest;
+    }>
+  | Readonly<{
+      kind: "methodology_preflight";
+      response: Response;
+    }>
   | Readonly<{ kind: "response"; response: Response }>;
 
 const targetTooLarge = (): ProtocolPlan => ({
@@ -123,7 +136,10 @@ const bodyBytesWithoutReading = (request: Request): number => {
   return request.body === null ? parsed : Math.max(1, parsed);
 };
 
-function protocolResponsePlan(request: Request): ProtocolPlan {
+function protocolResponsePlan(
+  request: Request,
+  capturedMethod: string,
+): ProtocolPlan {
   const rawUrl = request.url;
   if (
     rawUrl.length > API_LIMITS.maxUrlBytes ||
@@ -168,9 +184,9 @@ function protocolResponsePlan(request: Request): ProtocolPlan {
     return targetTooLarge();
 
   if (
-    request.method !== "GET" &&
-    request.method !== "HEAD" &&
-    request.method !== "OPTIONS"
+    capturedMethod !== "GET" &&
+    capturedMethod !== "HEAD" &&
+    capturedMethod !== "OPTIONS"
   )
     return {
       kind: "response",
@@ -222,7 +238,8 @@ function protocolResponsePlan(request: Request): ProtocolPlan {
       ),
     };
 
-  if (url.pathname !== "/v1/metadata")
+  const methodologyShaped = url.pathname.startsWith("/v1/methodologies/");
+  if (url.pathname !== "/v1/metadata" && !methodologyShaped)
     return {
       kind: "response",
       response: error(
@@ -251,7 +268,7 @@ function protocolResponsePlan(request: Request): ProtocolPlan {
     {
       bodyBytes,
       hasQueryString,
-      method: request.method,
+      method: capturedMethod,
       pathname: url.pathname,
       publicationHeader,
       rawQuery,
@@ -272,7 +289,10 @@ function protocolResponsePlan(request: Request): ProtocolPlan {
     };
   }
 
-  if (validation.request.operation.kind !== "metadata") {
+  if (
+    validation.request.operation.kind !== "metadata" &&
+    validation.request.operation.kind !== "methodology_detail"
+  ) {
     return {
       kind: "response",
       response: error(
@@ -293,9 +313,25 @@ function protocolResponsePlan(request: Request): ProtocolPlan {
       ),
     };
 
-  if (validation.request.method === "OPTIONS") {
+  if (
+    validation.request.operation.kind === "methodology_detail" &&
+    methodologyRegistryEntry(validation.request.operation.version) === null
+  )
     return {
       kind: "response",
+      response: error(
+        "resource_not_found",
+        "The requested resource does not exist.",
+        404,
+      ),
+    };
+
+  if (validation.request.method === "OPTIONS") {
+    return {
+      kind:
+        validation.request.operation.kind === "methodology_detail"
+          ? "methodology_preflight"
+          : "response",
       response: new Response(null, {
         status: 204,
         headers: {
@@ -315,7 +351,7 @@ function protocolResponsePlan(request: Request): ProtocolPlan {
 
   return {
     ifNoneMatch,
-    kind: "metadata",
+    kind: validation.request.operation.kind,
     request: validation.request,
   };
 }
@@ -345,25 +381,88 @@ function metadataResponse(
   );
 }
 
+function methodologyDetailResponse(
+  method: NormalizedRequest["method"],
+  ifNoneMatch: string | null,
+  publicationId: string,
+  representationBytes: Uint8Array,
+  etag: string,
+): Response {
+  const headers = new Headers({
+    ...SECURITY_HEADERS,
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Expose-Headers": "ETag, X-QuantClarity-Publication",
+    "Cache-Control": "private, no-store",
+    ETag: etag,
+    Vary: "X-QuantClarity-Publication",
+    "X-QuantClarity-Publication": publicationId,
+  });
+  if (ifNoneMatchMatches(ifNoneMatch, etag))
+    return new Response(null, { status: 304, headers });
+  headers.set("Content-Length", String(representationBytes.byteLength));
+  headers.set("Content-Type", "application/json; charset=utf-8");
+  return new Response(
+    method === "HEAD" ? null : new Uint8Array(representationBytes),
+    { status: 200, headers },
+  );
+}
+
 export async function handleRequest(
   request: Request,
   env: Env,
 ): Promise<Response> {
+  let capturedMethod: string | null = null;
+  try {
+    capturedMethod = request.method;
+  } catch {
+    // A hostile request shape is converted to a bounded response after limiting.
+  }
   const send = (response: Response) =>
-    request.method === "HEAD" ? new Response(null, response) : response;
+    capturedMethod === "HEAD" ? new Response(null, response) : response;
   let environment: DeploymentEnvironment | null = null;
+  let transportPolicy: unknown = null;
   try {
     environment = deploymentEnvironment(env.DEPLOYMENT_ENV);
   } catch {
     // Treat an inaccessible runtime binding exactly like an invalid one.
   }
+  try {
+    transportPolicy = env.API_TRANSPORT_POLICY;
+  } catch {
+    // Treat an inaccessible runtime binding exactly like an invalid one.
+  }
   // Select a bounded protocol plan before any effect. The selected response or
   // metadata read is deliberately withheld until abuse controls succeed.
-  const plan = protocolResponsePlan(request);
+  let plan: ProtocolPlan;
+  try {
+    plan =
+      capturedMethod === null
+        ? {
+            kind: "response",
+            response: error(
+              "invalid_parameter",
+              "The request target is malformed.",
+              400,
+            ),
+          }
+        : protocolResponsePlan(request, capturedMethod);
+  } catch {
+    plan = {
+      kind: "response",
+      response: error(
+        "invalid_parameter",
+        "The request target is malformed.",
+        400,
+      ),
+    };
+  }
   let readLimiter: RateLimit | null = null;
   let rotationLimiter: RateLimit | null = null;
   let rateLimitSecret = "";
   let sourceAddress: string | null = null;
+  let queryService: CatalogQueryRpcV6 | Service | null = null;
+  let subtle: SubtleCrypto | null = null;
+  let nowMs: (() => number) | null = null;
   try {
     readLimiter = env.READ_LIMITER;
   } catch {
@@ -385,13 +484,31 @@ export async function handleRequest(
   } catch {
     // An inaccessible source address is handled as limiter failure.
   }
-  const limit = await limitPublicReadRequest({
-    readLimiter,
-    rotationLimiter,
-    secret: rateLimitSecret,
-    sourceAddress,
-    subtle: crypto.subtle,
-  });
+  try {
+    queryService = env.CATALOG_QUERY;
+  } catch {
+    // A missing query capability fails only after applicable limiting.
+  }
+  try {
+    subtle = crypto.subtle;
+  } catch {
+    // Web Crypto is required for limiter keys and validators.
+  }
+  try {
+    nowMs = Date.now;
+  } catch {
+    // A missing clock fails only after applicable limiting.
+  }
+  const limit =
+    subtle === null
+      ? "unavailable"
+      : await limitPublicReadRequest({
+          readLimiter,
+          rotationLimiter,
+          secret: rateLimitSecret,
+          sourceAddress,
+          subtle,
+        });
 
   if (limit === "unavailable")
     return send(
@@ -419,25 +536,97 @@ export async function handleRequest(
       ),
     );
 
-  if (plan.kind === "response") return send(plan.response);
+  if (
+    (plan.kind === "methodology_detail" ||
+      plan.kind === "methodology_preflight") &&
+    (environment === "preview" || environment === "production")
+  )
+    return send(
+      error(
+        "resource_not_found",
+        "The requested resource does not exist.",
+        404,
+      ),
+    );
+  if (
+    (plan.kind === "methodology_detail" ||
+      plan.kind === "methodology_preflight") &&
+    transportPolicy !== "local_test"
+  )
+    return send(
+      error(
+        "temporarily_unavailable",
+        "The methodology detail is temporarily unavailable.",
+        503,
+      ),
+    );
+  if (plan.kind === "response" || plan.kind === "methodology_preflight")
+    return send(plan.response);
+  if (queryService === null || nowMs === null || subtle === null)
+    return send(
+      error(
+        "temporarily_unavailable",
+        plan.kind === "metadata"
+          ? "The metadata is temporarily unavailable."
+          : "The methodology detail is temporarily unavailable.",
+        503,
+      ),
+    );
 
-  const outcome = await readDatasetMetadataFromQueryV1({
-    environment,
-    limits: API_LIMITS,
-    nowMs: Date.now(),
-    request: plan.request,
-    service: env.CATALOG_QUERY,
-  });
+  let requestNowMs: number;
+  try {
+    requestNowMs = nowMs();
+  } catch {
+    return send(
+      error(
+        "temporarily_unavailable",
+        plan.kind === "metadata"
+          ? "The metadata is temporarily unavailable."
+          : "The methodology detail is temporarily unavailable.",
+        503,
+      ),
+    );
+  }
+
+  const outcome =
+    plan.kind === "metadata"
+      ? await readDatasetMetadataFromQueryV1({
+          environment,
+          limits: API_LIMITS,
+          nowMs: requestNowMs,
+          request: plan.request,
+          service: queryService,
+        })
+      : await readMethodologyDetailFromQueryV1({
+          environment,
+          limits: API_LIMITS,
+          nowMs: requestNowMs,
+          request: plan.request,
+          service: queryService,
+        });
   if (!outcome.success) {
+    if (outcome.code === "methodology_not_found")
+      return send(
+        error(
+          "resource_not_found",
+          "The requested methodology does not exist.",
+          404,
+        ),
+      );
     if (outcome.code === "publication_expired")
       return send(
         error(
           "publication_expired",
           "The requested publication is no longer available.",
           409,
-          {
-            "X-QuantClarity-Publication": outcome.currentPublicationId,
-          },
+          plan.kind === "methodology_detail"
+            ? {
+                Vary: "X-QuantClarity-Publication",
+                "X-QuantClarity-Publication": outcome.currentPublicationId,
+              }
+            : {
+                "X-QuantClarity-Publication": outcome.currentPublicationId,
+              },
         ),
       );
     if (outcome.code === "publication_not_ready")
@@ -451,7 +640,9 @@ export async function handleRequest(
     return send(
       error(
         "temporarily_unavailable",
-        "The metadata is temporarily unavailable.",
+        plan.kind === "metadata"
+          ? "The metadata is temporarily unavailable."
+          : "The methodology detail is temporarily unavailable.",
         503,
       ),
     );
@@ -462,22 +653,32 @@ export async function handleRequest(
       outcome.publicationId,
       "json",
       outcome.representationBytes,
-      crypto.subtle,
+      subtle,
     );
   } catch {
     return send(
       error(
         "temporarily_unavailable",
-        "The metadata is temporarily unavailable.",
+        plan.kind === "metadata"
+          ? "The metadata is temporarily unavailable."
+          : "The methodology detail is temporarily unavailable.",
         503,
       ),
     );
   }
-  return metadataResponse(
-    plan.request.method,
-    plan.ifNoneMatch,
-    outcome.publicationId,
-    outcome.representationBytes,
-    etag,
-  );
+  return plan.kind === "metadata"
+    ? metadataResponse(
+        plan.request.method,
+        plan.ifNoneMatch,
+        outcome.publicationId,
+        outcome.representationBytes,
+        etag,
+      )
+    : methodologyDetailResponse(
+        plan.request.method,
+        plan.ifNoneMatch,
+        outcome.publicationId,
+        outcome.representationBytes,
+        etag,
+      );
 }

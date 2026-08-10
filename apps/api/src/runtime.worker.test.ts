@@ -382,6 +382,20 @@ describe("public API in workerd (API-013, API-024)", () => {
     ["preflight", "OPTIONS", "/v1/metadata", 204],
     ["mutation", "POST", "/v1/metadata", 405],
     ["unknown path", "GET", "/v1/not-present", 404],
+    [
+      "registered methodology without a publication",
+      "GET",
+      "/v1/methodologies/1.0.0",
+      503,
+    ],
+    [
+      "registered methodology preflight",
+      "OPTIONS",
+      "/v1/methodologies/1.0.0",
+      204,
+    ],
+    ["unregistered methodology", "GET", "/v1/methodologies/2.0.0", 404],
+    ["methodology query", "GET", "/v1/methodologies/1.0.0?unexpected=1", 400],
     ["closed Model stable-ID path", "GET", `/v1/models/${RENDER_MODEL}`, 404],
     ["closed Model slug path", "GET", "/v1/models/fixture-model", 404],
   ])(

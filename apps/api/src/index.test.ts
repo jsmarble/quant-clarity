@@ -35,6 +35,7 @@ const metadata = (): DatasetMetadata => ({
 type Rpc = Readonly<{
   resolvePublicationV2: (input: unknown) => Promise<unknown>;
   readDatasetMetadataV1: (input: unknown) => Promise<unknown>;
+  readMethodologyContextV1?: (input: unknown) => Promise<unknown>;
   readModelDetailV1: (input: unknown) => Promise<unknown>;
 }>;
 
@@ -57,6 +58,14 @@ function successfulRpc(): Rpc {
         metadata: metadata(),
       }),
     ),
+    readMethodologyContextV1: vi.fn(() =>
+      Promise.resolve({
+        outcome: "context",
+        publicationId: PUBLICATION,
+        publicApiOrigin: "https://api.example.test",
+        schemaVersion: "1.0.0",
+      }),
+    ),
     readModelDetailV1: vi.fn(),
   };
 }
@@ -77,6 +86,7 @@ function environment(
   } satisfies RateLimit;
   return {
     env: {
+      API_TRANSPORT_POLICY: "local_test" as unknown,
       DEPLOYMENT_ENV: deploymentEnvironment,
       RATE_LIMIT_HMAC_KEY: SECRET,
       READ_LIMITER: limiter,
@@ -260,6 +270,328 @@ describe("public dataset metadata endpoint (API-002, API-003, API-013, API-024, 
   });
 });
 
+describe("local public methodology detail endpoint (FE-051, API-003, PRIV-003–PRIV-007)", () => {
+  const methodologyPath = "/v1/methodologies/1.0.0";
+
+  it("returns exact historical methodology metadata from protected publication context", async () => {
+    const { env, rpc } = environment();
+    const response = await handleRequest(request(methodologyPath), env);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      data: {
+        methodology_version: "1.0.0",
+        methodology_effective_at: "2026-08-01T00:00:00.000Z",
+        methodology_url: "https://api.example.test/v1/methodologies/1.0.0",
+      },
+      meta: {
+        resource: "methodologies",
+        publication_id: PUBLICATION,
+        schema_version: "1.0.0",
+        sort: ["version"],
+        filters: {},
+      },
+    });
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(response.headers.get("Vary")).toBe("X-QuantClarity-Publication");
+    expect(response.headers.get("X-QuantClarity-Publication")).toBe(
+      PUBLICATION,
+    );
+    expect(response.headers.get("ETag")).toMatch(/^"[0-9a-f]{64}"$/u);
+    expect(response.headers.has("Set-Cookie")).toBe(false);
+    expect(response.headers.has("X-Request-ID")).toBe(false);
+    expect(rpc.resolvePublicationV2).toHaveBeenCalledTimes(1);
+    expect(rpc.readDatasetMetadataV1).not.toHaveBeenCalled();
+    expect(rpc.readMethodologyContextV1).toHaveBeenCalledTimes(1);
+    if (rpc.readMethodologyContextV1 === undefined)
+      throw new Error("methodology RPC fixture is missing");
+    const readInput = vi.mocked(rpc.readMethodologyContextV1).mock
+      .calls[0]?.[0] as
+      | {
+          envelope?: {
+            operation?: unknown;
+            publicationId?: unknown;
+            sort?: unknown;
+          };
+        }
+      | undefined;
+    expect(readInput?.envelope?.operation).toEqual({
+      kind: "methodology_detail",
+      version: "1.0.0",
+    });
+    expect(readInput?.envelope?.publicationId).toBe(PUBLICATION);
+    expect(readInput?.envelope?.sort).toEqual(["version"]);
+  });
+
+  it("never derives the methodology URL from request authority headers", async () => {
+    const response = await handleRequest(
+      new Request(`https://visitor-controlled.invalid${methodologyPath}`, {
+        headers: {
+          "CF-Connecting-IP": "203.0.113.9",
+          Host: "attacker.invalid",
+          "X-Forwarded-Host": "attacker.invalid",
+        },
+      }),
+      environment().env,
+    );
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    expect(body).toContain("https://api.example.test/v1/methodologies/1.0.0");
+    expect(body).not.toContain("visitor-controlled");
+    expect(body).not.toContain("attacker.invalid");
+  });
+
+  it("keeps GET, HEAD, and conditional representation semantics identical", async () => {
+    const get = await handleRequest(
+      request(methodologyPath),
+      environment().env,
+    );
+    const etag = get.headers.get("ETag");
+    if (etag === null) throw new Error("methodology fixture requires an ETag");
+    const head = await handleRequest(
+      request(methodologyPath, { method: "HEAD" }),
+      environment().env,
+    );
+    expect(head.status).toBe(200);
+    expect(await head.text()).toBe("");
+    expect(head.headers.get("Content-Length")).toBe(
+      get.headers.get("Content-Length"),
+    );
+    expect(head.headers.get("ETag")).toBe(etag);
+    const conditional = await handleRequest(
+      request(methodologyPath, { headers: { "If-None-Match": etag } }),
+      environment().env,
+    );
+    expect(conditional.status).toBe(304);
+    expect(await conditional.text()).toBe("");
+    expect(conditional.headers.get("ETag")).toBe(etag);
+    expect(conditional.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(conditional.headers.get("Vary")).toBe("X-QuantClarity-Publication");
+  });
+
+  it.each(["GET", "HEAD", "OPTIONS"])(
+    "returns a withheld static 404 for unregistered %s without RPC",
+    async (method) => {
+      const { env, rpc, keys } = environment();
+      const response = await handleRequest(
+        request("/v1/methodologies/2.0.0", { method }),
+        env,
+      );
+      expect(response.status).toBe(404);
+      expect(keys).toHaveLength(1);
+      expect(rpc.resolvePublicationV2).not.toHaveBeenCalled();
+      expect(rpc.readMethodologyContextV1).not.toHaveBeenCalled();
+      if (method === "HEAD") expect(await response.text()).toBe("");
+    },
+  );
+
+  it("returns registered fixed preflight without query effects", async () => {
+    const { env, rpc } = environment();
+    const response = await handleRequest(
+      request(methodologyPath, { method: "OPTIONS" }),
+      env,
+    );
+    expect(response.status).toBe(204);
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(rpc.resolvePublicationV2).not.toHaveBeenCalled();
+    expect(rpc.readMethodologyContextV1).not.toHaveBeenCalled();
+  });
+
+  it("returns publication expiration before any context read", async () => {
+    const rpc: Rpc = {
+      resolvePublicationV2: vi.fn(() =>
+        Promise.resolve({
+          outcome: "publication_expired",
+          currentPublicationId: CURRENT_PUBLICATION,
+        }),
+      ),
+      readDatasetMetadataV1: vi.fn(),
+      readMethodologyContextV1: vi.fn(),
+      readModelDetailV1: vi.fn(),
+    };
+    const { env } = environment(undefined, null, rpc);
+    const response = await handleRequest(
+      request(methodologyPath, {
+        headers: { "X-QuantClarity-Publication": PUBLICATION },
+      }),
+      env,
+    );
+    expect(response.status).toBe(409);
+    expect(response.headers.get("X-QuantClarity-Publication")).toBe(
+      CURRENT_PUBLICATION,
+    );
+    expect(response.headers.get("Vary")).toBe("X-QuantClarity-Publication");
+    expect(rpc.readMethodologyContextV1).not.toHaveBeenCalled();
+  });
+
+  it("withholds an unregistered 404 until the limiter admits the request", async () => {
+    const { env, rpc } = environment([false]);
+    const response = await handleRequest(
+      request("/v1/methodologies/2.0.0"),
+      env,
+    );
+    expect(response.status).toBe(429);
+    expect(rpc.resolvePublicationV2).not.toHaveBeenCalled();
+    expect(rpc.readMethodologyContextV1).not.toHaveBeenCalled();
+  });
+
+  it.each(["preview", "production"] as const)(
+    "keeps the registered route closed in %s",
+    async (deploymentEnvironment) => {
+      const { env, rpc } = environment(
+        undefined,
+        null,
+        successfulRpc(),
+        deploymentEnvironment,
+      );
+      const response = await handleRequest(request(methodologyPath), env);
+      expect(response.status).toBe(404);
+      expect(rpc.resolvePublicationV2).not.toHaveBeenCalled();
+      expect(rpc.readMethodologyContextV1).not.toHaveBeenCalled();
+    },
+  );
+
+  it("fails closed on local transport-policy drift after limiting", async () => {
+    const { env, keys, rpc } = environment();
+    env.API_TRANSPORT_POLICY = "preview_https";
+    const response = await handleRequest(request(methodologyPath), env);
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({
+      error: {
+        code: "temporarily_unavailable",
+        message: "The methodology detail is temporarily unavailable.",
+      },
+    });
+    expect(keys).toHaveLength(1);
+    expect(rpc.resolvePublicationV2).not.toHaveBeenCalled();
+  });
+
+  it("contains a hostile query binding getter behind the limiter boundary", async () => {
+    const { env, keys } = environment();
+    Object.defineProperty(env, "CATALOG_QUERY", {
+      get: () => {
+        throw new Error("private binding detail");
+      },
+    });
+    const response = await handleRequest(request(methodologyPath), env);
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({
+      error: {
+        code: "temporarily_unavailable",
+        message: "The methodology detail is temporarily unavailable.",
+      },
+    });
+    expect(keys).toHaveLength(1);
+  });
+
+  it("maps hostile context RPC output to one static bounded failure", async () => {
+    const hostile = Object.create(null) as Record<string, unknown>;
+    Object.defineProperty(hostile, "outcome", {
+      enumerable: true,
+      get: () => {
+        throw new Error("private upstream detail");
+      },
+    });
+    const rpc = successfulRpc();
+    const hostileRpc: Rpc = {
+      ...rpc,
+      readMethodologyContextV1: vi.fn(() => Promise.resolve(hostile)),
+    };
+    const response = await handleRequest(
+      request(methodologyPath),
+      environment(undefined, null, hostileRpc).env,
+    );
+    expect(response.status).toBe(503);
+    const body = await response.text();
+    expect(body).toBe(
+      JSON.stringify({
+        error: {
+          code: "temporarily_unavailable",
+          message: "The methodology detail is temporarily unavailable.",
+        },
+      }),
+    );
+    expect(body).not.toContain("upstream");
+  });
+
+  it("snapshots each query-service method exactly once before awaiting", async () => {
+    const rpc = successfulRpc();
+    let resolverReads = 0;
+    let contextReads = 0;
+    const hostileRpc = {
+      readDatasetMetadataV1: rpc.readDatasetMetadataV1,
+      readModelDetailV1: rpc.readModelDetailV1,
+    } as unknown as Rpc;
+    Object.defineProperties(hostileRpc, {
+      resolvePublicationV2: {
+        enumerable: true,
+        get: () => {
+          resolverReads += 1;
+          return rpc.resolvePublicationV2;
+        },
+      },
+      readMethodologyContextV1: {
+        enumerable: true,
+        get: () => {
+          contextReads += 1;
+          return rpc.readMethodologyContextV1;
+        },
+      },
+    });
+    const response = await handleRequest(
+      request(methodologyPath),
+      environment(undefined, null, hostileRpc).env,
+    );
+    expect(response.status).toBe(200);
+    expect(resolverReads).toBe(1);
+    expect(contextReads).toBe(1);
+  });
+
+  it.each([
+    ["publicApiOrigin", `https://${"a".repeat(100_000)}.test`],
+    ["schemaVersion", "1".repeat(100_000)],
+  ] as const)(
+    "rejects oversized hostile context %s with a static bounded failure",
+    async (field, value) => {
+      const rpc = successfulRpc();
+      const hostileRpc: Rpc = {
+        ...rpc,
+        readMethodologyContextV1: vi.fn(() =>
+          Promise.resolve({
+            outcome: "context",
+            publicationId: PUBLICATION,
+            publicApiOrigin: "https://api.example.test",
+            schemaVersion: "1.0.0",
+            [field]: value,
+          }),
+        ),
+      };
+      const response = await handleRequest(
+        request(methodologyPath),
+        environment(undefined, null, hostileRpc).env,
+      );
+      expect(response.status).toBe(503);
+      expect(await response.json()).toEqual({
+        error: {
+          code: "temporarily_unavailable",
+          message: "The methodology detail is temporarily unavailable.",
+        },
+      });
+    },
+  );
+
+  it("preserves unrelated closed-route behavior before route-specific publication validation", async () => {
+    const { env, rpc } = environment();
+    const response = await handleRequest(
+      request("/v1/models/fixture-model?unexpected=1", {
+        headers: { "X-QuantClarity-Publication": "malformed" },
+      }),
+      env,
+    );
+    expect(response.status).toBe(404);
+    expect(rpc.resolvePublicationV2).not.toHaveBeenCalled();
+  });
+});
+
 describe("public API privacy and protocol boundary (PRIV-002–PRIV-007)", () => {
   it.each([
     ["empty", ""],
@@ -343,6 +675,7 @@ describe("public API privacy and protocol boundary (PRIV-002–PRIV-007)", () =>
     };
     const rpc = successfulRpc();
     const env = {
+      API_TRANSPORT_POLICY: "local_test" as unknown,
       DEPLOYMENT_ENV: "preview" as unknown,
       RATE_LIMIT_HMAC_KEY: SECRET,
       READ_LIMITER: limiter,
@@ -400,6 +733,7 @@ describe("public API privacy and protocol boundary (PRIV-002–PRIV-007)", () =>
       }),
     };
     const env = {
+      API_TRANSPORT_POLICY: "local_test" as unknown,
       DEPLOYMENT_ENV: "local" as unknown,
       RATE_LIMIT_HMAC_KEY: SECRET,
       READ_LIMITER: limiter,
@@ -652,9 +986,34 @@ describe("public API privacy and protocol boundary (PRIV-002–PRIV-007)", () =>
       ROTATION_LIMITER: limiter,
     });
     expect(response.status).toBe(413);
-    expect(events[0]).toBe("url");
+    expect(events[0]).toBe("method");
+    expect(events.indexOf("method")).toBeLessThan(events.indexOf("limit"));
     expect(events.indexOf("url")).toBeLessThan(events.indexOf("limit"));
     expect(rpc.resolvePublicationV2).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when a hostile request method getter throws", async () => {
+    const headers = new Headers({ "CF-Connecting-IP": "203.0.113.9" });
+    const hostileRequest = {
+      body: null,
+      headers,
+      get method() {
+        throw new Error("private method detail");
+      },
+      url: "https://api.example.test/v1/metadata",
+    } as unknown as Request;
+    const { env, keys, rpc } = environment();
+    const response = await handleRequest(hostileRequest, env);
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: {
+        code: "invalid_parameter",
+        message: "The request target is malformed.",
+      },
+    });
+    expect(keys).toHaveLength(1);
+    expect(rpc.resolvePublicationV2).not.toHaveBeenCalled();
+    expect(rpc.readDatasetMetadataV1).not.toHaveBeenCalled();
   });
 
   it("fails closed when the source address, secret, or limiter is unsafe", async () => {

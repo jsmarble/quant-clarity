@@ -70,6 +70,8 @@ This operation remains internal and unrouted. The V1 stable-ID operation stays c
 
 `Model Facts` and `Offering Facts` are response projections assembled from these resources. They are not addressable canonical resource types.
 
+The exact methodology-detail route is metadata-only and functional only for registered versions in local/test. Bounded request and header validation first performs exact own-key registry-existence validation and records the environment decision in a withheld plan; it retains the validated version, not a live registry entry. The limiter settles before any planned response is released. Unregistered GET/HEAD/OPTIONS and every preview/production methodology request then return fixed `404` without resolver or query RPC, while registered local/test OPTIONS returns fixed preflight without either operation. Registered local/test GET and HEAD use resolver V2 followed by exactly one dedicated bookmark-continuous `readMethodologyContextV1` SELECT-only operation. The context method validates the already-registered version as part of the closed methodology envelope but does not consult the registry or bind its version to SQL; it returns only selected publication ID, schema version, and the query Worker's protected exact API origin. During post-resolver encoding, a fresh exact own-key lookup revalidates the immutable registry entry before representation construction. No raw visitor material enters the method. Every methodology outcome, including successful `200`/`304`, uses `private, no-store`; successful responses retain the generated methodology-specific publication `Vary`. Cache API is never used. The JSON does not duplicate the human-readable methodology body or material-change log.
+
 ## Common shapes
 
 Collection envelope:

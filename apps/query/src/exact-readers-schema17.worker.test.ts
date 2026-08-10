@@ -32,6 +32,7 @@ import {
 } from "../../pipeline/test/serving-switch-v4-fixture.js";
 import {
   DATASET_METADATA_SELECT_SQL,
+  METHODOLOGY_CONTEXT_SELECT_SQL,
   RESOLVE_PUBLICATION_V2_SELECT_SQL,
 } from "./catalog-query-rpc.js";
 import {
@@ -294,6 +295,19 @@ const metadataEnvelope = (publicationId: string): QueryServiceEnvelope => ({
   searchPlan: null,
 });
 
+const methodologyEnvelope = (publicationId: string): QueryServiceEnvelope => ({
+  version: 1,
+  audience: "quantclarity-catalog-query-v1",
+  environment: "local",
+  operation: { kind: "methodology_detail", version: "1.0.0" },
+  publicationId,
+  filters: {},
+  sort: ["version"],
+  limit: 25,
+  continuation: null,
+  searchPlan: null,
+});
+
 const modelDetailEnvelope = (
   publicationId: string,
   modelId: string,
@@ -471,6 +485,31 @@ describe("schema-1.11 current exact readers (SRCH-002, SRCH-004, SRCH-006, SRCH-
     expect(result.metadata.counts.active_models).toBeGreaterThan(0);
     expect(result.metadata.counts.active_offerings).toBeGreaterThan(0);
     expect(result.metadata.counts.active_providers).toBeGreaterThan(0);
+
+    const methodologyPlan = await env.SERVING_DB.prepare(
+      `EXPLAIN QUERY PLAN ${METHODOLOGY_CONTEXT_SELECT_SQL}`,
+    )
+      .bind(PUBLICATION, requiredAvailableUntilMs)
+      .all<{ detail: string }>();
+    const methodologyDetails = methodologyPlan.results
+      .map((value) => value.detail)
+      .join("\n");
+    expect(methodologyDetails).toContain(RETAINED_HOT_FROM_INDEX);
+    expect(methodologyDetails).toContain(RETAINED_HOT_ROLLBACK_INDEX);
+    const context = await exports.CatalogQueryService.readMethodologyContextV1({
+      version: 1,
+      audience: "quantclarity-catalog-query-v1",
+      environment: "local",
+      bookmark: selected.bookmark,
+      requiredAvailableUntilMs,
+      envelope: methodologyEnvelope(PUBLICATION),
+    });
+    expect(context).toEqual({
+      outcome: "context",
+      publicationId: PUBLICATION,
+      publicApiOrigin: "https://api.example.test",
+      schemaVersion: "1.6.0",
+    });
   });
 
   it("reads one sealed Model by primary key through the named detail RPC", async () => {

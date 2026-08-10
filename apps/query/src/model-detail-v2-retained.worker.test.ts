@@ -11,6 +11,7 @@ import {
   type PublicationRecord,
   type StoredPublicationHead,
 } from "@quant-clarity/publication-core";
+import type { ReadMethodologyContextV1Input } from "@quant-clarity/api-core";
 
 import {
   archiveModelSlugHistoryCandidate,
@@ -30,7 +31,10 @@ import {
   createServingV5Fixture,
   type ServingV5Fixture,
 } from "../../pipeline/test/serving-switch-v5-fixture.js";
-import { resolvePublicationV2 } from "./catalog-query-rpc.js";
+import {
+  readMethodologyContextV1,
+  resolvePublicationV2,
+} from "./catalog-query-rpc.js";
 import {
   readModelDetailV2,
   type ReadModelDetailV2Input,
@@ -376,6 +380,29 @@ const detailInput = (
   version: 2,
 });
 
+const methodologyInput = (
+  prepared: Prepared,
+  bookmark: string,
+): ReadMethodologyContextV1Input => ({
+  audience: "quantclarity-catalog-query-v1",
+  bookmark,
+  environment: "local",
+  envelope: {
+    audience: "quantclarity-catalog-query-v1",
+    continuation: null,
+    environment: "local",
+    filters: {},
+    limit: 25,
+    operation: { kind: "methodology_detail", version: "1.0.0" },
+    publicationId: prepared.fixture.v4.base.manifest.publicationId,
+    searchPlan: null,
+    sort: ["version"],
+    version: 1,
+  },
+  requiredAvailableUntilMs: REQUIRED_UNTIL,
+  version: 1,
+});
+
 let publications: readonly [Prepared, Prepared, Prepared];
 
 beforeAll(async () => {
@@ -419,6 +446,18 @@ describe("official V5 retained-hot Model detail continuity", () => {
     });
     if (selectedA.outcome !== "selected")
       throw new Error("A was not selected before C activation");
+    const methodology = methodologyInput(publicationA, selectedA.bookmark);
+    await expect(
+      readMethodologyContextV1(
+        env.SERVING_DB,
+        "local",
+        "https://api.example.test",
+        methodology,
+      ),
+    ).resolves.toMatchObject({
+      outcome: "context",
+      publicationId: publicationA.fixture.v4.base.manifest.publicationId,
+    });
 
     const headB = head(publicationB, publicationA, ACTIVATED_B, 2);
     const activeB = lifecycleRecord(publicationB, "active", ACTIVATED_B);
@@ -451,6 +490,17 @@ describe("official V5 retained-hot Model detail continuity", () => {
       publicationId: publicationA.fixture.v4.base.manifest.publicationId,
       model: { model_id: model.resourceId },
     });
+    await expect(
+      readMethodologyContextV1(
+        env.SERVING_DB,
+        "local",
+        "https://api.example.test",
+        methodology,
+      ),
+    ).resolves.toMatchObject({
+      outcome: "context",
+      publicationId: publicationA.fixture.v4.base.manifest.publicationId,
+    });
 
     const trigger = await env.SERVING_DB.prepare(
       `SELECT sql FROM sqlite_schema WHERE type = 'trigger'
@@ -478,6 +528,14 @@ describe("official V5 retained-hot Model detail continuity", () => {
       await expect(
         readModelDetailV2(env.SERVING_DB, "local", input),
       ).resolves.toEqual({ outcome: "integrity_failure" });
+      await expect(
+        readMethodologyContextV1(
+          env.SERVING_DB,
+          "local",
+          "https://api.example.test",
+          methodology,
+        ),
+      ).resolves.toEqual({ outcome: "integrity_failure" });
 
       await env.SERVING_DB.prepare(
         `UPDATE publication_switch_history SET switched_at_ms = CASE
@@ -489,6 +547,14 @@ describe("official V5 retained-hot Model detail continuity", () => {
       await expect(
         readModelDetailV2(env.SERVING_DB, "local", input),
       ).resolves.toMatchObject({ outcome: "model" });
+      await expect(
+        readMethodologyContextV1(
+          env.SERVING_DB,
+          "local",
+          "https://api.example.test",
+          methodology,
+        ),
+      ).resolves.toMatchObject({ outcome: "context" });
     } finally {
       for (const original of originals.results)
         await env.SERVING_DB.prepare(

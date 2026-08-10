@@ -292,6 +292,8 @@ export const MethodologySchema = Type.Object(
   { $id: "Methodology", additionalProperties: false },
 );
 
+export type Methodology = Static<typeof MethodologySchema>;
+
 export const ModelFamilySchema = Type.Object(
   {
     family_id: prefixedId("fam"),

@@ -57,7 +57,12 @@ const apiSchemas = Object.fromEntries(
 );
 
 type CachePolicy =
-  "active-detail" | "collection" | "contract" | "error" | "metadata";
+  | "active-detail"
+  | "collection"
+  | "contract"
+  | "error"
+  | "metadata"
+  | "methodology";
 
 const cacheControlValue: Record<CachePolicy, string> = {
   "active-detail": "private, max-age=0, must-revalidate",
@@ -65,6 +70,7 @@ const cacheControlValue: Record<CachePolicy, string> = {
   contract: "private, no-store",
   error: "private, no-store",
   metadata: "private, no-store",
+  methodology: "private, no-store",
 };
 
 const publicationPinParameter = {
@@ -214,6 +220,216 @@ const commonErrors = {
   ),
 };
 
+const methodologySecurityHeaders = {
+  "Content-Security-Policy": {
+    schema: {
+      type: "string",
+      const:
+        "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+    },
+  },
+  "Permissions-Policy": {
+    schema: {
+      type: "string",
+      const:
+        "accelerometer=(), camera=(), geolocation=(), gyroscope=(), microphone=(), payment=(), usb=()",
+    },
+  },
+  "Referrer-Policy": {
+    schema: { type: "string", const: "no-referrer" },
+  },
+  "X-Content-Type-Options": {
+    schema: { type: "string", const: "nosniff" },
+  },
+  "X-Frame-Options": {
+    schema: { type: "string", const: "DENY" },
+  },
+} as const;
+
+function methodologyErrorHeaders(status: string): JsonObject {
+  return {
+    ...methodologySecurityHeaders,
+    "Access-Control-Allow-Origin": {
+      description: "Public non-credentialed read access.",
+      schema: { type: "string", const: "*" },
+    },
+    "Access-Control-Expose-Headers": {
+      description:
+        "Response headers readable by non-credentialed browser clients.",
+      schema: {
+        type: "string",
+        const: "ETag, X-QuantClarity-Publication",
+      },
+    },
+    "Cache-Control": {
+      description: "Visitor-safe no-store policy.",
+      schema: { type: "string", const: "private, no-store" },
+    },
+    ...(status === "405"
+      ? {
+          Allow: {
+            description: "Methods supported by this read-only resource.",
+            schema: { type: "string", const: "GET, HEAD, OPTIONS" },
+          },
+        }
+      : {}),
+    ...(status === "409"
+      ? {
+          Vary: {
+            description: "The exact publication pin controls this outcome.",
+            schema: {
+              type: "string",
+              const: "X-QuantClarity-Publication",
+            },
+          },
+          "X-QuantClarity-Publication": {
+            description: "Current publication ID after an expired exact pin.",
+            schema: { $ref: "#/components/schemas/PublicationId" },
+          },
+        }
+      : {}),
+    ...(status === "429"
+      ? {
+          "Retry-After": {
+            description: "Seconds before the client should retry.",
+            schema: { type: "integer", minimum: 1 },
+          },
+        }
+      : {}),
+  };
+}
+
+function methodologyErrorResponse(
+  status: string,
+  description: string,
+  code: string,
+  message: string,
+  includePublicationNotReady = true,
+): JsonObject {
+  const mediaType: JsonObject = {
+    schema: { $ref: "#/components/schemas/ErrorEnvelope" },
+    example: { error: { code, message } },
+  };
+  if (status === "503") {
+    delete mediaType.example;
+    mediaType.examples = {
+      ...(includePublicationNotReady
+        ? {
+            publicationNotReady: {
+              value: {
+                error: {
+                  code: "publication_not_ready",
+                  message: "No public dataset has been published yet.",
+                },
+              },
+            },
+          }
+        : {}),
+      methodologyUnavailable: {
+        value: {
+          error: {
+            code: "temporarily_unavailable",
+            message: "The methodology detail is temporarily unavailable.",
+          },
+        },
+      },
+      limiterUnavailable: {
+        value: {
+          error: {
+            code: "temporarily_unavailable",
+            message: "The request cannot be safely rate limited.",
+          },
+        },
+      },
+      serviceUnavailable: {
+        value: {
+          error: {
+            code: "temporarily_unavailable",
+            message: "The service is temporarily unavailable.",
+          },
+        },
+      },
+    };
+  }
+  return {
+    description,
+    headers: methodologyErrorHeaders(status),
+    content: { "application/json": mediaType },
+  };
+}
+
+const methodologyErrors = {
+  "400": methodologyErrorResponse(
+    "400",
+    "Invalid or unsupported request parameter",
+    "invalid_parameter",
+    "The request contains an invalid parameter.",
+  ),
+  "404": methodologyErrorResponse(
+    "404",
+    "The requested methodology or closed route was not found",
+    "resource_not_found",
+    "The requested resource does not exist.",
+  ),
+  "405": methodologyErrorResponse(
+    "405",
+    "The request method is not allowed",
+    "method_not_allowed",
+    "Only GET, HEAD, and OPTIONS are supported.",
+  ),
+  "409": methodologyErrorResponse(
+    "409",
+    "The request's publication snapshot is no longer retained",
+    "publication_expired",
+    "The requested publication is no longer available.",
+  ),
+  "413": methodologyErrorResponse(
+    "413",
+    "The bounded request-target limit was exceeded",
+    "query_too_large",
+    "The request target exceeds the configured size limit.",
+  ),
+  "429": methodologyErrorResponse(
+    "429",
+    "The permissive abuse-protection limit was exceeded",
+    "rate_limited",
+    "Rate limit exceeded.",
+  ),
+  "503": methodologyErrorResponse(
+    "503",
+    "The publication, methodology operation, service, or limiter is unavailable",
+    "temporarily_unavailable",
+    "The methodology detail is temporarily unavailable.",
+  ),
+};
+
+const methodologyOptionsUnavailable = methodologyErrorResponse(
+  "503",
+  "The methodology route, service configuration, or limiter is unavailable",
+  "temporarily_unavailable",
+  "The methodology detail is temporarily unavailable.",
+  false,
+);
+
+function methodologyRepresentationHeaders(): JsonObject {
+  return {
+    ...responseHeaders("methodology"),
+    ...methodologySecurityHeaders,
+    ETag: {
+      description:
+        "Strong publication-qualified SHA-256 validator for the exact JSON bytes.",
+      schema: { type: "string", pattern: '^"[0-9a-f]{64}"$' },
+    },
+    Vary: {
+      description: "The exact publication pin controls this representation.",
+      schema: {
+        type: "string",
+        const: "X-QuantClarity-Publication",
+      },
+    },
+  };
+}
+
 function protocolOperations(
   operationId: string,
   summary: string,
@@ -290,6 +506,15 @@ function protocolOperations(
             },
           },
         },
+        ...(includeNotFound && cachePolicy === "methodology"
+          ? {
+              "404": errorResponse(
+                "The requested resource was not found",
+                "resource_not_found",
+                "The requested resource does not exist.",
+              ),
+            }
+          : {}),
         "429": commonErrors["429"],
         "503": commonErrors["503"],
       },
@@ -427,6 +652,7 @@ function detailOperation(
     minLength: 1,
     maxLength: 256,
   },
+  cachePolicy: CachePolicy = "active-detail",
 ) {
   return {
     get: {
@@ -442,8 +668,8 @@ function detailOperation(
         },
       ]),
       responses: {
-        "200": jsonResponse(summary, responseSchema, "active-detail"),
-        "304": notModifiedResponse("active-detail"),
+        "200": jsonResponse(summary, responseSchema, cachePolicy),
+        "304": notModifiedResponse(cachePolicy),
         "400": commonErrors["400"],
         "404": errorResponse(
           "The requested resource was not found",
@@ -469,9 +695,79 @@ function detailOperation(
           schema: parameterSchema,
         },
       ],
-      "active-detail",
+      cachePolicy,
       true,
     ),
+  };
+}
+
+function methodologyDetailOperation() {
+  const operation = detailOperation(
+    "getMethodology",
+    "Get versioned methodology metadata",
+    "MethodologyDetail",
+    "version",
+    "Exact historical methodology version.",
+    {
+      type: "string",
+      minLength: 1,
+      maxLength: 64,
+      pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
+    },
+    "methodology",
+  );
+  const representationHeaders = methodologyRepresentationHeaders();
+  return {
+    get: {
+      ...operation.get,
+      responses: {
+        ...operation.get.responses,
+        "200": {
+          ...operation.get.responses["200"],
+          headers: representationHeaders,
+        },
+        "304": {
+          ...operation.get.responses["304"],
+          headers: representationHeaders,
+        },
+        ...methodologyErrors,
+      },
+    },
+    head: {
+      ...operation.head,
+      responses: Object.fromEntries(
+        Object.entries(operation.head.responses).map(([status, response]) => [
+          status,
+          status === "200" || status === "304"
+            ? { ...response, headers: representationHeaders }
+            : bodylessResponse(
+                (methodologyErrors as Readonly<Record<string, JsonObject>>)[
+                  status
+                ]!,
+              ),
+        ]),
+      ),
+    },
+    options: {
+      ...operation.options,
+      responses: {
+        "204": {
+          ...operation.options.responses["204"],
+          headers: {
+            ...operation.options.responses["204"].headers,
+            ...methodologySecurityHeaders,
+            "Access-Control-Max-Age": {
+              schema: { type: "integer", const: 600 },
+            },
+          },
+        },
+        "400": methodologyErrors["400"],
+        "404": methodologyErrors["404"],
+        "413": methodologyErrors["413"],
+        "429": methodologyErrors["429"],
+        "503": methodologyOptionsUnavailable,
+      },
+    },
   };
 }
 
@@ -974,19 +1270,7 @@ const openapi = {
       "ModelFamilyCollection",
       "modelFamilies",
     ),
-    "/methodologies/{version}": detailOperation(
-      "getMethodology",
-      "Get versioned methodology metadata",
-      "MethodologyDetail",
-      "version",
-      "Exact historical methodology version.",
-      {
-        type: "string",
-        minLength: 1,
-        maxLength: 64,
-        pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
-      },
-    ),
+    "/methodologies/{version}": methodologyDetailOperation(),
     "/model-families/{family_id_or_slug}": detailOperation(
       "getModelFamily",
       "Get a canonical model family",

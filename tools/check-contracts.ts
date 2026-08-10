@@ -520,6 +520,224 @@ if (
   methodologyVersionSchema.pattern !== "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
 )
   errors.push("methodology version path grammar differs from the API kernel");
+if (isObject(methodologyPath))
+  for (const method of ["get", "head"] as const) {
+    const operation = methodologyPath[method];
+    if (!isObject(operation) || !isObject(operation.responses)) continue;
+    for (const status of ["200", "304"] as const) {
+      const response = operation.responses[status];
+      const headers = isObject(response) ? response.headers : undefined;
+      const cacheControl = isObject(headers)
+        ? headers["Cache-Control"]
+        : undefined;
+      const schema = isObject(cacheControl) ? cacheControl.schema : undefined;
+      if (!isObject(schema) || schema.const !== "private, no-store")
+        errors.push(
+          `${method.toUpperCase()} /methodologies/{version} ${status} must remain private, no-store`,
+        );
+      const vary = isObject(headers) ? headers.Vary : undefined;
+      const varySchema = isObject(vary) ? vary.schema : undefined;
+      if (
+        !isObject(varySchema) ||
+        varySchema.const !== "X-QuantClarity-Publication"
+      )
+        errors.push(
+          `${method.toUpperCase()} /methodologies/{version} ${status} must use the exact publication Vary`,
+        );
+      const etag = isObject(headers) ? headers.ETag : undefined;
+      const etagSchema = isObject(etag) ? etag.schema : undefined;
+      if (!isObject(etagSchema) || etagSchema.pattern !== '^"[0-9a-f]{64}"$')
+        errors.push(
+          `${method.toUpperCase()} /methodologies/{version} ${status} must document the strong SHA-256 ETag`,
+        );
+    }
+  }
+
+const methodologyErrorStatuses = [
+  "400",
+  "404",
+  "405",
+  "409",
+  "413",
+  "429",
+  "503",
+] as const;
+if (isObject(methodologyPath)) {
+  const methodologySecurityHeaders: Readonly<Record<string, string>> = {
+    "Content-Security-Policy":
+      "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+    "Permissions-Policy":
+      "accelerometer=(), camera=(), geolocation=(), gyroscope=(), microphone=(), payment=(), usb=()",
+    "Referrer-Policy": "no-referrer",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+  };
+  const checkMethodologySecurityHeaders = (
+    method: string,
+    status: string,
+    headers: unknown,
+  ) => {
+    if (!isObject(headers)) return;
+    for (const [name, expected] of Object.entries(methodologySecurityHeaders)) {
+      const header = headers[name];
+      const schema = isObject(header) ? header.schema : undefined;
+      if (!isObject(schema) || schema.const !== expected)
+        errors.push(
+          `${method} /methodologies/{version} ${status} has an invalid ${name}`,
+        );
+    }
+    if ("Strict-Transport-Security" in headers)
+      errors.push(
+        `${method} /methodologies/{version} ${status} must not advertise remote HSTS while local/test-only`,
+      );
+  };
+  for (const method of ["get", "head"] as const) {
+    const operation = methodologyPath[method];
+    const responses = isObject(operation) ? operation.responses : undefined;
+    if (!isObject(responses)) continue;
+    for (const status of ["200", "304"] as const) {
+      const response = responses[status];
+      checkMethodologySecurityHeaders(
+        method.toUpperCase(),
+        status,
+        isObject(response) ? response.headers : undefined,
+      );
+    }
+  }
+  for (const method of ["get", "head"] as const) {
+    const operation = methodologyPath[method];
+    if (!isObject(operation) || !isObject(operation.responses)) continue;
+    for (const status of methodologyErrorStatuses) {
+      const response = operation.responses[status];
+      const headers = isObject(response) ? response.headers : undefined;
+      if (!isObject(headers)) {
+        errors.push(
+          `${method.toUpperCase()} /methodologies/{version} ${status} headers are missing`,
+        );
+        continue;
+      }
+      checkMethodologySecurityHeaders(method.toUpperCase(), status, headers);
+      const cacheControl = headers["Cache-Control"];
+      const cacheSchema = isObject(cacheControl)
+        ? cacheControl.schema
+        : undefined;
+      if (!isObject(cacheSchema) || cacheSchema.const !== "private, no-store")
+        errors.push(
+          `${method.toUpperCase()} /methodologies/{version} ${status} must remain private, no-store`,
+        );
+      if ("ETag" in headers)
+        errors.push(
+          `${method.toUpperCase()} /methodologies/{version} ${status} must not advertise ETag`,
+        );
+      for (const headerName of ["Vary", "X-QuantClarity-Publication"]) {
+        const present = headerName in headers;
+        if (present !== (status === "409"))
+          errors.push(
+            `${method.toUpperCase()} /methodologies/{version} ${status} has an invalid ${headerName} contract`,
+          );
+      }
+      if (method === "head" && isObject(response) && "content" in response)
+        errors.push(
+          `HEAD /methodologies/{version} ${status} must remain bodyless`,
+        );
+      if (method === "get" && isObject(response) && !("content" in response))
+        errors.push(
+          `GET /methodologies/{version} ${status} must document its error body`,
+        );
+    }
+  }
+
+  const getResponses = isObject(methodologyPath.get)
+    ? methodologyPath.get.responses
+    : undefined;
+  const getUnavailable = isObject(getResponses)
+    ? JSON.stringify(getResponses["503"])
+    : "";
+  for (const expected of [
+    "No public dataset has been published yet.",
+    "The methodology detail is temporarily unavailable.",
+    "The request cannot be safely rate limited.",
+    "The service is temporarily unavailable.",
+  ])
+    if (!getUnavailable.includes(expected))
+      errors.push(
+        `GET /methodologies/{version} 503 omits runtime outcome: ${expected}`,
+      );
+
+  const options = methodologyPath.options;
+  const responses = isObject(options) ? options.responses : undefined;
+  if (!isObject(responses))
+    errors.push("OPTIONS /methodologies/{version} responses are missing");
+  else {
+    for (const [status, response] of Object.entries(responses))
+      checkMethodologySecurityHeaders(
+        "OPTIONS",
+        status,
+        isObject(response) ? response.headers : undefined,
+      );
+    const statuses = Object.keys(responses).sort().join(",");
+    if (statuses !== "204,400,404,413,429,503")
+      errors.push(
+        "OPTIONS /methodologies/{version} must document only 204, 400, 404, 413, 429, and 503",
+      );
+    for (const status of ["400", "404", "413", "429", "503"] as const) {
+      const response = responses[status];
+      const headers = isObject(response) ? response.headers : undefined;
+      if (!isObject(response) || !isObject(headers) || !("content" in response))
+        errors.push(
+          `OPTIONS /methodologies/{version} ${status} must document a JSON error`,
+        );
+      if (isObject(headers)) {
+        if (
+          "ETag" in headers ||
+          "Vary" in headers ||
+          "X-QuantClarity-Publication" in headers
+        )
+          errors.push(
+            `OPTIONS /methodologies/{version} ${status} advertises representation headers`,
+          );
+        const cacheControl = headers["Cache-Control"];
+        const cacheSchema = isObject(cacheControl)
+          ? cacheControl.schema
+          : undefined;
+        if (!isObject(cacheSchema) || cacheSchema.const !== "private, no-store")
+          errors.push(
+            `OPTIONS /methodologies/{version} ${status} must remain private, no-store`,
+          );
+      }
+    }
+    const unavailable = JSON.stringify(responses["503"]);
+    for (const expected of [
+      "The methodology detail is temporarily unavailable.",
+      "The request cannot be safely rate limited.",
+      "The service is temporarily unavailable.",
+    ])
+      if (!unavailable.includes(expected))
+        errors.push(
+          `OPTIONS /methodologies/{version} 503 omits runtime outcome: ${expected}`,
+        );
+    if (unavailable.includes("No public dataset has been published yet."))
+      errors.push(
+        "OPTIONS /methodologies/{version} 503 advertises unreachable publication resolution",
+      );
+    const preflight = responses["204"];
+    const preflightHeaders = isObject(preflight)
+      ? preflight.headers
+      : undefined;
+    const maxAge = isObject(preflightHeaders)
+      ? preflightHeaders["Access-Control-Max-Age"]
+      : undefined;
+    const maxAgeSchema = isObject(maxAge) ? maxAge.schema : undefined;
+    if (!isObject(maxAgeSchema) || maxAgeSchema.const !== 600)
+      errors.push(
+        "OPTIONS /methodologies/{version} 204 must advertise the exact 600-second preflight age",
+      );
+    if (isObject(preflightHeaders) && "Vary" in preflightHeaders)
+      errors.push(
+        "OPTIONS /methodologies/{version} 204 must remain input-independent without Vary",
+      );
+  }
+}
 
 const modelDetailPath = paths["/models/{model_id_or_slug}"];
 if (!isObject(modelDetailPath))
