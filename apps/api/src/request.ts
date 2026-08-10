@@ -12,7 +12,13 @@ import type { ErrorEnvelope } from "@quant-clarity/contracts";
 import { readDatasetMetadataFromQueryV1 } from "./dataset-metadata-query.js";
 import { limitPublicReadRequest } from "./public-read-limiter.js";
 
-type Env = Omit<CloudflareEnv, "DEPLOYMENT_ENV" | "RATE_LIMIT_HMAC_KEY"> & {
+type Env = Omit<
+  CloudflareEnv,
+  | "API_TRANSPORT_POLICY"
+  | "DEPLOYMENT_ENV"
+  | "PUBLIC_API_ORIGIN"
+  | "RATE_LIMIT_HMAC_KEY"
+> & {
   DEPLOYMENT_ENV: unknown;
   RATE_LIMIT_HMAC_KEY: unknown;
 };

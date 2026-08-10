@@ -51,17 +51,17 @@ export const MODEL_DETAIL_API_LIMITS: ApiLimits = Object.freeze({
 });
 
 export type ModelDetailHttpCapabilities = Readonly<{
-  cache: Pick<Cache, "match" | "put">;
-  context: Pick<ExecutionContext, "waitUntil">;
-  environment: DeploymentEnvironment;
-  nowMs: number;
-  protectedCacheOrigin: string;
-  queryService: ModelDetailQueryRpcV2 | Service;
-  rateLimitSecret: string;
-  readLimiter: RateLimit;
-  rotationLimiter: RateLimit;
-  subtle: SubtleCrypto;
-  transportPolicy: ApiTransportPolicy;
+  cache: Pick<Cache, "match" | "put"> | null;
+  context: Pick<ExecutionContext, "waitUntil"> | null;
+  environment: DeploymentEnvironment | null;
+  nowMs: (() => number) | null;
+  protectedCacheOrigin: string | null;
+  queryService: ModelDetailQueryRpcV2 | Service | null;
+  rateLimitSecret: string | null;
+  readLimiter: RateLimit | null;
+  rotationLimiter: RateLimit | null;
+  subtle: SubtleCrypto | null;
+  transportPolicy: ApiTransportPolicy | null;
 }>;
 
 type CapturedRequest = Readonly<{
@@ -80,7 +80,7 @@ type CapturedRateCapabilities = Readonly<{
 type CapturedDownstreamCapabilities = Readonly<{
   cache: Pick<Cache, "match" | "put">;
   environment: DeploymentEnvironment;
-  nowMs: number;
+  nowMs: () => number;
   protectedCacheOrigin: string;
   queryService: ModelDetailQueryRpcV2 | Service;
   schedule: (promise: Promise<void>) => void;
@@ -226,7 +226,14 @@ const captureCapabilities = (
   let suppliedPolicy: unknown = null;
   let subtle: SubtleCrypto | null = null;
   try {
-    environment = value.environment;
+    const candidate: unknown = value.environment;
+    if (
+      candidate === "local" ||
+      candidate === "test" ||
+      candidate === "preview" ||
+      candidate === "production"
+    )
+      environment = candidate;
   } catch {
     // Invalid protected environment is handled after the limiter boundary.
   }
@@ -254,7 +261,8 @@ const captureCapabilities = (
     (TRANSPORT_POLICIES.has(suppliedPolicy)
       ? (suppliedPolicy as ApiTransportPolicy)
       : "local_test");
-  const policyReady = suppliedPolicy === environmentPolicy;
+  const policyReady =
+    environmentPolicy !== null && suppliedPolicy === environmentPolicy;
 
   let rate: CapturedRateCapabilities | null = null;
   if (subtle !== null) {
@@ -276,7 +284,7 @@ const captureCapabilities = (
     } catch {
       // The limiter helper still consumes every other applicable capability.
     }
-    if (rateLimitSecret !== null)
+    if (typeof rateLimitSecret === "string")
       rate = {
         rateLimitSecret,
         readLimiter,
@@ -293,15 +301,17 @@ const captureCapabilities = (
       const nowMs = value.nowMs;
       const protectedCacheOrigin = value.protectedCacheOrigin;
       const queryService = value.queryService;
-      const waitUntil = context.waitUntil.bind(context);
       if (
-        !Number.isSafeInteger(nowMs) ||
-        nowMs < 0 ||
+        typeof nowMs !== "function" ||
+        cache === null ||
+        context === null ||
         typeof protectedCacheOrigin !== "string" ||
-        !exactProtectedOrigin(protectedCacheOrigin)
+        !exactProtectedOrigin(protectedCacheOrigin) ||
+        queryService === null
       )
         downstream = null;
-      else
+      else {
+        const waitUntil = context.waitUntil.bind(context);
         downstream = {
           cache,
           environment,
@@ -313,6 +323,7 @@ const captureCapabilities = (
           },
           subtle,
         };
+      }
     } catch {
       downstream = null;
     }
@@ -391,13 +402,30 @@ const executePreparedRequest = async (
       prepared.transportPolicy,
     );
 
+  let nowMs: number;
+  try {
+    nowMs = prepared.downstream.nowMs();
+  } catch {
+    return renderModelDetailGateResponse(
+      { kind: "unavailable" },
+      prepared.method,
+      prepared.transportPolicy,
+    );
+  }
+  if (!Number.isSafeInteger(nowMs) || nowMs < 0)
+    return renderModelDetailGateResponse(
+      { kind: "unavailable" },
+      prepared.method,
+      prepared.transportPolicy,
+    );
+
   const outcome = await readModelDetailFromQueryWithCacheV2({
     cache: prepared.downstream.cache,
     protectedOrigin: prepared.downstream.protectedCacheOrigin,
     query: {
       environment: prepared.downstream.environment,
       limits: MODEL_DETAIL_API_LIMITS,
-      nowMs: prepared.downstream.nowMs,
+      nowMs,
       request: prepared.plan.request,
       service: prepared.downstream.queryService,
     },

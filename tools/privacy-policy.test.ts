@@ -46,7 +46,11 @@ function safeApiConfig(): Record<string, unknown> {
     main: "src/index.ts",
     compatibility_date: "2026-08-01",
     cache: { enabled: false },
-    vars: { DEPLOYMENT_ENV: "local" },
+    vars: {
+      API_TRANSPORT_POLICY: "local_test",
+      DEPLOYMENT_ENV: "local",
+      PUBLIC_API_ORIGIN: "https://api.example.test",
+    },
     ...safeConfig(),
     services: [
       {
@@ -233,14 +237,53 @@ describe("zero-visitor-data static policy (GATE-zero-visitor-data)", () => {
     }
   });
 
-  it("requires the exact local API deployment environment variable", () => {
+  it("requires the exact local API protected variables", () => {
     for (const variables of [
       undefined,
       {},
-      { DEPLOYMENT_ENV: "preview" },
-      { DEPLOYMENT_ENV: "LOCAL" },
-      { DEPLOYMENT_ENV: " local" },
-      { DEPLOYMENT_ENV: "local", EXTRA: "value" },
+      {
+        DEPLOYMENT_ENV: "local",
+        PUBLIC_API_ORIGIN: "https://api.example.test",
+      },
+      {
+        API_TRANSPORT_POLICY: "local_test",
+        DEPLOYMENT_ENV: "local",
+      },
+      {
+        API_TRANSPORT_POLICY: "local_test",
+        DEPLOYMENT_ENV: "preview",
+        PUBLIC_API_ORIGIN: "https://api.example.test",
+      },
+      {
+        API_TRANSPORT_POLICY: "preview_https",
+        DEPLOYMENT_ENV: "local",
+        PUBLIC_API_ORIGIN: "https://api.example.test",
+      },
+      {
+        API_TRANSPORT_POLICY: "local_test",
+        DEPLOYMENT_ENV: "local",
+        PUBLIC_API_ORIGIN: "http://api.example.test",
+      },
+      {
+        API_TRANSPORT_POLICY: "local_test",
+        DEPLOYMENT_ENV: "local",
+        PUBLIC_API_ORIGIN: "https://api.example.test/",
+      },
+      {
+        API_TRANSPORT_POLICY: {
+          toString: () => {
+            throw new Error("must not coerce protected configuration");
+          },
+        },
+        DEPLOYMENT_ENV: "local",
+        PUBLIC_API_ORIGIN: "https://api.example.test",
+      },
+      {
+        API_TRANSPORT_POLICY: "local_test",
+        DEPLOYMENT_ENV: "local",
+        PUBLIC_API_ORIGIN: "https://api.example.test",
+        EXTRA: "value",
+      },
     ]) {
       const candidate = safeApiConfig();
       if (variables === undefined) delete candidate.vars;
@@ -248,7 +291,7 @@ describe("zero-visitor-data static policy (GATE-zero-visitor-data)", () => {
       expect(validateApiWorkerConfig(candidate)).toContain(
         variables === undefined
           ? "vars is required in the public API configuration"
-          : "vars must contain only DEPLOYMENT_ENV: local",
+          : "vars must contain only the exact local API transport policy, deployment environment, and public origin",
       );
     }
   });

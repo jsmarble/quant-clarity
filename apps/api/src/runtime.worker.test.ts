@@ -198,7 +198,7 @@ describe("public API in workerd (API-013, API-024)", () => {
           },
         },
         environment: "test",
-        nowMs: 1_785_774_000_000,
+        nowMs: () => 1_785_774_000_000,
         protectedCacheOrigin: RUNTIME_ORIGIN,
         queryService: service,
         rateLimitSecret: "runtime-test-hmac-key-with-at-least-32-characters",

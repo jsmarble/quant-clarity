@@ -18,7 +18,7 @@ The code-owned proposal is the only accepted local shape. Its checked-in JSON mu
 | Class | Reserved name | Binding/capability | Proposal state |
 |---|---|---|---|
 | Web Worker | `quant-clarity-web-preview` | Static `ASSETS`; `API` service; web limiter pair; protected HMAC binding name; `DEPLOYMENT_ENV=preview` | Unrouted; no storage, AI, or pipeline control |
-| API Worker | `quant-clarity-api-preview` | `CATALOG_QUERY` service to `CatalogQueryService`; API limiter pair; protected HMAC binding name; `DEPLOYMENT_ENV=preview` | Unrouted; no storage, AI, or pipeline control |
+| API Worker | `quant-clarity-api-preview` | `CATALOG_QUERY` service to `CatalogQueryService`; API limiter pair; protected HMAC binding name; `DEPLOYMENT_ENV=preview`; unresolved `PUBLIC_API_ORIGIN` and `API_TRANSPORT_POLICY` | Unrouted; origin/transport remain `null`; no storage, AI, or pipeline control |
 | Query Worker | `quant-clarity-query-preview` | `SERVING_DB`; `DEPLOYMENT_ENVIRONMENT=preview`; unresolved `PUBLIC_API_ORIGIN` | Private service binding only; API origin remains `null`; no AI until `CF-009` passes |
 | Pipeline Worker | `quant-clarity-pipeline-preview` | Canonical/serving D1, evidence/backup R2, Vectorize, reserved Workflow control | Private; no route; Workflow implementation absent |
 | Canonical D1 | `quant-clarity-canonical-preview` | `CANONICAL_DB` | Identifier, jurisdiction, and location absent; unprovisioned |
@@ -89,6 +89,7 @@ Every item below blocks conversion of the proposal into provisionable configurat
 - current Cloudflare permission-scope validation and protected automation design;
 - exact preview smoke mechanism and its privacy/non-indexing evidence;
 - protected preview API/query environment-matched configuration and remote crossed-binding probe; local plumbing and actual workerd mismatch proof are complete under [ADR 0047](../decisions/0047-api-query-environment-continuity.md);
+- exact preview API public origin, environment-matched transport policy, and remote conformance; local unrouted assembly is complete under [ADR 0048](../decisions/0048-unrouted-model-detail-protected-runtime.md);
 - separate Worker-version and publication-pointer rollback authority design;
 - account-wide limiter namespace collision audit;
 - exact R2 bucket/prefix lock and lifecycle policy;
