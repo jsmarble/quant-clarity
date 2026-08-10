@@ -4,6 +4,7 @@ import type { ApiLimits } from "@quant-clarity/api-core";
 
 import {
   renderApiPreflight,
+  renderModelDetailGateResponse,
   renderModelDetailResponse,
   type ApiTransportPolicy,
 } from "./api-response-renderer.js";
@@ -124,6 +125,59 @@ const expectNoVisitorState = (response: Response) => {
 };
 
 describe("API Worker response renderer (API-003, API-013, API-024)", () => {
+  it.each([
+    [
+      {
+        error: { code: "invalid_parameter", message: "canary", status: 400 },
+        kind: "request_error",
+      },
+      400,
+      null,
+    ],
+    [
+      {
+        error: { code: "method_not_allowed", message: "canary", status: 405 },
+        kind: "request_error",
+      },
+      405,
+      "GET, HEAD, OPTIONS",
+    ],
+    [{ kind: "rate_limited" }, 429, null],
+    [{ kind: "unavailable" }, 503, null],
+  ] as const)("renders closed gate outcome as %s", (outcome, status, allow) => {
+    const response = renderModelDetailGateResponse(
+      outcome,
+      "GET",
+      "preview_https",
+    );
+    expect(response.status).toBe(status);
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(response.headers.get("Allow")).toBe(allow);
+    expect(response.headers.get("Strict-Transport-Security")).toBe(
+      "max-age=300",
+    );
+    expectNoVisitorState(response);
+  });
+
+  it("keeps a HEAD gate error bodyless and rejects hostile error pairs", async () => {
+    const response = renderModelDetailGateResponse(
+      {
+        error: {
+          code: "invalid_parameter",
+          message: "privacy-canary",
+          status: 405,
+        },
+        kind: "request_error",
+      },
+      "HEAD",
+      "local_test",
+    );
+    expect(response.status).toBe(503);
+    expect(response.body).toBeNull();
+    expect(await response.text()).toBe("");
+    expect(response.headers.get("Content-Length")).not.toBeNull();
+  });
+
   it("preserves exact GET bytes and detaches them from later plan mutation", async () => {
     const source = plan();
     const response = renderModelDetailResponse(source, "local_test");
