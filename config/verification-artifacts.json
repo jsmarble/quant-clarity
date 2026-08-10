@@ -1,0 +1,192 @@
+{
+  "schema_version": "1.0.0",
+  "traceability_path": "docs/design/traceability.md",
+  "entries": [
+    {
+      "source_id": "DATA-001",
+      "primary_verification_id": "CT-DATA-001",
+      "trace_status": "Implemented",
+      "artifacts": [
+        {
+          "path": "packages/canonical/src/index.test.ts",
+          "criterion": "CT-DATA-001 stable identity"
+        },
+        {
+          "path": "packages/publication-core/src/model-slug-projection.test.ts",
+          "criterion": "CT-DATA-001 stable public slug rename determinism"
+        }
+      ]
+    },
+    {
+      "source_id": "DATA-020",
+      "primary_verification_id": "CT-DATA-020",
+      "trace_status": "Implemented",
+      "artifacts": [
+        {
+          "path": "packages/canonical/src/migrations.test.ts",
+          "criterion": "CT-DATA-020 offering identity"
+        }
+      ]
+    },
+    {
+      "source_id": "DATA-030",
+      "primary_verification_id": "CT-DATA-030",
+      "trace_status": "Implemented",
+      "artifacts": [
+        {
+          "path": "packages/contracts/src/index.test.ts",
+          "criterion": "CT-DATA-030 precision provenance"
+        }
+      ]
+    },
+    {
+      "source_id": "DATA-040",
+      "primary_verification_id": "CT-DATA-040",
+      "trace_status": "Implemented",
+      "artifacts": [
+        {
+          "path": "packages/contracts/src/index.test.ts",
+          "criterion": "CT-DATA-040 exact price"
+        }
+      ]
+    },
+    {
+      "source_id": "DATA-051",
+      "primary_verification_id": "CT-DATA-051",
+      "trace_status": "Implemented",
+      "artifacts": [
+        {
+          "path": "packages/canonical/src/migrations.test.ts",
+          "criterion": "CT-DATA-051 exact applicability"
+        }
+      ]
+    },
+    {
+      "source_id": "DATA-055",
+      "primary_verification_id": "CT-DATA-055",
+      "trace_status": "Implemented",
+      "artifacts": [
+        {
+          "path": "packages/canonical/src/index.test.ts",
+          "criterion": "CT-DATA-055 currency preservation"
+        }
+      ]
+    },
+    {
+      "source_id": "DATA-060",
+      "primary_verification_id": "CT-DATA-060",
+      "trace_status": "Implemented",
+      "artifacts": [
+        {
+          "path": "packages/contracts/src/index.test.ts",
+          "criterion": "CT-DATA-060 evidence-backed known facts"
+        }
+      ]
+    },
+    {
+      "source_id": "DATA-063",
+      "primary_verification_id": "CT-DATA-063",
+      "trace_status": "Implemented",
+      "artifacts": [
+        {
+          "path": "packages/acquisition/src/index.test.ts",
+          "criterion": "CT-DATA-063 pre-retention DLP and redaction"
+        }
+      ]
+    },
+    {
+      "source_id": "PIPE-010",
+      "primary_verification_id": "PIT-PIPE-010",
+      "trace_status": "Implemented",
+      "artifacts": [
+        {
+          "path": "packages/adapters/fireworks/src/index.test.ts",
+          "criterion": "PIT-PIPE-010 isolated adapter boundary"
+        }
+      ]
+    },
+    {
+      "source_id": "PIPE-012",
+      "primary_verification_id": "PIT-PIPE-012",
+      "trace_status": "Implemented",
+      "artifacts": [
+        {
+          "path": "packages/adapters/fireworks/src/index.test.ts",
+          "criterion": "PIT-PIPE-012 declared adapter manifest"
+        }
+      ]
+    },
+    {
+      "source_id": "PIPE-017",
+      "primary_verification_id": "PIT-PIPE-017",
+      "trace_status": "Implemented",
+      "artifacts": [
+        {
+          "path": "packages/adapters/fireworks/src/index.test.ts",
+          "criterion": "PIT-PIPE-017 redacted fixture provenance"
+        }
+      ]
+    },
+    {
+      "source_id": "PIPE-019",
+      "primary_verification_id": "PIT-PIPE-019",
+      "trace_status": "Implemented",
+      "artifacts": [
+        {
+          "path": "packages/adapters/fireworks/src/index.test.ts",
+          "criterion": "PIT-PIPE-019 versioned launch roster"
+        }
+      ]
+    },
+    {
+      "source_id": "QA-001",
+      "primary_verification_id": "QGA-QA-001",
+      "trace_status": "Implemented",
+      "artifacts": [
+        {
+          "path": "packages/domain/src/index.test.ts",
+          "criterion": "QGA-QA-001 normalization"
+        },
+        {
+          "path": "packages/domain/src/index.test.ts",
+          "criterion": "QGA-QA-001 precision"
+        },
+        {
+          "path": "packages/canonical/src/migrations.test.ts",
+          "criterion": "QGA-QA-001 lineage"
+        },
+        {
+          "path": "packages/canonical/src/index.test.ts",
+          "criterion": "QGA-QA-001 currency"
+        },
+        {
+          "path": "packages/publication-core/src/model-variant-name-projection.test.ts",
+          "criterion": "QGA-QA-001 neutral sorting"
+        },
+        {
+          "path": "packages/canonical/src/index.test.ts",
+          "criterion": "QGA-QA-001 staleness"
+        },
+        {
+          "path": "packages/canonical/src/migrations.test.ts",
+          "criterion": "QGA-QA-001 aliases"
+        },
+        {
+          "path": "packages/contracts/src/index.test.ts",
+          "criterion": "QGA-QA-001 evidence"
+        }
+      ]
+    },
+    {
+      "source_id": "QA-012",
+      "primary_verification_id": "QGA-QA-012",
+      "trace_status": "Implemented",
+      "artifacts": [
+        {
+          "path": "packages/adapters/fireworks/src/index.test.ts",
+          "criterion": "QGA-QA-012 base precision non-broadening"
+        }
+      ]
+    }
+  ]
+}

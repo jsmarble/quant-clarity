@@ -32,7 +32,7 @@ function validate(schema: object, value: unknown): boolean {
 }
 
 describe("Fireworks adapter boundary (PIPE-010–PIPE-019)", () => {
-  it("validates fixture provenance and integrity hashes", () => {
+  it("validates fixture provenance and integrity hashes (PIT-PIPE-017 redacted fixture provenance)", () => {
     const fixtureRoot = new URL(
       "../../../../fixtures/providers/fireworks/",
       import.meta.url,
@@ -78,7 +78,7 @@ describe("Fireworks adapter boundary (PIPE-010–PIPE-019)", () => {
     );
   });
 
-  it("binds the adapter version to normalized source content", () => {
+  it("binds the adapter version to normalized source content (PIT-PIPE-010 isolated adapter boundary)", () => {
     const source = readFileSync(new URL("index.ts", import.meta.url), "utf8");
     const normalized = source.replace(
       /1\.0\.0\+sha256\.[0-9a-f]{64}/u,
@@ -91,7 +91,7 @@ describe("Fireworks adapter boundary (PIPE-010–PIPE-019)", () => {
     expect(source).not.toMatch(/\bconsole\./u);
   });
 
-  it("keeps production disabled while compliance approval is pending", () => {
+  it("keeps production disabled while compliance approval is pending (PIT-PIPE-012 declared adapter manifest)", () => {
     expect(validate(AdapterManifestSchema, manifest)).toBe(true);
     expect(validateAdapterManifestSemantics(manifest)).toEqual([]);
     expect(manifest.enabled_environments).not.toContain("production");
@@ -109,7 +109,7 @@ describe("Fireworks adapter boundary (PIPE-010–PIPE-019)", () => {
     ).toEqual([]);
   });
 
-  it("does not broaden a base-model default precision to an offering", () => {
+  it("does not broaden a base-model default precision to an offering (QGA-QA-012 base precision non-broadening)", () => {
     const batch = map(parse(fixtures.catalog, fixtures.pricing));
     expect(
       batch.model_candidates[0]?.facts.source_default_precision?.state,
@@ -122,7 +122,7 @@ describe("Fireworks adapter boundary (PIPE-010–PIPE-019)", () => {
     ).toBe("offering");
   });
 
-  it("exposes a complete versioned roster", () => {
+  it("exposes a complete versioned roster (PIT-PIPE-019 versioned launch roster)", () => {
     expect(validate(AdapterRosterSchema, roster)).toBe(true);
     expect(roster.provider_id).toBe(manifest.provider_id);
     expect(roster.roster_version).toBe(manifest.roster_version);

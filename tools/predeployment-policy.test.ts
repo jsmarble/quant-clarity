@@ -212,6 +212,17 @@ describe("predeployment embargo", () => {
     );
   });
 
+  it("rejects an unreviewed verification-gate script even when it is non-deploying", () => {
+    const inputs = clone(safeInputs());
+    const scripts = (
+      inputs.packageManifests["package.json"] as Record<string, unknown>
+    ).scripts as Record<string, string>;
+    scripts["traceability:check"] = "tsx tools/check-verification-artifacts.ts";
+    expect(validatePredeploymentPolicy(inputs)).toContain(
+      "package.json scripts/allowScripts do not match the approved digest",
+    );
+  });
+
   it("rejects routes, privileged bindings, and observability", () => {
     const inputs = clone(safeInputs());
     const config = inputs.wranglerConfigs["apps/api/wrangler.jsonc"] as Record<

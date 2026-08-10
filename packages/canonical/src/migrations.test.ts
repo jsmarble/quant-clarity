@@ -817,7 +817,7 @@ describe("canonical D1 migrations (DATA-001–DATA-067, BE-001–BE-006)", () =>
     );
   });
 
-  it("keeps offering identities exact, immutable, and collision-free", () => {
+  it("keeps offering identities exact, immutable, and collision-free (CT-DATA-020 offering identity)", () => {
     const database = applyMigrations("canonical");
     const seed = seedCanonical(database);
     const duplicate = id("off", 101);
@@ -837,6 +837,44 @@ describe("canonical D1 migrations (DATA-001–DATA-067, BE-001–BE-006)", () =>
           )
           .run(seed.offeringId),
       "offering identity tuple is immutable",
+    );
+  });
+
+  it("accepts bounded alias kinds and rejects invalid alias targets (QGA-QA-001 aliases)", () => {
+    const database = applyMigrations("canonical");
+    const seed = seedCanonical(database);
+    database
+      .prepare("INSERT INTO model_alias VALUES (?, ?, ?, ?, ?, 1, NULL)")
+      .run(
+        id("als", 105),
+        seed.modelId,
+        "Example_Model",
+        "example model",
+        "separator",
+      );
+    expect(
+      database
+        .prepare(
+          "SELECT raw_alias, normalized_alias, alias_kind FROM model_alias WHERE alias_id = ?",
+        )
+        .get(id("als", 105)),
+    ).toEqual({
+      raw_alias: "Example_Model",
+      normalized_alias: "example model",
+      alias_kind: "separator",
+    });
+    expectConstraint(
+      () =>
+        database
+          .prepare("INSERT INTO model_alias VALUES (?, ?, ?, ?, ?, 1, NULL)")
+          .run(
+            id("als", 106),
+            seed.modelId,
+            "variant-id",
+            "variant id",
+            "explicit_variant_identifier",
+          ),
+      "explicit variant alias must target a variant",
     );
   });
 
@@ -923,7 +961,7 @@ describe("canonical D1 migrations (DATA-001–DATA-067, BE-001–BE-006)", () =>
     );
   });
 
-  it("binds identity and lineage pointers to verified typed claims", () => {
+  it("binds identity and lineage pointers to verified typed claims (QGA-QA-001 lineage)", () => {
     const database = applyMigrations("canonical");
     const seed = seedCanonical(database);
     const modelScopeId = id("scp", 160);
@@ -1060,7 +1098,7 @@ describe("canonical D1 migrations (DATA-001–DATA-067, BE-001–BE-006)", () =>
       );
   });
 
-  it("enforces exact price and precision applicability", () => {
+  it("enforces exact price and precision applicability (CT-DATA-051 exact applicability)", () => {
     const database = applyMigrations("canonical");
     const seed = seedCanonical(database);
     const priceClaimId = id("clm", 120);

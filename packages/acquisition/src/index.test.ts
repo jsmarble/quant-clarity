@@ -502,7 +502,7 @@ describe("robots, Content Signals, and browser policy (PIPE-016)", () => {
   });
 });
 
-describe("pre-retention evidence minimization and DLP (DATA-063, PIPE-018, PIPE-031)", () => {
+describe("pre-retention evidence minimization and DLP (DATA-063, PIPE-018, PIPE-031; CT-DATA-063 pre-retention DLP and redaction)", () => {
   const metadata: EvidenceMetadata = {
     envelopeVersion: "evidence-envelope-1",
     sourceId: "catalog",
