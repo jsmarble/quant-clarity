@@ -72,7 +72,7 @@ Verification IDs are planned stable anchors. The prefix states the primary verif
 5. Verification IDs shall be unique and shall reference an existing source ID.
 6. No row may be marked verified without a linked, reproducible artifact or recorded manual approval.
 7. A release-blocking row may not be waived through this matrix; any product change requires explicit owner approval and the PRD change procedure.
-8. CI shall eventually validate source-ID coverage, uniqueness, design references, verification-ID uniqueness, and the absence of orphan verification references.
+8. CI validates source-ID coverage, uniqueness, design references, verification-ID uniqueness, and the absence of orphan verification references. Version 1 of the closed [`config/verification-artifacts.json`](../../config/verification-artifacts.json) registry covers only code-authorized local test-source anchors for current `Implemented` rows; `Planned` rows need no entry, and every later status requires a successor registry schema.
 
 ## Traceability matrix
 

@@ -8,6 +8,12 @@
 
 Each traceability primary ID becomes a test/report anchor in code or an operational evidence record. This catalog defines the composite gates that turn those anchors into executable release decisions.
 
+## Verification-artifact registry
+
+[`config/verification-artifacts.json`](../../config/verification-artifacts.json) is the versioned machine-readable registry for current local test-source anchors. Its closed v1 schema records only the source ID, primary verification ID, `Implemented` trace status, and exact repository-relative path/criterion pairs. The validator owns the complete 14-entry authority in code; the configuration must match it exactly and therefore cannot authorize itself by relabeling an entry or selecting another artifact. `npm run traceability:check` also requires every current `Implemented` trace row to match that authority and rejects malformed matrix rows, missing or duplicate IDs, source/status drift, unsafe or absent paths, and missing exact test criteria.
+
+Version 1 makes no claim about test execution results or evidence needed beyond local implementation. `Planned` rows need no entry. A `Designed`, `Verified`, `Accepted`, or `Released` row is rejected with a successor-schema requirement; those states need separately designed authorities and cannot be represented by adding fields to this registry. Registry membership does not advance a trace status or pass a composite gate.
+
 | Gate | Constituent trace IDs | Inputs / environment | Pass/fail assertion | Retained artifact | Owner |
 |---|---|---|---|---|---|
 | `GATE-applicability-integrity` | `CT-DATA-051`, `QGA-QA-010`, `QGA-QA-012` | Gold fixtures for exact, base-object, alias, tier, class, and region cases; local + preview D1 | No known claim publishes outside an equal/proven applicability tuple; ambiguous cases are unknown/quarantined | JUnit/property report and candidate publication manifest | Data engineering |

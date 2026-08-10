@@ -3,13 +3,13 @@ import { describe, expect, it } from "vitest";
 import { canonicalPrice, createResourceId, offeringIsStale } from "./index.js";
 
 describe("canonical identity and policy helpers", () => {
-  it("generates persisted opaque prefixed IDs", () => {
+  it("generates persisted opaque prefixed IDs (CT-DATA-001 stable identity)", () => {
     expect(
       createResourceId("model", () => "00000000-0000-4000-8000-000000000001"),
     ).toBe("mdl_00000000-0000-4000-8000-000000000001");
   });
 
-  it("applies the visible USD system default only when currency is omitted", () => {
+  it("applies the visible USD system default only when currency is omitted (CT-DATA-055 currency preservation; QGA-QA-001 currency)", () => {
     expect(canonicalPrice("0.20", null)).toMatchObject({
       currency: "USD",
       currencyProvenance: "system_default",
@@ -21,7 +21,7 @@ describe("canonical identity and policy helpers", () => {
     expect(() => canonicalPrice("0.20", "usd")).toThrow(RangeError);
   });
 
-  it("uses the earlier of two missed completed opportunities or eight days", () => {
+  it("uses the earlier of two missed completed opportunities or eight days (QGA-QA-001 staleness)", () => {
     const day = 24 * 60 * 60 * 1000;
     expect(
       offeringIsStale({

@@ -17,7 +17,7 @@
   "package_manifests": [
     {
       "path": "package.json",
-      "authority_sha256": "7cb1daffdf94dc5f2c0c7e62807fc2f87277213364d15f47f528ac9eae35fcb9"
+      "authority_sha256": "f2fa7dc362b61f7e9aa6b554f4a946f23139c66dd2d6ec7fb541546ba818bc6c"
     },
     {
       "path": "apps/api/package.json",

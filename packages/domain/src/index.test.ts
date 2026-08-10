@@ -10,14 +10,14 @@ import {
 } from "./index.js";
 
 describe("precision normalization (QA-001, QA-010)", () => {
-  it("keeps BF16 and FP16 distinct", () => {
+  it("keeps BF16 and FP16 distinct (QGA-QA-001 normalization)", () => {
     expect(normalizePrecision("bfloat16")).toBe("BF16");
     expect(normalizePrecision("float16")).toBe("FP16");
     expect(normalizePrecision("nvfp4")).toBe("NVFP4");
     expect(normalizePrecision("mxfp4")).toBe("MXFP4");
   });
 
-  it("keeps missing precision unknown and unfamiliar labels other", () => {
+  it("keeps missing precision unknown and unfamiliar labels other (QGA-QA-001 precision)", () => {
     expect(normalizePrecision(undefined)).toBe("UNKNOWN");
     expect(normalizePrecision("provider-special")).toBe("OTHER");
   });

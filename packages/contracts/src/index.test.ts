@@ -112,7 +112,7 @@ describe("public fact contract (API-005, DATA-060)", () => {
     );
   });
 
-  it("requires value, timestamp, and evidence for known facts", () => {
+  it("requires value, timestamp, and evidence for known facts (CT-DATA-060 evidence-backed known facts; QGA-QA-001 evidence)", () => {
     const validate = validator();
     expect(
       validate({
@@ -896,7 +896,7 @@ describe("canonical public contracts (DATA-040–DATA-061, API-002–API-006)", 
     ).toBe(false);
   });
 
-  it("requires exact decimal price provenance and evidence", () => {
+  it("requires exact decimal price provenance and evidence (CT-DATA-040 exact price)", () => {
     const validate = standaloneValidator(PriceSchema);
     const price = {
       price_id: `pcs_${UUID}`,
@@ -922,7 +922,7 @@ describe("canonical public contracts (DATA-040–DATA-061, API-002–API-006)", 
 });
 
 describe("provider adapter contract (PIPE-010–PIPE-019, SEC-003–SEC-006)", () => {
-  it("requires exact typed scope and provenance on known candidates", () => {
+  it("requires exact typed scope and provenance on known candidates (CT-DATA-030 precision provenance)", () => {
     const validate = standaloneValidator(CandidateFactSchema);
     const known = {
       state: "known",

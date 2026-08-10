@@ -279,7 +279,7 @@ async function rejects(
 }
 
 describe("trusted publication Model slug projection (DATA-001, API-002, PRIV-006)", () => {
-  it("projects a rename into one current and one historical mapping with deterministic hashes", async () => {
+  it("projects a rename into one current and one historical mapping with deterministic hashes (CT-DATA-001 stable public slug rename determinism)", async () => {
     const projection = await projectModelSlugProjection(await fixture());
 
     expect(() => {

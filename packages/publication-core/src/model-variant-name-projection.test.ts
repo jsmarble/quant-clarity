@@ -814,7 +814,7 @@ describe("trusted model/variant canonical-name projection (SRCH-002, SRCH-006, S
     );
   });
 
-  it("keeps model facts and order neutral across provider, affiliate, offering, price, and precision context", async () => {
+  it("keeps model facts and order neutral across provider, affiliate, offering, price, and precision context (QGA-QA-001 neutral sorting)", async () => {
     const resources = [
       source("model", 1, model(1, "Neutral Model")),
       source("variant", 1, variant(1, "Neutral Variant")),
