@@ -60,11 +60,11 @@ type CachePolicy =
   "active-detail" | "collection" | "contract" | "error" | "metadata";
 
 const cacheControlValue: Record<CachePolicy, string> = {
-  "active-detail": "max-age=0, must-revalidate",
+  "active-detail": "private, max-age=0, must-revalidate",
   collection: "private, no-store",
   contract: "private, no-store",
   error: "private, no-store",
-  metadata: "no-store",
+  metadata: "private, no-store",
 };
 
 const publicationPinParameter = {
@@ -107,9 +107,7 @@ function responseHeaders(cachePolicy: CachePolicy) {
       description: "Visitor-safe cache policy for this representation class.",
       schema: {
         type: "string",
-        ...(cachePolicy === "collection" || cachePolicy === "error"
-          ? { const: cacheControlValue[cachePolicy] }
-          : { example: cacheControlValue[cachePolicy] }),
+        const: cacheControlValue[cachePolicy],
       },
     },
     "X-QuantClarity-Publication": {
@@ -477,6 +475,436 @@ function detailOperation(
   };
 }
 
+const modelDetailPublicCacheControl = {
+  description:
+    "Stable-ID representations privately revalidate; slug representations and redirects are private, no-store.",
+  schema: {
+    type: "string",
+    enum: ["private, max-age=0, must-revalidate", "private, no-store"],
+  },
+} as const;
+
+const modelJsonMediaType = "application/json; charset=utf-8";
+
+const modelSecurityHeaders = {
+  "Content-Security-Policy": {
+    schema: {
+      type: "string",
+      const:
+        "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+    },
+  },
+  "Permissions-Policy": {
+    schema: {
+      type: "string",
+      const:
+        "accelerometer=(), camera=(), geolocation=(), gyroscope=(), microphone=(), payment=(), usb=()",
+    },
+  },
+  "Referrer-Policy": {
+    schema: { type: "string", const: "no-referrer" },
+  },
+  "Strict-Transport-Security": {
+    description: "Protected environment-owned HTTPS policy.",
+    schema: {
+      type: "string",
+      enum: ["max-age=300", "max-age=31536000; includeSubDomains"],
+    },
+  },
+  "X-Content-Type-Options": {
+    schema: { type: "string", const: "nosniff" },
+  },
+  "X-Frame-Options": {
+    schema: { type: "string", const: "DENY" },
+  },
+} as const;
+
+const modelCommonHeaders = (cacheControl: JsonObject) => ({
+  ...modelSecurityHeaders,
+  "Access-Control-Allow-Origin": {
+    schema: { type: "string", const: "*" },
+  },
+  "Access-Control-Expose-Headers": {
+    schema: {
+      type: "string",
+      const: "ETag, X-QuantClarity-Publication",
+    },
+  },
+  "Cache-Control": cacheControl,
+});
+
+const modelPublicationHeaders = {
+  Vary: {
+    schema: { type: "string", const: "X-QuantClarity-Publication" },
+  },
+  "X-QuantClarity-Publication": {
+    schema: { $ref: "#/components/schemas/PublicationId" },
+  },
+} as const;
+
+const modelJsonHeaders = {
+  "Content-Length": {
+    schema: { type: "integer", minimum: 1, maximum: 65_536 },
+  },
+} as const;
+
+const modelError = (
+  description: string,
+  code: string,
+  message: string,
+  publication = false,
+  extraHeaders: JsonObject = {},
+) => {
+  const response = errorResponse(description, code, message);
+  return {
+    ...response,
+    headers: {
+      ...modelCommonHeaders({
+        schema: { type: "string", const: "private, no-store" },
+      }),
+      ...modelJsonHeaders,
+      ...(publication ? modelPublicationHeaders : {}),
+      ...extraHeaders,
+    },
+    content: {
+      [modelJsonMediaType]: response.content["application/json"],
+    },
+  };
+};
+
+const modelErrors = {
+  "400": modelError(
+    "The Model detail request is invalid",
+    "invalid_parameter",
+    "The Model detail request is invalid.",
+  ),
+  "404": modelError(
+    "The Model was not found in the selected publication",
+    "resource_not_found",
+    "The requested resource does not exist.",
+    true,
+  ),
+  "405": modelError(
+    "The request method is not allowed",
+    "method_not_allowed",
+    "Only GET, HEAD, and OPTIONS are supported.",
+    false,
+    {
+      Allow: {
+        schema: { type: "string", const: "GET, HEAD, OPTIONS" },
+      },
+    },
+  ),
+  "409": modelError(
+    "The exact publication is no longer retained",
+    "publication_expired",
+    "The requested publication is no longer available.",
+    true,
+  ),
+  "413": modelError(
+    "The request exceeds the configured size limit",
+    "query_too_large",
+    "The request exceeds the configured size limit.",
+  ),
+  "429": modelError(
+    "The permissive abuse-protection limit was exceeded",
+    "rate_limited",
+    "Rate limit exceeded.",
+    false,
+    {
+      "Retry-After": { schema: { type: "integer", const: 60 } },
+    },
+  ),
+  "503": modelError(
+    "No safe publication or exact response is available",
+    "temporarily_unavailable",
+    "The Model detail is temporarily unavailable.",
+  ),
+} as const;
+
+const modelAllErrors = {
+  ...modelErrors,
+  "503": {
+    ...modelErrors["503"],
+    content: {
+      [modelJsonMediaType]: {
+        schema: { $ref: "#/components/schemas/ErrorEnvelope" },
+        examples: {
+          publicationNotReady: {
+            value: {
+              error: {
+                code: "publication_not_ready",
+                message: "No public dataset has been published yet.",
+              },
+            },
+          },
+          temporarilyUnavailable: {
+            value: {
+              error: {
+                code: "temporarily_unavailable",
+                message: "The Model detail is temporarily unavailable.",
+              },
+            },
+          },
+          gateUnavailable: {
+            value: {
+              error: {
+                code: "temporarily_unavailable",
+                message: "The request cannot be safely rate limited.",
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+} as const;
+
+const modelGateUnavailableError = modelError(
+  "The request cannot be safely rate limited",
+  "temporarily_unavailable",
+  "The request cannot be safely rate limited.",
+);
+
+const modelDetailExample = {
+  data: {
+    active_parameters: {
+      evidence_ids: [],
+      observed_at: null,
+      state: "unknown",
+      value: null,
+    },
+    architecture: {
+      evidence_ids: [],
+      observed_at: null,
+      state: "unknown",
+      value: null,
+    },
+    authoritative_checkpoint_ids: [],
+    cataloged_provider_count: {
+      derivation_version: "cataloged-provider-count@1",
+      observed_at: "2026-08-03T00:00:00.000Z",
+      value: 0,
+    },
+    checkpoints: [],
+    context_window_tokens: {
+      evidence_ids: [],
+      observed_at: null,
+      state: "unknown",
+      value: null,
+    },
+    display_name: {
+      evidence_ids: ["evd_11111111-1111-4111-8111-111111111111"],
+      observed_at: "2026-08-03T00:00:00.000Z",
+      state: "known",
+      value: "Fixture Model",
+    },
+    family_id: "fam_11111111-1111-4111-8111-111111111111",
+    last_model_data_refresh: {
+      evidence_ids: ["evd_11111111-1111-4111-8111-111111111111"],
+      observed_at: "2026-08-03T00:00:00.000Z",
+      state: "known",
+      value: "2026-08-03T00:00:00.000Z",
+    },
+    license: {
+      evidence_ids: [],
+      observed_at: null,
+      state: "unknown",
+      value: null,
+    },
+    maximum_output_tokens: {
+      evidence_ids: [],
+      observed_at: null,
+      state: "unknown",
+      value: null,
+    },
+    modalities: {
+      evidence_ids: [],
+      observed_at: null,
+      state: "unknown",
+      value: null,
+    },
+    model_id: "mdl_11111111-1111-4111-8111-111111111111",
+    publisher: {
+      evidence_ids: ["evd_11111111-1111-4111-8111-111111111111"],
+      observed_at: "2026-08-03T00:00:00.000Z",
+      state: "known",
+      value: "Fixture Publisher",
+    },
+    release_date: {
+      evidence_ids: [],
+      observed_at: null,
+      state: "unknown",
+      value: null,
+    },
+    slug: {
+      evidence_ids: ["evd_11111111-1111-4111-8111-111111111111"],
+      observed_at: "2026-08-03T00:00:00.000Z",
+      state: "known",
+      value: "fixture-model",
+    },
+    source_quantization: {
+      evidence_ids: [],
+      observed_at: null,
+      state: "unknown",
+      value: null,
+    },
+    source_weight_format: {
+      evidence_ids: [],
+      observed_at: null,
+      state: "unknown",
+      value: null,
+    },
+    status: {
+      evidence_ids: ["evd_11111111-1111-4111-8111-111111111111"],
+      observed_at: "2026-08-03T00:00:00.000Z",
+      state: "known",
+      value: "active",
+    },
+    total_parameters: {
+      evidence_ids: [],
+      observed_at: null,
+      state: "unknown",
+      value: null,
+    },
+  },
+  meta: {
+    filters: {},
+    publication_id: "pub_11111111-1111-4111-8111-111111111111",
+    resource: "models",
+    schema_version: "1.13.0",
+    sort: ["name", "stable_id"],
+  },
+} as const;
+
+const modelDetailRedirect = {
+  description:
+    "An unpinned historical slug redirects to the verified stable Model ID path.",
+  headers: {
+    ...modelCommonHeaders({
+      schema: { type: "string", const: "private, no-store" },
+    }),
+    "Content-Length": { schema: { type: "integer", const: 0 } },
+    Location: {
+      description: "Relative verified stable Model ID path.",
+      schema: {
+        type: "string",
+        pattern:
+          "^/v1/models/mdl_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      },
+    },
+    ...modelPublicationHeaders,
+  },
+} as const;
+
+function modelDetailOperation() {
+  const operation = detailOperation(
+    "getModel",
+    "Get a canonical model",
+    "ModelDetail",
+    "model_id_or_slug",
+    "Stable model ID, current slug, or historical slug. An unpinned historical slug returns 308 to the stable ID; an explicitly pinned historical slug returns the selected representation. Raw targets containing percent-encoding, any query marker (including a bare ?), a trailing slash, or an extra path segment are rejected before identifier matching.",
+    {
+      type: "string",
+      minLength: 1,
+      maxLength: 128,
+      pattern:
+        "^(?:mdl_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|[a-z0-9]+(?:-[a-z0-9]+)*)$",
+    },
+  );
+  const get = operation.get;
+  const head = operation.head;
+  const getSuccess = get.responses["200"];
+  const successHeaders = {
+    ...modelCommonHeaders(modelDetailPublicCacheControl),
+    ...modelJsonHeaders,
+    ...modelPublicationHeaders,
+    ETag: {
+      schema: { type: "string", pattern: '^"[0-9a-f]{64}"$' },
+    },
+  };
+  const notModifiedHeaders = {
+    ...modelCommonHeaders(modelDetailPublicCacheControl),
+    ...modelPublicationHeaders,
+    ETag: {
+      schema: { type: "string", pattern: '^"[0-9a-f]{64}"$' },
+    },
+  };
+  const headErrors = Object.fromEntries(
+    Object.entries(modelAllErrors).map(([status, response]) => [
+      status,
+      bodylessResponse(response),
+    ]),
+  );
+  const options204 = operation.options.responses["204"];
+  return {
+    ...operation,
+    get: {
+      ...get,
+      responses: {
+        ...get.responses,
+        "200": {
+          ...getSuccess,
+          headers: successHeaders,
+          content: {
+            [modelJsonMediaType]: {
+              schema: { $ref: "#/components/schemas/ModelDetail" },
+              example: modelDetailExample,
+            },
+          },
+        },
+        "304": {
+          description:
+            "The selected exact Model representation matches If-None-Match; no response body is returned.",
+          headers: notModifiedHeaders,
+        },
+        "308": modelDetailRedirect,
+        ...modelAllErrors,
+      },
+    },
+    head: {
+      ...head,
+      description:
+        "HEAD returns no body. Entity-bearing outcomes retain the exact GET Content-Type application/json; charset=utf-8 and Content-Length headers on the wire; OpenAPI represents that media type on body-bearing GET/OPTIONS responses because OAS ignores a response Header Object named Content-Type.",
+      responses: {
+        ...head.responses,
+        "200": {
+          description:
+            "The exact GET representation exists; no response body is returned.",
+          headers: successHeaders,
+        },
+        "304": {
+          description:
+            "The selected exact Model representation matches If-None-Match; no response body is returned.",
+          headers: notModifiedHeaders,
+        },
+        "308": modelDetailRedirect,
+        ...headErrors,
+      },
+    },
+    options: {
+      ...operation.options,
+      responses: {
+        ...operation.options.responses,
+        "204": {
+          ...options204,
+          headers: {
+            ...options204.headers,
+            ...modelSecurityHeaders,
+            "Access-Control-Max-Age": {
+              schema: { type: "integer", const: 600 },
+            },
+          },
+        },
+        "400": modelErrors["400"],
+        "413": modelErrors["413"],
+        "429": modelErrors["429"],
+        "503": modelGateUnavailableError,
+      },
+    },
+  };
+}
+
 const openapi = {
   openapi: "3.1.1",
   jsonSchemaDialect: "https://json-schema.org/draft/2020-12/schema",
@@ -572,13 +1000,7 @@ const openapi = {
       "ModelCollection",
       "models",
     ),
-    "/models/{model_id_or_slug}": detailOperation(
-      "getModel",
-      "Get a canonical model",
-      "ModelDetail",
-      "model_id_or_slug",
-      "Stable model ID or current/historical slug.",
-    ),
+    "/models/{model_id_or_slug}": modelDetailOperation(),
     "/models/{model_id}/offerings": collectionOperation(
       "listModelOfferings",
       "List neutral offerings for one model",

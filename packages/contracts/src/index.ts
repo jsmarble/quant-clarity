@@ -1386,11 +1386,25 @@ export const ModelCollectionSchema = CollectionSchema(
   "models",
   API_ROUTE_POLICIES.models,
 );
-export const ModelDetailSchema = DetailSchema(
-  ModelSchema,
-  "ModelDetail",
-  "models",
-  API_ROUTE_POLICIES.models,
+const ModelDetailMetaSchema = Type.Object(
+  {
+    resource: Type.Literal("models"),
+    publication_id: publicationId(),
+    schema_version: Type.String({ pattern: SEMVER }),
+    sort: Type.Unsafe<readonly ["name", "stable_id"]>({
+      type: "array",
+      prefixItems: [Type.Literal("name"), Type.Literal("stable_id")],
+      items: false,
+      minItems: 2,
+      maxItems: 2,
+    }),
+    filters: Type.Object({}, { additionalProperties: false }),
+  },
+  { $id: "ModelDetailMeta", additionalProperties: false },
+);
+export const ModelDetailSchema = Type.Object(
+  { data: ModelSchema, meta: ModelDetailMetaSchema },
+  { $id: "ModelDetail", additionalProperties: false },
 );
 export const VariantCollectionSchema = CollectionSchema(
   VariantSchema,

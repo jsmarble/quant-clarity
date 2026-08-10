@@ -62,7 +62,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -136,7 +136,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -564,7 +564,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -606,7 +606,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -2295,7 +2295,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "max-age=0, must-revalidate"
+                  "const": "private, max-age=0, must-revalidate"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -2346,7 +2346,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "max-age=0, must-revalidate"
+                  "const": "private, max-age=0, must-revalidate"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -2843,7 +2843,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "max-age=0, must-revalidate"
+                  "const": "private, max-age=0, must-revalidate"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -2885,7 +2885,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "max-age=0, must-revalidate"
+                  "const": "private, max-age=0, must-revalidate"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -3474,7 +3474,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "max-age=0, must-revalidate"
+                  "const": "private, max-age=0, must-revalidate"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -3525,7 +3525,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "max-age=0, must-revalidate"
+                  "const": "private, max-age=0, must-revalidate"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -4021,7 +4021,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "max-age=0, must-revalidate"
+                  "const": "private, max-age=0, must-revalidate"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -4063,7 +4063,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "max-age=0, must-revalidate"
+                  "const": "private, max-age=0, must-revalidate"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -5883,11 +5883,12 @@
             "name": "model_id_or_slug",
             "in": "path",
             "required": true,
-            "description": "Stable model ID or current/historical slug.",
+            "description": "Stable model ID, current slug, or historical slug. An unpinned historical slug returns 308 to the stable ID; an explicitly pinned historical slug returns the selected representation. Raw targets containing percent-encoding, any query marker (including a bare ?), a trailing slash, or an extra path segment are rejected before identifier matching.",
             "schema": {
               "type": "string",
               "minLength": 1,
-              "maxLength": 256
+              "maxLength": 128,
+              "pattern": "^(?:mdl_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|[a-z0-9]+(?:-[a-z0-9]+)*)$"
             }
           }
         ],
@@ -5895,200 +5896,560 @@
           "200": {
             "description": "Get a canonical model",
             "headers": {
+              "Content-Security-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+                }
+              },
+              "Permissions-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "accelerometer=(), camera=(), geolocation=(), gyroscope=(), microphone=(), payment=(), usb=()"
+                }
+              },
+              "Referrer-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-referrer"
+                }
+              },
+              "Strict-Transport-Security": {
+                "description": "Protected environment-owned HTTPS policy.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "max-age=300",
+                    "max-age=31536000; includeSubDomains"
+                  ]
+                }
+              },
+              "X-Content-Type-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "nosniff"
+                }
+              },
+              "X-Frame-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "DENY"
+                }
+              },
               "Access-Control-Allow-Origin": {
-                "description": "Public non-credentialed read access.",
                 "schema": {
                   "type": "string",
                   "const": "*"
                 }
               },
               "Access-Control-Expose-Headers": {
-                "description": "Response headers readable by non-credentialed browser clients.",
                 "schema": {
                   "type": "string",
                   "const": "ETag, X-QuantClarity-Publication"
                 }
               },
               "Cache-Control": {
-                "description": "Visitor-safe cache policy for this representation class.",
+                "description": "Stable-ID representations privately revalidate; slug representations and redirects are private, no-store.",
                 "schema": {
                   "type": "string",
-                  "example": "max-age=0, must-revalidate"
+                  "enum": [
+                    "private, max-age=0, must-revalidate",
+                    "private, no-store"
+                  ]
+                }
+              },
+              "Content-Length": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 65536
+                }
+              },
+              "Vary": {
+                "schema": {
+                  "type": "string",
+                  "const": "X-QuantClarity-Publication"
                 }
               },
               "X-QuantClarity-Publication": {
-                "description": "Publication ID used for this response.",
                 "schema": {
                   "$ref": "#/components/schemas/PublicationId"
                 }
               },
               "ETag": {
-                "description": "Opaque validation tag for the publication representation.",
                 "schema": {
-                  "type": "string"
-                }
-              },
-              "Vary": {
-                "description": "Only validated representation dimensions may appear.",
-                "schema": {
-                  "type": "string"
+                  "type": "string",
+                  "pattern": "^\"[0-9a-f]{64}\"$"
                 }
               }
             },
             "content": {
-              "application/json": {
+              "application/json; charset=utf-8": {
                 "schema": {
                   "$ref": "#/components/schemas/ModelDetail"
+                },
+                "example": {
+                  "data": {
+                    "active_parameters": {
+                      "evidence_ids": [],
+                      "observed_at": null,
+                      "state": "unknown",
+                      "value": null
+                    },
+                    "architecture": {
+                      "evidence_ids": [],
+                      "observed_at": null,
+                      "state": "unknown",
+                      "value": null
+                    },
+                    "authoritative_checkpoint_ids": [],
+                    "cataloged_provider_count": {
+                      "derivation_version": "cataloged-provider-count@1",
+                      "observed_at": "2026-08-03T00:00:00.000Z",
+                      "value": 0
+                    },
+                    "checkpoints": [],
+                    "context_window_tokens": {
+                      "evidence_ids": [],
+                      "observed_at": null,
+                      "state": "unknown",
+                      "value": null
+                    },
+                    "display_name": {
+                      "evidence_ids": [
+                        "evd_11111111-1111-4111-8111-111111111111"
+                      ],
+                      "observed_at": "2026-08-03T00:00:00.000Z",
+                      "state": "known",
+                      "value": "Fixture Model"
+                    },
+                    "family_id": "fam_11111111-1111-4111-8111-111111111111",
+                    "last_model_data_refresh": {
+                      "evidence_ids": [
+                        "evd_11111111-1111-4111-8111-111111111111"
+                      ],
+                      "observed_at": "2026-08-03T00:00:00.000Z",
+                      "state": "known",
+                      "value": "2026-08-03T00:00:00.000Z"
+                    },
+                    "license": {
+                      "evidence_ids": [],
+                      "observed_at": null,
+                      "state": "unknown",
+                      "value": null
+                    },
+                    "maximum_output_tokens": {
+                      "evidence_ids": [],
+                      "observed_at": null,
+                      "state": "unknown",
+                      "value": null
+                    },
+                    "modalities": {
+                      "evidence_ids": [],
+                      "observed_at": null,
+                      "state": "unknown",
+                      "value": null
+                    },
+                    "model_id": "mdl_11111111-1111-4111-8111-111111111111",
+                    "publisher": {
+                      "evidence_ids": [
+                        "evd_11111111-1111-4111-8111-111111111111"
+                      ],
+                      "observed_at": "2026-08-03T00:00:00.000Z",
+                      "state": "known",
+                      "value": "Fixture Publisher"
+                    },
+                    "release_date": {
+                      "evidence_ids": [],
+                      "observed_at": null,
+                      "state": "unknown",
+                      "value": null
+                    },
+                    "slug": {
+                      "evidence_ids": [
+                        "evd_11111111-1111-4111-8111-111111111111"
+                      ],
+                      "observed_at": "2026-08-03T00:00:00.000Z",
+                      "state": "known",
+                      "value": "fixture-model"
+                    },
+                    "source_quantization": {
+                      "evidence_ids": [],
+                      "observed_at": null,
+                      "state": "unknown",
+                      "value": null
+                    },
+                    "source_weight_format": {
+                      "evidence_ids": [],
+                      "observed_at": null,
+                      "state": "unknown",
+                      "value": null
+                    },
+                    "status": {
+                      "evidence_ids": [
+                        "evd_11111111-1111-4111-8111-111111111111"
+                      ],
+                      "observed_at": "2026-08-03T00:00:00.000Z",
+                      "state": "known",
+                      "value": "active"
+                    },
+                    "total_parameters": {
+                      "evidence_ids": [],
+                      "observed_at": null,
+                      "state": "unknown",
+                      "value": null
+                    }
+                  },
+                  "meta": {
+                    "filters": {},
+                    "publication_id": "pub_11111111-1111-4111-8111-111111111111",
+                    "resource": "models",
+                    "schema_version": "1.13.0",
+                    "sort": [
+                      "name",
+                      "stable_id"
+                    ]
+                  }
                 }
               }
             }
           },
           "304": {
-            "description": "The selected publication representation matches If-None-Match; no response body is returned.",
+            "description": "The selected exact Model representation matches If-None-Match; no response body is returned.",
             "headers": {
+              "Content-Security-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+                }
+              },
+              "Permissions-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "accelerometer=(), camera=(), geolocation=(), gyroscope=(), microphone=(), payment=(), usb=()"
+                }
+              },
+              "Referrer-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-referrer"
+                }
+              },
+              "Strict-Transport-Security": {
+                "description": "Protected environment-owned HTTPS policy.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "max-age=300",
+                    "max-age=31536000; includeSubDomains"
+                  ]
+                }
+              },
+              "X-Content-Type-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "nosniff"
+                }
+              },
+              "X-Frame-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "DENY"
+                }
+              },
               "Access-Control-Allow-Origin": {
-                "description": "Public non-credentialed read access.",
                 "schema": {
                   "type": "string",
                   "const": "*"
                 }
               },
               "Access-Control-Expose-Headers": {
-                "description": "Response headers readable by non-credentialed browser clients.",
                 "schema": {
                   "type": "string",
                   "const": "ETag, X-QuantClarity-Publication"
                 }
               },
               "Cache-Control": {
-                "description": "Visitor-safe cache policy for this representation class.",
+                "description": "Stable-ID representations privately revalidate; slug representations and redirects are private, no-store.",
                 "schema": {
                   "type": "string",
-                  "example": "max-age=0, must-revalidate"
+                  "enum": [
+                    "private, max-age=0, must-revalidate",
+                    "private, no-store"
+                  ]
+                }
+              },
+              "Vary": {
+                "schema": {
+                  "type": "string",
+                  "const": "X-QuantClarity-Publication"
                 }
               },
               "X-QuantClarity-Publication": {
-                "description": "Publication ID used for this response.",
                 "schema": {
                   "$ref": "#/components/schemas/PublicationId"
                 }
               },
               "ETag": {
-                "description": "Opaque validation tag for the publication representation.",
                 "schema": {
-                  "type": "string"
-                }
-              },
-              "Vary": {
-                "description": "Only validated representation dimensions may appear.",
-                "schema": {
-                  "type": "string"
+                  "type": "string",
+                  "pattern": "^\"[0-9a-f]{64}\"$"
                 }
               }
             }
           },
-          "400": {
-            "description": "Invalid or unsupported request parameter",
+          "308": {
+            "description": "An unpinned historical slug redirects to the verified stable Model ID path.",
             "headers": {
+              "Content-Security-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+                }
+              },
+              "Permissions-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "accelerometer=(), camera=(), geolocation=(), gyroscope=(), microphone=(), payment=(), usb=()"
+                }
+              },
+              "Referrer-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-referrer"
+                }
+              },
+              "Strict-Transport-Security": {
+                "description": "Protected environment-owned HTTPS policy.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "max-age=300",
+                    "max-age=31536000; includeSubDomains"
+                  ]
+                }
+              },
+              "X-Content-Type-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "nosniff"
+                }
+              },
+              "X-Frame-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "DENY"
+                }
+              },
               "Access-Control-Allow-Origin": {
-                "description": "Public non-credentialed read access.",
                 "schema": {
                   "type": "string",
                   "const": "*"
                 }
               },
               "Access-Control-Expose-Headers": {
-                "description": "Response headers readable by non-credentialed browser clients.",
                 "schema": {
                   "type": "string",
                   "const": "ETag, X-QuantClarity-Publication"
                 }
               },
               "Cache-Control": {
-                "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
                   "const": "private, no-store"
                 }
               },
-              "X-QuantClarity-Publication": {
-                "description": "Publication ID used for this response.",
+              "Content-Length": {
                 "schema": {
-                  "$ref": "#/components/schemas/PublicationId"
+                  "type": "integer",
+                  "const": 0
                 }
               },
-              "ETag": {
-                "description": "Opaque validation tag for the publication representation.",
+              "Location": {
+                "description": "Relative verified stable Model ID path.",
                 "schema": {
-                  "type": "string"
+                  "type": "string",
+                  "pattern": "^/v1/models/mdl_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
                 }
               },
               "Vary": {
-                "description": "Only validated representation dimensions may appear.",
                 "schema": {
-                  "type": "string"
+                  "type": "string",
+                  "const": "X-QuantClarity-Publication"
+                }
+              },
+              "X-QuantClarity-Publication": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationId"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The Model detail request is invalid",
+            "headers": {
+              "Content-Security-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+                }
+              },
+              "Permissions-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "accelerometer=(), camera=(), geolocation=(), gyroscope=(), microphone=(), payment=(), usb=()"
+                }
+              },
+              "Referrer-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-referrer"
+                }
+              },
+              "Strict-Transport-Security": {
+                "description": "Protected environment-owned HTTPS policy.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "max-age=300",
+                    "max-age=31536000; includeSubDomains"
+                  ]
+                }
+              },
+              "X-Content-Type-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "nosniff"
+                }
+              },
+              "X-Frame-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "DENY"
+                }
+              },
+              "Access-Control-Allow-Origin": {
+                "schema": {
+                  "type": "string",
+                  "const": "*"
+                }
+              },
+              "Access-Control-Expose-Headers": {
+                "schema": {
+                  "type": "string",
+                  "const": "ETag, X-QuantClarity-Publication"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "private, no-store"
+                }
+              },
+              "Content-Length": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 65536
                 }
               }
             },
             "content": {
-              "application/json": {
+              "application/json; charset=utf-8": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorEnvelope"
                 },
                 "example": {
                   "error": {
                     "code": "invalid_parameter",
-                    "message": "The request contains an invalid parameter."
+                    "message": "The Model detail request is invalid."
                   }
                 }
               }
             }
           },
           "404": {
-            "description": "The requested resource was not found",
+            "description": "The Model was not found in the selected publication",
             "headers": {
+              "Content-Security-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+                }
+              },
+              "Permissions-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "accelerometer=(), camera=(), geolocation=(), gyroscope=(), microphone=(), payment=(), usb=()"
+                }
+              },
+              "Referrer-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-referrer"
+                }
+              },
+              "Strict-Transport-Security": {
+                "description": "Protected environment-owned HTTPS policy.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "max-age=300",
+                    "max-age=31536000; includeSubDomains"
+                  ]
+                }
+              },
+              "X-Content-Type-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "nosniff"
+                }
+              },
+              "X-Frame-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "DENY"
+                }
+              },
               "Access-Control-Allow-Origin": {
-                "description": "Public non-credentialed read access.",
                 "schema": {
                   "type": "string",
                   "const": "*"
                 }
               },
               "Access-Control-Expose-Headers": {
-                "description": "Response headers readable by non-credentialed browser clients.",
                 "schema": {
                   "type": "string",
                   "const": "ETag, X-QuantClarity-Publication"
                 }
               },
               "Cache-Control": {
-                "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
                   "const": "private, no-store"
                 }
               },
-              "X-QuantClarity-Publication": {
-                "description": "Publication ID used for this response.",
+              "Content-Length": {
                 "schema": {
-                  "$ref": "#/components/schemas/PublicationId"
-                }
-              },
-              "ETag": {
-                "description": "Opaque validation tag for the publication representation.",
-                "schema": {
-                  "type": "string"
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 65536
                 }
               },
               "Vary": {
-                "description": "Only validated representation dimensions may appear.",
                 "schema": {
-                  "type": "string"
+                  "type": "string",
+                  "const": "X-QuantClarity-Publication"
+                }
+              },
+              "X-QuantClarity-Publication": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationId"
                 }
               }
             },
             "content": {
-              "application/json": {
+              "application/json; charset=utf-8": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorEnvelope"
                 },
@@ -6104,47 +6465,72 @@
           "405": {
             "description": "The request method is not allowed",
             "headers": {
+              "Content-Security-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+                }
+              },
+              "Permissions-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "accelerometer=(), camera=(), geolocation=(), gyroscope=(), microphone=(), payment=(), usb=()"
+                }
+              },
+              "Referrer-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-referrer"
+                }
+              },
+              "Strict-Transport-Security": {
+                "description": "Protected environment-owned HTTPS policy.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "max-age=300",
+                    "max-age=31536000; includeSubDomains"
+                  ]
+                }
+              },
+              "X-Content-Type-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "nosniff"
+                }
+              },
+              "X-Frame-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "DENY"
+                }
+              },
               "Access-Control-Allow-Origin": {
-                "description": "Public non-credentialed read access.",
                 "schema": {
                   "type": "string",
                   "const": "*"
                 }
               },
               "Access-Control-Expose-Headers": {
-                "description": "Response headers readable by non-credentialed browser clients.",
                 "schema": {
                   "type": "string",
                   "const": "ETag, X-QuantClarity-Publication"
                 }
               },
               "Cache-Control": {
-                "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
                   "const": "private, no-store"
                 }
               },
-              "X-QuantClarity-Publication": {
-                "description": "Publication ID used for this response.",
+              "Content-Length": {
                 "schema": {
-                  "$ref": "#/components/schemas/PublicationId"
-                }
-              },
-              "ETag": {
-                "description": "Opaque validation tag for the publication representation.",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "Vary": {
-                "description": "Only validated representation dimensions may appear.",
-                "schema": {
-                  "type": "string"
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 65536
                 }
               },
               "Allow": {
-                "description": "Methods supported by this read-only resource.",
                 "schema": {
                   "type": "string",
                   "const": "GET, HEAD, OPTIONS"
@@ -6152,7 +6538,7 @@
               }
             },
             "content": {
-              "application/json": {
+              "application/json; charset=utf-8": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorEnvelope"
                 },
@@ -6166,114 +6552,177 @@
             }
           },
           "409": {
-            "description": "The request's publication snapshot is no longer retained",
+            "description": "The exact publication is no longer retained",
             "headers": {
+              "Content-Security-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+                }
+              },
+              "Permissions-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "accelerometer=(), camera=(), geolocation=(), gyroscope=(), microphone=(), payment=(), usb=()"
+                }
+              },
+              "Referrer-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-referrer"
+                }
+              },
+              "Strict-Transport-Security": {
+                "description": "Protected environment-owned HTTPS policy.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "max-age=300",
+                    "max-age=31536000; includeSubDomains"
+                  ]
+                }
+              },
+              "X-Content-Type-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "nosniff"
+                }
+              },
+              "X-Frame-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "DENY"
+                }
+              },
               "Access-Control-Allow-Origin": {
-                "description": "Public non-credentialed read access.",
                 "schema": {
                   "type": "string",
                   "const": "*"
                 }
               },
               "Access-Control-Expose-Headers": {
-                "description": "Response headers readable by non-credentialed browser clients.",
                 "schema": {
                   "type": "string",
                   "const": "ETag, X-QuantClarity-Publication"
                 }
               },
               "Cache-Control": {
-                "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
                   "const": "private, no-store"
                 }
               },
-              "X-QuantClarity-Publication": {
-                "description": "Publication ID used for this response.",
+              "Content-Length": {
                 "schema": {
-                  "$ref": "#/components/schemas/PublicationId"
-                }
-              },
-              "ETag": {
-                "description": "Opaque validation tag for the publication representation.",
-                "schema": {
-                  "type": "string"
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 65536
                 }
               },
               "Vary": {
-                "description": "Only validated representation dimensions may appear.",
                 "schema": {
-                  "type": "string"
+                  "type": "string",
+                  "const": "X-QuantClarity-Publication"
+                }
+              },
+              "X-QuantClarity-Publication": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationId"
                 }
               }
             },
             "content": {
-              "application/json": {
+              "application/json; charset=utf-8": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorEnvelope"
                 },
                 "example": {
                   "error": {
                     "code": "publication_expired",
-                    "message": "The request's publication snapshot has expired; reload using the current publication."
+                    "message": "The requested publication is no longer available."
                   }
                 }
               }
             }
           },
           "413": {
-            "description": "The bounded query or response limit was exceeded",
+            "description": "The request exceeds the configured size limit",
             "headers": {
+              "Content-Security-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+                }
+              },
+              "Permissions-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "accelerometer=(), camera=(), geolocation=(), gyroscope=(), microphone=(), payment=(), usb=()"
+                }
+              },
+              "Referrer-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-referrer"
+                }
+              },
+              "Strict-Transport-Security": {
+                "description": "Protected environment-owned HTTPS policy.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "max-age=300",
+                    "max-age=31536000; includeSubDomains"
+                  ]
+                }
+              },
+              "X-Content-Type-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "nosniff"
+                }
+              },
+              "X-Frame-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "DENY"
+                }
+              },
               "Access-Control-Allow-Origin": {
-                "description": "Public non-credentialed read access.",
                 "schema": {
                   "type": "string",
                   "const": "*"
                 }
               },
               "Access-Control-Expose-Headers": {
-                "description": "Response headers readable by non-credentialed browser clients.",
                 "schema": {
                   "type": "string",
                   "const": "ETag, X-QuantClarity-Publication"
                 }
               },
               "Cache-Control": {
-                "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
                   "const": "private, no-store"
                 }
               },
-              "X-QuantClarity-Publication": {
-                "description": "Publication ID used for this response.",
+              "Content-Length": {
                 "schema": {
-                  "$ref": "#/components/schemas/PublicationId"
-                }
-              },
-              "ETag": {
-                "description": "Opaque validation tag for the publication representation.",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "Vary": {
-                "description": "Only validated representation dimensions may appear.",
-                "schema": {
-                  "type": "string"
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 65536
                 }
               }
             },
             "content": {
-              "application/json": {
+              "application/json; charset=utf-8": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorEnvelope"
                 },
                 "example": {
                   "error": {
                     "code": "query_too_large",
-                    "message": "The bounded query or response limit was exceeded."
+                    "message": "The request exceeds the configured size limit."
                   }
                 }
               }
@@ -6282,55 +6731,80 @@
           "429": {
             "description": "The permissive abuse-protection limit was exceeded",
             "headers": {
+              "Content-Security-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+                }
+              },
+              "Permissions-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "accelerometer=(), camera=(), geolocation=(), gyroscope=(), microphone=(), payment=(), usb=()"
+                }
+              },
+              "Referrer-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-referrer"
+                }
+              },
+              "Strict-Transport-Security": {
+                "description": "Protected environment-owned HTTPS policy.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "max-age=300",
+                    "max-age=31536000; includeSubDomains"
+                  ]
+                }
+              },
+              "X-Content-Type-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "nosniff"
+                }
+              },
+              "X-Frame-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "DENY"
+                }
+              },
               "Access-Control-Allow-Origin": {
-                "description": "Public non-credentialed read access.",
                 "schema": {
                   "type": "string",
                   "const": "*"
                 }
               },
               "Access-Control-Expose-Headers": {
-                "description": "Response headers readable by non-credentialed browser clients.",
                 "schema": {
                   "type": "string",
                   "const": "ETag, X-QuantClarity-Publication"
                 }
               },
               "Cache-Control": {
-                "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
                   "const": "private, no-store"
                 }
               },
-              "X-QuantClarity-Publication": {
-                "description": "Publication ID used for this response.",
+              "Content-Length": {
                 "schema": {
-                  "$ref": "#/components/schemas/PublicationId"
-                }
-              },
-              "ETag": {
-                "description": "Opaque validation tag for the publication representation.",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "Vary": {
-                "description": "Only validated representation dimensions may appear.",
-                "schema": {
-                  "type": "string"
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 65536
                 }
               },
               "Retry-After": {
-                "description": "Seconds before the client should retry.",
                 "schema": {
                   "type": "integer",
-                  "minimum": 1
+                  "const": 60
                 }
               }
             },
             "content": {
-              "application/json": {
+              "application/json; charset=utf-8": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorEnvelope"
                 },
@@ -6344,57 +6818,103 @@
             }
           },
           "503": {
-            "description": "No safe publication or exact fallback is available",
+            "description": "No safe publication or exact response is available",
             "headers": {
+              "Content-Security-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+                }
+              },
+              "Permissions-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "accelerometer=(), camera=(), geolocation=(), gyroscope=(), microphone=(), payment=(), usb=()"
+                }
+              },
+              "Referrer-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-referrer"
+                }
+              },
+              "Strict-Transport-Security": {
+                "description": "Protected environment-owned HTTPS policy.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "max-age=300",
+                    "max-age=31536000; includeSubDomains"
+                  ]
+                }
+              },
+              "X-Content-Type-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "nosniff"
+                }
+              },
+              "X-Frame-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "DENY"
+                }
+              },
               "Access-Control-Allow-Origin": {
-                "description": "Public non-credentialed read access.",
                 "schema": {
                   "type": "string",
                   "const": "*"
                 }
               },
               "Access-Control-Expose-Headers": {
-                "description": "Response headers readable by non-credentialed browser clients.",
                 "schema": {
                   "type": "string",
                   "const": "ETag, X-QuantClarity-Publication"
                 }
               },
               "Cache-Control": {
-                "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
                   "const": "private, no-store"
                 }
               },
-              "X-QuantClarity-Publication": {
-                "description": "Publication ID used for this response.",
+              "Content-Length": {
                 "schema": {
-                  "$ref": "#/components/schemas/PublicationId"
-                }
-              },
-              "ETag": {
-                "description": "Opaque validation tag for the publication representation.",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "Vary": {
-                "description": "Only validated representation dimensions may appear.",
-                "schema": {
-                  "type": "string"
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 65536
                 }
               }
             },
             "content": {
-              "application/json": {
+              "application/json; charset=utf-8": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorEnvelope"
                 },
-                "example": {
-                  "error": {
-                    "code": "publication_not_ready",
-                    "message": "No safe publication is ready."
+                "examples": {
+                  "publicationNotReady": {
+                    "value": {
+                      "error": {
+                        "code": "publication_not_ready",
+                        "message": "No public dataset has been published yet."
+                      }
+                    }
+                  },
+                  "temporarilyUnavailable": {
+                    "value": {
+                      "error": {
+                        "code": "temporarily_unavailable",
+                        "message": "The Model detail is temporarily unavailable."
+                      }
+                    }
+                  },
+                  "gateUnavailable": {
+                    "value": {
+                      "error": {
+                        "code": "temporarily_unavailable",
+                        "message": "The request cannot be safely rate limited."
+                      }
+                    }
                   }
                 }
               }
@@ -6430,37 +6950,92 @@
             "name": "model_id_or_slug",
             "in": "path",
             "required": true,
-            "description": "Stable model ID or current/historical slug.",
+            "description": "Stable model ID, current slug, or historical slug. An unpinned historical slug returns 308 to the stable ID; an explicitly pinned historical slug returns the selected representation. Raw targets containing percent-encoding, any query marker (including a bare ?), a trailing slash, or an extra path segment are rejected before identifier matching.",
             "schema": {
               "type": "string",
               "minLength": 1,
-              "maxLength": 256
+              "maxLength": 128,
+              "pattern": "^(?:mdl_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|[a-z0-9]+(?:-[a-z0-9]+)*)$"
             }
           }
         ],
         "responses": {
           "200": {
-            "description": "The GET representation exists; no response body is returned.",
+            "description": "The exact GET representation exists; no response body is returned.",
             "headers": {
+              "Content-Security-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+                }
+              },
+              "Permissions-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "accelerometer=(), camera=(), geolocation=(), gyroscope=(), microphone=(), payment=(), usb=()"
+                }
+              },
+              "Referrer-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-referrer"
+                }
+              },
+              "Strict-Transport-Security": {
+                "description": "Protected environment-owned HTTPS policy.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "max-age=300",
+                    "max-age=31536000; includeSubDomains"
+                  ]
+                }
+              },
+              "X-Content-Type-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "nosniff"
+                }
+              },
+              "X-Frame-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "DENY"
+                }
+              },
               "Access-Control-Allow-Origin": {
-                "description": "Public non-credentialed read access.",
                 "schema": {
                   "type": "string",
                   "const": "*"
                 }
               },
               "Access-Control-Expose-Headers": {
-                "description": "Response headers readable by non-credentialed browser clients.",
                 "schema": {
                   "type": "string",
                   "const": "ETag, X-QuantClarity-Publication"
                 }
               },
               "Cache-Control": {
-                "description": "Visitor-safe cache policy for this representation class.",
+                "description": "Stable-ID representations privately revalidate; slug representations and redirects are private, no-store.",
                 "schema": {
                   "type": "string",
-                  "example": "max-age=0, must-revalidate"
+                  "enum": [
+                    "private, max-age=0, must-revalidate",
+                    "private, no-store"
+                  ]
+                }
+              },
+              "Content-Length": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 65536
+                }
+              },
+              "Vary": {
+                "schema": {
+                  "type": "string",
+                  "const": "X-QuantClarity-Publication"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -6470,145 +7045,330 @@
               },
               "ETag": {
                 "schema": {
-                  "type": "string"
-                }
-              },
-              "Vary": {
-                "description": "Only validated representation dimensions may appear.",
-                "schema": {
-                  "type": "string"
+                  "type": "string",
+                  "pattern": "^\"[0-9a-f]{64}\"$"
                 }
               }
             }
           },
           "304": {
-            "description": "The selected publication representation matches If-None-Match; no response body is returned.",
+            "description": "The selected exact Model representation matches If-None-Match; no response body is returned.",
             "headers": {
+              "Content-Security-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+                }
+              },
+              "Permissions-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "accelerometer=(), camera=(), geolocation=(), gyroscope=(), microphone=(), payment=(), usb=()"
+                }
+              },
+              "Referrer-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-referrer"
+                }
+              },
+              "Strict-Transport-Security": {
+                "description": "Protected environment-owned HTTPS policy.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "max-age=300",
+                    "max-age=31536000; includeSubDomains"
+                  ]
+                }
+              },
+              "X-Content-Type-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "nosniff"
+                }
+              },
+              "X-Frame-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "DENY"
+                }
+              },
               "Access-Control-Allow-Origin": {
-                "description": "Public non-credentialed read access.",
                 "schema": {
                   "type": "string",
                   "const": "*"
                 }
               },
               "Access-Control-Expose-Headers": {
-                "description": "Response headers readable by non-credentialed browser clients.",
                 "schema": {
                   "type": "string",
                   "const": "ETag, X-QuantClarity-Publication"
                 }
               },
               "Cache-Control": {
-                "description": "Visitor-safe cache policy for this representation class.",
+                "description": "Stable-ID representations privately revalidate; slug representations and redirects are private, no-store.",
                 "schema": {
                   "type": "string",
-                  "example": "max-age=0, must-revalidate"
+                  "enum": [
+                    "private, max-age=0, must-revalidate",
+                    "private, no-store"
+                  ]
+                }
+              },
+              "Vary": {
+                "schema": {
+                  "type": "string",
+                  "const": "X-QuantClarity-Publication"
                 }
               },
               "X-QuantClarity-Publication": {
-                "description": "Publication ID used for this response.",
                 "schema": {
                   "$ref": "#/components/schemas/PublicationId"
                 }
               },
               "ETag": {
-                "description": "Opaque validation tag for the publication representation.",
                 "schema": {
-                  "type": "string"
+                  "type": "string",
+                  "pattern": "^\"[0-9a-f]{64}\"$"
+                }
+              }
+            }
+          },
+          "308": {
+            "description": "An unpinned historical slug redirects to the verified stable Model ID path.",
+            "headers": {
+              "Content-Security-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+                }
+              },
+              "Permissions-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "accelerometer=(), camera=(), geolocation=(), gyroscope=(), microphone=(), payment=(), usb=()"
+                }
+              },
+              "Referrer-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-referrer"
+                }
+              },
+              "Strict-Transport-Security": {
+                "description": "Protected environment-owned HTTPS policy.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "max-age=300",
+                    "max-age=31536000; includeSubDomains"
+                  ]
+                }
+              },
+              "X-Content-Type-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "nosniff"
+                }
+              },
+              "X-Frame-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "DENY"
+                }
+              },
+              "Access-Control-Allow-Origin": {
+                "schema": {
+                  "type": "string",
+                  "const": "*"
+                }
+              },
+              "Access-Control-Expose-Headers": {
+                "schema": {
+                  "type": "string",
+                  "const": "ETag, X-QuantClarity-Publication"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "private, no-store"
+                }
+              },
+              "Content-Length": {
+                "schema": {
+                  "type": "integer",
+                  "const": 0
+                }
+              },
+              "Location": {
+                "description": "Relative verified stable Model ID path.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^/v1/models/mdl_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
                 }
               },
               "Vary": {
-                "description": "Only validated representation dimensions may appear.",
                 "schema": {
-                  "type": "string"
+                  "type": "string",
+                  "const": "X-QuantClarity-Publication"
+                }
+              },
+              "X-QuantClarity-Publication": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationId"
                 }
               }
             }
           },
           "400": {
-            "description": "Invalid or unsupported request parameter",
+            "description": "The Model detail request is invalid",
             "headers": {
+              "Content-Security-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+                }
+              },
+              "Permissions-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "accelerometer=(), camera=(), geolocation=(), gyroscope=(), microphone=(), payment=(), usb=()"
+                }
+              },
+              "Referrer-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-referrer"
+                }
+              },
+              "Strict-Transport-Security": {
+                "description": "Protected environment-owned HTTPS policy.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "max-age=300",
+                    "max-age=31536000; includeSubDomains"
+                  ]
+                }
+              },
+              "X-Content-Type-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "nosniff"
+                }
+              },
+              "X-Frame-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "DENY"
+                }
+              },
               "Access-Control-Allow-Origin": {
-                "description": "Public non-credentialed read access.",
                 "schema": {
                   "type": "string",
                   "const": "*"
                 }
               },
               "Access-Control-Expose-Headers": {
-                "description": "Response headers readable by non-credentialed browser clients.",
                 "schema": {
                   "type": "string",
                   "const": "ETag, X-QuantClarity-Publication"
                 }
               },
               "Cache-Control": {
-                "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
                   "const": "private, no-store"
                 }
               },
-              "X-QuantClarity-Publication": {
-                "description": "Publication ID used for this response.",
+              "Content-Length": {
                 "schema": {
-                  "$ref": "#/components/schemas/PublicationId"
-                }
-              },
-              "ETag": {
-                "description": "Opaque validation tag for the publication representation.",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "Vary": {
-                "description": "Only validated representation dimensions may appear.",
-                "schema": {
-                  "type": "string"
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 65536
                 }
               }
             }
           },
           "404": {
-            "description": "The requested resource was not found",
+            "description": "The Model was not found in the selected publication",
             "headers": {
+              "Content-Security-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+                }
+              },
+              "Permissions-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "accelerometer=(), camera=(), geolocation=(), gyroscope=(), microphone=(), payment=(), usb=()"
+                }
+              },
+              "Referrer-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-referrer"
+                }
+              },
+              "Strict-Transport-Security": {
+                "description": "Protected environment-owned HTTPS policy.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "max-age=300",
+                    "max-age=31536000; includeSubDomains"
+                  ]
+                }
+              },
+              "X-Content-Type-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "nosniff"
+                }
+              },
+              "X-Frame-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "DENY"
+                }
+              },
               "Access-Control-Allow-Origin": {
-                "description": "Public non-credentialed read access.",
                 "schema": {
                   "type": "string",
                   "const": "*"
                 }
               },
               "Access-Control-Expose-Headers": {
-                "description": "Response headers readable by non-credentialed browser clients.",
                 "schema": {
                   "type": "string",
                   "const": "ETag, X-QuantClarity-Publication"
                 }
               },
               "Cache-Control": {
-                "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
                   "const": "private, no-store"
                 }
               },
-              "X-QuantClarity-Publication": {
-                "description": "Publication ID used for this response.",
+              "Content-Length": {
                 "schema": {
-                  "$ref": "#/components/schemas/PublicationId"
-                }
-              },
-              "ETag": {
-                "description": "Opaque validation tag for the publication representation.",
-                "schema": {
-                  "type": "string"
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 65536
                 }
               },
               "Vary": {
-                "description": "Only validated representation dimensions may appear.",
                 "schema": {
-                  "type": "string"
+                  "type": "string",
+                  "const": "X-QuantClarity-Publication"
+                }
+              },
+              "X-QuantClarity-Publication": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationId"
                 }
               }
             }
@@ -6616,47 +7376,72 @@
           "405": {
             "description": "The request method is not allowed",
             "headers": {
+              "Content-Security-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+                }
+              },
+              "Permissions-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "accelerometer=(), camera=(), geolocation=(), gyroscope=(), microphone=(), payment=(), usb=()"
+                }
+              },
+              "Referrer-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-referrer"
+                }
+              },
+              "Strict-Transport-Security": {
+                "description": "Protected environment-owned HTTPS policy.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "max-age=300",
+                    "max-age=31536000; includeSubDomains"
+                  ]
+                }
+              },
+              "X-Content-Type-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "nosniff"
+                }
+              },
+              "X-Frame-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "DENY"
+                }
+              },
               "Access-Control-Allow-Origin": {
-                "description": "Public non-credentialed read access.",
                 "schema": {
                   "type": "string",
                   "const": "*"
                 }
               },
               "Access-Control-Expose-Headers": {
-                "description": "Response headers readable by non-credentialed browser clients.",
                 "schema": {
                   "type": "string",
                   "const": "ETag, X-QuantClarity-Publication"
                 }
               },
               "Cache-Control": {
-                "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
                   "const": "private, no-store"
                 }
               },
-              "X-QuantClarity-Publication": {
-                "description": "Publication ID used for this response.",
+              "Content-Length": {
                 "schema": {
-                  "$ref": "#/components/schemas/PublicationId"
-                }
-              },
-              "ETag": {
-                "description": "Opaque validation tag for the publication representation.",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "Vary": {
-                "description": "Only validated representation dimensions may appear.",
-                "schema": {
-                  "type": "string"
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 65536
                 }
               },
               "Allow": {
-                "description": "Methods supported by this read-only resource.",
                 "schema": {
                   "type": "string",
                   "const": "GET, HEAD, OPTIONS"
@@ -6665,89 +7450,152 @@
             }
           },
           "409": {
-            "description": "The request's publication snapshot is no longer retained",
+            "description": "The exact publication is no longer retained",
             "headers": {
+              "Content-Security-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+                }
+              },
+              "Permissions-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "accelerometer=(), camera=(), geolocation=(), gyroscope=(), microphone=(), payment=(), usb=()"
+                }
+              },
+              "Referrer-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-referrer"
+                }
+              },
+              "Strict-Transport-Security": {
+                "description": "Protected environment-owned HTTPS policy.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "max-age=300",
+                    "max-age=31536000; includeSubDomains"
+                  ]
+                }
+              },
+              "X-Content-Type-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "nosniff"
+                }
+              },
+              "X-Frame-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "DENY"
+                }
+              },
               "Access-Control-Allow-Origin": {
-                "description": "Public non-credentialed read access.",
                 "schema": {
                   "type": "string",
                   "const": "*"
                 }
               },
               "Access-Control-Expose-Headers": {
-                "description": "Response headers readable by non-credentialed browser clients.",
                 "schema": {
                   "type": "string",
                   "const": "ETag, X-QuantClarity-Publication"
                 }
               },
               "Cache-Control": {
-                "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
                   "const": "private, no-store"
                 }
               },
-              "X-QuantClarity-Publication": {
-                "description": "Publication ID used for this response.",
+              "Content-Length": {
                 "schema": {
-                  "$ref": "#/components/schemas/PublicationId"
-                }
-              },
-              "ETag": {
-                "description": "Opaque validation tag for the publication representation.",
-                "schema": {
-                  "type": "string"
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 65536
                 }
               },
               "Vary": {
-                "description": "Only validated representation dimensions may appear.",
                 "schema": {
-                  "type": "string"
+                  "type": "string",
+                  "const": "X-QuantClarity-Publication"
+                }
+              },
+              "X-QuantClarity-Publication": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationId"
                 }
               }
             }
           },
           "413": {
-            "description": "The bounded query or response limit was exceeded",
+            "description": "The request exceeds the configured size limit",
             "headers": {
+              "Content-Security-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+                }
+              },
+              "Permissions-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "accelerometer=(), camera=(), geolocation=(), gyroscope=(), microphone=(), payment=(), usb=()"
+                }
+              },
+              "Referrer-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-referrer"
+                }
+              },
+              "Strict-Transport-Security": {
+                "description": "Protected environment-owned HTTPS policy.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "max-age=300",
+                    "max-age=31536000; includeSubDomains"
+                  ]
+                }
+              },
+              "X-Content-Type-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "nosniff"
+                }
+              },
+              "X-Frame-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "DENY"
+                }
+              },
               "Access-Control-Allow-Origin": {
-                "description": "Public non-credentialed read access.",
                 "schema": {
                   "type": "string",
                   "const": "*"
                 }
               },
               "Access-Control-Expose-Headers": {
-                "description": "Response headers readable by non-credentialed browser clients.",
                 "schema": {
                   "type": "string",
                   "const": "ETag, X-QuantClarity-Publication"
                 }
               },
               "Cache-Control": {
-                "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
                   "const": "private, no-store"
                 }
               },
-              "X-QuantClarity-Publication": {
-                "description": "Publication ID used for this response.",
+              "Content-Length": {
                 "schema": {
-                  "$ref": "#/components/schemas/PublicationId"
-                }
-              },
-              "ETag": {
-                "description": "Opaque validation tag for the publication representation.",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "Vary": {
-                "description": "Only validated representation dimensions may appear.",
-                "schema": {
-                  "type": "string"
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 65536
                 }
               }
             }
@@ -6755,99 +7603,151 @@
           "429": {
             "description": "The permissive abuse-protection limit was exceeded",
             "headers": {
+              "Content-Security-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+                }
+              },
+              "Permissions-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "accelerometer=(), camera=(), geolocation=(), gyroscope=(), microphone=(), payment=(), usb=()"
+                }
+              },
+              "Referrer-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-referrer"
+                }
+              },
+              "Strict-Transport-Security": {
+                "description": "Protected environment-owned HTTPS policy.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "max-age=300",
+                    "max-age=31536000; includeSubDomains"
+                  ]
+                }
+              },
+              "X-Content-Type-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "nosniff"
+                }
+              },
+              "X-Frame-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "DENY"
+                }
+              },
               "Access-Control-Allow-Origin": {
-                "description": "Public non-credentialed read access.",
                 "schema": {
                   "type": "string",
                   "const": "*"
                 }
               },
               "Access-Control-Expose-Headers": {
-                "description": "Response headers readable by non-credentialed browser clients.",
                 "schema": {
                   "type": "string",
                   "const": "ETag, X-QuantClarity-Publication"
                 }
               },
               "Cache-Control": {
-                "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
                   "const": "private, no-store"
                 }
               },
-              "X-QuantClarity-Publication": {
-                "description": "Publication ID used for this response.",
+              "Content-Length": {
                 "schema": {
-                  "$ref": "#/components/schemas/PublicationId"
-                }
-              },
-              "ETag": {
-                "description": "Opaque validation tag for the publication representation.",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "Vary": {
-                "description": "Only validated representation dimensions may appear.",
-                "schema": {
-                  "type": "string"
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 65536
                 }
               },
               "Retry-After": {
-                "description": "Seconds before the client should retry.",
                 "schema": {
                   "type": "integer",
-                  "minimum": 1
+                  "const": 60
                 }
               }
             }
           },
           "503": {
-            "description": "No safe publication or exact fallback is available",
+            "description": "No safe publication or exact response is available",
             "headers": {
+              "Content-Security-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+                }
+              },
+              "Permissions-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "accelerometer=(), camera=(), geolocation=(), gyroscope=(), microphone=(), payment=(), usb=()"
+                }
+              },
+              "Referrer-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-referrer"
+                }
+              },
+              "Strict-Transport-Security": {
+                "description": "Protected environment-owned HTTPS policy.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "max-age=300",
+                    "max-age=31536000; includeSubDomains"
+                  ]
+                }
+              },
+              "X-Content-Type-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "nosniff"
+                }
+              },
+              "X-Frame-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "DENY"
+                }
+              },
               "Access-Control-Allow-Origin": {
-                "description": "Public non-credentialed read access.",
                 "schema": {
                   "type": "string",
                   "const": "*"
                 }
               },
               "Access-Control-Expose-Headers": {
-                "description": "Response headers readable by non-credentialed browser clients.",
                 "schema": {
                   "type": "string",
                   "const": "ETag, X-QuantClarity-Publication"
                 }
               },
               "Cache-Control": {
-                "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
                   "const": "private, no-store"
                 }
               },
-              "X-QuantClarity-Publication": {
-                "description": "Publication ID used for this response.",
+              "Content-Length": {
                 "schema": {
-                  "$ref": "#/components/schemas/PublicationId"
-                }
-              },
-              "ETag": {
-                "description": "Opaque validation tag for the publication representation.",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "Vary": {
-                "description": "Only validated representation dimensions may appear.",
-                "schema": {
-                  "type": "string"
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 65536
                 }
               }
             }
           }
-        }
+        },
+        "description": "HEAD returns no body. Entity-bearing outcomes retain the exact GET Content-Type application/json; charset=utf-8 and Content-Length headers on the wire; OpenAPI represents that media type on body-bearing GET/OPTIONS responses because OAS ignores a response Header Object named Content-Type."
       },
       "options": {
         "operationId": "getModelOptions",
@@ -6857,11 +7757,12 @@
             "name": "model_id_or_slug",
             "in": "path",
             "required": true,
-            "description": "Stable model ID or current/historical slug.",
+            "description": "Stable model ID, current slug, or historical slug. An unpinned historical slug returns 308 to the stable ID; an explicitly pinned historical slug returns the selected representation. Raw targets containing percent-encoding, any query marker (including a bare ?), a trailing slash, or an extra path segment are rejected before identifier matching.",
             "schema": {
               "type": "string",
               "minLength": 1,
-              "maxLength": 256
+              "maxLength": 128,
+              "pattern": "^(?:mdl_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|[a-z0-9]+(?:-[a-z0-9]+)*)$"
             }
           }
         ],
@@ -6904,61 +7805,298 @@
                   "type": "string",
                   "const": "private, no-store"
                 }
+              },
+              "Content-Security-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+                }
+              },
+              "Permissions-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "accelerometer=(), camera=(), geolocation=(), gyroscope=(), microphone=(), payment=(), usb=()"
+                }
+              },
+              "Referrer-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-referrer"
+                }
+              },
+              "Strict-Transport-Security": {
+                "description": "Protected environment-owned HTTPS policy.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "max-age=300",
+                    "max-age=31536000; includeSubDomains"
+                  ]
+                }
+              },
+              "X-Content-Type-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "nosniff"
+                }
+              },
+              "X-Frame-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "DENY"
+                }
+              },
+              "Access-Control-Max-Age": {
+                "schema": {
+                  "type": "integer",
+                  "const": 600
+                }
               }
             }
           },
-          "429": {
-            "description": "The permissive abuse-protection limit was exceeded",
+          "400": {
+            "description": "The Model detail request is invalid",
             "headers": {
+              "Content-Security-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+                }
+              },
+              "Permissions-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "accelerometer=(), camera=(), geolocation=(), gyroscope=(), microphone=(), payment=(), usb=()"
+                }
+              },
+              "Referrer-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-referrer"
+                }
+              },
+              "Strict-Transport-Security": {
+                "description": "Protected environment-owned HTTPS policy.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "max-age=300",
+                    "max-age=31536000; includeSubDomains"
+                  ]
+                }
+              },
+              "X-Content-Type-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "nosniff"
+                }
+              },
+              "X-Frame-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "DENY"
+                }
+              },
               "Access-Control-Allow-Origin": {
-                "description": "Public non-credentialed read access.",
                 "schema": {
                   "type": "string",
                   "const": "*"
                 }
               },
               "Access-Control-Expose-Headers": {
-                "description": "Response headers readable by non-credentialed browser clients.",
                 "schema": {
                   "type": "string",
                   "const": "ETag, X-QuantClarity-Publication"
                 }
               },
               "Cache-Control": {
-                "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
                   "const": "private, no-store"
                 }
               },
-              "X-QuantClarity-Publication": {
-                "description": "Publication ID used for this response.",
-                "schema": {
-                  "$ref": "#/components/schemas/PublicationId"
-                }
-              },
-              "ETag": {
-                "description": "Opaque validation tag for the publication representation.",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "Vary": {
-                "description": "Only validated representation dimensions may appear.",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "Retry-After": {
-                "description": "Seconds before the client should retry.",
+              "Content-Length": {
                 "schema": {
                   "type": "integer",
-                  "minimum": 1
+                  "minimum": 1,
+                  "maximum": 65536
                 }
               }
             },
             "content": {
-              "application/json": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "error": {
+                    "code": "invalid_parameter",
+                    "message": "The Model detail request is invalid."
+                  }
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The request exceeds the configured size limit",
+            "headers": {
+              "Content-Security-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+                }
+              },
+              "Permissions-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "accelerometer=(), camera=(), geolocation=(), gyroscope=(), microphone=(), payment=(), usb=()"
+                }
+              },
+              "Referrer-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-referrer"
+                }
+              },
+              "Strict-Transport-Security": {
+                "description": "Protected environment-owned HTTPS policy.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "max-age=300",
+                    "max-age=31536000; includeSubDomains"
+                  ]
+                }
+              },
+              "X-Content-Type-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "nosniff"
+                }
+              },
+              "X-Frame-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "DENY"
+                }
+              },
+              "Access-Control-Allow-Origin": {
+                "schema": {
+                  "type": "string",
+                  "const": "*"
+                }
+              },
+              "Access-Control-Expose-Headers": {
+                "schema": {
+                  "type": "string",
+                  "const": "ETag, X-QuantClarity-Publication"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "private, no-store"
+                }
+              },
+              "Content-Length": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 65536
+                }
+              }
+            },
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "error": {
+                    "code": "query_too_large",
+                    "message": "The request exceeds the configured size limit."
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The permissive abuse-protection limit was exceeded",
+            "headers": {
+              "Content-Security-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+                }
+              },
+              "Permissions-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "accelerometer=(), camera=(), geolocation=(), gyroscope=(), microphone=(), payment=(), usb=()"
+                }
+              },
+              "Referrer-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-referrer"
+                }
+              },
+              "Strict-Transport-Security": {
+                "description": "Protected environment-owned HTTPS policy.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "max-age=300",
+                    "max-age=31536000; includeSubDomains"
+                  ]
+                }
+              },
+              "X-Content-Type-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "nosniff"
+                }
+              },
+              "X-Frame-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "DENY"
+                }
+              },
+              "Access-Control-Allow-Origin": {
+                "schema": {
+                  "type": "string",
+                  "const": "*"
+                }
+              },
+              "Access-Control-Expose-Headers": {
+                "schema": {
+                  "type": "string",
+                  "const": "ETag, X-QuantClarity-Publication"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "private, no-store"
+                }
+              },
+              "Content-Length": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 65536
+                }
+              },
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "const": 60
+                }
+              }
+            },
+            "content": {
+              "application/json; charset=utf-8": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorEnvelope"
                 },
@@ -6972,57 +8110,83 @@
             }
           },
           "503": {
-            "description": "No safe publication or exact fallback is available",
+            "description": "The request cannot be safely rate limited",
             "headers": {
+              "Content-Security-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+                }
+              },
+              "Permissions-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "accelerometer=(), camera=(), geolocation=(), gyroscope=(), microphone=(), payment=(), usb=()"
+                }
+              },
+              "Referrer-Policy": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-referrer"
+                }
+              },
+              "Strict-Transport-Security": {
+                "description": "Protected environment-owned HTTPS policy.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "max-age=300",
+                    "max-age=31536000; includeSubDomains"
+                  ]
+                }
+              },
+              "X-Content-Type-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "nosniff"
+                }
+              },
+              "X-Frame-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "DENY"
+                }
+              },
               "Access-Control-Allow-Origin": {
-                "description": "Public non-credentialed read access.",
                 "schema": {
                   "type": "string",
                   "const": "*"
                 }
               },
               "Access-Control-Expose-Headers": {
-                "description": "Response headers readable by non-credentialed browser clients.",
                 "schema": {
                   "type": "string",
                   "const": "ETag, X-QuantClarity-Publication"
                 }
               },
               "Cache-Control": {
-                "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
                   "const": "private, no-store"
                 }
               },
-              "X-QuantClarity-Publication": {
-                "description": "Publication ID used for this response.",
+              "Content-Length": {
                 "schema": {
-                  "$ref": "#/components/schemas/PublicationId"
-                }
-              },
-              "ETag": {
-                "description": "Opaque validation tag for the publication representation.",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "Vary": {
-                "description": "Only validated representation dimensions may appear.",
-                "schema": {
-                  "type": "string"
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 65536
                 }
               }
             },
             "content": {
-              "application/json": {
+              "application/json; charset=utf-8": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorEnvelope"
                 },
                 "example": {
                   "error": {
-                    "code": "publication_not_ready",
-                    "message": "No safe publication is ready."
+                    "code": "temporarily_unavailable",
+                    "message": "The request cannot be safely rate limited."
                   }
                 }
               }
@@ -9775,7 +10939,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "max-age=0, must-revalidate"
+                  "const": "private, max-age=0, must-revalidate"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -9826,7 +10990,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "max-age=0, must-revalidate"
+                  "const": "private, max-age=0, must-revalidate"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -10322,7 +11486,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "max-age=0, must-revalidate"
+                  "const": "private, max-age=0, must-revalidate"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -10364,7 +11528,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "max-age=0, must-revalidate"
+                  "const": "private, max-age=0, must-revalidate"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -13531,7 +14695,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "max-age=0, must-revalidate"
+                  "const": "private, max-age=0, must-revalidate"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -13582,7 +14746,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "max-age=0, must-revalidate"
+                  "const": "private, max-age=0, must-revalidate"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -14078,7 +15242,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "max-age=0, must-revalidate"
+                  "const": "private, max-age=0, must-revalidate"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -14120,7 +15284,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "max-age=0, must-revalidate"
+                  "const": "private, max-age=0, must-revalidate"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -17529,7 +18693,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "max-age=0, must-revalidate"
+                  "const": "private, max-age=0, must-revalidate"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -17580,7 +18744,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "max-age=0, must-revalidate"
+                  "const": "private, max-age=0, must-revalidate"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -18076,7 +19240,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "max-age=0, must-revalidate"
+                  "const": "private, max-age=0, must-revalidate"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -18118,7 +19282,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "max-age=0, must-revalidate"
+                  "const": "private, max-age=0, must-revalidate"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -20020,7 +21184,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "max-age=0, must-revalidate"
+                  "const": "private, max-age=0, must-revalidate"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -20071,7 +21235,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "max-age=0, must-revalidate"
+                  "const": "private, max-age=0, must-revalidate"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -20567,7 +21731,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "max-age=0, must-revalidate"
+                  "const": "private, max-age=0, must-revalidate"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -20609,7 +21773,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "max-age=0, must-revalidate"
+                  "const": "private, max-age=0, must-revalidate"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -22441,7 +23605,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "max-age=0, must-revalidate"
+                  "const": "private, max-age=0, must-revalidate"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -22492,7 +23656,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "max-age=0, must-revalidate"
+                  "const": "private, max-age=0, must-revalidate"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -22988,7 +24152,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "max-age=0, must-revalidate"
+                  "const": "private, max-age=0, must-revalidate"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -23030,7 +24194,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "max-age=0, must-revalidate"
+                  "const": "private, max-age=0, must-revalidate"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -24838,7 +26002,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "max-age=0, must-revalidate"
+                  "const": "private, max-age=0, must-revalidate"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -24889,7 +26053,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "max-age=0, must-revalidate"
+                  "const": "private, max-age=0, must-revalidate"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -25385,7 +26549,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "max-age=0, must-revalidate"
+                  "const": "private, max-age=0, must-revalidate"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -25427,7 +26591,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "max-age=0, must-revalidate"
+                  "const": "private, max-age=0, must-revalidate"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -27400,7 +28564,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -27451,7 +28615,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -27879,7 +29043,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -27921,7 +29085,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -28442,7 +29606,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -28493,7 +29657,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -28921,7 +30085,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -28963,7 +30127,7 @@
                 "description": "Visitor-safe cache policy for this representation class.",
                 "schema": {
                   "type": "string",
-                  "example": "private, no-store"
+                  "const": "private, no-store"
                 }
               },
               "X-QuantClarity-Publication": {
@@ -35612,112 +36776,25 @@
                 "type": "string"
               },
               "sort": {
-                "minItems": 1,
-                "maxItems": 8,
                 "type": "array",
-                "items": {
-                  "anyOf": [
-                    {
-                      "const": "name",
-                      "type": "string"
-                    },
-                    {
-                      "const": "release_date",
-                      "type": "string"
-                    },
-                    {
-                      "const": "model_refresh",
-                      "type": "string"
-                    },
-                    {
-                      "const": "stable_id",
-                      "type": "string"
-                    }
-                  ]
-                }
+                "prefixItems": [
+                  {
+                    "const": "name",
+                    "type": "string"
+                  },
+                  {
+                    "const": "stable_id",
+                    "type": "string"
+                  }
+                ],
+                "items": false,
+                "minItems": 2,
+                "maxItems": 2
               },
               "filters": {
                 "additionalProperties": false,
                 "type": "object",
-                "properties": {
-                  "family": {
-                    "anyOf": [
-                      {
-                        "maxLength": 512,
-                        "type": "string"
-                      },
-                      {
-                        "type": "boolean"
-                      }
-                    ]
-                  },
-                  "publisher": {
-                    "anyOf": [
-                      {
-                        "maxLength": 512,
-                        "type": "string"
-                      },
-                      {
-                        "type": "boolean"
-                      }
-                    ]
-                  },
-                  "provider": {
-                    "anyOf": [
-                      {
-                        "maxLength": 512,
-                        "type": "string"
-                      },
-                      {
-                        "type": "boolean"
-                      }
-                    ]
-                  },
-                  "normalized_source_precision": {
-                    "anyOf": [
-                      {
-                        "maxLength": 512,
-                        "type": "string"
-                      },
-                      {
-                        "type": "boolean"
-                      }
-                    ]
-                  },
-                  "status": {
-                    "anyOf": [
-                      {
-                        "maxLength": 512,
-                        "type": "string"
-                      },
-                      {
-                        "type": "boolean"
-                      }
-                    ]
-                  },
-                  "stale_offering": {
-                    "anyOf": [
-                      {
-                        "maxLength": 512,
-                        "type": "string"
-                      },
-                      {
-                        "type": "boolean"
-                      }
-                    ]
-                  },
-                  "updated_since": {
-                    "anyOf": [
-                      {
-                        "maxLength": 512,
-                        "type": "string"
-                      },
-                      {
-                        "type": "boolean"
-                      }
-                    ]
-                  }
-                }
+                "properties": {}
               }
             }
           }

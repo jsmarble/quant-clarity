@@ -24,6 +24,15 @@ if (JSON.stringify(openapiYaml) !== JSON.stringify(openapi))
 const components = openapi.components;
 if (!isObject(components) || !isObject(components.schemas))
   throw new Error("OpenAPI components.schemas is missing.");
+const errors: string[] = [];
+if (!Array.isArray(openapi.security) || openapi.security.length !== 0)
+  errors.push("public API must remain anonymous with an empty security array");
+if (
+  isObject(components) &&
+  isObject(components.securitySchemes) &&
+  Object.keys(components.securitySchemes).length > 0
+)
+  errors.push("public API must not declare authentication schemes");
 
 const ajv = new Ajv2020({ allErrors: true, strict: true });
 addFormats(ajv);
@@ -36,7 +45,6 @@ const validators = new Map<string, ReturnType<typeof ajv.compile>>();
 for (const [name, schema] of Object.entries(components.schemas))
   validators.set(name, ajv.compile(schema as AnySchema));
 
-const errors: string[] = [];
 const info = openapi.info;
 if (isObject(info) && "license" in info)
   errors.push("public API must not inherit the source-code license");
@@ -99,6 +107,41 @@ for (const [pathName, pathItem] of Object.entries(paths)) {
       );
   for (const [method, operation] of Object.entries(pathItem)) {
     if (!isObject(operation) || !isObject(operation.responses)) continue;
+    if (
+      "security" in operation &&
+      (!Array.isArray(operation.security) || operation.security.length !== 0)
+    )
+      errors.push(
+        `${method.toUpperCase()} ${pathName} must not override anonymous security`,
+      );
+    const operationParameters = Array.isArray(operation.parameters)
+      ? operation.parameters
+      : [];
+    for (const parameter of operationParameters) {
+      if (!isObject(parameter)) continue;
+      const normalizedName =
+        typeof parameter.name === "string" ? parameter.name.toLowerCase() : "";
+      if (
+        parameter.in === "cookie" ||
+        [
+          "authorization",
+          "baggage",
+          "cookie",
+          "proxy-authorization",
+          "sentry-trace",
+          "set-cookie",
+          "traceparent",
+          "tracestate",
+          "x-api-key",
+        ].includes(normalizedName) ||
+        /(?:^|-)(?:actor|client|correlation|request|session|trace|visitor)-?id$/u.test(
+          normalizedName,
+        )
+      )
+        errors.push(
+          `${method.toUpperCase()} ${pathName} declares a forbidden credential parameter`,
+        );
+    }
     if (method === "options") {
       if (Array.isArray(operation.parameters)) {
         for (const parameter of operation.parameters)
@@ -286,6 +329,85 @@ for (const [pathName, pathItem] of Object.entries(paths)) {
           );
     }
     for (const [status, response] of Object.entries(operation.responses)) {
+      const responseHeaders = isObject(response) ? response.headers : null;
+      if (isObject(responseHeaders)) {
+        const normalizedHeaderNames = new Set(
+          Object.keys(responseHeaders).map((name) => name.toLowerCase()),
+        );
+        for (const forbiddenHeader of [
+          "Access-Control-Allow-Credentials",
+          "Server-Timing",
+          "Set-Cookie",
+          "Baggage",
+          "CF-Ray",
+          "Sentry-Trace",
+          "Traceparent",
+          "Tracestate",
+          "X-Cache",
+          "X-Correlation-ID",
+          "X-Request-ID",
+        ])
+          if (normalizedHeaderNames.has(forbiddenHeader.toLowerCase()))
+            errors.push(
+              `${method.toUpperCase()} ${pathName} ${status} declares forbidden ${forbiddenHeader}`,
+            );
+        for (const normalizedName of normalizedHeaderNames)
+          if (
+            /(?:^|-)(?:actor|client|correlation|request|session|trace|visitor)-?id$/u.test(
+              normalizedName,
+            )
+          )
+            errors.push(
+              `${method.toUpperCase()} ${pathName} ${status} declares a correlation or visitor identifier header`,
+            );
+        const cacheHeaders = Object.entries(responseHeaders).filter(
+          ([name]) => name.toLowerCase() === "cache-control",
+        );
+        if (cacheHeaders.length > 1)
+          errors.push(
+            `${method.toUpperCase()} ${pathName} ${status} declares duplicate Cache-Control headers`,
+          );
+        for (const [, cacheControl] of cacheHeaders) {
+          const cacheSchema = isObject(cacheControl)
+            ? cacheControl.schema
+            : null;
+          const allowedCachePolicies = new Set([
+            "private, no-store",
+            "private, max-age=0, must-revalidate",
+          ]);
+          const closedConst =
+            isObject(cacheSchema) &&
+            cacheSchema.type === "string" &&
+            typeof cacheSchema.const === "string" &&
+            allowedCachePolicies.has(cacheSchema.const) &&
+            !Array.isArray(cacheSchema.enum);
+          const closedEnum =
+            isObject(cacheSchema) &&
+            cacheSchema.type === "string" &&
+            cacheSchema.const === undefined &&
+            Array.isArray(cacheSchema.enum) &&
+            cacheSchema.enum.length > 0 &&
+            cacheSchema.enum.every(
+              (value) =>
+                typeof value === "string" && allowedCachePolicies.has(value),
+            );
+          const hasOpenBranch =
+            isObject(cacheSchema) &&
+            [
+              "allOf",
+              "anyOf",
+              "default",
+              "example",
+              "examples",
+              "not",
+              "oneOf",
+            ].some((keyword) => keyword in cacheSchema);
+          if ((!closedConst && !closedEnum) || hasOpenBranch)
+            errors.push(
+              `${method.toUpperCase()} ${pathName} ${status} declares a non-private or unconstrained cache policy`,
+            );
+        }
+      }
       if (method === "head" && isObject(response) && "content" in response)
         errors.push(`HEAD ${pathName} ${status} must not declare a body`);
       if (status === "405") {
@@ -303,23 +425,37 @@ for (const [pathName, pathItem] of Object.entries(paths)) {
           );
       }
       if (!isObject(response) || !isObject(response.content)) continue;
-      const media = response.content["application/json"];
-      if (!isObject(media) || !("example" in media) || !isObject(media.schema))
-        continue;
+      const media =
+        response.content["application/json"] ??
+        response.content["application/json; charset=utf-8"];
+      if (!isObject(media) || !isObject(media.schema)) continue;
       const reference = media.schema.$ref;
       if (typeof reference !== "string") continue;
       const name = reference.split("/").at(-1) ?? "";
       const validate = validators.get(name);
-      const example = media.example;
-      if (!validate?.(example))
-        errors.push(
-          `${method.toUpperCase()} ${pathName} ${status} example does not validate against ${name}: ${ajv.errorsText(validate?.errors)}`,
-        );
-      if (
-        name === "ErrorEnvelope" &&
-        isObject(example) &&
-        isObject(example.error)
-      ) {
+      const examples = [
+        ...(Object.hasOwn(media, "example")
+          ? [["example", media.example] as const]
+          : []),
+        ...(isObject(media.examples)
+          ? Object.entries(media.examples).flatMap(([exampleName, entry]) =>
+              isObject(entry) && Object.hasOwn(entry, "value")
+                ? ([[exampleName, entry.value]] as const)
+                : [],
+            )
+          : []),
+      ];
+      for (const [exampleName, example] of examples) {
+        if (!validate?.(example))
+          errors.push(
+            `${method.toUpperCase()} ${pathName} ${status} ${exampleName} does not validate against ${name}: ${ajv.errorsText(validate?.errors)}`,
+          );
+        if (
+          name !== "ErrorEnvelope" ||
+          !isObject(example) ||
+          !isObject(example.error)
+        )
+          continue;
         const expectedCodes: Record<string, readonly string[]> = {
           "400": ["invalid_parameter", "invalid_cursor", "unsupported_filter"],
           "404": ["resource_not_found"],
@@ -339,7 +475,7 @@ for (const [pathName, pathItem] of Object.entries(paths)) {
           !(expectedCodes[status] ?? []).includes(code)
         )
           errors.push(
-            `${method.toUpperCase()} ${pathName} ${status} has mismatched error code`,
+            `${method.toUpperCase()} ${pathName} ${status} ${exampleName} has mismatched error code`,
           );
       }
     }
@@ -384,6 +520,745 @@ if (
   methodologyVersionSchema.pattern !== "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
 )
   errors.push("methodology version path grammar differs from the API kernel");
+
+const modelDetailPath = paths["/models/{model_id_or_slug}"];
+if (!isObject(modelDetailPath))
+  errors.push("Model detail OpenAPI path is missing");
+else {
+  const modelIdentifierPattern =
+    "^(?:mdl_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|[a-z0-9]+(?:-[a-z0-9]+)*)$";
+  const expectedCachePolicies = [
+    "private, max-age=0, must-revalidate",
+    "private, no-store",
+  ];
+  const expectedSecurityHeaderConstants: Readonly<Record<string, string>> = {
+    "Content-Security-Policy":
+      "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+    "Permissions-Policy":
+      "accelerometer=(), camera=(), geolocation=(), gyroscope=(), microphone=(), payment=(), usb=()",
+    "Referrer-Policy": "no-referrer",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+  };
+  const requiredEverywhere = [
+    "Access-Control-Allow-Origin",
+    "Access-Control-Expose-Headers",
+    "Cache-Control",
+    ...Object.keys(expectedSecurityHeaderConstants),
+    "Strict-Transport-Security",
+  ];
+  const headerSchema = (headers: unknown, name: string): JsonObject | null => {
+    if (!isObject(headers)) return null;
+    const header = headers[name];
+    return isObject(header) && isObject(header.schema) ? header.schema : null;
+  };
+  const requireHeaders = (
+    method: string,
+    status: string,
+    headers: unknown,
+    names: readonly string[],
+  ) => {
+    for (const name of names)
+      if (headerSchema(headers, name) === null)
+        errors.push(`${method} Model detail ${status} lacks ${name}`);
+  };
+  const assertExactHeaderSet = (
+    method: string,
+    status: string,
+    headers: unknown,
+    expected: readonly string[],
+  ) => {
+    if (
+      !isObject(headers) ||
+      JSON.stringify(Object.keys(headers).sort()) !==
+        JSON.stringify([...expected].sort())
+    )
+      errors.push(
+        `${method} Model detail ${status} response-header set differs from the closed matrix`,
+      );
+  };
+  const forbidHeaders = (
+    method: string,
+    status: string,
+    headers: unknown,
+    names: readonly string[],
+  ) => {
+    if (!isObject(headers)) return;
+    for (const name of names)
+      if (name in headers)
+        errors.push(
+          `${method} Model detail ${status} must not declare ${name}`,
+        );
+  };
+  const assertCommonHeaderValues = (
+    method: string,
+    status: string,
+    headers: unknown,
+  ) => {
+    for (const [name, value] of Object.entries(expectedSecurityHeaderConstants))
+      if (headerSchema(headers, name)?.const !== value)
+        errors.push(
+          `${method} Model detail ${status} has an incorrect ${name}`,
+        );
+    const hsts = headerSchema(headers, "Strict-Transport-Security");
+    if (
+      !isObject(hsts) ||
+      JSON.stringify(hsts.enum) !==
+        JSON.stringify(["max-age=300", "max-age=31536000; includeSubDomains"])
+    )
+      errors.push(`${method} Model detail ${status} has an incorrect HSTS set`);
+    if (headerSchema(headers, "Access-Control-Allow-Origin")?.const !== "*")
+      errors.push(
+        `${method} Model detail ${status} has an incorrect public CORS origin`,
+      );
+    if (
+      headerSchema(headers, "Access-Control-Expose-Headers")?.const !==
+      "ETag, X-QuantClarity-Publication"
+    )
+      errors.push(
+        `${method} Model detail ${status} has an incorrect exposed-header set`,
+      );
+  };
+  const assertHeaderConst = (
+    method: string,
+    status: string,
+    headers: unknown,
+    name: string,
+    expected: unknown,
+  ) => {
+    if (headerSchema(headers, name)?.const !== expected)
+      errors.push(`${method} Model detail ${status} has an incorrect ${name}`);
+  };
+  const assertEntityLength = (
+    method: string,
+    status: string,
+    headers: unknown,
+  ) => {
+    const length = headerSchema(headers, "Content-Length");
+    if (
+      !isObject(length) ||
+      length.type !== "integer" ||
+      length.minimum !== 1 ||
+      length.maximum !== 65_536
+    )
+      errors.push(
+        `${method} Model detail ${status} has an incorrect Content-Length bound`,
+      );
+  };
+  const jsonMedia = (response: unknown): JsonObject | null => {
+    if (!isObject(response) || !isObject(response.content)) return null;
+    if (
+      JSON.stringify(Object.keys(response.content)) !==
+      JSON.stringify(["application/json; charset=utf-8"])
+    )
+      return null;
+    const media = response.content["application/json; charset=utf-8"];
+    return isObject(media) ? media : null;
+  };
+  const assertJsonMedia = (
+    method: string,
+    status: string,
+    response: unknown,
+  ) => {
+    if (jsonMedia(response) === null)
+      errors.push(
+        `${method} Model detail ${status} must declare application/json; charset=utf-8 content`,
+      );
+  };
+  const assertErrorExample = (
+    method: string,
+    status: string,
+    response: unknown,
+    code: string,
+    message: string,
+  ) => {
+    const media = jsonMedia(response);
+    if (
+      !isObject(media) ||
+      Object.hasOwn(media, "examples") ||
+      JSON.stringify(media.example) !==
+        JSON.stringify({ error: { code, message } })
+    )
+      errors.push(
+        `${method} Model detail ${status} lacks the exact fixed error example`,
+      );
+  };
+  const expectedReadStatuses = [
+    "200",
+    "304",
+    "308",
+    "400",
+    "404",
+    "405",
+    "409",
+    "413",
+    "429",
+    "503",
+  ];
+  for (const method of ["get", "head"] as const) {
+    const operation = modelDetailPath[method];
+    const responses = isObject(operation) ? operation.responses : undefined;
+    if (
+      !isObject(responses) ||
+      JSON.stringify(Object.keys(responses).sort()) !==
+        JSON.stringify([...expectedReadStatuses].sort())
+    )
+      errors.push(
+        `${method.toUpperCase()} Model detail status set differs from the closed runtime matrix`,
+      );
+    const parameters: readonly unknown[] =
+      isObject(operation) && Array.isArray(operation.parameters)
+        ? (operation.parameters as unknown[])
+        : [];
+    const identifier = parameters.find(
+      (parameter) =>
+        isObject(parameter) && parameter.name === "model_id_or_slug",
+    );
+    const identifierSchema = isObject(identifier) ? identifier.schema : null;
+    if (
+      !isObject(identifierSchema) ||
+      identifierSchema.minLength !== 1 ||
+      identifierSchema.maxLength !== 128 ||
+      identifierSchema.pattern !== modelIdentifierPattern
+    )
+      errors.push(
+        `${method.toUpperCase()} Model detail identifier grammar is not the closed stable-ID-or-slug grammar`,
+      );
+    if (
+      !isObject(identifier) ||
+      typeof identifier.description !== "string" ||
+      !identifier.description.includes("percent-encoding") ||
+      !identifier.description.includes("bare ?") ||
+      !identifier.description.includes("trailing slash") ||
+      !identifier.description.includes("extra path segment")
+    )
+      errors.push(
+        `${method.toUpperCase()} Model detail does not document raw-target exclusions`,
+      );
+    const parameterIdentity = parameters
+      .flatMap((parameter) =>
+        isObject(parameter) &&
+        typeof parameter.in === "string" &&
+        typeof parameter.name === "string"
+          ? [`${parameter.in}:${parameter.name}`]
+          : [],
+      )
+      .sort();
+    if (
+      JSON.stringify(parameterIdentity) !==
+      JSON.stringify(
+        [
+          "header:If-None-Match",
+          "header:X-QuantClarity-Publication",
+          "path:model_id_or_slug",
+        ].sort(),
+      )
+    )
+      errors.push(
+        `${method.toUpperCase()} Model detail parameters differ from the closed anonymous allowlist`,
+      );
+    if (!isObject(responses)) continue;
+    for (const [status, response] of Object.entries(responses)) {
+      const headers = isObject(response) ? response.headers : null;
+      requireHeaders(method.toUpperCase(), status, headers, requiredEverywhere);
+      assertCommonHeaderValues(method.toUpperCase(), status, headers);
+      if (status !== "200" && status !== "304")
+        assertHeaderConst(
+          method.toUpperCase(),
+          status,
+          headers,
+          "Cache-Control",
+          "private, no-store",
+        );
+    }
+    const commonHeaders = [...requiredEverywhere];
+    const exactHeaderSets: Readonly<Record<string, readonly string[]>> = {
+      "200": [
+        ...commonHeaders,
+        "Content-Length",
+        "ETag",
+        "Vary",
+        "X-QuantClarity-Publication",
+      ],
+      "304": [...commonHeaders, "ETag", "Vary", "X-QuantClarity-Publication"],
+      "308": [
+        ...commonHeaders,
+        "Content-Length",
+        "Location",
+        "Vary",
+        "X-QuantClarity-Publication",
+      ],
+      "400": [...commonHeaders, "Content-Length"],
+      "404": [
+        ...commonHeaders,
+        "Content-Length",
+        "Vary",
+        "X-QuantClarity-Publication",
+      ],
+      "405": [...commonHeaders, "Allow", "Content-Length"],
+      "409": [
+        ...commonHeaders,
+        "Content-Length",
+        "Vary",
+        "X-QuantClarity-Publication",
+      ],
+      "413": [...commonHeaders, "Content-Length"],
+      "429": [...commonHeaders, "Content-Length", "Retry-After"],
+      "503": [...commonHeaders, "Content-Length"],
+    };
+    for (const [status, expectedHeaders] of Object.entries(exactHeaderSets)) {
+      const response = responses[status];
+      assertExactHeaderSet(
+        method.toUpperCase(),
+        status,
+        isObject(response) ? response.headers : null,
+        expectedHeaders,
+      );
+    }
+    for (const status of ["200", "304"]) {
+      const response = responses[status];
+      const headers = isObject(response) ? response.headers : null;
+      const cacheControl = isObject(headers) ? headers["Cache-Control"] : null;
+      const schema = isObject(cacheControl) ? cacheControl.schema : null;
+      if (
+        !isObject(schema) ||
+        !Array.isArray(schema.enum) ||
+        JSON.stringify(schema.enum) !== JSON.stringify(expectedCachePolicies)
+      )
+        errors.push(
+          `${method.toUpperCase()} Model detail ${status} lacks the exact stable-ID/slug private cache policies`,
+        );
+    }
+    const success = responses["200"];
+    const successHeaders = isObject(success) ? success.headers : null;
+    requireHeaders(method.toUpperCase(), "200", successHeaders, [
+      "Content-Length",
+      "ETag",
+      "Vary",
+      "X-QuantClarity-Publication",
+    ]);
+    if (headerSchema(successHeaders, "ETag")?.pattern !== '^"[0-9a-f]{64}"$')
+      errors.push(
+        `${method.toUpperCase()} Model detail 200 ETag is not strong`,
+      );
+    if (
+      headerSchema(successHeaders, "Vary")?.const !==
+      "X-QuantClarity-Publication"
+    )
+      errors.push(`${method.toUpperCase()} Model detail 200 Vary is incorrect`);
+    assertEntityLength(method.toUpperCase(), "200", successHeaders);
+    if (method === "get") {
+      const media = jsonMedia(success);
+      if (
+        !isObject(media) ||
+        !Object.hasOwn(media, "example") ||
+        Object.hasOwn(media, "examples")
+      )
+        errors.push("GET Model detail 200 must declare a canonical example");
+    }
+
+    const notModified = responses["304"];
+    const notModifiedHeaders = isObject(notModified)
+      ? notModified.headers
+      : null;
+    requireHeaders(method.toUpperCase(), "304", notModifiedHeaders, [
+      "ETag",
+      "Vary",
+      "X-QuantClarity-Publication",
+    ]);
+    forbidHeaders(method.toUpperCase(), "304", notModifiedHeaders, [
+      "Content-Length",
+      "Content-Type",
+    ]);
+    if (
+      headerSchema(notModifiedHeaders, "ETag")?.pattern !== '^"[0-9a-f]{64}"$'
+    )
+      errors.push(
+        `${method.toUpperCase()} Model detail 304 ETag is not strong`,
+      );
+    assertHeaderConst(
+      method.toUpperCase(),
+      "304",
+      notModifiedHeaders,
+      "Vary",
+      "X-QuantClarity-Publication",
+    );
+    if (isObject(notModified) && "content" in notModified)
+      errors.push(`${method.toUpperCase()} Model detail 304 must be bodyless`);
+
+    const redirect = responses["308"];
+    const redirectHeaders = isObject(redirect) ? redirect.headers : null;
+    if (!isObject(redirect) || "content" in redirect)
+      errors.push(`${method.toUpperCase()} Model detail 308 must be bodyless`);
+    for (const header of [
+      "Access-Control-Allow-Origin",
+      "Access-Control-Expose-Headers",
+      "Cache-Control",
+      "Content-Length",
+      "Location",
+      "Vary",
+      "X-QuantClarity-Publication",
+    ])
+      if (!isObject(redirectHeaders) || !(header in redirectHeaders))
+        errors.push(`${method.toUpperCase()} Model detail 308 lacks ${header}`);
+    forbidHeaders(method.toUpperCase(), "308", redirectHeaders, [
+      "Content-Type",
+      "ETag",
+    ]);
+    if (headerSchema(redirectHeaders, "Content-Length")?.const !== 0)
+      errors.push(
+        `${method.toUpperCase()} Model detail 308 Content-Length must be zero`,
+      );
+    if (
+      headerSchema(redirectHeaders, "Location")?.pattern !==
+      "^/v1/models/mdl_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    )
+      errors.push(
+        `${method.toUpperCase()} Model detail 308 Location is not a verified relative stable-ID path`,
+      );
+    assertHeaderConst(
+      method.toUpperCase(),
+      "308",
+      redirectHeaders,
+      "Vary",
+      "X-QuantClarity-Publication",
+    );
+
+    for (const status of ["400", "405", "413", "429", "503"]) {
+      const response = responses[status];
+      const headers = isObject(response) ? response.headers : null;
+      requireHeaders(method.toUpperCase(), status, headers, ["Content-Length"]);
+      assertEntityLength(method.toUpperCase(), status, headers);
+      if (method === "get")
+        assertJsonMedia(method.toUpperCase(), status, response);
+      forbidHeaders(method.toUpperCase(), status, headers, [
+        "ETag",
+        "Vary",
+        "X-QuantClarity-Publication",
+      ]);
+    }
+    for (const status of ["404", "409"]) {
+      const response = responses[status];
+      const headers = isObject(response) ? response.headers : null;
+      requireHeaders(method.toUpperCase(), status, headers, [
+        "Content-Length",
+        "Vary",
+        "X-QuantClarity-Publication",
+      ]);
+      assertEntityLength(method.toUpperCase(), status, headers);
+      if (method === "get")
+        assertJsonMedia(method.toUpperCase(), status, response);
+      assertHeaderConst(
+        method.toUpperCase(),
+        status,
+        headers,
+        "Vary",
+        "X-QuantClarity-Publication",
+      );
+      forbidHeaders(method.toUpperCase(), status, headers, ["ETag"]);
+    }
+    if (
+      headerSchema((responses["405"] as JsonObject).headers, "Allow")?.const !==
+      "GET, HEAD, OPTIONS"
+    )
+      errors.push(
+        `${method.toUpperCase()} Model detail 405 Allow is incorrect`,
+      );
+    if (
+      headerSchema((responses["429"] as JsonObject).headers, "Retry-After")
+        ?.const !== 60
+    )
+      errors.push(
+        `${method.toUpperCase()} Model detail 429 Retry-After is not fixed at 60`,
+      );
+    if (method === "get") {
+      const expectedErrorExamples: Readonly<
+        Record<string, readonly [string, string]>
+      > = {
+        "400": ["invalid_parameter", "The Model detail request is invalid."],
+        "404": ["resource_not_found", "The requested resource does not exist."],
+        "405": [
+          "method_not_allowed",
+          "Only GET, HEAD, and OPTIONS are supported.",
+        ],
+        "409": [
+          "publication_expired",
+          "The requested publication is no longer available.",
+        ],
+        "413": [
+          "query_too_large",
+          "The request exceeds the configured size limit.",
+        ],
+        "429": ["rate_limited", "Rate limit exceeded."],
+      };
+      for (const [status, [code, message]] of Object.entries(
+        expectedErrorExamples,
+      ))
+        assertErrorExample("GET", status, responses[status], code, message);
+      const unavailableMedia = jsonMedia(responses["503"]);
+      const unavailableExamples = isObject(unavailableMedia)
+        ? unavailableMedia.examples
+        : null;
+      const expectedUnavailableExamples = {
+        publicationNotReady: {
+          value: {
+            error: {
+              code: "publication_not_ready",
+              message: "No public dataset has been published yet.",
+            },
+          },
+        },
+        temporarilyUnavailable: {
+          value: {
+            error: {
+              code: "temporarily_unavailable",
+              message: "The Model detail is temporarily unavailable.",
+            },
+          },
+        },
+        gateUnavailable: {
+          value: {
+            error: {
+              code: "temporarily_unavailable",
+              message: "The request cannot be safely rate limited.",
+            },
+          },
+        },
+      };
+      if (
+        !isObject(unavailableExamples) ||
+        (isObject(unavailableMedia) &&
+          Object.hasOwn(unavailableMedia, "example")) ||
+        JSON.stringify(unavailableExamples) !==
+          JSON.stringify(expectedUnavailableExamples)
+      )
+        errors.push(
+          "GET Model detail 503 must declare the exact publication, query/runtime, and limiter/config examples",
+        );
+    }
+  }
+  const options = modelDetailPath.options;
+  const optionsResponses = isObject(options) ? options.responses : null;
+  const optionsParameters: readonly unknown[] =
+    isObject(options) && Array.isArray(options.parameters)
+      ? (options.parameters as unknown[])
+      : [];
+  const optionsIdentifier = optionsParameters.find(
+    (parameter) => isObject(parameter) && parameter.name === "model_id_or_slug",
+  );
+  const optionsIdentifierSchema = isObject(optionsIdentifier)
+    ? optionsIdentifier.schema
+    : null;
+  if (
+    JSON.stringify(
+      optionsParameters.flatMap((parameter) =>
+        isObject(parameter) &&
+        typeof parameter.in === "string" &&
+        typeof parameter.name === "string"
+          ? [`${parameter.in}:${parameter.name}`]
+          : [],
+      ),
+    ) !== JSON.stringify(["path:model_id_or_slug"])
+  )
+    errors.push(
+      "OPTIONS Model detail parameters differ from the closed anonymous allowlist",
+    );
+  if (
+    !isObject(optionsIdentifierSchema) ||
+    optionsIdentifierSchema.minLength !== 1 ||
+    optionsIdentifierSchema.maxLength !== 128 ||
+    optionsIdentifierSchema.pattern !== modelIdentifierPattern ||
+    !isObject(optionsIdentifier) ||
+    typeof optionsIdentifier.description !== "string" ||
+    !optionsIdentifier.description.includes("percent-encoding") ||
+    !optionsIdentifier.description.includes("bare ?") ||
+    !optionsIdentifier.description.includes("trailing slash") ||
+    !optionsIdentifier.description.includes("extra path segment")
+  )
+    errors.push(
+      "OPTIONS Model detail identifier grammar/raw-target exclusions differ from GET/HEAD",
+    );
+  if (
+    !isObject(optionsResponses) ||
+    JSON.stringify(Object.keys(optionsResponses).sort()) !==
+      JSON.stringify(["204", "400", "413", "429", "503"])
+  )
+    errors.push(
+      "OPTIONS Model detail status set differs from the closed runtime matrix",
+    );
+  const preflight = isObject(optionsResponses) ? optionsResponses["204"] : null;
+  const preflightHeaders = isObject(preflight) ? preflight.headers : null;
+  const maxAge = isObject(preflightHeaders)
+    ? preflightHeaders["Access-Control-Max-Age"]
+    : null;
+  const maxAgeSchema = isObject(maxAge) ? maxAge.schema : null;
+  if (!isObject(maxAgeSchema) || maxAgeSchema.const !== 600)
+    errors.push("Model detail OPTIONS must declare Access-Control-Max-Age 600");
+  requireHeaders("OPTIONS", "204", preflightHeaders, [
+    ...requiredEverywhere,
+    "Access-Control-Allow-Headers",
+    "Access-Control-Allow-Methods",
+    "Access-Control-Max-Age",
+    "Allow",
+  ]);
+  assertCommonHeaderValues("OPTIONS", "204", preflightHeaders);
+  assertExactHeaderSet("OPTIONS", "204", preflightHeaders, [
+    ...requiredEverywhere,
+    "Access-Control-Allow-Headers",
+    "Access-Control-Allow-Methods",
+    "Access-Control-Max-Age",
+    "Allow",
+  ]);
+  assertHeaderConst(
+    "OPTIONS",
+    "204",
+    preflightHeaders,
+    "Allow",
+    "GET, HEAD, OPTIONS",
+  );
+  assertHeaderConst(
+    "OPTIONS",
+    "204",
+    preflightHeaders,
+    "Access-Control-Allow-Methods",
+    "GET, HEAD, OPTIONS",
+  );
+  assertHeaderConst(
+    "OPTIONS",
+    "204",
+    preflightHeaders,
+    "Access-Control-Allow-Headers",
+    "If-None-Match, X-QuantClarity-Publication",
+  );
+  assertHeaderConst(
+    "OPTIONS",
+    "204",
+    preflightHeaders,
+    "Cache-Control",
+    "private, no-store",
+  );
+  forbidHeaders("OPTIONS", "204", preflightHeaders, [
+    "Content-Length",
+    "Content-Type",
+    "ETag",
+    "Vary",
+    "X-QuantClarity-Publication",
+  ]);
+  if (isObject(preflight) && "content" in preflight)
+    errors.push("OPTIONS Model detail 204 must be bodyless");
+  if (isObject(optionsResponses))
+    for (const status of ["400", "413", "429", "503"]) {
+      const response = optionsResponses[status];
+      const headers = isObject(response) ? response.headers : null;
+      requireHeaders("OPTIONS", status, headers, [
+        ...requiredEverywhere,
+        "Content-Length",
+      ]);
+      assertCommonHeaderValues("OPTIONS", status, headers);
+      assertHeaderConst(
+        "OPTIONS",
+        status,
+        headers,
+        "Cache-Control",
+        "private, no-store",
+      );
+      assertEntityLength("OPTIONS", status, headers);
+      assertJsonMedia("OPTIONS", status, response);
+      forbidHeaders("OPTIONS", status, headers, [
+        "ETag",
+        "Vary",
+        "X-QuantClarity-Publication",
+      ]);
+      const extraHeaders =
+        status === "429"
+          ? ["Content-Length", "Retry-After"]
+          : ["Content-Length"];
+      assertExactHeaderSet("OPTIONS", status, headers, [
+        ...requiredEverywhere,
+        ...extraHeaders,
+      ]);
+    }
+  const optionsUnavailableMedia = isObject(optionsResponses)
+    ? jsonMedia(optionsResponses["503"])
+    : null;
+  if (
+    !isObject(optionsUnavailableMedia) ||
+    Object.hasOwn(optionsUnavailableMedia, "examples") ||
+    JSON.stringify(optionsUnavailableMedia.example) !==
+      JSON.stringify({
+        error: {
+          code: "temporarily_unavailable",
+          message: "The request cannot be safely rate limited.",
+        },
+      })
+  )
+    errors.push(
+      "OPTIONS Model detail 503 must declare only the fixed limiter/config example",
+    );
+  if (isObject(optionsResponses)) {
+    assertErrorExample(
+      "OPTIONS",
+      "400",
+      optionsResponses["400"],
+      "invalid_parameter",
+      "The Model detail request is invalid.",
+    );
+    assertErrorExample(
+      "OPTIONS",
+      "413",
+      optionsResponses["413"],
+      "query_too_large",
+      "The request exceeds the configured size limit.",
+    );
+    assertErrorExample(
+      "OPTIONS",
+      "429",
+      optionsResponses["429"],
+      "rate_limited",
+      "Rate limit exceeded.",
+    );
+  }
+}
+
+const modelDetailSchema = components.schemas.ModelDetail;
+const modelDetailProperties = isObject(modelDetailSchema)
+  ? modelDetailSchema.properties
+  : null;
+const modelDetailMeta = isObject(modelDetailProperties)
+  ? modelDetailProperties.meta
+  : null;
+const modelDetailMetaProperties = isObject(modelDetailMeta)
+  ? modelDetailMeta.properties
+  : null;
+const modelDetailSort = isObject(modelDetailMetaProperties)
+  ? modelDetailMetaProperties.sort
+  : null;
+const modelDetailFilters = isObject(modelDetailMetaProperties)
+  ? modelDetailMetaProperties.filters
+  : null;
+if (
+  !isObject(modelDetailMeta) ||
+  modelDetailMeta.additionalProperties !== false ||
+  !isObject(modelDetailMetaProperties) ||
+  !isObject(modelDetailMetaProperties.resource) ||
+  modelDetailMetaProperties.resource.const !== "models" ||
+  !isObject(modelDetailSort) ||
+  JSON.stringify(modelDetailSort.prefixItems) !==
+    JSON.stringify([
+      { const: "name", type: "string" },
+      { const: "stable_id", type: "string" },
+    ]) ||
+  modelDetailSort.items !== false ||
+  modelDetailSort.minItems !== 2 ||
+  modelDetailSort.maxItems !== 2 ||
+  !isObject(modelDetailFilters) ||
+  modelDetailFilters.additionalProperties !== false ||
+  !isObject(modelDetailFilters.properties) ||
+  Object.keys(modelDetailFilters.properties).length !== 0
+)
+  errors.push(
+    "ModelDetail meta must remain the fixed models/name-stable_id/empty-filter identity",
+  );
 
 const routePolicies: Record<
   string,

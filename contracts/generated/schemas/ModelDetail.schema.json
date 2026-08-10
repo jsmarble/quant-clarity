@@ -2402,112 +2402,25 @@
           "type": "string"
         },
         "sort": {
-          "minItems": 1,
-          "maxItems": 8,
           "type": "array",
-          "items": {
-            "anyOf": [
-              {
-                "const": "name",
-                "type": "string"
-              },
-              {
-                "const": "release_date",
-                "type": "string"
-              },
-              {
-                "const": "model_refresh",
-                "type": "string"
-              },
-              {
-                "const": "stable_id",
-                "type": "string"
-              }
-            ]
-          }
+          "prefixItems": [
+            {
+              "const": "name",
+              "type": "string"
+            },
+            {
+              "const": "stable_id",
+              "type": "string"
+            }
+          ],
+          "items": false,
+          "minItems": 2,
+          "maxItems": 2
         },
         "filters": {
           "additionalProperties": false,
           "type": "object",
-          "properties": {
-            "family": {
-              "anyOf": [
-                {
-                  "maxLength": 512,
-                  "type": "string"
-                },
-                {
-                  "type": "boolean"
-                }
-              ]
-            },
-            "publisher": {
-              "anyOf": [
-                {
-                  "maxLength": 512,
-                  "type": "string"
-                },
-                {
-                  "type": "boolean"
-                }
-              ]
-            },
-            "provider": {
-              "anyOf": [
-                {
-                  "maxLength": 512,
-                  "type": "string"
-                },
-                {
-                  "type": "boolean"
-                }
-              ]
-            },
-            "normalized_source_precision": {
-              "anyOf": [
-                {
-                  "maxLength": 512,
-                  "type": "string"
-                },
-                {
-                  "type": "boolean"
-                }
-              ]
-            },
-            "status": {
-              "anyOf": [
-                {
-                  "maxLength": 512,
-                  "type": "string"
-                },
-                {
-                  "type": "boolean"
-                }
-              ]
-            },
-            "stale_offering": {
-              "anyOf": [
-                {
-                  "maxLength": 512,
-                  "type": "string"
-                },
-                {
-                  "type": "boolean"
-                }
-              ]
-            },
-            "updated_since": {
-              "anyOf": [
-                {
-                  "maxLength": 512,
-                  "type": "string"
-                },
-                {
-                  "type": "boolean"
-                }
-              ]
-            }
-          }
+          "properties": {}
         }
       }
     }
