@@ -8,15 +8,15 @@ import {
   type NormalizedRequest,
 } from "@quant-clarity/api-core";
 import type { ErrorEnvelope } from "@quant-clarity/contracts";
-import { sourcePrefixes } from "@quant-clarity/domain/source-address";
 
 import { readDatasetMetadataFromQueryV1 } from "./dataset-metadata-query.js";
+import { limitPublicReadRequest } from "./public-read-limiter.js";
 
-type Env = CloudflareEnv & {
-  RATE_LIMIT_HMAC_KEY: string;
+type Env = Omit<CloudflareEnv, "DEPLOYMENT_ENV" | "RATE_LIMIT_HMAC_KEY"> & {
+  DEPLOYMENT_ENV: unknown;
+  RATE_LIMIT_HMAC_KEY: unknown;
 };
 
-const DEPLOYMENT_ENVIRONMENT: DeploymentEnvironment = "local";
 const PUBLICATION_HEADER_MAX_BYTES = 40;
 const UTF8 = new TextEncoder();
 
@@ -50,6 +50,15 @@ const SECURITY_HEADERS = {
   "X-Content-Type-Options": "nosniff",
   "X-Frame-Options": "DENY",
 } as const;
+
+function deploymentEnvironment(value: unknown): DeploymentEnvironment | null {
+  return value === "local" ||
+    value === "test" ||
+    value === "preview" ||
+    value === "production"
+    ? value
+    : null;
+}
 
 function json(
   body: unknown,
@@ -330,71 +339,55 @@ function metadataResponse(
   );
 }
 
-async function transientActorKey(
-  sourcePrefix: string,
-  secret: unknown,
-  bucket: "read" | "rotation",
-): Promise<string | null> {
-  if (typeof secret !== "string" || secret.length < 32) return null;
-  const key = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(secret),
-    { hash: "SHA-256", name: "HMAC" },
-    false,
-    ["sign"],
-  );
-  const digest = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    new TextEncoder().encode(`ip-v1:${bucket}:${sourcePrefix}`),
-  );
-  return Array.from(new Uint8Array(digest), (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  ).join("");
-}
-
 export async function handleRequest(
   request: Request,
   env: Env,
 ): Promise<Response> {
   const send = (response: Response) =>
     request.method === "HEAD" ? new Response(null, response) : response;
+  let environment: DeploymentEnvironment | null = null;
+  try {
+    environment = deploymentEnvironment(env.DEPLOYMENT_ENV);
+  } catch {
+    // Treat an inaccessible runtime binding exactly like an invalid one.
+  }
   // Select a bounded protocol plan before any effect. The selected response or
   // metadata read is deliberately withheld until abuse controls succeed.
   const plan = protocolResponsePlan(request);
-  const sourceAddress = request.headers.get("CF-Connecting-IP");
-  const prefixes =
-    sourceAddress === null ? null : sourcePrefixes(sourceAddress);
-  if (prefixes === null)
-    return send(
-      error(
-        "temporarily_unavailable",
-        "The request cannot be safely rate limited.",
-        503,
-      ),
-    );
-  let actorKey: string | null;
+  let readLimiter: RateLimit | null = null;
+  let rotationLimiter: RateLimit | null = null;
+  let rateLimitSecret = "";
+  let sourceAddress: string | null = null;
   try {
-    actorKey = await transientActorKey(
-      prefixes.primary,
-      env.RATE_LIMIT_HMAC_KEY,
-      "read",
-    );
+    readLimiter = env.READ_LIMITER;
   } catch {
-    actorKey = null;
+    // A missing or inaccessible capability is handled as limiter failure.
   }
-  if (actorKey === null)
-    return send(
-      error(
-        "temporarily_unavailable",
-        "The request cannot be safely rate limited.",
-        503,
-      ),
-    );
-  let limit: RateLimitOutcome;
   try {
-    limit = await env.READ_LIMITER.limit({ key: actorKey });
+    rotationLimiter = env.ROTATION_LIMITER;
   } catch {
+    // A missing or inaccessible capability is handled as limiter failure.
+  }
+  try {
+    const secret = env.RATE_LIMIT_HMAC_KEY;
+    if (typeof secret === "string") rateLimitSecret = secret;
+  } catch {
+    // An inaccessible secret is handled as limiter failure.
+  }
+  try {
+    sourceAddress = request.headers.get("CF-Connecting-IP");
+  } catch {
+    // An inaccessible source address is handled as limiter failure.
+  }
+  const limit = await limitPublicReadRequest({
+    readLimiter,
+    rotationLimiter,
+    secret: rateLimitSecret,
+    sourceAddress,
+    subtle: crypto.subtle,
+  });
+
+  if (limit === "unavailable")
     return send(
       error(
         "temporarily_unavailable",
@@ -402,8 +395,16 @@ export async function handleRequest(
         503,
       ),
     );
-  }
-  if (!limit.success)
+
+  if (environment === null)
+    return send(
+      error(
+        "temporarily_unavailable",
+        "The service is temporarily unavailable.",
+        503,
+      ),
+    );
+  if (limit === "rate_limited")
     return send(
       json(
         { error: { code: "rate_limited", message: "Rate limit exceeded." } },
@@ -411,53 +412,11 @@ export async function handleRequest(
         { "Retry-After": "60" },
       ),
     );
-  if (prefixes.rotation !== null) {
-    let rotationKey: string | null;
-    try {
-      rotationKey = await transientActorKey(
-        prefixes.rotation,
-        env.RATE_LIMIT_HMAC_KEY,
-        "rotation",
-      );
-    } catch {
-      rotationKey = null;
-    }
-    if (rotationKey === null)
-      return send(
-        error(
-          "temporarily_unavailable",
-          "The request cannot be safely rate limited.",
-          503,
-        ),
-      );
-    let rotationLimit: RateLimitOutcome;
-    try {
-      rotationLimit = await env.ROTATION_LIMITER.limit({
-        key: rotationKey,
-      });
-    } catch {
-      return send(
-        error(
-          "temporarily_unavailable",
-          "The request cannot be safely rate limited.",
-          503,
-        ),
-      );
-    }
-    if (!rotationLimit.success)
-      return send(
-        json(
-          { error: { code: "rate_limited", message: "Rate limit exceeded." } },
-          429,
-          { "Retry-After": "60" },
-        ),
-      );
-  }
 
   if (plan.kind === "response") return send(plan.response);
 
   const outcome = await readDatasetMetadataFromQueryV1({
-    environment: DEPLOYMENT_ENVIRONMENT,
+    environment,
     limits: API_LIMITS,
     nowMs: Date.now(),
     request: plan.request,

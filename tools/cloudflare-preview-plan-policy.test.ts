@@ -19,6 +19,19 @@ describe("Cloudflare preview plan proposal", () => {
     expect(validateCloudflarePreviewPlan(safePlan())).toEqual([]);
   });
 
+  it("retains the protected preview environment and remote mismatch gate", () => {
+    const plan = object(safePlan());
+    const gates = plan.pending_gates as string[];
+    const required =
+      "preview_api_query_environment_configuration_and_remote_mismatch_probe";
+    expect(gates).toContain(required);
+
+    gates.splice(gates.indexOf(required), 1);
+    expect(validateCloudflarePreviewPlan(plan)).toContain(
+      "preview plan must exactly mirror the code-owned proposal",
+    );
+  });
+
   it.each([
     ['"account_id":"leaked-account","account_id":null', "account_id"],
     [

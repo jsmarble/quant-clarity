@@ -9,8 +9,10 @@ const MODEL = "mdl_44444444-4444-4444-8444-444444444444";
 const FAMILY = "fam_33333333-3333-4333-8333-333333333333";
 const PROVIDER = "prv_22222222-2222-4222-8222-222222222222";
 
-describe("local named catalog query service binding (API-003, API-010, CF-002)", () => {
+describe("local named catalog query service binding (API-003, API-010, CF-002, CF-005, CF-006)", () => {
   it("calls the actual named WorkerEntrypoint over JSRPC", async () => {
+    expect(env.DEPLOYMENT_ENV).toBe("local");
+
     await expect(
       catalogQuery.resolvePublicationV2({
         version: 2,

@@ -8,6 +8,9 @@
   "cache": {
     "enabled": false,
   },
+  "vars": {
+    "DEPLOYMENT_ENV": "local",
+  },
   "observability": {
     "enabled": false,
     "logs": {

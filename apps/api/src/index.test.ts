@@ -65,6 +65,7 @@ function environment(
   outcomes: boolean[] = [true, true],
   failure: Error | null = null,
   rpc: Rpc = successfulRpc(),
+  deploymentEnvironment: unknown = "local",
 ) {
   const keys: string[] = [];
   const limiter = {
@@ -76,6 +77,7 @@ function environment(
   } satisfies RateLimit;
   return {
     env: {
+      DEPLOYMENT_ENV: deploymentEnvironment,
       RATE_LIMIT_HMAC_KEY: SECRET,
       READ_LIMITER: limiter,
       ROTATION_LIMITER: limiter,
@@ -88,21 +90,43 @@ function environment(
 
 const request = (path = "/v1/metadata", init: RequestInit = {}): Request => {
   const headers = new Headers(init.headers);
-  headers.set("CF-Connecting-IP", "203.0.113.9");
+  if (!headers.has("CF-Connecting-IP"))
+    headers.set("CF-Connecting-IP", "203.0.113.9");
   return new Request(`https://api.example.test${path}`, {
     ...init,
     headers,
   });
 };
 
-describe("public dataset metadata endpoint (API-002, API-003, API-013, API-024)", () => {
+describe("public dataset metadata endpoint (API-002, API-003, API-013, API-024, CF-005, CF-006)", () => {
+  it.each(["local", "test", "preview", "production"] as const)(
+    "forwards the exact %s deployment environment through both RPC envelopes",
+    async (deploymentEnvironment) => {
+      const rpc = successfulRpc();
+      const { env } = environment(undefined, null, rpc, deploymentEnvironment);
+      const response = await handleRequest(request(), env);
+
+      expect(response.status).toBe(200);
+      expect(rpc.resolvePublicationV2).toHaveBeenCalledWith(
+        expect.objectContaining({ environment: deploymentEnvironment }),
+      );
+      const readInput = vi.mocked(rpc.readDatasetMetadataV1).mock
+        .calls[0]?.[0] as
+        | {
+            environment?: unknown;
+            envelope?: { environment?: unknown };
+          }
+        | undefined;
+      expect(readInput?.environment).toBe(deploymentEnvironment);
+      expect(readInput?.envelope?.environment).toBe(deploymentEnvironment);
+    },
+  );
+
   it("returns the exact publication representation with validators and zero-data controls", async () => {
     const { env, rpc } = environment();
     const response = await handleRequest(request(), env);
-    const body = await response.json();
-
     expect(response.status).toBe(200);
-    expect(body).toEqual(metadata());
+    expect(await response.json()).toEqual(metadata());
     expect(response.headers.get("X-QuantClarity-Publication")).toBe(
       PUBLICATION,
     );
@@ -237,6 +261,224 @@ describe("public dataset metadata endpoint (API-002, API-003, API-013, API-024)"
 });
 
 describe("public API privacy and protocol boundary (PRIV-002–PRIV-007)", () => {
+  it.each([
+    ["empty", ""],
+    ["whitespace", " local"],
+    ["case variant", "PREVIEW"],
+    ["unknown", "staging"],
+    ["number", 1],
+    ["null", null],
+    ["array", ["local"]],
+    ["boxed string", Object("local")],
+    [
+      "coercible object",
+      {
+        toString: () => {
+          throw new Error("must not coerce deployment configuration");
+        },
+      },
+    ],
+  ])("fails closed for an %s deployment environment", async (_label, value) => {
+    const { env, keys, rpc } = environment(
+      undefined,
+      null,
+      successfulRpc(),
+      value,
+    );
+    const response = await handleRequest(request(), env);
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({
+      error: {
+        code: "temporarily_unavailable",
+        message: "The service is temporarily unavailable.",
+      },
+    });
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(keys).toHaveLength(1);
+    expect(rpc.resolvePublicationV2).not.toHaveBeenCalled();
+    expect(rpc.readDatasetMetadataV1).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the deployment environment binding is missing", async () => {
+    const { env, rpc } = environment();
+    delete (env as { DEPLOYMENT_ENV?: unknown }).DEPLOYMENT_ENV;
+
+    const response = await handleRequest(request(), env);
+
+    expect(response.status).toBe(503);
+    expect(rpc.resolvePublicationV2).not.toHaveBeenCalled();
+  });
+
+  it("snapshots the deployment environment binding exactly once", async () => {
+    const { env, rpc } = environment();
+    let reads = 0;
+    Object.defineProperty(env, "DEPLOYMENT_ENV", {
+      configurable: true,
+      get: () => {
+        reads += 1;
+        return reads === 1 ? "local" : "preview";
+      },
+    });
+
+    const response = await handleRequest(request(), env);
+
+    expect(response.status).toBe(200);
+    expect(reads).toBe(1);
+    expect(rpc.resolvePublicationV2).toHaveBeenCalledWith(
+      expect.objectContaining({ environment: "local" }),
+    );
+    expect(rpc.readDatasetMetadataV1).toHaveBeenCalledWith(
+      expect.objectContaining({ environment: "local" }),
+    );
+  });
+
+  it("keeps the request-start environment snapshot across an awaited limiter", async () => {
+    let release: ((outcome: RateLimitOutcome) => void) | undefined;
+    const limiterOutcome = new Promise<RateLimitOutcome>((resolve) => {
+      release = resolve;
+    });
+    const limiter: RateLimit = {
+      limit: vi.fn(() => limiterOutcome),
+    };
+    const rpc = successfulRpc();
+    const env = {
+      DEPLOYMENT_ENV: "preview" as unknown,
+      RATE_LIMIT_HMAC_KEY: SECRET,
+      READ_LIMITER: limiter,
+      ROTATION_LIMITER: limiter,
+      CATALOG_QUERY: rpc as unknown as Service,
+    };
+
+    const responsePromise = handleRequest(request(), env);
+    env.DEPLOYMENT_ENV = "production";
+    if (release === undefined)
+      throw new Error("deferred limiter fixture was not initialized");
+    release({ success: true });
+    const response = await responsePromise;
+
+    expect(response.status).toBe(200);
+    expect(rpc.resolvePublicationV2).toHaveBeenCalledWith(
+      expect.objectContaining({ environment: "preview" }),
+    );
+    expect(rpc.readDatasetMetadataV1).toHaveBeenCalledWith(
+      expect.objectContaining({ environment: "preview" }),
+    );
+  });
+
+  it("gives invalid protected environment configuration precedence after limiting", async () => {
+    const { env, rpc } = environment(
+      [false, true],
+      null,
+      successfulRpc(),
+      "staging",
+    );
+    const response = await handleRequest(
+      request(undefined, {
+        headers: { "CF-Connecting-IP": "2001:db8:abcd:12::99" },
+      }),
+      env,
+    );
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({
+      error: {
+        code: "temporarily_unavailable",
+        message: "The service is temporarily unavailable.",
+      },
+    });
+    expect(rpc.resolvePublicationV2).not.toHaveBeenCalled();
+  });
+
+  it("withholds an inaccessible environment failure until both IPv6 controls settle", async () => {
+    const events: string[] = [];
+    const rpc = successfulRpc();
+    const limiter: RateLimit = {
+      limit: vi.fn(() => {
+        events.push("limit");
+        return Promise.resolve({ success: true });
+      }),
+    };
+    const env = {
+      DEPLOYMENT_ENV: "local" as unknown,
+      RATE_LIMIT_HMAC_KEY: SECRET,
+      READ_LIMITER: limiter,
+      ROTATION_LIMITER: limiter,
+      CATALOG_QUERY: rpc as unknown as Service,
+    };
+    Object.defineProperty(env, "DEPLOYMENT_ENV", {
+      get: () => {
+        events.push("environment");
+        throw new Error("private binding detail");
+      },
+    });
+
+    const response = await handleRequest(
+      request(undefined, {
+        headers: { "CF-Connecting-IP": "2001:db8:abcd:12::99" },
+      }),
+      env,
+    );
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({
+      error: {
+        code: "temporarily_unavailable",
+        message: "The service is temporarily unavailable.",
+      },
+    });
+    expect(events).toEqual(["environment", "limit", "limit"]);
+    expect(rpc.resolvePublicationV2).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["OPTIONS", "/v1/metadata"],
+    ["POST", "/v1/metadata"],
+    ["GET", "/v1/not-present"],
+  ])(
+    "keeps invalid protected configuration ahead of the planned %s response",
+    async (method, path) => {
+      const { env, keys, rpc } = environment(
+        undefined,
+        null,
+        successfulRpc(),
+        "staging",
+      );
+      const response = await handleRequest(request(path, { method }), env);
+
+      expect(response.status).toBe(503);
+      expect(keys).toHaveLength(1);
+      expect(rpc.resolvePublicationV2).not.toHaveBeenCalled();
+    },
+  );
+
+  it("keeps an invalid-environment HEAD failure bodyless and side-effect bounded", async () => {
+    const now = vi.spyOn(Date, "now");
+    try {
+      const { env, keys, rpc } = environment(
+        undefined,
+        null,
+        successfulRpc(),
+        "preview ",
+      );
+      const response = await handleRequest(
+        request(undefined, { method: "HEAD" }),
+        env,
+      );
+
+      expect(response.status).toBe(503);
+      expect(await response.text()).toBe("");
+      expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+      expect(response.headers.has("Set-Cookie")).toBe(false);
+      expect(response.headers.has("X-Request-ID")).toBe(false);
+      expect(keys).toHaveLength(1);
+      expect(now).not.toHaveBeenCalled();
+      expect(rpc.resolvePublicationV2).not.toHaveBeenCalled();
+    } finally {
+      now.mockRestore();
+    }
+  });
+
   it("withholds a planned resource error until rate limiting succeeds", async () => {
     const { env } = environment([false]);
     const response = await handleRequest(request("/v1/not-present"), env);

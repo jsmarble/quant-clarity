@@ -70,7 +70,7 @@ The following is design ordering, not executable authority:
 1. Read-only inventory proves the dedicated preview account is empty of conflicting names and limiter IDs.
 2. After owner/spending authorization, bootstrap creates dedicated D1, private R2, and only accepted search/control resources, records identifiers, and applies approved locks before writes.
 3. Migration applies backward-compatible canonical then serving migrations by immutable database name. No provider migration or publication runs implicitly.
-4. A successor authority first selects an executable smoke path. Query Worker version is uploaded and exercised only through a private service path; pipeline/Workflow follows only after the Workflow entrypoint exists, with no schedule; API follows after its environment variable is consumed and mismatch-tested; web is last. API/web version probes use only the selected future smoke mechanism.
+4. A successor authority first selects an executable smoke path. Query Worker version is uploaded and exercised only through a private service path; pipeline/Workflow follows only after the Workflow entrypoint exists, with no schedule; API follows after the locally implemented [Phase 5P-C](phase-5p-c-api-environment-continuity.md) contract is reproduced in protected preview configuration and remotely mismatch-tested; web is last. API/web version probes use only the selected future smoke mechanism.
 5. Exact hosts/routes are activated only after all four versions and bindings pass privacy, isolation, non-indexing, contract, accessibility, and failure-path checks.
 6. One controlled synthetic publication is a separate authorized operation. A schedule is considered only after the manual run, backup, search rebuild, and rollback pass.
 
@@ -88,7 +88,7 @@ Every item below blocks conversion of the proposal into provisionable configurat
 - D1/R2 jurisdiction and location decision;
 - current Cloudflare permission-scope validation and protected automation design;
 - exact preview smoke mechanism and its privacy/non-indexing evidence;
-- API environment-variable plumbing and preview mismatch integration test;
+- protected preview API/query environment-matched configuration and remote crossed-binding probe; local plumbing and actual workerd mismatch proof are complete under [ADR 0047](../decisions/0047-api-query-environment-continuity.md);
 - separate Worker-version and publication-pointer rollback authority design;
 - account-wide limiter namespace collision audit;
 - exact R2 bucket/prefix lock and lifecycle policy;
