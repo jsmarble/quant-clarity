@@ -168,6 +168,7 @@ const apiRootKeys = [
   "preview_urls",
   "ratelimits",
   "services",
+  "vars",
   "workers_dev",
 ] as const;
 
@@ -217,6 +218,14 @@ function isExactApiService(value: unknown): boolean {
     value.binding === "CATALOG_QUERY" &&
     value.service === "quant-clarity-query-local" &&
     value.entrypoint === "CatalogQueryService"
+  );
+}
+
+function isExactApiVariables(value: unknown): boolean {
+  return (
+    isObject(value) &&
+    hasExactKeys(value, ["DEPLOYMENT_ENV"]) &&
+    value.DEPLOYMENT_ENV === "local"
   );
 }
 
@@ -271,6 +280,8 @@ export function validateApiWorkerConfig(value: unknown): string[] {
     errors.push(
       "observability must contain only the exact disabled logs and traces configuration",
     );
+  if (!isExactApiVariables(value.vars))
+    errors.push("vars must contain only DEPLOYMENT_ENV: local");
 
   const services = value.services;
   if (

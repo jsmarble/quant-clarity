@@ -332,7 +332,7 @@
     "data_residency_jurisdiction_decision",
     "cloudflare_permission_scope_validation",
     "preview_smoke_mechanism_design",
-    "api_environment_plumbing",
+    "preview_api_query_environment_configuration_and_remote_mismatch_probe",
     "publication_rollback_authority_design",
     "rate_limiter_namespace_audit",
     "retention_lock_policy_approval"

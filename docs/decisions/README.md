@@ -82,3 +82,4 @@ Accepted ADRs describe implementation choices; they do not amend product require
 - [ADR 0044](0044-public-model-detail-http-cache.md) — public Model detail HTTP semantics, stable-ID-only Cache API, and response admission
 - [ADR 0045](0045-publication-bound-embedding-recovery.md) — proposed publication-bound byte-authentic embedding recovery; product-owner `BE-011` decision pending
 - [ADR 0046](0046-inert-preview-topology-and-split-authority.md) — proposed inert preview topology, dedicated account, and split future authority
+- [ADR 0047](0047-api-query-environment-continuity.md) — validated API-to-query deployment-environment continuity
