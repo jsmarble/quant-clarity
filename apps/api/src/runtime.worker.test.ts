@@ -3,12 +3,19 @@ import { describe, expect, it } from "vitest";
 
 import {
   renderApiPreflight,
+  renderModelDetailGateResponse,
   renderModelDetailResponse,
 } from "./api-response-renderer.js";
+import { modelDetailCacheRequest } from "./model-detail-cache.js";
+import { handleModelDetailHttp } from "./model-detail-http.js";
 import type { ModelDetailResponsePlan } from "./model-detail-response-plan.js";
 
 const RENDER_PUBLICATION = "pub_11111111-1111-4111-8111-111111111111";
 const RENDER_MODEL = "mdl_22222222-2222-4222-8222-222222222222";
+const RUNTIME_FAMILY = "fam_22222222-2222-4222-8222-222222222222";
+const RUNTIME_EVIDENCE = "evd_22222222-2222-4222-8222-222222222222";
+const RUNTIME_ORIGIN = "https://orchestrator-runtime.api.example.test";
+const RUNTIME_OBSERVED_AT = "2026-08-03T00:00:00.000Z";
 const RENDER_BYTES = new TextEncoder().encode(
   JSON.stringify({
     data: { model_id: RENDER_MODEL },
@@ -26,6 +33,47 @@ const RENDER_COMMON = {
   "X-Content-Type-Options": "nosniff",
   "X-Frame-Options": "DENY",
 } as const;
+
+const runtimeKnown = (value: unknown) => ({
+  evidence_ids: [RUNTIME_EVIDENCE],
+  observed_at: RUNTIME_OBSERVED_AT,
+  state: "known",
+  value,
+});
+
+const runtimeUnknown = () => ({
+  evidence_ids: [],
+  observed_at: null,
+  state: "unknown",
+  value: null,
+});
+
+const runtimeModel = () => ({
+  active_parameters: runtimeUnknown(),
+  architecture: runtimeUnknown(),
+  authoritative_checkpoint_ids: [],
+  cataloged_provider_count: {
+    derivation_version: "cataloged-provider-count@1",
+    observed_at: RUNTIME_OBSERVED_AT,
+    value: 0,
+  },
+  checkpoints: [],
+  context_window_tokens: runtimeUnknown(),
+  display_name: runtimeKnown("Runtime Orchestrated Model"),
+  family_id: RUNTIME_FAMILY,
+  last_model_data_refresh: runtimeKnown(RUNTIME_OBSERVED_AT),
+  license: runtimeUnknown(),
+  maximum_output_tokens: runtimeUnknown(),
+  modalities: runtimeUnknown(),
+  model_id: RENDER_MODEL,
+  publisher: runtimeKnown("Runtime Publisher"),
+  release_date: runtimeUnknown(),
+  slug: runtimeKnown("runtime-orchestrated-model"),
+  source_quantization: runtimeUnknown(),
+  source_weight_format: runtimeUnknown(),
+  status: runtimeKnown("active"),
+  total_parameters: runtimeUnknown(),
+});
 
 const renderPlan = (method: "GET" | "HEAD"): ModelDetailResponsePlan => ({
   bodyBytes: method === "HEAD" ? null : new Uint8Array(RENDER_BYTES),
@@ -82,6 +130,104 @@ const runtimeErrorPlan = (
 };
 
 describe("public API in workerd (API-013, API-024)", () => {
+  it("runs the closed limiter-to-cache composition with native Worker objects", async () => {
+    const key = modelDetailCacheRequest(
+      RUNTIME_ORIGIN,
+      RENDER_PUBLICATION,
+      RENDER_MODEL,
+    );
+    if (key === null) throw new Error("runtime cache key fixture is invalid");
+    await caches.default.delete(key);
+    const events: string[] = [];
+    const scheduled: Promise<void>[] = [];
+    const limiter = (name: string): RateLimit => ({
+      limit: () => {
+        events.push(name);
+        return Promise.resolve({ success: true });
+      },
+    });
+    const cache = {
+      match(request: Request) {
+        events.push("cache.match");
+        return caches.default.match(request);
+      },
+      put(request: Request, response: Response) {
+        events.push("cache.put");
+        return caches.default.put(request, response);
+      },
+    };
+    const service = {
+      readModelDetailV1: () => Promise.resolve(undefined),
+      resolvePublicationV2: (input: unknown) => {
+        events.push("resolve");
+        const requiredAvailableUntilMs = (
+          input as { requiredAvailableUntilMs: number }
+        ).requiredAvailableUntilMs;
+        return Promise.resolve({
+          bookmark: "bookmark-runtime-orchestrator",
+          outcome: "selected",
+          publicationId: RENDER_PUBLICATION,
+          requiredAvailableUntilMs,
+        });
+      },
+      readModelDetailV2: () => {
+        events.push("read");
+        return Promise.resolve({
+          lookupProvenance: {
+            canonicalSlug: "runtime-orchestrated-model",
+            matchedBy: "stable_id",
+            projectionVersion: "model-slug@1",
+          },
+          model: runtimeModel(),
+          outcome: "model",
+          publicationId: RENDER_PUBLICATION,
+          schemaVersion: "1.13.0",
+        });
+      },
+    };
+    const response = await handleModelDetailHttp(
+      new Request(`https://visitor.example/v1/models/${RENDER_MODEL}`, {
+        headers: { "CF-Connecting-IP": "2001:db8:abcd:12::99" },
+      }),
+      {
+        cache,
+        context: {
+          waitUntil(promise) {
+            events.push("waitUntil");
+            scheduled.push(Promise.resolve(promise).then(() => undefined));
+          },
+        },
+        environment: "test",
+        nowMs: 1_785_774_000_000,
+        protectedCacheOrigin: RUNTIME_ORIGIN,
+        queryService: service,
+        rateLimitSecret: "runtime-test-hmac-key-with-at-least-32-characters",
+        readLimiter: limiter("limit.read"),
+        rotationLimiter: limiter("limit.rotation"),
+        subtle: crypto.subtle,
+        transportPolicy: "local_test",
+      },
+    );
+    await Promise.all(scheduled);
+    try {
+      expect(response.status).toBe(200);
+      expect(
+        (await response.json<{ data: { model_id: string } }>()).data.model_id,
+      ).toBe(RENDER_MODEL);
+      expect(events).toEqual([
+        "limit.read",
+        "limit.rotation",
+        "resolve",
+        "cache.match",
+        "read",
+        "cache.put",
+        "waitUntil",
+      ]);
+    } finally {
+      await caches.default.delete(key);
+    }
+  });
+
   it("renders exact Model GET and bodyless HEAD Response objects in workerd", async () => {
     const get = renderModelDetailResponse(renderPlan("GET"), "local_test");
     const head = renderModelDetailResponse(renderPlan("HEAD"), "local_test");
@@ -106,6 +252,36 @@ describe("public API in workerd (API-013, API-024)", () => {
       "max-age=300",
     );
     expect(response.headers.get("Access-Control-Max-Age")).toBe("600");
+  });
+
+  it("renders fixed limiter and HEAD validation responses in workerd", async () => {
+    const limited = renderModelDetailGateResponse(
+      { kind: "rate_limited" },
+      "GET",
+      "preview_https",
+    );
+    expect(limited.status).toBe(429);
+    expect(limited.headers.get("Retry-After")).toBe("60");
+    expect(limited.headers.get("Strict-Transport-Security")).toBe(
+      "max-age=300",
+    );
+
+    const head = renderModelDetailGateResponse(
+      {
+        error: {
+          code: "method_not_allowed",
+          message: "must not be reflected",
+          status: 405,
+        },
+        kind: "request_error",
+      },
+      "HEAD",
+      "local_test",
+    );
+    expect(head.status).toBe(405);
+    expect(head.body).toBeNull();
+    expect(await head.text()).toBe("");
+    expect(head.headers.get("Allow")).toBe("GET, HEAD, OPTIONS");
   });
 
   it("preserves conditional and redirect entity-header rules in workerd", () => {

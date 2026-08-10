@@ -1,4 +1,5 @@
 import { MODEL_DETAIL_PUBLIC_MAX_BYTES } from "@quant-clarity/api-core";
+import type { ApiError } from "@quant-clarity/api-core";
 
 import type { ModelDetailResponsePlan } from "./model-detail-response-plan.js";
 
@@ -75,6 +76,11 @@ const HEADER_NAMES = new Set([
 
 export type ApiTransportPolicy =
   "local_test" | "preview_https" | "production_https_custom_hostname";
+
+export type ModelDetailGateOutcome =
+  | Readonly<{ error: ApiError; kind: "request_error" }>
+  | Readonly<{ kind: "rate_limited" }>
+  | Readonly<{ kind: "unavailable" }>;
 
 const hsts = (policy: unknown): string | null | undefined => {
   if (policy === "local_test") return null;
@@ -379,5 +385,104 @@ export const renderApiPreflight = (policy: ApiTransportPolicy): Response => {
       },
       policy,
     ),
+  });
+};
+
+const GATE_ERRORS = {
+  invalid_parameter: {
+    code: "invalid_parameter",
+    message: "The Model detail request is invalid.",
+    status: 400,
+  },
+  method_not_allowed: {
+    code: "method_not_allowed",
+    message: "Only GET, HEAD, and OPTIONS are supported.",
+    status: 405,
+  },
+  query_too_large: {
+    code: "query_too_large",
+    message: "The request exceeds the configured size limit.",
+    status: 413,
+  },
+  rate_limited: {
+    code: "rate_limited",
+    message: "Rate limit exceeded.",
+    status: 429,
+  },
+  resource_not_found: {
+    code: "resource_not_found",
+    message: "The requested resource does not exist.",
+    status: 404,
+  },
+  temporarily_unavailable: {
+    code: "temporarily_unavailable",
+    message: "The request cannot be safely rate limited.",
+    status: 503,
+  },
+} as const;
+
+type GateError = (typeof GATE_ERRORS)[keyof typeof GATE_ERRORS];
+
+const gateError = (outcome: unknown): GateError => {
+  try {
+    const kind = dataProperty(outcome, "kind");
+    if (kind === "rate_limited") return GATE_ERRORS.rate_limited;
+    if (kind === "unavailable") return GATE_ERRORS.temporarily_unavailable;
+    if (kind !== "request_error") return GATE_ERRORS.temporarily_unavailable;
+    const supplied = dataProperty(outcome, "error");
+    const code = dataProperty(supplied, "code");
+    const status = dataProperty(supplied, "status");
+    if (
+      code === "invalid_parameter" &&
+      status === GATE_ERRORS.invalid_parameter.status
+    )
+      return GATE_ERRORS.invalid_parameter;
+    if (
+      code === "method_not_allowed" &&
+      status === GATE_ERRORS.method_not_allowed.status
+    )
+      return GATE_ERRORS.method_not_allowed;
+    if (
+      code === "query_too_large" &&
+      status === GATE_ERRORS.query_too_large.status
+    )
+      return GATE_ERRORS.query_too_large;
+    if (
+      code === "resource_not_found" &&
+      status === GATE_ERRORS.resource_not_found.status
+    )
+      return GATE_ERRORS.resource_not_found;
+    return GATE_ERRORS.temporarily_unavailable;
+  } catch {
+    return GATE_ERRORS.temporarily_unavailable;
+  }
+};
+
+/** Renders only the fixed, non-reflective pre-query response matrix. */
+export const renderModelDetailGateResponse = (
+  outcome: ModelDetailGateOutcome,
+  method: "GET" | "HEAD",
+  policy: ApiTransportPolicy,
+): Response => {
+  const selected = gateError(outcome);
+  const bodyBytes = UTF8.encode(
+    JSON.stringify({
+      error: { code: selected.code, message: selected.message },
+    }),
+  );
+  const transport = hsts(policy);
+  const headers: Record<string, string> = {
+    ...COMMON_HEADERS,
+    "Cache-Control": "private, no-store",
+    "Content-Length": String(bodyBytes.byteLength),
+    "Content-Type": "application/json; charset=utf-8",
+    ...(selected.status === 405 ? { Allow: "GET, HEAD, OPTIONS" } : {}),
+    ...(selected.status === 429 ? { "Retry-After": "60" } : {}),
+  };
+  if (transport !== null && transport !== undefined)
+    headers["Strict-Transport-Security"] = transport;
+  return new Response(method === "HEAD" ? null : bodyBytes, {
+    headers,
+    status: selected.status,
   });
 };
