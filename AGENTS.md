@@ -109,8 +109,8 @@ Documentation must distinguish facts, decisions, assumptions, open questions, an
 
 Supported runtime: Node 24.18.0 and npm 11.19.0. Tool versions and install-script approvals are lockfile-pinned.
 
-- Initial setup: `mise trust && mise install && mise exec -- npx --yes npm@11.19.0 install`
-- Clean install: `mise exec -- npx --yes npm@11.19.0 ci`
+- Initial setup: `mise trust && mise install && mise exec -- npx --yes npm@11.19.0 install --ignore-scripts && mise exec -- node --import tsx tools/check-predeployment.ts && mise exec -- npx --yes npm@11.19.0 rebuild --strict-allow-scripts`
+- Clean install: `mise exec -- npx --yes npm@11.19.0 ci --ignore-scripts && mise exec -- node --import tsx tools/check-predeployment.ts && mise exec -- npx --yes npm@11.19.0 rebuild --strict-allow-scripts`
 - Format: `mise exec -- npx --yes npm@11.19.0 run format`
 - Format check: `mise exec -- npx --yes npm@11.19.0 run format:check`
 - Lint: `mise exec -- npx --yes npm@11.19.0 run lint`
@@ -125,7 +125,7 @@ Supported runtime: Node 24.18.0 and npm 11.19.0. Tool versions and install-scrip
 - Check environment isolation inventory: `mise exec -- npx --yes npm@11.19.0 run environments:check`
 - Check dependency licenses, vulnerabilities, and SBOM generation: `mise exec -- npx --yes npm@11.19.0 run supply-chain:check`
 - Dry-run builds: `mise exec -- npx --yes npm@11.19.0 run build`
-- Full local/CI gate: `mise exec -- npx --yes npm@11.19.0 run verify`
+- Full local/CI gate: `mise exec -- node --import tsx tools/check-predeployment.ts && mise exec -- npx --yes npm@11.19.0 run verify`
 
 No preview or production deployment command is authorized yet. Resource inventory, legal/source registers, privacy accountability artifacts, and protected deployment configuration must pass their gates first. For documentation changes, also check local Markdown targets, unique PRD IDs, `git diff --check`, `git status --short`, and the absence of secrets/authenticated payloads/macOS metadata. Never claim a check passed unless it was run successfully.
 
