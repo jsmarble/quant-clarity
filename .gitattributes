@@ -1,0 +1,3 @@
+# Wrangler 4.120 emits a few spaces in generated runtime-type declarations.
+# Preserve exact generator output so `wrangler types --check` remains authoritative.
+apps/*/worker-configuration.d.ts whitespace=-blank-at-eol
