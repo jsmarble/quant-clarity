@@ -104,6 +104,8 @@ Accepted [ADR 0057](../decisions/0057-selection-free-offering-observation-set.md
 
 [ADR 0065](../decisions/0065-fenced-provenance-v2-authority.md) and [Phase 5Y-E](phase-5y-e-fenced-provenance-v2-authority.md) define the sealed v2 authority graph and guarded implementation slices for those requirements. They add design traceability only: no source execution, sealed bundle, current-fact selection, public projection, or executed evidence exists, so every mapped data requirement retains its prior status.
 
+[Phase 5Y-F](phase-5y-f-dormant-provenance-v2-foundation.md) adds executable migration/refusal evidence for the physical prerequisite: exact predecessor and legacy-guard inventory, immutable static capability, empty structurally linked shapes, and unconditional runtime/source-outcome blockers. It implements no endpoint approval, source acquisition, claim authority, selection, or public fact, so mapped data requirement statuses do not advance.
+
 | Source ID | PRD | Requirement summary | Planned design sections | Planned primary verification | Status |
 |---|---|---|---|---|---|
 | `DATA-001` | §7.1 | Each model shall have a stable internal identifier and stable public slug that do not depend on a single… | `D05`, `D07`, `D19` | Schema/contract — `CT-DATA-001`; [Phase 2 evidence](phase-2-implementation.md); [locally implemented Phase 5H-A1 stable target binding](phase-5h-a1-provider-model-id-projection.md); [locally implemented Phase 5H-B1 stable-ID canonical target rehydration](phase-5h-b1-provider-model-id-reader.md); [ADR 0039 and locally implemented Phase 5O-B1 exact current/historical Model-slug ownership](phase-5o-b1-model-slug-projection-core.md) | Implemented |
