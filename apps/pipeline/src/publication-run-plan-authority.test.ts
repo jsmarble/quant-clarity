@@ -1,6 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  ORCHESTRATION_POLICY_REGISTRY,
+  decideFiringAdmission,
+  publicationPlanProviderScopeHash,
+  resolveOrchestrationPolicies,
+} from "@quant-clarity/pipeline-core/orchestration-contract";
+
+import {
   PUBLICATION_RUN_PLAN_AUTHORITY_SQL,
   PUBLICATION_RUN_PLAN_ERROR_CODES,
   PublicationRunPlanAuthorityError,
@@ -39,7 +46,7 @@ const providers: PublicationRunPlanHashInput["providers"] = [
     browserMillisecondCeiling: 0,
     elapsedMillisecondCeiling: 30,
     costMicrousdCeiling: 40,
-    retryPolicyHash: HASH_C,
+    retryPolicyHash: ORCHESTRATION_POLICY_REGISTRY.provider_retry.contentHash,
   },
   {
     ordinal: 1,
@@ -55,19 +62,13 @@ const providers: PublicationRunPlanHashInput["providers"] = [
     browserMillisecondCeiling: 0,
     elapsedMillisecondCeiling: 31,
     costMicrousdCeiling: 41,
-    retryPolicyHash: HASH_D,
+    retryPolicyHash: ORCHESTRATION_POLICY_REGISTRY.provider_retry.contentHash,
   },
 ];
 
-const policies: PublicationRunPlanHashInput["policies"] = [
-  { role: "provider_retry", version: "retry@1", contentHash: HASH_A },
-  { role: "run_budget", version: "budget@1", contentHash: HASH_B },
-  {
-    role: "terminal_deadline",
-    version: "deadline@1",
-    contentHash: HASH_C,
-  },
-];
+const policies: PublicationRunPlanHashInput["policies"] = Object.values(
+  ORCHESTRATION_POLICY_REGISTRY,
+).map(({ role, version, contentHash }) => ({ role, version, contentHash }));
 
 const planInput = (): PublicationRunPlanHashInput => ({
   runPlanId: RUN_PLAN_ID,
@@ -197,13 +198,42 @@ describe("publication run-plan authority hash (PIPE-003, PIPE-004, PIPE-037)", (
       "sha256:0cac433bce255d4c4e0ab981dfeb54e7e390ec4f248cd2cdff3b16637a5325c9",
     );
     expect(first.policySetHash).toBe(
-      "sha256:d5ddbbce003e953bb46de5dc48963fd73322f55a0f72b47bd4bd6651ecafe0b4",
+      "sha256:0398dab5efeaf1456be43dffeb74140d2bbd5020700d5370295c311d37027b7f",
     );
     expect(first.planHash).toBe(
-      "sha256:bc243a1e29d0918a2d96d0885a469cb7d0c15e4c5ea3c102d97f0f5e76d3bb90",
+      "sha256:5071c99f8ee8b037660125ee217e8095e57ae811c8f93cc134d8caaddae6ab99",
     );
     expect(changed.planHash).not.toBe(first.planHash);
     expect(Object.isFrozen(first)).toBe(true);
+  });
+
+  it("shares the exact policy-set encoding with orchestration admission", async () => {
+    const references = [
+      "provider_retry",
+      "run_budget",
+      "terminal_deadline",
+    ].map((role) => {
+      const entry =
+        ORCHESTRATION_POLICY_REGISTRY[
+          role as keyof typeof ORCHESTRATION_POLICY_REGISTRY
+        ];
+      return {
+        role: entry.role,
+        version: entry.version,
+        contentHash: entry.contentHash,
+      };
+    });
+    const resolved = resolveOrchestrationPolicies(references);
+    const hashed = await hashPublicationRunPlan({
+      ...planInput(),
+      policies: references,
+    });
+    expect(hashed.policySetHash).toBe(resolved.policySetHash);
+    expect(hashed.providerScopeHash).toBe(
+      publicationPlanProviderScopeHash(
+        providers.map(({ providerId }) => providerId),
+      ),
+    );
   });
 });
 
@@ -240,6 +270,42 @@ describe("closed authorized publication run plan (PIPE-003, PIPE-004)", () => {
     expect(Object.isFrozen(plan.approval)).toBe(true);
     expect(JSON.stringify(plan)).not.toContain("instance");
     expect(JSON.stringify(plan)).not.toContain("visitor");
+  });
+
+  it("passes the exact resolved Phase B authority into Phase C admission", async () => {
+    const plan = await authorize();
+    const decision = decideFiringAdmission({
+      event: {
+        kind: "scheduled",
+        workflowName: "quant-clarity-publication-preview",
+        scheduleExpression: "0 5 * * 1,4",
+        scheduledAt: SCHEDULED_AT,
+        payload: {},
+      },
+      protectedContext: {
+        workflowName: "quant-clarity-publication-preview",
+        scheduleName: "provider-refresh-v1",
+        scheduleExpression: "0 5 * * 1,4",
+        environment: "preview",
+        runPlanId: plan.runPlanId,
+        runPlanHash: plan.planHash,
+        canonicalSchemaVersion: plan.canonicalSchemaVersion,
+        pipelineContractVersion: plan.pipelineContractVersion,
+      },
+      plan: { state: "authorized", ...plan },
+      budgetState: {
+        monthlyUsedCostMicrousd: 0,
+        monthlyReservedCostMicrousd: 0,
+        expensiveWorkBreakerTripped: false,
+      },
+      now: "2026-08-03T05:00:01.000Z",
+    });
+    expect(decision).toMatchObject({
+      decision: "admitted",
+      runPlanId: RUN_PLAN_ID,
+      runPlanHash: plan.planHash,
+      providerScope: [PROVIDER_A, PROVIDER_B],
+    });
   });
 
   it("binds authority to the protected environment and runtime versions", async () => {
