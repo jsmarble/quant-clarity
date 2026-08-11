@@ -35,7 +35,9 @@ const RUN_ID_PATTERN =
 const PROVIDER_ID_PATTERN =
   /^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const PROVIDER_SLICE_ID_PATTERN =
-  /^pvr_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+  /^prn_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const PUBLICATION_ID_PATTERN =
+  /^pub_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const CODE_VERSION_PATTERN = /^git:[0-9a-f]{6,64}$/;
 
 export type RunBudgetPolicyV1 = Readonly<{
@@ -93,13 +95,17 @@ const assertPlainRecord: (
   value: unknown,
   label: string,
 ) => asserts value is Readonly<Record<string, unknown>> = (value, label) => {
-  if (
-    typeof value !== "object" ||
-    value === null ||
-    Array.isArray(value) ||
-    (Object.getPrototypeOf(value) !== Object.prototype &&
-      Object.getPrototypeOf(value) !== null)
-  )
+  if (typeof value !== "object" || value === null)
+    throw new TypeError(`${label} must be a plain record`);
+  let arrayValue: boolean;
+  let prototype: object | null;
+  try {
+    arrayValue = Array.isArray(value);
+    prototype = Reflect.getPrototypeOf(value);
+  } catch {
+    throw new TypeError(`${label} must be a plain record`);
+  }
+  if (arrayValue || (prototype !== Object.prototype && prototype !== null))
     throw new TypeError(`${label} must be a plain record`);
 };
 
@@ -113,7 +119,12 @@ const assertExactRecord: (
   label,
 ) => {
   assertPlainRecord(value, label);
-  const ownKeys = Reflect.ownKeys(value);
+  let ownKeys: readonly PropertyKey[];
+  try {
+    ownKeys = Reflect.ownKeys(value);
+  } catch {
+    throw new TypeError(`${label} does not have the exact closed fields`);
+  }
   if (
     ownKeys.some((key) => typeof key !== "string") ||
     ownKeys.length !== keys.length ||
@@ -121,7 +132,12 @@ const assertExactRecord: (
   )
     throw new TypeError(`${label} does not have the exact closed fields`);
   for (const key of keys) {
-    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    let descriptor: PropertyDescriptor | undefined;
+    try {
+      descriptor = Object.getOwnPropertyDescriptor(value, key);
+    } catch {
+      throw new TypeError(`${label} contains a non-data field`);
+    }
     if (
       descriptor === undefined ||
       !("value" in descriptor) ||
@@ -140,38 +156,187 @@ const assertCanonicalId = (
     throw new TypeError(`${label} is not a canonical identifier`);
 };
 
-const canonicalJson = (value: unknown): string => {
-  if (value === null) return "null";
+interface CanonicalRecord {
+  readonly [key: string]: CanonicalValue;
+}
+
+type CanonicalArray = readonly CanonicalValue[];
+
+type CanonicalValue =
+  null | string | boolean | number | CanonicalArray | CanonicalRecord;
+
+type UnknownDataDescriptor = Readonly<{
+  configurable?: boolean;
+  enumerable?: boolean;
+  value: unknown;
+  writable?: boolean;
+}>;
+
+const asDataDescriptor = (
+  descriptor: PropertyDescriptor | undefined,
+): UnknownDataDescriptor | undefined =>
+  descriptor !== undefined &&
+  Object.prototype.hasOwnProperty.call(descriptor, "value")
+    ? (descriptor as UnknownDataDescriptor)
+    : undefined;
+
+const canonicalArrayError = (): TypeError =>
+  new TypeError("canonical arrays must contain only dense data items");
+
+const canonicalRecordError = (): TypeError =>
+  new TypeError(
+    "canonical records must contain only own enumerable data fields",
+  );
+
+const MAX_CANONICAL_ARRAY_ITEMS = 1_024;
+
+/**
+ * Takes one descriptor-only snapshot of an untrusted canonical value. The
+ * resulting graph contains no accessors or proxies and is deeply frozen, so a
+ * later validation/encoding pass cannot observe different field values.
+ */
+const projectCanonicalValue = (value: unknown): CanonicalValue => {
+  if (value === null) return null;
   if (typeof value === "string") {
     if (!/^[\x20-\x7e]*$/.test(value))
       throw new TypeError(
         "canonical strings must contain printable ASCII only",
       );
-    return JSON.stringify(value);
+    return value;
   }
-  if (typeof value === "boolean") return value ? "true" : "false";
+  if (typeof value === "boolean") return value;
   if (typeof value === "number") {
     if (!Number.isSafeInteger(value))
       throw new TypeError("canonical numbers must be safe integers");
-    return String(value);
+    return value;
   }
-  if (Array.isArray(value))
-    return `[${value.map((item) => canonicalJson(item)).join(",")}]`;
-  assertPlainRecord(value, "canonical value");
-  return `{${Object.keys(value)
+  if (typeof value !== "object")
+    throw new TypeError("canonical values must be JSON data values");
+  let arrayValue: boolean;
+  try {
+    arrayValue = Array.isArray(value);
+  } catch {
+    throw canonicalArrayError();
+  }
+  if (arrayValue) {
+    let prototype: object | null;
+    let lengthDescriptor: PropertyDescriptor | undefined;
+    let ownKeys: readonly PropertyKey[];
+    try {
+      prototype = Reflect.getPrototypeOf(value);
+      lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
+      ownKeys = Reflect.ownKeys(value);
+    } catch {
+      throw canonicalArrayError();
+    }
+    const lengthDataDescriptor = asDataDescriptor(lengthDescriptor);
+    const lengthValue = lengthDataDescriptor?.value;
+    if (
+      prototype !== Array.prototype ||
+      lengthDataDescriptor === undefined ||
+      !Number.isSafeInteger(lengthValue) ||
+      (lengthValue as number) < 0 ||
+      lengthDataDescriptor.enumerable
+    )
+      throw canonicalArrayError();
+    const length = lengthValue as number;
+    if (
+      length > MAX_CANONICAL_ARRAY_ITEMS ||
+      ownKeys.length !== length + 1 ||
+      ownKeys.some(
+        (key) =>
+          typeof key !== "string" ||
+          (key !== "length" &&
+            (!/^(0|[1-9][0-9]*)$/.test(key) || Number(key) >= length)),
+      )
+    )
+      throw canonicalArrayError();
+    const snapshot: CanonicalValue[] = [];
+    for (let index = 0; index < length; index += 1) {
+      let descriptor: PropertyDescriptor | undefined;
+      try {
+        descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+      } catch {
+        throw canonicalArrayError();
+      }
+      const dataDescriptor = asDataDescriptor(descriptor);
+      if (!dataDescriptor?.enumerable) throw canonicalArrayError();
+      snapshot.push(projectCanonicalValue(dataDescriptor.value));
+    }
+    return Object.freeze(snapshot);
+  }
+  let prototype: object | null;
+  let ownKeys: readonly PropertyKey[];
+  try {
+    prototype = Reflect.getPrototypeOf(value);
+    ownKeys = Reflect.ownKeys(value);
+  } catch {
+    throw canonicalRecordError();
+  }
+  if (
+    (prototype !== Object.prototype && prototype !== null) ||
+    ownKeys.some((key) => typeof key !== "string")
+  )
+    throw canonicalRecordError();
+  const snapshot: Record<string, CanonicalValue> = {};
+  const stringKeys = ownKeys.filter(
+    (key): key is string => typeof key === "string",
+  );
+  for (const key of [...stringKeys].sort()) {
+    let descriptor: PropertyDescriptor | undefined;
+    try {
+      descriptor = Object.getOwnPropertyDescriptor(value, key);
+    } catch {
+      throw canonicalRecordError();
+    }
+    const dataDescriptor = asDataDescriptor(descriptor);
+    if (dataDescriptor?.enumerable !== true) throw canonicalRecordError();
+    Object.defineProperty(snapshot, key, {
+      configurable: false,
+      enumerable: true,
+      value: projectCanonicalValue(dataDescriptor.value),
+      writable: false,
+    });
+  }
+  return Object.freeze(snapshot);
+};
+
+const encodeCanonicalProjection = (value: CanonicalValue): string => {
+  if (value === null) return "null";
+  if (typeof value === "string") return JSON.stringify(value);
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (typeof value === "number") return String(value);
+  if (
+    (Array.isArray as (candidate: unknown) => candidate is CanonicalArray)(
+      value,
+    )
+  )
+    return `[${value.map((item) => encodeCanonicalProjection(item)).join(",")}]`;
+  const record = value;
+  return `{${Object.keys(record)
     .sort()
-    .map((key) => `${canonicalJson(key)}:${canonicalJson(value[key])}`)
+    .map((key) => {
+      const item = record[key];
+      if (item === undefined) throw canonicalRecordError();
+      return `${encodeCanonicalProjection(key)}:${encodeCanonicalProjection(item)}`;
+    })
     .join(",")}}`;
 };
 
-export const policyContentHash = (policy: OrchestrationPolicy): string =>
-  sha256AsciiDigest(
+const canonicalJson = (value: unknown): string =>
+  encodeCanonicalProjection(projectCanonicalValue(value));
+
+export const policyContentHash = (policy: OrchestrationPolicy): string => {
+  const projection = projectCanonicalValue(policy);
+  assertPlainRecord(projection, "orchestration policy");
+  return sha256AsciiDigest(
     canonicalJson({
       domain: "quantclarity:orchestration-policy@1",
-      schema: policy.schema,
-      policy,
+      schema: projection.schema,
+      policy: projection,
     }),
   );
+};
 
 export const publicationPlanProviderScopeHash = (
   providerIds: readonly string[],
@@ -497,6 +662,27 @@ export const ADMISSION_REJECTION_CODES = [
 ] as const;
 export type AdmissionRejectionCode = (typeof ADMISSION_REJECTION_CODES)[number];
 
+/**
+ * Only failures reached after the exact platform envelope has been admitted
+ * are durable admission receipts. Envelope/workflow/cron/time-shape failures
+ * stop before D1 and cannot manufacture an occurrence record.
+ */
+export const DURABLE_ADMISSION_REJECTION_CODES = [
+  "plan_unavailable",
+  "plan_invalid",
+  "plan_not_effective",
+  "plan_revoked",
+  "source_authority_invalid",
+  "runtime_version_mismatch",
+  "plan_context_mismatch",
+  "policy_mismatch",
+  "budget_exceeded",
+  "expensive_work_breaker",
+  "terminal_deadline_elapsed",
+] as const satisfies readonly AdmissionRejectionCode[];
+export type DurableAdmissionRejectionCode =
+  (typeof DURABLE_ADMISSION_REJECTION_CODES)[number];
+
 export type AuthorizedPlanProviderV1 = Readonly<{
   ordinal: number;
   providerId: string;
@@ -742,11 +928,61 @@ export type AdmittedFiringDecision = Extract<
   FiringAdmissionDecision,
   Readonly<{ decision: "admitted" }>
 >;
+export type RejectedFiringDecision = Extract<
+  FiringAdmissionDecision,
+  Readonly<{ decision: "rejected" }>
+>;
+
+export type RejectedFiringAuthorityContext = Readonly<{
+  scheduleName: string;
+  scheduleExpression: string;
+  scheduledAt: string;
+  observedAt: string;
+  requestedPlan: Readonly<{
+    runPlanId: string;
+    runPlanHash: string;
+    environment: "preview" | "production";
+  }>;
+}>;
+
+const trustedRejectedFiringDecisions = new WeakMap<
+  object,
+  RejectedFiringAuthorityContext
+>();
 
 const rejectFiring = (
   reason: AdmissionRejectionCode,
-): FiringAdmissionDecision =>
-  Object.freeze({ decision: "rejected", runAction: "none", reason });
+  authority?: RejectedFiringAuthorityContext,
+): RejectedFiringDecision => {
+  const decision = Object.freeze({
+    decision: "rejected" as const,
+    runAction: "none" as const,
+    reason,
+  });
+  if (authority !== undefined)
+    trustedRejectedFiringDecisions.set(decision, authority);
+  return decision;
+};
+
+/**
+ * Nominal admission authority for durable rejection persistence. Structural
+ * report verification cannot prove that a rejection reason was actually
+ * produced by the closed admission oracle.
+ */
+export const verifyRejectedFiringDecision = (
+  value: unknown,
+  expected?: RejectedFiringAuthorityContext,
+): value is RejectedFiringDecision => {
+  if (typeof value !== "object" || value === null) return false;
+  const authority = trustedRejectedFiringDecisions.get(value);
+  if (authority === undefined) return false;
+  if (expected === undefined) return true;
+  try {
+    return canonicalJson(authority) === canonicalJson(expected);
+  } catch {
+    return false;
+  }
+};
 
 /**
  * Closed admission oracle. Rejections never manufacture an occurrence/run and
@@ -815,6 +1051,32 @@ export const decideFiringAdmission = (input: {
     scheduled.getUTCMilliseconds() !== 0
   )
     return rejectFiring("scheduled_time_invalid");
+  let rejectionAuthority: RejectedFiringAuthorityContext | undefined;
+  try {
+    assertCanonicalId(
+      input.protectedContext.runPlanId,
+      RUN_PLAN_ID_PATTERN,
+      "protected plan ID",
+    );
+    assertHash(input.protectedContext.runPlanHash, "protected plan hash");
+    assertEnvironment(input.protectedContext.environment);
+    rejectionAuthority = Object.freeze({
+      scheduleName: PUBLICATION_SCHEDULE_NAME,
+      scheduleExpression: PUBLICATION_SCHEDULE_EXPRESSION,
+      scheduledAt,
+      observedAt: now,
+      requestedPlan: Object.freeze({
+        runPlanId: input.protectedContext.runPlanId,
+        runPlanHash: input.protectedContext.runPlanHash,
+        environment: input.protectedContext.environment,
+      }),
+    });
+  } catch {
+    // An invalid protected identity cannot authorize a durable receipt.
+  }
+  const rejectDurable = (
+    reason: AdmissionRejectionCode,
+  ): RejectedFiringDecision => rejectFiring(reason, rejectionAuthority);
   if (input.plan.state !== "authorized") {
     const reasonByState = {
       unavailable: "plan_unavailable",
@@ -826,8 +1088,10 @@ export const decideFiringAdmission = (input: {
     } as const;
     const planState: unknown = input.plan.state;
     if (typeof planState !== "string" || !(planState in reasonByState))
-      return rejectFiring("plan_invalid");
-    return rejectFiring(reasonByState[planState as keyof typeof reasonByState]);
+      return rejectDurable("plan_invalid");
+    return rejectDurable(
+      reasonByState[planState as keyof typeof reasonByState],
+    );
   }
   try {
     assertExactRecord(
@@ -902,7 +1166,7 @@ export const decideFiringAdmission = (input: {
     )
       throw new TypeError("run plan approval roles are not exact");
   } catch {
-    return rejectFiring("plan_invalid");
+    return rejectDurable("plan_invalid");
   }
   try {
     assertCanonicalId(
@@ -924,7 +1188,7 @@ export const decideFiringAdmission = (input: {
       "protected pipeline contract version",
     );
   } catch {
-    return rejectFiring("plan_context_mismatch");
+    return rejectDurable("plan_context_mismatch");
   }
   if (
     input.plan.runPlanId !== input.protectedContext.runPlanId ||
@@ -939,15 +1203,15 @@ export const decideFiringAdmission = (input: {
     input.plan.pipelineContractVersion !==
       input.protectedContext.pipelineContractVersion
   )
-    return rejectFiring("plan_context_mismatch");
+    return rejectDurable("plan_context_mismatch");
   let policies: ResolvedOrchestrationPolicies;
   try {
     policies = resolveOrchestrationPolicies(input.plan.policies);
   } catch {
-    return rejectFiring("policy_mismatch");
+    return rejectDurable("policy_mismatch");
   }
   if (input.plan.policySetHash !== policies.policySetHash)
-    return rejectFiring("policy_mismatch");
+    return rejectDurable("policy_mismatch");
   let budget: RunBudgetAdmissionDecision;
   try {
     budget = decideRunBudgetAdmission({
@@ -956,17 +1220,17 @@ export const decideFiringAdmission = (input: {
       state: input.budgetState,
     });
   } catch {
-    return rejectFiring("plan_invalid");
+    return rejectDurable("plan_invalid");
   }
-  if (!budget.admitted) return rejectFiring(budget.reason);
+  if (!budget.admitted) return rejectDurable(budget.reason);
   if (
     input.plan.providerScopeHash !==
     publicationPlanProviderScopeHash(budget.providerScope)
   )
-    return rejectFiring("plan_invalid");
+    return rejectDurable("plan_invalid");
   const deadline = terminalDeadlineAt(scheduledAt, policies.terminalDeadline);
   if (Date.parse(now) >= Date.parse(deadline))
-    return rejectFiring("terminal_deadline_elapsed");
+    return rejectDurable("terminal_deadline_elapsed");
   return Object.freeze({
     decision: "admitted",
     runAction: "create_or_reconcile_attempt_1",
@@ -1218,7 +1482,7 @@ export type TerminalProviderOutcome = Readonly<{
   providerId: string;
   state: "ready" | "failed" | "quarantined";
   usableSlice: "new" | "last_known_good" | "none";
-  errorCodes: readonly TerminalReportCode[];
+  errorCodes: readonly ProviderTerminalReportCode[];
 }>;
 
 export const TERMINAL_REPORT_CODES = [
@@ -1233,6 +1497,20 @@ export const TERMINAL_REPORT_CODES = [
 ] as const;
 export type TerminalReportCode = (typeof TERMINAL_REPORT_CODES)[number];
 
+export const PROVIDER_TERMINAL_REPORT_CODES = [
+  "provider_failed",
+  "provider_quarantined",
+  "provider_unavailable",
+  "terminal_deadline_elapsed",
+] as const satisfies readonly TerminalReportCode[];
+export type ProviderTerminalReportCode =
+  (typeof PROVIDER_TERMINAL_REPORT_CODES)[number];
+
+const isProviderTerminalReportCode = (
+  value: unknown,
+): value is ProviderTerminalReportCode =>
+  (PROVIDER_TERMINAL_REPORT_CODES as readonly unknown[]).includes(value);
+
 export type TerminalRunDecision = Readonly<{
   runOutcome: RunTerminalOutcome;
   publicationDisposition: PublicationDisposition;
@@ -1242,6 +1520,10 @@ export type TerminalRunDecision = Readonly<{
 const frozenReportCodes = (
   codes: readonly TerminalReportCode[],
 ): readonly TerminalReportCode[] => Object.freeze([...codes]);
+
+const frozenProviderReportCodes = (
+  codes: readonly ProviderTerminalReportCode[],
+): readonly ProviderTerminalReportCode[] => Object.freeze([...codes]);
 
 export const decideTerminalRun = (input: {
   providers: readonly TerminalProviderOutcome[];
@@ -1284,8 +1566,10 @@ export const decideTerminalRun = (input: {
     if (provider.state !== "ready" && provider.usableSlice === "new")
       throw new TypeError("failed provider cannot produce a new usable slice");
     for (const code of provider.errorCodes)
-      if (!TERMINAL_REPORT_CODES.includes(code))
-        throw new TypeError("provider outcome contains an unknown report code");
+      if (!isProviderTerminalReportCode(code))
+        throw new TypeError(
+          "provider outcome contains a non-Provider terminal code",
+        );
     if (
       provider.state === "failed" &&
       !provider.errorCodes.some(
@@ -1294,6 +1578,13 @@ export const decideTerminalRun = (input: {
       )
     )
       throw new TypeError("failed Provider outcome lacks its terminal code");
+    if (
+      provider.state === "failed" &&
+      provider.errorCodes.includes("provider_quarantined")
+    )
+      throw new TypeError(
+        "failed Provider outcome cannot carry the quarantine terminal code",
+      );
     if (
       provider.state === "quarantined" &&
       !provider.errorCodes.includes("provider_quarantined")
@@ -1355,7 +1646,7 @@ export type ProviderReportV2 = Readonly<{
   publicationDisposition: "new" | "carried_forward" | "unavailable";
   sliceId?: string;
   cost: BudgetAmounts;
-  errorCodes: readonly TerminalReportCode[];
+  errorCodes: readonly ProviderTerminalReportCode[];
 }>;
 
 export type ProviderTerminalReportInputV2 = Readonly<{
@@ -1365,7 +1656,14 @@ export type ProviderTerminalReportInputV2 = Readonly<{
   publicationDisposition: "new" | "carried_forward" | "unavailable";
   sliceId?: string;
   cost: BudgetAmounts;
-  errorCodes: readonly TerminalReportCode[];
+  errorCodes: readonly ProviderTerminalReportCode[];
+}>;
+
+export type RetainedPublicationAuthorityV2 = Readonly<{
+  authoritySchema: "retained-publication-head@1";
+  environment: "preview" | "production";
+  publicationId: string;
+  closureHash: string;
 }>;
 
 export type TerminalRunIdentityAuthorityV2 =
@@ -1421,6 +1719,7 @@ type TerminalRunReportBodyV2 = Readonly<{
   endedAt: string;
   runOutcome: RunTerminalOutcome;
   publicationDisposition: PublicationDisposition;
+  retainedPublication?: RetainedPublicationAuthorityV2;
   cost: BudgetAmounts;
   errorCodes: readonly TerminalReportCode[];
   providers: readonly ProviderReportV2[];
@@ -1449,15 +1748,19 @@ const sealReport = <
     domain: "quantclarity:publication-run-report@2",
     body,
   });
-  if (hashInput.length > MAX_REPORT_ASCII_BYTES)
-    throw new RangeError("report exceeds its bounded representation");
-  return Object.freeze({
+  const sealed = Object.freeze({
     ...body,
     seal: Object.freeze({
-      algorithm: "sha256",
+      algorithm: "sha256" as const,
       contentHash: sha256AsciiDigest(hashInput),
     }),
-  }) as unknown as T & Readonly<{ seal: ReportSealV2 }>;
+  });
+  if (
+    hashInput.length > MAX_REPORT_ASCII_BYTES ||
+    canonicalJson(sealed).length > MAX_REPORT_ASCII_BYTES
+  )
+    throw new RangeError("report exceeds its bounded representation");
+  return sealed as unknown as T & Readonly<{ seal: ReportSealV2 }>;
 };
 
 const validateBudget = (value: BudgetAmounts, label: string): BudgetAmounts => {
@@ -1546,6 +1849,7 @@ const buildTerminalRunReportFromProjectedAuthorityV2 = (input: {
   terminalDeadlineAt: string;
   endedAt: string;
   providers: readonly ProviderReportV2[];
+  retainedPublication?: RetainedPublicationAuthorityV2;
   runWideQuarantine: boolean;
 }): TerminalRunReportV2 => {
   if (typeof input.runWideQuarantine !== "boolean")
@@ -1681,8 +1985,10 @@ const buildTerminalRunReportFromProjectedAuthorityV2 = (input: {
           "provider slice ID",
         );
       for (const code of provider.errorCodes)
-        if (!TERMINAL_REPORT_CODES.includes(code))
-          throw new TypeError("provider report contains an unknown error code");
+        if (!isProviderTerminalReportCode(code))
+          throw new TypeError(
+            "provider report contains a non-Provider terminal code",
+          );
       if (!ready && provider.errorCodes.length === 0)
         throw new TypeError(
           "failed or quarantined provider report requires an error code",
@@ -1699,6 +2005,13 @@ const buildTerminalRunReportFromProjectedAuthorityV2 = (input: {
         )
       )
         throw new TypeError("failed Provider report lacks its terminal code");
+      if (
+        provider.state === "failed" &&
+        provider.errorCodes.includes("provider_quarantined")
+      )
+        throw new TypeError(
+          "failed Provider report cannot carry the quarantine terminal code",
+        );
       if (
         provider.state === "quarantined" &&
         !provider.errorCodes.includes("provider_quarantined")
@@ -1729,10 +2042,47 @@ const buildTerminalRunReportFromProjectedAuthorityV2 = (input: {
           ? {}
           : { sliceId: provider.sliceId }),
         cost: validateBudget(provider.cost, "provider report cost"),
-        errorCodes: frozenReportCodes([...new Set(provider.errorCodes)].sort()),
+        errorCodes: frozenProviderReportCodes(
+          [...new Set(provider.errorCodes)].sort(),
+        ),
       });
     }),
   );
+  const hasCarriedForward = providers.some(
+    ({ publicationDisposition }) =>
+      publicationDisposition === "carried_forward",
+  );
+  let retainedPublication: RetainedPublicationAuthorityV2 | undefined;
+  if (input.retainedPublication !== undefined) {
+    assertExactRecord(
+      input.retainedPublication,
+      ["authoritySchema", "environment", "publicationId", "closureHash"],
+      "retained publication authority",
+    );
+    const retainedAuthoritySchema: unknown =
+      input.retainedPublication.authoritySchema;
+    if (
+      retainedAuthoritySchema !== "retained-publication-head@1" ||
+      input.retainedPublication.environment !== input.environment
+    )
+      throw new TypeError(
+        "retained publication authority does not match the run environment",
+      );
+    assertCanonicalId(
+      input.retainedPublication.publicationId,
+      PUBLICATION_ID_PATTERN,
+      "retained publication ID",
+    );
+    assertHash(
+      input.retainedPublication.closureHash,
+      "retained publication closure hash",
+    );
+    retainedPublication = Object.freeze({ ...input.retainedPublication });
+  }
+  if (hasCarriedForward !== (retainedPublication !== undefined))
+    throw new TypeError(
+      "carried-forward Providers require exact retained publication authority",
+    );
   const decision = decideTerminalRun({
     providers: providers.map((provider) => ({
       providerId: provider.providerId,
@@ -1795,6 +2145,7 @@ const buildTerminalRunReportFromProjectedAuthorityV2 = (input: {
       endedAt,
       runOutcome: decision.runOutcome,
       publicationDisposition: decision.publicationDisposition,
+      ...(retainedPublication === undefined ? {} : { retainedPublication }),
       cost: Object.freeze(cost),
       errorCodes,
       providers,
@@ -1886,6 +2237,18 @@ const validateAdmittedReportAuthority = (
     throw new TypeError("admitted firing budget authority is inconsistent");
 };
 
+/** Runtime validation for persistence adapters that receive an unknown value. */
+export const verifyAdmittedFiringDecision = (
+  value: unknown,
+): value is AdmittedFiringDecision => {
+  try {
+    validateAdmittedReportAuthority(value as AdmittedFiringDecision);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 /** Terminal reports derive all plan facts from the immutable admission result. */
 export const buildTerminalRunReportV2 = (input: {
   admission: AdmittedFiringDecision;
@@ -1893,8 +2256,13 @@ export const buildTerminalRunReportV2 = (input: {
   startedAt: string;
   endedAt: string;
   providers: readonly ProviderTerminalReportInputV2[];
+  retainedPublication?: RetainedPublicationAuthorityV2;
   runWideQuarantine: boolean;
 }): TerminalRunReportV2 => {
+  const hasRetainedPublication = Object.prototype.hasOwnProperty.call(
+    input,
+    "retainedPublication",
+  );
   assertExactRecord(
     input,
     [
@@ -1903,6 +2271,7 @@ export const buildTerminalRunReportV2 = (input: {
       "startedAt",
       "endedAt",
       "providers",
+      ...(hasRetainedPublication ? ["retainedPublication"] : []),
       "runWideQuarantine",
     ],
     "terminal report input",
@@ -2021,6 +2390,9 @@ export const buildTerminalRunReportV2 = (input: {
     terminalDeadlineAt: input.admission.terminalDeadlineAt,
     endedAt: input.endedAt,
     providers,
+    ...(input.retainedPublication === undefined
+      ? {}
+      : { retainedPublication: input.retainedPublication }),
     runWideQuarantine: input.runWideQuarantine,
   });
 };
@@ -2031,8 +2403,9 @@ export const verifyOrchestrationReportV2 = (
   runAuthority?: TerminalRunIdentityAuthorityV2,
 ): boolean => {
   try {
-    assertPlainRecord(value, "orchestration report");
-    const report = value as OrchestrationReportV2;
+    const projection = projectCanonicalValue(value);
+    assertPlainRecord(projection, "orchestration report");
+    const report = projection as OrchestrationReportV2;
     const { seal: typedSeal, ...body } = report;
     const seal: Readonly<{ algorithm: string; contentHash: string }> =
       typedSeal;
@@ -2078,6 +2451,9 @@ export const verifyOrchestrationReportV2 = (
           cost: provider.cost,
           errorCodes: provider.errorCodes,
         })),
+        ...(report.retainedPublication === undefined
+          ? {}
+          : { retainedPublication: report.retainedPublication }),
         runWideQuarantine: report.runOutcome === "quarantined",
       });
     }
@@ -2085,4 +2461,30 @@ export const verifyOrchestrationReportV2 = (
   } catch {
     return false;
   }
+};
+
+/**
+ * Returns the one deterministic bounded persistence representation only after
+ * the report has been rebuilt from its immutable authority. Object insertion
+ * order therefore cannot create a second durable representation of the same
+ * sealed report.
+ */
+export const encodeOrchestrationReportV2 = (
+  value: unknown,
+  admittedAuthority?: AdmittedFiringDecision,
+  runAuthority?: TerminalRunIdentityAuthorityV2,
+): string => {
+  let projection: CanonicalValue;
+  try {
+    projection = projectCanonicalValue(value);
+  } catch {
+    throw new TypeError(
+      "orchestration report does not match its immutable authority",
+    );
+  }
+  if (!verifyOrchestrationReportV2(projection, admittedAuthority, runAuthority))
+    throw new TypeError(
+      "orchestration report does not match its immutable authority",
+    );
+  return encodeCanonicalProjection(projection);
 };

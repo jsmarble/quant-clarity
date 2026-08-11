@@ -157,11 +157,24 @@ ceiling. Terminal report verification requires the exact admitted authority
 and initial/replay run authority and re-applies the same cost ceilings; the
 SHA-256 seal alone is integrity framing, not authentication.
 
+Provider run identities use `pvr_`; selected publication Provider-slice
+identities use the separately registered `prn_` grammar. Any carried-forward
+slice additionally requires a `retained-publication-head@1` authority naming
+the same environment, current publication ID, and closure hash. A slice ID by
+itself is not proof that the current publication is complete. The structural
+authority becomes trusted only when a fixed serving-head resolver mints it in
+the same runtime; arbitrary serialized objects are never authority.
+
 The canonical encoding is bounded, key-ordered, and domain-separated before
 SHA-256 hashing. Reports contain no raw exceptions, stacks, source bodies,
 credentials, URLs, headers, addresses, queries, cookies, user agents,
 referrers, public request identifiers, or arbitrary strings. Durable D1 state,
 not Workflow retention or logging, will be report authority.
+
+Malformed event, payload, Workflow, cron, or scheduled-time envelopes stop
+before durable admission. Their in-memory rejection codes cannot create an
+occurrence or durable rejected-firing receipt. Only the exported closed
+post-envelope durable rejection subset may be persisted.
 
 ### Ambiguous D1 outcomes
 
