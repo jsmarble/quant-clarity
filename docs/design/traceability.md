@@ -102,6 +102,8 @@ Accepted [ADR 0057](../decisions/0057-selection-free-offering-observation-set.md
 
 [ADR 0064](../decisions/0064-sequence-fenced-claim-authority-cutover.md) and [Phase 5Y-D](phase-5y-d-fenced-claim-authority-sequence.md) record the prerequisite order for the same data requirements after auditing the canonical graph. Typed policy order, verification receipts, approved endpoint identity, complete public-field commitments, and provenance-v2 fencing remain unimplemented; therefore no artifact or data requirement advances.
 
+[ADR 0065](../decisions/0065-fenced-provenance-v2-authority.md) and [Phase 5Y-E](phase-5y-e-fenced-provenance-v2-authority.md) define the sealed v2 authority graph and guarded implementation slices for those requirements. They add design traceability only: no source execution, sealed bundle, current-fact selection, public projection, or executed evidence exists, so every mapped data requirement retains its prior status.
+
 | Source ID | PRD | Requirement summary | Planned design sections | Planned primary verification | Status |
 |---|---|---|---|---|---|
 | `DATA-001` | §7.1 | Each model shall have a stable internal identifier and stable public slug that do not depend on a single… | `D05`, `D07`, `D19` | Schema/contract — `CT-DATA-001`; [Phase 2 evidence](phase-2-implementation.md); [locally implemented Phase 5H-A1 stable target binding](phase-5h-a1-provider-model-id-projection.md); [locally implemented Phase 5H-B1 stable-ID canonical target rehydration](phase-5h-b1-provider-model-id-reader.md); [ADR 0039 and locally implemented Phase 5O-B1 exact current/historical Model-slug ownership](phase-5o-b1-model-slug-projection-core.md) | Implemented |
