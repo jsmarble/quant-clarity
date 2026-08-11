@@ -107,8 +107,82 @@ test("runs home-to-stable-ID local Model discovery with hostile text safely (FE-
   const modelLink = results.getByRole("link", { name: exactQuery });
   await expect(modelLink).toHaveAttribute("href", stablePath);
   await expect(results).toContainText(modelId);
+  const factRow = (label: string) =>
+    results.locator(".fact-row").filter({ hasText: label });
+  const displayName = factRow("Display name");
+  const publisher = factRow("Publisher");
+  const totalParameters = factRow("Total parameters");
+  const activeParameters = factRow("Active parameters");
+  const sourceWeightFormat = factRow("Source checkpoint weight format");
+  const sourceQuantization = factRow("Source-provided quantization");
+  const providerCount = factRow("Cataloged provider count");
+  const modelRefresh = factRow("Last Model-data refresh");
+  for (const [row, label] of [
+    [displayName, "Display name"],
+    [publisher, "Publisher"],
+    [totalParameters, "Total parameters"],
+    [activeParameters, "Active parameters"],
+    [sourceWeightFormat, "Source checkpoint weight format"],
+    [sourceQuantization, "Source-provided quantization"],
+    [providerCount, "Cataloged provider count"],
+    [modelRefresh, "Last Model-data refresh"],
+  ] as const) {
+    await expect(row.getByText(label, { exact: true })).toBeVisible();
+  }
+  await expect(displayName.getByText("Known", { exact: true })).toBeVisible();
+  await expect(
+    displayName.getByText(exactQuery, { exact: true }),
+  ).toBeVisible();
+  await expect(displayName).toContainText(
+    "evd_44444444-4444-4444-8444-444444444444",
+  );
+  await expect(publisher.getByText("Known", { exact: true })).toBeVisible();
+  await expect(
+    publisher.getByText("Fixture Publisher", { exact: true }),
+  ).toBeVisible();
+  await expect(publisher).toContainText(
+    "evd_44444444-4444-4444-8444-444444444444",
+  );
+  await expect(
+    totalParameters.getByText("Known", { exact: true }),
+  ).toBeVisible();
+  await expect(totalParameters).toContainText(
+    "~70B; normalized: 70000000000; approximation: approximate",
+  );
+  await expect(totalParameters).toContainText(
+    "evd_44444444-4444-4444-8444-444444444444",
+  );
+  await expect(
+    activeParameters.getByText("Unknown", { exact: true }),
+  ).toBeVisible();
+  await expect(activeParameters).toContainText("Observed: Not recorded");
+  await expect(activeParameters).toContainText("Evidence: No references");
+  await expect(
+    sourceWeightFormat.getByText("Known", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    sourceWeightFormat.getByText("BF16", { exact: true }),
+  ).toBeVisible();
+  await expect(sourceWeightFormat).toContainText(
+    "evd_44444444-4444-4444-8444-444444444444",
+  );
+  await expect(
+    sourceQuantization.getByText("Not applicable", { exact: true }),
+  ).toBeVisible();
+  await expect(sourceQuantization).toContainText("Observed: Not recorded");
+  await expect(sourceQuantization).toContainText("Evidence: No references");
+  await expect(providerCount.getByText("2", { exact: true })).toBeVisible();
+  await expect(providerCount).toContainText("Observed: Aug 1, 2026");
+  await expect(providerCount).toContainText("cataloged-provider-count@1");
+  await expect(modelRefresh.getByText("Known", { exact: true })).toBeVisible();
+  await expect(modelRefresh).toContainText("Aug 1, 2026");
+  await expect(modelRefresh).toContainText(
+    "evd_44444444-4444-4444-8444-444444444444",
+  );
   await expect(results.locator("script, img")).toHaveCount(0);
   await expect(page.locator("body")).not.toContainText("provider winner");
+  await expect(results).not.toContainText("Provider price");
+  await expect(results).not.toContainText("Serving precision");
   expect(
     await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze(),
   ).toMatchObject({ violations: [] });
@@ -132,6 +206,17 @@ test("runs home-to-stable-ID local Model discovery with hostile text safely (FE-
   await expect(
     page.getByText("Model Facts", { exact: true }).first(),
   ).toBeVisible();
+  await expect(page.locator("main")).toContainText(
+    "~70B; normalized: 70000000000; approximation: approximate",
+  );
+  await expect(
+    page
+      .getByRole("region", { name: "Source representation" })
+      .getByText("Not applicable", { exact: true }),
+  ).toBeVisible();
+  await expect(page.locator("main")).toContainText(
+    "evd_44444444-4444-4444-8444-444444444444",
+  );
   await expectNoVisitorState(context, page);
   expect(outsideRequests).toEqual([]);
 });
@@ -193,6 +278,9 @@ test("pins pagination across a publication rollover and fails generically after 
   expectPrivateResponse(first, 200);
   const results = page.getByRole("list", { name: "Exact Model matches" });
   await expect(results.getByRole("link")).toHaveCount(20);
+  await expect(results.getByText("Unavailable", { exact: true })).toHaveCount(
+    19,
+  );
   const next = page.getByRole("link", { name: "Next exact matches" });
   const nextHref = await next.getAttribute("href");
   expect(nextHref).not.toBeNull();

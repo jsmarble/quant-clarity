@@ -1790,6 +1790,238 @@ export type ExactModelSearchRepresentation = Readonly<{
   representationBytes: Uint8Array;
 }>;
 
+export type ExactModelCard = Readonly<
+  Pick<
+    Model,
+    | "model_id"
+    | "display_name"
+    | "publisher"
+    | "total_parameters"
+    | "active_parameters"
+    | "source_weight_format"
+    | "source_quantization"
+    | "cataloged_provider_count"
+    | "last_model_data_refresh"
+  >
+>;
+
+export type ExactModelCardCollection = Readonly<{
+  data: readonly Readonly<{
+    match_kind: "canonical_name" | "provider_model_id";
+    model: ExactModelCard;
+  }>[];
+  page: Readonly<{
+    next_cursor: string | null;
+    limit: typeof EXACT_MODEL_SEARCH_LIMIT;
+  }>;
+  meta: Readonly<{
+    resource: "exact_model_cards";
+    publication_id: string;
+    schema_version: "1.0.0";
+    sort: readonly ["relevance", "stable_id"];
+    filters: Readonly<{ record_type: "model" }>;
+  }>;
+}>;
+
+export type ExactModelCardRepresentation = Readonly<{
+  collection: ExactModelCardCollection;
+  representationBytes: Uint8Array;
+}>;
+
+const EXACT_MODEL_CARD_KEYS = [
+  "active_parameters",
+  "cataloged_provider_count",
+  "display_name",
+  "last_model_data_refresh",
+  "model_id",
+  "publisher",
+  "source_quantization",
+  "source_weight_format",
+  "total_parameters",
+] as const;
+
+const exactObjectKeys = (
+  value: unknown,
+  expected: readonly string[],
+): value is Record<string, unknown> => {
+  if (typeof value !== "object" || value === null || Array.isArray(value))
+    return false;
+  const actual = Reflect.ownKeys(value);
+  return (
+    actual.length === expected.length &&
+    actual.every((key) => typeof key === "string" && expected.includes(key))
+  );
+};
+
+const unknownModelFact = () => ({
+  state: "unknown" as const,
+  value: null,
+  observed_at: null,
+  evidence_ids: [],
+});
+
+const exactModelCardContract = (value: unknown): value is ExactModelCard => {
+  if (!exactObjectKeys(value, EXACT_MODEL_CARD_KEYS)) return false;
+  const card = value as unknown as ExactModelCard;
+  const unknown = unknownModelFact();
+  return (
+    card.display_name.state === "known" &&
+    checkModelContract({
+      model_id: card.model_id,
+      family_id: "fam_00000000-0000-4000-8000-000000000000",
+      slug: unknown,
+      display_name: card.display_name,
+      publisher: card.publisher,
+      release_date: unknown,
+      modalities: unknown,
+      context_window_tokens: unknown,
+      maximum_output_tokens: unknown,
+      license: unknown,
+      architecture: unknown,
+      total_parameters: card.total_parameters,
+      active_parameters: card.active_parameters,
+      authoritative_checkpoint_ids: [],
+      checkpoints: [],
+      source_weight_format: card.source_weight_format,
+      source_quantization: card.source_quantization,
+      status: unknown,
+      cataloged_provider_count: card.cataloged_provider_count,
+      last_model_data_refresh: card.last_model_data_refresh,
+    })
+  );
+};
+
+const cloneModelFact = <T extends Model["display_name"]>(fact: T): T =>
+  ({
+    state: fact.state,
+    value: fact.value,
+    observed_at: fact.observed_at,
+    evidence_ids: [...fact.evidence_ids],
+  }) as T;
+
+const cloneParameterFact = (
+  fact: Model["total_parameters"],
+): Model["total_parameters"] =>
+  fact.state === "known"
+    ? {
+        state: "known",
+        value: {
+          raw_value: fact.value.raw_value,
+          normalized_decimal: fact.value.normalized_decimal,
+          approximation: fact.value.approximation,
+        },
+        observed_at: fact.observed_at,
+        evidence_ids: [...fact.evidence_ids],
+      }
+    : {
+        state: fact.state,
+        value: null,
+        observed_at: fact.observed_at,
+        evidence_ids: [...fact.evidence_ids],
+      };
+
+const cloneExactModelCard = (card: ExactModelCard): ExactModelCard => ({
+  model_id: card.model_id,
+  display_name: cloneModelFact(card.display_name),
+  publisher: cloneModelFact(card.publisher),
+  total_parameters: cloneParameterFact(card.total_parameters),
+  active_parameters: cloneParameterFact(card.active_parameters),
+  source_weight_format: cloneModelFact(card.source_weight_format),
+  source_quantization: cloneModelFact(card.source_quantization),
+  cataloged_provider_count: {
+    value: card.cataloged_provider_count.value,
+    observed_at: card.cataloged_provider_count.observed_at,
+    derivation_version: card.cataloged_provider_count.derivation_version,
+  },
+  last_model_data_refresh: cloneModelFact(card.last_model_data_refresh),
+});
+
+/**
+ * Validates and fixes the exact bytes for the local-only Model-card search
+ * representation. Cards are projections of canonical Model Facts; no provider
+ * identity, Offering, price, serving-precision, or affiliate field is admitted.
+ */
+export function encodeExactModelCardCollectionRepresentation(
+  input: unknown,
+): ExactModelCardRepresentation | null {
+  try {
+    const detached = snapshotModelDetailJson(input, {
+      remaining: EXACT_MODEL_SEARCH_PUBLIC_MAX_BYTES * 2,
+      seen: new WeakSet(),
+    });
+    if (
+      !exactObjectKeys(detached, ["data", "meta", "page"]) ||
+      !Array.isArray(detached.data) ||
+      detached.data.length > EXACT_MODEL_SEARCH_LIMIT ||
+      !exactObjectKeys(detached.page, ["limit", "next_cursor"]) ||
+      detached.page.limit !== EXACT_MODEL_SEARCH_LIMIT ||
+      (detached.page.next_cursor !== null &&
+        (typeof detached.page.next_cursor !== "string" ||
+          detached.page.next_cursor.length === 0 ||
+          detached.page.next_cursor.length >
+            EXACT_MODEL_SEARCH_CURSOR_MAX_CHARACTERS ||
+          !hasValidUnicodeScalars(detached.page.next_cursor))) ||
+      !exactObjectKeys(detached.meta, [
+        "filters",
+        "publication_id",
+        "resource",
+        "schema_version",
+        "sort",
+      ]) ||
+      detached.meta.resource !== "exact_model_cards" ||
+      typeof detached.meta.publication_id !== "string" ||
+      parsePublicationPin(detached.meta.publication_id) === null ||
+      detached.meta.schema_version !== "1.0.0" ||
+      !Array.isArray(detached.meta.sort) ||
+      detached.meta.sort.length !== 2 ||
+      detached.meta.sort[0] !== "relevance" ||
+      detached.meta.sort[1] !== "stable_id" ||
+      !exactObjectKeys(detached.meta.filters, ["record_type"]) ||
+      detached.meta.filters.record_type !== "model"
+    )
+      return null;
+
+    const modelIds = new Set<string>();
+    const data: ExactModelCardCollection["data"][number][] = [];
+    for (const value of detached.data) {
+      if (
+        !exactObjectKeys(value, ["match_kind", "model"]) ||
+        (value.match_kind !== "canonical_name" &&
+          value.match_kind !== "provider_model_id") ||
+        !exactModelCardContract(value.model) ||
+        modelIds.has(value.model.model_id)
+      )
+        return null;
+      modelIds.add(value.model.model_id);
+      data.push({
+        match_kind: value.match_kind,
+        model: cloneExactModelCard(value.model),
+      });
+    }
+
+    const collection: ExactModelCardCollection = {
+      data,
+      page: {
+        next_cursor: detached.page.next_cursor,
+        limit: EXACT_MODEL_SEARCH_LIMIT,
+      },
+      meta: {
+        resource: "exact_model_cards",
+        publication_id: detached.meta.publication_id,
+        schema_version: "1.0.0",
+        sort: ["relevance", "stable_id"],
+        filters: { record_type: "model" },
+      },
+    };
+    const representationBytes = UTF8.encode(JSON.stringify(collection));
+    if (representationBytes.byteLength > EXACT_MODEL_SEARCH_PUBLIC_MAX_BYTES)
+      return null;
+    return { collection, representationBytes };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Validates, detaches, and serializes the sole exact-Model SearchCollection
  * wire representation. The explicit reconstruction fixes property order for

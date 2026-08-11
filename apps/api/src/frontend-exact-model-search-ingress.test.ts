@@ -2,14 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   canonicalExactModelSearchQuery,
-  encodeExactModelSearchRepresentation,
+  encodeExactModelCardCollectionRepresentation,
   EXACT_MODEL_SEARCH_API_PATH,
   FRONTEND_API_INTERNAL_ORIGIN,
   signFrontendApiRequest,
-  type CatalogQueryRpcV2,
 } from "@quant-clarity/api-core";
 
 import { handleRequest } from "./request.js";
+import type { ExactModelCardSearchCatalogQueryRpcV1 } from "./merged-exact-search-query.js";
 
 const FRONTEND_SECRET = "frontend-test-secret-with-at-least-32-characters";
 const LIMITER_SECRET = "limiter-test-secret-with-at-least-32-characters";
@@ -20,16 +20,60 @@ const EVIDENCE_ID = "evd_11111111-1111-4111-8111-111111111111";
 const OBSERVED_AT = "2026-08-03T00:00:00.000Z";
 const NOW_MS = 1_786_339_200_000;
 
-const result = (resourceId = MODEL_ID) => ({
-  displayName: {
+const modelCard = (resourceId = MODEL_ID) => ({
+  model_id: resourceId,
+  display_name: {
     evidence_ids: [EVIDENCE_ID],
     observed_at: OBSERVED_AT,
     state: "known",
     value: "Exact Model",
   },
+  publisher: {
+    evidence_ids: [EVIDENCE_ID],
+    observed_at: OBSERVED_AT,
+    state: "known",
+    value: "Fixture Publisher",
+  },
+  total_parameters: {
+    evidence_ids: [],
+    observed_at: null,
+    state: "unknown",
+    value: null,
+  },
+  active_parameters: {
+    evidence_ids: [],
+    observed_at: null,
+    state: "unknown",
+    value: null,
+  },
+  source_weight_format: {
+    evidence_ids: [EVIDENCE_ID],
+    observed_at: OBSERVED_AT,
+    state: "known",
+    value: "BF16",
+  },
+  source_quantization: {
+    evidence_ids: [],
+    observed_at: OBSERVED_AT,
+    state: "unknown",
+    value: null,
+  },
+  cataloged_provider_count: {
+    value: 1,
+    observed_at: OBSERVED_AT,
+    derivation_version: "cataloged-provider-count@1",
+  },
+  last_model_data_refresh: {
+    evidence_ids: [EVIDENCE_ID],
+    observed_at: OBSERVED_AT,
+    state: "known",
+    value: OBSERVED_AT,
+  },
+});
+
+const result = (resourceId = MODEL_ID) => ({
   matchKind: "canonical_name",
-  resourceId,
-  resourceType: "model",
+  modelCard: modelCard(resourceId),
   tierMarker: "exact-v1:c",
 });
 
@@ -49,7 +93,7 @@ const service = () =>
         requiredAvailableUntilMs,
       });
     }),
-    readMergedExactSearchV2: vi.fn((input: unknown): Promise<unknown> => {
+    readExactModelCardSearchV1: vi.fn((input: unknown): Promise<unknown> => {
       void input;
       return Promise.resolve({
         outcome: "page",
@@ -61,7 +105,7 @@ const service = () =>
         },
       });
     }),
-  }) satisfies CatalogQueryRpcV2;
+  }) satisfies ExactModelCardSearchCatalogQueryRpcV1;
 
 type DeploymentEnvironment = "local" | "test" | "preview" | "production";
 
@@ -203,7 +247,9 @@ const expectClosed = async (
   expect(runtime.limiterCapabilityReads()).toBe(0);
   expect(runtime.queryCapabilityReads()).toBe(0);
   expect(runtime.queryService.resolvePublicationV2).not.toHaveBeenCalled();
-  expect(runtime.queryService.readMergedExactSearchV2).not.toHaveBeenCalled();
+  expect(
+    runtime.queryService.readExactModelCardSearchV1,
+  ).not.toHaveBeenCalled();
 };
 
 beforeEach(() => {
@@ -240,12 +286,11 @@ describe("signed frontend exact-Model search ingress (FE-010, API-010, SEC-001, 
       String(bytes.byteLength),
     );
     const body = JSON.parse(new TextDecoder().decode(bytes)) as unknown;
-    const encoded = encodeExactModelSearchRepresentation(body);
+    const encoded = encodeExactModelCardCollectionRepresentation(body);
     expect(encoded?.representationBytes).toEqual(bytes);
     expect(encoded?.collection.data).toHaveLength(1);
     expect(encoded?.collection.data[0]).toMatchObject({
-      resource_id: MODEL_ID,
-      resource_type: "model",
+      model: { model_id: MODEL_ID },
     });
 
     expect(incoming.sourceAddressReads()).toBe(0);
@@ -259,7 +304,7 @@ describe("signed frontend exact-Model search ingress (FE-010, API-010, SEC-001, 
       version: 2,
     });
     const firstRead: unknown =
-      runtime.queryService.readMergedExactSearchV2.mock.calls[0]?.[0];
+      runtime.queryService.readExactModelCardSearchV1.mock.calls[0]?.[0];
     expect(firstRead).toMatchObject({
       audience: "quantclarity-catalog-query-v1",
       environment: "local",
@@ -271,7 +316,7 @@ describe("signed frontend exact-Model search ingress (FE-010, API-010, SEC-001, 
     });
     const calls = JSON.stringify([
       runtime.queryService.resolvePublicationV2.mock.calls,
-      runtime.queryService.readMergedExactSearchV2.mock.calls,
+      runtime.queryService.readExactModelCardSearchV1.mock.calls,
     ]);
     expect(calls).not.toContain(FRONTEND_SECRET);
     expect(calls).not.toContain("cf-connecting-ip");
@@ -349,13 +394,13 @@ describe("signed frontend exact-Model search ingress (FE-010, API-010, SEC-001, 
     );
     const last = firstResults.at(-1);
     if (last === undefined) throw new Error("test page is empty");
-    runtime.queryService.readMergedExactSearchV2
+    runtime.queryService.readExactModelCardSearchV1
       .mockImplementationOnce(() =>
         Promise.resolve({
           outcome: "page",
           page: {
             nextContinuation: {
-              resourceId: last.resourceId,
+              resourceId: last.modelCard.model_id,
               tierMarker: last.tierMarker,
             },
             publicationId: PUBLICATION,
@@ -400,12 +445,12 @@ describe("signed frontend exact-Model search ingress (FE-010, API-010, SEC-001, 
     });
     expect(runtime.queryCapabilityReads()).toBe(2);
     const secondRead =
-      runtime.queryService.readMergedExactSearchV2.mock.calls[1]?.[0];
+      runtime.queryService.readExactModelCardSearchV1.mock.calls[1]?.[0];
     expect(secondRead).toMatchObject({
       envelope: {
         continuation: {
-          lastSortTuple: ["exact-v1:c", last.resourceId],
-          stableId: last.resourceId,
+          lastSortTuple: ["exact-v1:c", last.modelCard.model_id],
+          stableId: last.modelCard.model_id,
         },
       },
     });
@@ -431,7 +476,9 @@ describe("signed frontend exact-Model search ingress (FE-010, API-010, SEC-001, 
         message: "The requested publication is no longer available.",
       },
     });
-    expect(runtime.queryService.readMergedExactSearchV2).not.toHaveBeenCalled();
+    expect(
+      runtime.queryService.readExactModelCardSearchV1,
+    ).not.toHaveBeenCalled();
   });
 
   it.each(["publication_not_ready", "read_failure"] as const)(
@@ -457,7 +504,7 @@ describe("signed frontend exact-Model search ingress (FE-010, API-010, SEC-001, 
 
   it("maps a malformed query response to a static unavailable response", async () => {
     const runtime = guardedEnvironment();
-    runtime.queryService.readMergedExactSearchV2.mockImplementationOnce(() =>
+    runtime.queryService.readExactModelCardSearchV1.mockImplementationOnce(() =>
       Promise.resolve({ outcome: "page", visitor: "leak" }),
     );
     const response = await handleRequest(await signedRequest(), runtime.env);
@@ -497,6 +544,6 @@ describe("signed frontend exact-Model search ingress (FE-010, API-010, SEC-001, 
     expect(response.status).toBe(404);
     expect(keys).toHaveLength(1);
     expect(queryService.resolvePublicationV2).not.toHaveBeenCalled();
-    expect(queryService.readMergedExactSearchV2).not.toHaveBeenCalled();
+    expect(queryService.readExactModelCardSearchV1).not.toHaveBeenCalled();
   });
 });

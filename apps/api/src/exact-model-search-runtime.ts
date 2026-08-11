@@ -1,16 +1,15 @@
 import {
-  encodeExactModelSearchRepresentation,
+  encodeExactModelCardCollectionRepresentation,
   reconcileRequestCursor,
   verifyCursor,
   type ApiLimits,
-  type CatalogQueryRpcV2,
   type DeploymentEnvironment,
   type NormalizedRequest,
 } from "@quant-clarity/api-core";
 import type { ErrorEnvelope } from "@quant-clarity/contracts";
 
-import { readMergedExactSearchFromQueryV1 } from "./merged-exact-search-query.js";
-import type { MergedExactSearchCatalogQueryRpcV2 } from "./merged-exact-search-query.js";
+import { readExactModelCardSearchFromQueryV1 } from "./merged-exact-search-query.js";
+import type { ExactModelCardSearchCatalogQueryRpcV1 } from "./merged-exact-search-query.js";
 
 const LOCAL_CURSOR_KEY = new TextEncoder().encode(
   "quantclarity-local-only-exact-model-search-cursor-key-v1",
@@ -83,7 +82,7 @@ const error = (
 export type AdmittedExactModelSearchCapabilities = Readonly<{
   environment: DeploymentEnvironment;
   nowMs: () => number;
-  queryService: MergedExactSearchCatalogQueryRpcV2;
+  queryService: ExactModelCardSearchCatalogQueryRpcV1;
   subtle: SubtleCrypto;
   transportPolicy: unknown;
 }>;
@@ -110,7 +109,7 @@ export const handleAdmittedExactModelSearch = async (
         "Exact Model search is temporarily unavailable.",
         503,
       );
-    const outcome = await readMergedExactSearchFromQueryV1({
+    const outcome = await readExactModelCardSearchFromQueryV1({
       cursorKeyring: cursorKeyring(),
       environment: capabilities.environment,
       limits: SEARCH_API_LIMITS,
@@ -145,7 +144,9 @@ export const handleAdmittedExactModelSearch = async (
         503,
       );
     }
-    const encoded = encodeExactModelSearchRepresentation(outcome.collection);
+    const encoded = encodeExactModelCardCollectionRepresentation(
+      outcome.collection,
+    );
     if (encoded === null)
       return error(
         "temporarily_unavailable",
@@ -230,10 +231,10 @@ export const handleAdmittedExactModelSearchRuntime = (
         throw new TypeError("missing RPC method");
       return await Reflect.apply(method, queryService, [input]);
     };
-    const queryRpc: CatalogQueryRpcV2 = {
+    const queryRpc: ExactModelCardSearchCatalogQueryRpcV1 = {
       resolvePublicationV2: (input) => invoke("resolvePublicationV2", input),
-      readMergedExactSearchV2: (input) =>
-        invoke("readMergedExactSearchV2", input),
+      readExactModelCardSearchV1: (input) =>
+        invoke("readExactModelCardSearchV1", input),
     };
     return handleAdmittedExactModelSearch(request, {
       environment,

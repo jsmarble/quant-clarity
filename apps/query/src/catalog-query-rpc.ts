@@ -37,7 +37,9 @@ import {
   EXACT_PROVIDER_MODEL_ID_NORMALIZED_MARKER,
   EXACT_PROVIDER_MODEL_ID_RAW_MARKER,
   MergedExactSearchError,
+  readExactModelCardSearchPage,
   readMergedExactSearchPage,
+  type ExactModelCardSearchPage,
   type MergedExactSearchContinuation,
   type MergedExactSearchPage,
 } from "./merged-exact-search.js";
@@ -421,6 +423,20 @@ export type ReadMergedExactSearchV2Input = Readonly<{
 }>;
 
 export type ReadMergedExactSearchV2Outcome = ReadMergedExactSearchV1Outcome;
+
+export type ReadExactModelCardSearchV1Input = Readonly<{
+  version: 1;
+  audience: typeof AUDIENCE;
+  environment: QueryRpcEnvironment;
+  bookmark: string;
+  requiredAvailableUntilMs: number;
+  envelope: QueryServiceEnvelope;
+}>;
+
+export type ReadExactModelCardSearchV1Outcome =
+  | Readonly<{ outcome: "page"; page: ExactModelCardSearchPage }>
+  | Readonly<{ outcome: "integrity_failure" }>
+  | Readonly<{ outcome: "read_failure" }>;
 
 type ResolveRow = Readonly<{
   current_publication_id: string;
@@ -1282,6 +1298,22 @@ const parseMergedExactSearchInput = (
     limit: envelope.limit,
     requiredAvailableUntilMs,
   };
+};
+
+const parseExactModelCardSearchInput = (
+  value: unknown,
+): ParsedMergedExactSearchInput | null => {
+  const outer = ownDataRecord(value, [
+    "audience",
+    "bookmark",
+    "envelope",
+    "environment",
+    "requiredAvailableUntilMs",
+    "version",
+  ]);
+  if (outer?.version !== 1) return null;
+  const parsed = parseMergedExactSearchInput({ ...outer, version: 2 }, 2);
+  return parsed?.recordType === "model" ? parsed : null;
 };
 
 const d1Rows = (value: unknown): unknown[] | null => {
@@ -2215,6 +2247,44 @@ export const readMergedExactSearchV2 = async (
       publicationId: parsed.publicationId,
       query: parsed.query,
       recordType: parsed.recordType,
+      eligibilityProviderId: parsed.eligibilityProviderId,
+      ...(parsed.eligibilityStale === null
+        ? {}
+        : { eligibilityStale: parsed.eligibilityStale }),
+      familyId: parsed.familyId,
+      continuation: parsed.continuation,
+      limit: parsed.limit,
+      requiredAvailableUntilMs: parsed.requiredAvailableUntilMs,
+    });
+    return { outcome: "page", page };
+  } catch (error) {
+    if (error instanceof MergedExactSearchError)
+      return {
+        outcome:
+          error.code === "read_failure" ? "read_failure" : "integrity_failure",
+      };
+    return { outcome: "read_failure" };
+  }
+};
+
+export const readExactModelCardSearchV1 = async (
+  database: D1Database,
+  protectedEnvironment: unknown,
+  input: unknown,
+): Promise<ReadExactModelCardSearchV1Outcome> => {
+  const parsed = parseExactModelCardSearchInput(input);
+  if (
+    typeof parsed?.requiredAvailableUntilMs !== "number" ||
+    !environment(protectedEnvironment) ||
+    parsed.environment !== protectedEnvironment
+  )
+    return { outcome: "integrity_failure" };
+  try {
+    const session = database.withSession(parsed.bookmark);
+    const page = await readExactModelCardSearchPage(session, {
+      publicationId: parsed.publicationId,
+      query: parsed.query,
+      recordType: "model",
       eligibilityProviderId: parsed.eligibilityProviderId,
       ...(parsed.eligibilityStale === null
         ? {}

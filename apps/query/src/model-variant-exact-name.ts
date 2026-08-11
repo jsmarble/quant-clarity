@@ -23,6 +23,7 @@ import {
   RETAINED_HOT_REFERENCE_CTE_SQL,
   validRequiredAvailableUntilMs,
 } from "./retained-hot-publication.js";
+import { attachModelCardView } from "./model-card-view.js";
 
 const UUID_V4 =
   "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
@@ -637,7 +638,7 @@ const rehydrate = async (
   )
     throw new ModelVariantExactNameError("integrity_failure");
 
-  return Object.freeze({
+  const result = Object.freeze({
     tier: 1,
     resourceType: row.resource_type,
     resourceId: row.resource_id,
@@ -648,6 +649,9 @@ const rehydrate = async (
     }),
     semanticDegraded: "disabled",
   });
+  return row.resource_type === "model"
+    ? attachModelCardView(result, canonical as Model)
+    : result;
 };
 
 export const readModelVariantExactNamePage = async (

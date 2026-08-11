@@ -1,12 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type * as MergedExactSearchModule from "./merged-exact-search.js";
 
-const mocked = vi.hoisted(() => ({ readPage: vi.fn() }));
+const mocked = vi.hoisted(() => ({
+  readCardPage: vi.fn(),
+  readPage: vi.fn(),
+}));
 
 vi.mock("./merged-exact-search.js", async (importOriginal) => {
   const original = await importOriginal<typeof MergedExactSearchModule>();
   return {
     ...original,
+    readExactModelCardSearchPage: mocked.readCardPage,
     readMergedExactSearchPage: mocked.readPage,
   };
 });
@@ -16,6 +20,7 @@ import {
   MergedExactSearchError,
 } from "./merged-exact-search.js";
 import {
+  readExactModelCardSearchV1,
   readMergedExactSearchV1,
   readMergedExactSearchV2,
 } from "./catalog-query-rpc.js";
@@ -72,6 +77,11 @@ const inputV2 = (
   envelope: envelope(filters, continuation),
 });
 
+const cardInput = (requiredAvailableUntilMs: number) => ({
+  ...inputV2(requiredAvailableUntilMs, { record_type: "model" }),
+  version: 1,
+});
+
 class FakeDatabase {
   readonly sessionInputs: string[] = [];
   readonly session = { prepare: vi.fn() } as unknown as D1DatabaseSession;
@@ -87,7 +97,44 @@ class FakeDatabase {
 }
 
 describe("merged exact-search RPC (SRCH-002, API-003, API-007, CF-020)", () => {
-  beforeEach(() => mocked.readPage.mockReset());
+  beforeEach(() => {
+    mocked.readCardPage.mockReset();
+    mocked.readPage.mockReset();
+  });
+
+  it("exposes a dedicated V1 Model-card RPC without changing generic V2", async () => {
+    const page = {
+      publicationId: PUBLICATION,
+      results: [],
+      nextContinuation: null,
+      semanticDegraded: "disabled",
+    } as const;
+    const horizon = 2_000_000_000_000;
+    mocked.readCardPage.mockResolvedValue(page);
+    const database = new FakeDatabase();
+
+    await expect(
+      readExactModelCardSearchV1(database.asD1(), "test", cardInput(horizon)),
+    ).resolves.toEqual({ outcome: "page", page });
+    expect(mocked.readCardPage).toHaveBeenCalledWith(database.session, {
+      publicationId: PUBLICATION,
+      query: "Fixture",
+      recordType: "model",
+      eligibilityProviderId: null,
+      familyId: null,
+      continuation: null,
+      limit: 20,
+      requiredAvailableUntilMs: horizon,
+    });
+    expect(mocked.readPage).not.toHaveBeenCalled();
+
+    await expect(
+      readExactModelCardSearchV1(database.asD1(), "test", {
+        ...cardInput(horizon),
+        envelope: envelope(),
+      }),
+    ).resolves.toEqual({ outcome: "integrity_failure" });
+  });
 
   it("opens exactly one bookmark-continuous session and passes the compact continuation", async () => {
     const page = {

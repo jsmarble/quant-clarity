@@ -5,6 +5,8 @@ import {
 } from "../lib/exact-model-search-page.js";
 import type { ExactModelSearchCollection } from "../lib/exact-model-search.js";
 
+import FactValue from "./FactValue.astro";
+
 interface Props {
   collection: ExactModelSearchCollection;
   query: string;
@@ -29,6 +31,12 @@ const formatTimestamp = (value: string): string =>
     timeZoneName: "short",
     year: "numeric",
   }).format(new Date(value));
+const formatParameter = (value: {
+  approximation: string;
+  normalized_decimal: string | null;
+  raw_value: string;
+}): string =>
+  `${value.raw_value}; normalized: ${value.normalized_decimal ?? "unknown"}; approximation: ${value.approximation}`;
 ---
 
 <section class="exact-matches" aria-labelledby="exact-model-matches-title">
@@ -63,9 +71,10 @@ const formatTimestamp = (value: string): string =>
         </div>
         <ol class="exact-match-list" aria-label="Exact Model matches">
           {collection.data.map((result, index) => {
+            const model = result.model;
             const displayName =
-              result.display_name.state === "known"
-                ? result.display_name.value
+              model.display_name.state === "known"
+                ? model.display_name.value
                 : "Model name unknown";
             const titleId = `exact-model-match-${String(index)}`;
             const matchLabel = exactModelMatchLabel(result.match_kind);
@@ -74,7 +83,7 @@ const formatTimestamp = (value: string): string =>
                 <article class="exact-match" aria-labelledby={titleId}>
                   <p class="eyebrow">Canonical Model</p>
                   <h3 id={titleId}>
-                    <a href={`/models/${result.resource_id}`}>{displayName}</a>
+                    <a href={`/models/${model.model_id}`}>{displayName}</a>
                   </h3>
                   <dl class="match-facts">
                     <div>
@@ -84,36 +93,80 @@ const formatTimestamp = (value: string): string =>
                     <div>
                       <dt>QuantClarity Model ID</dt>
                       <dd>
-                        <code>{result.resource_id}</code>
+                        <code>{model.model_id}</code>
                       </dd>
                     </div>
-                    {result.display_name.state === "known" && (
-                      <>
-                        <div>
-                          <dt>Observed</dt>
-                          <dd>
-                            <time datetime={result.display_name.observed_at}>
-                              {formatTimestamp(result.display_name.observed_at)}
-                            </time>
-                          </dd>
-                        </div>
-                        <div>
-                          <dt>Evidence</dt>
-                          <dd class="identifier-list">
-                            {result.display_name.evidence_ids.map(
-                              (evidenceId) => (
-                                <code>{evidenceId}</code>
-                              ),
-                            )}
-                          </dd>
-                        </div>
-                      </>
-                    )}
                   </dl>
-                  <p class="quiet routing-note">
-                    The Model ID is QuantClarity’s canonical routing identity;
-                    publisher Facts carry evidence and observation times.
-                  </p>
+                  <dl class="fact-grid model-card-facts">
+                    <FactValue label="Display name" fact={model.display_name} />
+                    <FactValue label="Publisher" fact={model.publisher} />
+                    <FactValue
+                      label="Total parameters"
+                      fact={model.total_parameters}
+                      displayValue={
+                        model.total_parameters.state === "known"
+                          ? formatParameter(model.total_parameters.value)
+                          : undefined
+                      }
+                    />
+                    <FactValue
+                      label="Active parameters"
+                      fact={model.active_parameters}
+                      displayValue={
+                        model.active_parameters.state === "known"
+                          ? formatParameter(model.active_parameters.value)
+                          : undefined
+                      }
+                    />
+                    <FactValue
+                      label="Source checkpoint weight format"
+                      fact={model.source_weight_format}
+                    />
+                    <FactValue
+                      label="Source-provided quantization"
+                      fact={model.source_quantization}
+                    />
+                    <div class="fact-row">
+                      <dt>Cataloged provider count</dt>
+                      <dd>
+                        <div class="fact-value">
+                          {model.cataloged_provider_count.value}
+                        </div>
+                        <div class="fact-meta">
+                          <span>
+                            Observed:{" "}
+                            <time
+                              datetime={
+                                model.cataloged_provider_count.observed_at
+                              }
+                            >
+                              {formatTimestamp(
+                                model.cataloged_provider_count.observed_at,
+                              )}
+                            </time>
+                          </span>
+                          <span>
+                            Derivation:{" "}
+                            <code>
+                              {
+                                model.cataloged_provider_count
+                                  .derivation_version
+                              }
+                            </code>
+                          </span>
+                        </div>
+                      </dd>
+                    </div>
+                    <FactValue
+                      label="Last Model-data refresh"
+                      fact={model.last_model_data_refresh}
+                      displayValue={
+                        model.last_model_data_refresh.state === "known"
+                          ? formatTimestamp(model.last_model_data_refresh.value)
+                          : undefined
+                      }
+                    />
+                  </dl>
                 </article>
               </li>
             );

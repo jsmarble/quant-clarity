@@ -1,6 +1,11 @@
 import { normalizeExactSearchName } from "@quant-clarity/publication-core";
 
 import {
+  attachExistingModelCardView,
+  attachedModelCardView,
+  type ModelCardView,
+} from "./model-card-view.js";
+import {
   ModelVariantExactNameError,
   readModelVariantExactNamePage,
   type ModelVariantExactNameResult,
@@ -73,6 +78,19 @@ export type MergedExactSearchPage = Readonly<{
   results: readonly MergedExactSearchResult[];
   nextContinuation: MergedExactSearchContinuation | null;
   semanticDegraded: "disabled" | "not_applicable";
+}>;
+
+export type ExactModelCardSearchResult = Readonly<{
+  tierMarker: MergedExactSearchTierMarker;
+  matchKind: "canonical_name" | "provider_model_id";
+  modelCard: ModelCardView;
+}>;
+
+export type ExactModelCardSearchPage = Readonly<{
+  publicationId: string;
+  results: readonly ExactModelCardSearchResult[];
+  nextContinuation: MergedExactSearchContinuation | null;
+  semanticDegraded: "disabled";
 }>;
 
 export type MergedExactSearchErrorCode =
@@ -413,15 +431,17 @@ const appendResult = (
         typeof result.normalizedOrderingKey !== "string"))
   )
     throw new MergedExactSearchError("integrity_failure");
-  output.push(
-    Object.freeze({
-      tierMarker: marker,
-      resourceType: result.resourceType,
-      resourceId: result.resourceId,
-      matchKind: result.matchKind,
-      displayName: cloneDisplayName(result.displayName),
-    }) as MergedExactSearchResult,
-  );
+  const merged = Object.freeze({
+    tierMarker: marker,
+    resourceType: result.resourceType,
+    resourceId: result.resourceId,
+    matchKind: result.matchKind,
+    displayName: cloneDisplayName(result.displayName),
+  }) as MergedExactSearchResult;
+  const card = attachedModelCardView(value);
+  if (card !== null && merged.resourceType === "model")
+    attachExistingModelCardView(merged, card);
+  output.push(merged);
 };
 
 const pageRecord = (
@@ -655,5 +675,44 @@ export const readMergedExactSearchPage = async (
       input.recordType === "provider" && input.eligibilityStale === null
         ? "not_applicable"
         : "disabled",
+  });
+};
+
+/**
+ * Dedicated Model-only composition over the generic exact ordering seam. Card
+ * bytes come from canonical resources already hydrated by each tier; this
+ * function performs no additional storage read.
+ */
+export const readExactModelCardSearchPage = async (
+  database: Pick<D1DatabaseSession, "prepare">,
+  inputValue: unknown,
+): Promise<ExactModelCardSearchPage> => {
+  const detached = snapshot(inputValue);
+  if (detached?.recordType !== "model")
+    throw new MergedExactSearchError("invalid_input");
+  const page = await readMergedExactSearchPage(database, detached);
+  const results: ExactModelCardSearchResult[] = [];
+  for (const result of page.results) {
+    const modelCard = attachedModelCardView(result);
+    if (
+      result.resourceType !== "model" ||
+      result.resourceId !== modelCard?.model_id ||
+      (result.matchKind !== "canonical_name" &&
+        result.matchKind !== "provider_model_id")
+    )
+      throw new MergedExactSearchError("integrity_failure");
+    results.push(
+      Object.freeze({
+        tierMarker: result.tierMarker,
+        matchKind: result.matchKind,
+        modelCard,
+      }),
+    );
+  }
+  return Object.freeze({
+    publicationId: page.publicationId,
+    results: Object.freeze(results),
+    nextContinuation: page.nextContinuation,
+    semanticDegraded: "disabled",
   });
 };

@@ -23,6 +23,7 @@ import {
   RETAINED_HOT_REFERENCE_CTE_SQL,
   validRequiredAvailableUntilMs,
 } from "./retained-hot-publication.js";
+import { attachModelCardView } from "./model-card-view.js";
 
 const UUID_V4 =
   "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
@@ -1274,7 +1275,7 @@ const readProviderModelIdExactPageInternal = async (
       target.display_name.state !== "known"
     )
       throw new ProviderModelIdExactError("integrity_failure");
-    return Object.freeze({
+    const result = Object.freeze({
       tier: 2 as const,
       resourceType: row.target_resource_type,
       resourceId: row.target_resource_id,
@@ -1285,6 +1286,9 @@ const readProviderModelIdExactPageInternal = async (
       }),
       semanticDegraded: "disabled" as const,
     });
+    return row.target_resource_type === "model"
+      ? attachModelCardView(result, target as Model)
+      : result;
   });
   const results = Object.freeze(hydrated.slice(0, valid.limit));
   const last = results.at(-1);

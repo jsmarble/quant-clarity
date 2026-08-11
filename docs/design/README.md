@@ -14,6 +14,8 @@ The current model/variant exact-name follow-up is split by [ADR 0026](../decisio
 
 [ADR 0052](../decisions/0052-publication-pinned-frontend-model-detail.md) and [Phase 5U](phase-5u-publication-pinned-model-facts.md) accept a local-only signed canonical Model Facts slice. The frontend must pin the detail read to its metadata publication, forward no visitor identity, and admit only closed-contract responses from the existing Model-detail authority. Public Model API routing, Variants, offerings, recovery acceptance, remote environments, deployment, and every traceability advancement remain pending.
 
+[ADR 0053](../decisions/0053-publication-pinned-exact-model-discovery.md) and locally implemented [Phase 5V](phase-5v-exact-model-discovery.md) connect publication-pinned exact Model identity results to stable-ID Model Facts. Accepted [ADR 0054](../decisions/0054-canonical-model-card-projection.md) and locally implemented [Phase 5W](phase-5w-exact-model-cards.md) retain canonical Models already read by exact tiers, add zero SQL, and project a dedicated 65,536-byte-bounded Model-card collection whose bytes are invariant to provider/filter witnesses. Variant cards, public/remote ingress, `PublicationWorkflow`, deployment, and every traceability advancement remain pending.
+
 ## Design rules
 
 - Trace each component and consequential behavior to PRD requirement IDs.

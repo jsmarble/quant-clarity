@@ -47,6 +47,7 @@ import {
 } from "./model-detail.js";
 import {
   EXACT_PROVIDER_MODEL_ID_RAW_MARKER,
+  readExactModelCardSearchPage,
   readMergedExactSearchPage,
 } from "./merged-exact-search.js";
 import { readProviderExactNamePage } from "./provider-exact-name.js";
@@ -261,20 +262,21 @@ const publish = async (value: ServingV4Fixture): Promise<void> => {
 const rpcEnvelope = (
   publicationId: string,
   query: string,
+  filters: QueryServiceEnvelope["filters"] = {},
 ): QueryServiceEnvelope => ({
   version: 1,
   audience: "quantclarity-catalog-query-v1",
   environment: "local",
   operation: { kind: "search" },
   publicationId,
-  filters: {},
+  filters,
   sort: ["relevance", "stable_id"],
   limit: 20,
   continuation: null,
   searchPlan: {
     kind: "exact_structured",
     query,
-    filters: {},
+    filters,
     limit: 20,
     semanticCandidates: 0,
     semanticCalls: 0,
@@ -1286,6 +1288,65 @@ describe("schema-1.11 current exact readers (SRCH-002, SRCH-004, SRCH-006, SRCH-
     });
     expect(preparedSql).toHaveLength(2);
 
+    const persistedProviderModelIds =
+      readProviderModelIdSearchStagingPersistenceV1(
+        fixture.providerModelIdStaging,
+      );
+    const providerModelIdRow = persistedProviderModelIds.rows[0];
+    if (providerModelIdRow === undefined)
+      throw new Error("provider-model-ID fixture missing");
+    const providerModelIdQuery = new TextDecoder().decode(
+      new Uint8Array(providerModelIdRow.raw_provider_model_id_utf8),
+    );
+    const proveCardStatementParity = async (query: string) => {
+      const genericSql: string[] = [];
+      const cardSql: string[] = [];
+      const database = (statements: string[]) => ({
+        prepare: (sql: string) => {
+          statements.push(sql);
+          return env.SERVING_DB.prepare(sql);
+        },
+      });
+      const input = {
+        publicationId: PUBLICATION,
+        query,
+        recordType: "model" as const,
+        eligibilityProviderId: null,
+        continuation: null,
+        limit: 20,
+      };
+      const generic = await readMergedExactSearchPage(
+        database(genericSql),
+        input,
+      );
+      const cards = await readExactModelCardSearchPage(
+        database(cardSql),
+        input,
+      );
+      expect(cardSql).toEqual(genericSql);
+      expect(cards.results).toHaveLength(generic.results.length);
+      expect(
+        cards.results.map(({ matchKind, modelCard, tierMarker }) => ({
+          matchKind,
+          resourceId: modelCard.model_id,
+          tierMarker,
+        })),
+      ).toEqual(
+        generic.results.map(({ matchKind, resourceId, tierMarker }) => ({
+          matchKind,
+          resourceId,
+          tierMarker,
+        })),
+      );
+      expect(cards.results[0]?.modelCard).toMatchObject({
+        model_id: generic.results[0]?.resourceId,
+        display_name: { state: "known" },
+        cataloged_provider_count: { value: 2 },
+      });
+    };
+    await proveCardStatementParity("Schema 17\u0000Model");
+    await proveCardStatementParity(providerModelIdQuery);
+
     const selected = await exports.CatalogQueryService.resolvePublicationV1({
       version: 1,
       audience: "quantclarity-catalog-query-v1",
@@ -1328,6 +1389,50 @@ describe("schema-1.11 current exact readers (SRCH-002, SRCH-004, SRCH-006, SRCH-
         results: [{ tierMarker: EXACT_PROVIDER_MODEL_ID_RAW_MARKER }],
       },
     });
+
+    const requiredAvailableUntilMs = NOW + 5 * 60_000;
+    const cardSelection =
+      await exports.CatalogQueryService.resolvePublicationV2({
+        version: 2,
+        audience: "quantclarity-catalog-query-v1",
+        environment: "local",
+        requestedPublicationId: null,
+        requiredAvailableUntilMs,
+      });
+    if (cardSelection.outcome !== "selected")
+      throw new Error("card publication selection failed");
+    for (const [query, matchKind] of [
+      ["Schema 17\u0000Model", "canonical_name"],
+      [providerModelIdQuery, "provider_model_id"],
+    ] as const) {
+      await expect(
+        exports.CatalogQueryService.readExactModelCardSearchV1({
+          version: 1,
+          audience: "quantclarity-catalog-query-v1",
+          environment: "local",
+          bookmark: cardSelection.bookmark,
+          requiredAvailableUntilMs,
+          envelope: rpcEnvelope(PUBLICATION, query, {
+            record_type: "model",
+          }),
+        }),
+      ).resolves.toMatchObject({
+        outcome: "page",
+        page: {
+          publicationId: PUBLICATION,
+          results: [
+            {
+              matchKind,
+              modelCard: {
+                model_id: "mdl_00000001-0000-4000-8000-000000000001",
+                display_name: { state: "known" },
+                cataloged_provider_count: { value: 2 },
+              },
+            },
+          ],
+        },
+      });
+    }
   });
 
   it("uses an independent provider witness and rejects stale, inactive, and unknown witnesses", async () => {

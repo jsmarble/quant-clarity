@@ -10,6 +10,7 @@ import type {
 
 import {
   readDatasetMetadataV1,
+  readExactModelCardSearchV1,
   readMethodologyContextV1,
   readModelDetailV1,
   readModelDetailV2,
@@ -21,6 +22,7 @@ import {
   resolvePublicationV1,
   resolvePublicationV2,
   type ReadModelVariantExactNameTierV1Outcome,
+  type ReadExactModelCardSearchV1Outcome,
   type ReadMergedExactSearchV1Outcome,
   type ReadMergedExactSearchV2Outcome,
   type ReadProviderModelIdExactTierV1Outcome,
@@ -155,6 +157,16 @@ export class CatalogQueryService
     input: unknown,
   ): Promise<ReadMergedExactSearchV2Outcome> {
     return readMergedExactSearchV2(
+      this.env.SERVING_DB,
+      this.env.DEPLOYMENT_ENVIRONMENT,
+      input,
+    );
+  }
+
+  readExactModelCardSearchV1(
+    input: unknown,
+  ): Promise<ReadExactModelCardSearchV1Outcome> {
+    return readExactModelCardSearchV1(
       this.env.SERVING_DB,
       this.env.DEPLOYMENT_ENVIRONMENT,
       input,
