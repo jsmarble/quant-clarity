@@ -12,6 +12,8 @@ import {
   checkModelFamilyContract,
   checkModelContract,
   checkModelDetailContract,
+  checkPrecisionObservationContract,
+  checkPriceContract,
   checkProviderContract,
   checkVariantContract,
   derivePublicationVectorId,
@@ -28,6 +30,9 @@ import {
   ModelFamilySchema,
   type ModelDetailSchema,
   ModelSchema,
+  type PrecisionObservation,
+  PrecisionObservationSchema,
+  type Price,
   PriceSchema,
   PrecisionFormatSchema,
   PROVIDER_DISPLAY_NAME_MAX_UNICODE_SCALARS,
@@ -67,6 +72,63 @@ const EVIDENCE_SUMMARY_FIXTURE = {
   source_url: null,
   subject_resource_id: "prv_00000000-0000-4000-8000-000000000001",
   value: "",
+} as const;
+
+const PRICE_FIXTURE = {
+  price_id: `pcs_${UUID}`,
+  offering_id: `off_${UUID}`,
+  role: "input",
+  price_class: "standard",
+  amount_decimal: "1.25",
+  currency: "USD",
+  currency_provenance: "provider_stated",
+  unit: "per_million_tokens",
+  conditions: ["public serverless tier"],
+  is_standard_comparable: true,
+  effective_from: null,
+  effective_to: null,
+  observed_at: "2026-08-01T00:00:00.000Z",
+  evidence_ids: [`evd_${UUID}`],
+} as const;
+
+const knownContractFact = (value: unknown) => ({
+  state: "known",
+  value,
+  observed_at: "2026-08-01T00:00:00.000Z",
+  evidence_ids: [`evd_${UUID}`],
+});
+
+const PRECISION_OBSERVATION_FIXTURE = {
+  precision_id: `prc_${UUID}`,
+  offering_id: `off_${UUID}`,
+  normalized_format: knownContractFact("FP8"),
+  summary_format: knownContractFact("FP8"),
+  raw_field_name: "precision",
+  raw_precision: knownContractFact("fp8"),
+  provider_definition: knownContractFact("Provider-declared format"),
+  format_variant: {
+    state: "unknown",
+    value: null,
+    observed_at: null,
+    evidence_ids: [],
+  },
+  components: [
+    {
+      component: "weights",
+      normalized_format: knownContractFact("FP8"),
+      raw_precision: knownContractFact("fp8"),
+    },
+  ],
+  applicability: {
+    provider_id: `prv_${UUID}`,
+    provider_model_id: "publisher/model",
+    tier_key: "standard",
+    endpoint_class: "serverless",
+    material_region_key: "",
+    component_scope: "weights",
+  },
+  observed_at: "2026-08-01T00:00:00.000Z",
+  evidence_ids: [`evd_${UUID}`],
 } as const;
 
 function validator() {
@@ -161,6 +223,212 @@ describe("public fact contract (API-005, DATA-060)", () => {
         evidence_ids: [],
       }),
     ).toBe(false);
+  });
+});
+
+describe("Worker-safe price and precision contracts (DATA-030–DATA-061)", () => {
+  it("exports complete Price and PrecisionObservation types and validators", () => {
+    expectTypeOf<Price["price_id"]>().toEqualTypeOf<string>();
+    expectTypeOf<
+      PrecisionObservation["precision_id"]
+    >().toEqualTypeOf<string>();
+    expect(checkPriceContract(PRICE_FIXTURE)).toBe(true);
+    expect(
+      checkPrecisionObservationContract(PRECISION_OBSERVATION_FIXTURE),
+    ).toBe(true);
+  });
+
+  it("matches schema maxLength semantics in Unicode scalars", () => {
+    const validatePrice = standaloneValidator(PriceSchema);
+    for (const [candidate, expected] of [
+      [{ ...PRICE_FIXTURE, role: "\u{1f642}".repeat(128) }, true],
+      [{ ...PRICE_FIXTURE, role: "\u{1f642}".repeat(129) }, false],
+      [{ ...PRICE_FIXTURE, conditions: ["\u{1f642}".repeat(256)] }, true],
+      [{ ...PRICE_FIXTURE, conditions: ["\u{1f642}".repeat(257)] }, false],
+    ] as const) {
+      expect(validatePrice(candidate)).toBe(expected);
+      expect(checkPriceContract(candidate)).toBe(expected);
+    }
+
+    const validatePrecision = standaloneValidator(PrecisionObservationSchema);
+    for (const [candidate, expected] of [
+      [
+        {
+          ...PRECISION_OBSERVATION_FIXTURE,
+          raw_field_name: "\u{1f642}".repeat(256),
+        },
+        true,
+      ],
+      [
+        {
+          ...PRECISION_OBSERVATION_FIXTURE,
+          raw_field_name: "\u{1f642}".repeat(257),
+        },
+        false,
+      ],
+      [
+        {
+          ...PRECISION_OBSERVATION_FIXTURE,
+          provider_definition: knownContractFact("\u{1f642}".repeat(1_000)),
+        },
+        true,
+      ],
+      [
+        {
+          ...PRECISION_OBSERVATION_FIXTURE,
+          provider_definition: knownContractFact("\u{1f642}".repeat(1_001)),
+        },
+        false,
+      ],
+      [
+        {
+          ...PRECISION_OBSERVATION_FIXTURE,
+          applicability: {
+            ...PRECISION_OBSERVATION_FIXTURE.applicability,
+            component_scope: "\u{1f642}".repeat(128),
+          },
+        },
+        true,
+      ],
+      [
+        {
+          ...PRECISION_OBSERVATION_FIXTURE,
+          applicability: {
+            ...PRECISION_OBSERVATION_FIXTURE.applicability,
+            component_scope: "\u{1f642}".repeat(129),
+          },
+        },
+        false,
+      ],
+      [
+        {
+          ...PRECISION_OBSERVATION_FIXTURE,
+          components: [
+            {
+              ...PRECISION_OBSERVATION_FIXTURE.components[0],
+              component: "\u{1f642}".repeat(128),
+            },
+          ],
+        },
+        true,
+      ],
+      [
+        {
+          ...PRECISION_OBSERVATION_FIXTURE,
+          components: [
+            {
+              ...PRECISION_OBSERVATION_FIXTURE.components[0],
+              component: "\u{1f642}".repeat(129),
+            },
+          ],
+        },
+        false,
+      ],
+    ] as const) {
+      expect(validatePrecision(candidate)).toBe(expected);
+      expect(checkPrecisionObservationContract(candidate)).toBe(expected);
+    }
+
+    expect(
+      checkPriceContract({ ...PRICE_FIXTURE, role: "bad\ud800scalar" }),
+    ).toBe(false);
+    expect(
+      checkPrecisionObservationContract({
+        ...PRECISION_OBSERVATION_FIXTURE,
+        raw_field_name: "bad\udfffscalar",
+      }),
+    ).toBe(false);
+  });
+
+  it("rejects oversized, sparse, decorated, and accessor-backed arrays", () => {
+    const oversizedConditions = Array.from({ length: 33 }, () => "condition");
+    expect(
+      checkPriceContract({
+        ...PRICE_FIXTURE,
+        conditions: oversizedConditions,
+      }),
+    ).toBe(false);
+
+    const decoratedConditions = ["condition"];
+    Object.assign(decoratedConditions, { visitor_id: "forbidden" });
+    expect(
+      checkPriceContract({
+        ...PRICE_FIXTURE,
+        conditions: decoratedConditions,
+      }),
+    ).toBe(false);
+
+    const sparseComponents = new Array(1);
+    expect(
+      checkPrecisionObservationContract({
+        ...PRECISION_OBSERVATION_FIXTURE,
+        components: sparseComponents,
+      }),
+    ).toBe(false);
+    expect(
+      checkPrecisionObservationContract({
+        ...PRECISION_OBSERVATION_FIXTURE,
+        components: Array.from(
+          { length: 65 },
+          () => PRECISION_OBSERVATION_FIXTURE.components[0],
+        ),
+      }),
+    ).toBe(false);
+
+    let itemReads = 0;
+    const accessorComponents: unknown[] = [];
+    Object.defineProperty(accessorComponents, "0", {
+      enumerable: true,
+      get() {
+        itemReads += 1;
+        return PRECISION_OBSERVATION_FIXTURE.components[0];
+      },
+    });
+    expect(
+      checkPrecisionObservationContract({
+        ...PRECISION_OBSERVATION_FIXTURE,
+        components: accessorComponents,
+      }),
+    ).toBe(false);
+    expect(itemReads).toBe(0);
+  });
+
+  it("rejects inherited, symbolic, accessor-backed, and hostile objects", () => {
+    const inheritedPrice = Object.create({ visitor_id: "forbidden" }) as Record<
+      string,
+      unknown
+    >;
+    Object.assign(inheritedPrice, PRICE_FIXTURE);
+    expect(checkPriceContract(inheritedPrice)).toBe(false);
+    expect(
+      checkPrecisionObservationContract({
+        ...PRECISION_OBSERVATION_FIXTURE,
+        [Symbol("visitor")]: true,
+      }),
+    ).toBe(false);
+
+    let getterReads = 0;
+    const accessorPrice = { ...PRICE_FIXTURE } as Record<string, unknown>;
+    Object.defineProperty(accessorPrice, "role", {
+      enumerable: true,
+      get() {
+        getterReads += 1;
+        return "input";
+      },
+    });
+    expect(checkPriceContract(accessorPrice)).toBe(false);
+    expect(getterReads).toBe(0);
+
+    const hostilePrecision = new Proxy(PRECISION_OBSERVATION_FIXTURE, {
+      ownKeys() {
+        throw new Error("hostile ownKeys trap");
+      },
+    });
+    expect(checkPrecisionObservationContract(hostilePrecision)).toBe(false);
+
+    const { proxy: revokedPrice, revoke } = Proxy.revocable(PRICE_FIXTURE, {});
+    revoke();
+    expect(checkPriceContract(revokedPrice)).toBe(false);
   });
 });
 

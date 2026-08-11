@@ -551,6 +551,27 @@ const fixtureVariant = (
   variant_kind: fixtureKnownFact("publisher_variant"),
 });
 
+const fixtureProvider = (providerId: string) => ({
+  active_offering_count: {
+    derivation_version: "provider-count@1",
+    observed_at: "2026-08-01T11:00:00.000Z",
+    value: 0,
+  },
+  affiliate_relationship_present: false,
+  display_name: fixtureKnownFact("Fixture Provider"),
+  last_successful_refresh: fixtureKnownFact("2026-08-01T11:00:00.000Z"),
+  official_site: fixtureKnownFact("https://provider.example"),
+  precision_coverage: {
+    derivation_version: "precision-coverage@1",
+    known_count: 0,
+    known_proportion_decimal: "0",
+    unknown_count: 0,
+  },
+  provider_id: providerId,
+  slug: fixtureKnownFact("fixture-provider"),
+  status: fixtureKnownFact("active"),
+});
+
 const record = (
   publicationId: `pub_${string}`,
   state: PublicationRecord["state"],
@@ -622,6 +643,10 @@ describe("immutable publication closure (PIPE-050, PIPE-051, BE-011)", () => {
     const modelId = `mdl_${UUID_A}`;
     const variantId = `var_${UUID_B}`;
     const canonicalResourceJson = new Map([
+      [
+        `provider:prv_${UUID_A}`,
+        fixtureCanonicalJson(fixtureProvider(`prv_${UUID_A}`)),
+      ],
       [
         `model:${modelId}`,
         fixtureCanonicalJson(fixtureModel(modelId, familyId)),
@@ -817,7 +842,7 @@ describe("immutable publication closure (PIPE-050, PIPE-051, BE-011)", () => {
         {
           resourceType: "provider" as const,
           resourceId: providerId,
-          resourceJson: '{"name":"Provider"}',
+          resourceJson: fixtureCanonicalJson(fixtureProvider(providerId)),
         },
       ].map(async (resource) => ({
         ...resource,
@@ -1216,10 +1241,10 @@ describe("immutable publication closure (PIPE-050, PIPE-051, BE-011)", () => {
         .sort((left, right) => left.kind.localeCompare(right.kind))
         .map((row) => row.receipt_hash),
     ).toEqual([
-      "sha256:a21fe3530149aeee216a5b9687fdb961cfb78e38c44a559fab7d2ecfb0d230fe",
-      "sha256:da2de742b662ff31a217581016b0a87e61c216269d3d60812e8607940cd731b1",
-      "sha256:3198a79f41507bfc16e6acdc3f7d890f973c5b8b373b6f2f44896179d29fe486",
-      "sha256:3ff8e64425bda1d3c468eb5dccfb415492a64d895bc145cc2c262582571e7c04",
+      "sha256:f55757c3ae2698850bb30da6c16045da47ad838361699877bbad04450022baf0",
+      "sha256:533752ae5fb36c153ca56ba590b32dfba69d11e94089190880c3b68f6bfc6dba",
+      "sha256:4b98efbc04be3ef123f70eeb576f731b4d818b9e4f0729ed7f09dd45f4a83baa",
+      "sha256:fd3c4be733421b4c5aa81af050f049477279be40e810a25f93b2fdf7e02a88e3",
     ]);
     await expect(
       readServingReadinessReceipts({
@@ -1260,7 +1285,7 @@ describe("immutable publication closure (PIPE-050, PIPE-051, BE-011)", () => {
     if (attestationDecision.decision !== "ready")
       throw new Error("expected a ready attestation projection");
     expect(attestationDecision.attestation.attestation_hash).toBe(
-      "sha256:4a7a3664590fa5bf53b99ab24b34088cb4a3c8a929313d20d8a2ffe4d73a97f0",
+      "sha256:af1d1ae61072cd73092f38e896d0d5cbc22ec122662fe13734998ab41ea661b0",
     );
     await expect(
       verifyServingReadinessAttestationProjection(
@@ -1655,10 +1680,10 @@ describe("immutable publication closure (PIPE-050, PIPE-051, BE-011)", () => {
       authorized_identity_id: AUTHORIZATION.identityId,
     });
     expect(switchProjection.preflight.preflight_hash).toBe(
-      "sha256:eeb8dd544cef17aa24a7aecaf084a635177142cfea779b5eea2667dcb6476012",
+      "sha256:64631e10a08ca58c1273611dfc8acedaff02f129047ea78b13d0bb29dc5d1b2a",
     );
     expect(switchProjection.history.event_hash).toBe(
-      "sha256:fb9e09467a120f92f346e77121889285423beccc3996231ae18f2d36eee47164",
+      "sha256:c5973b05a1aabb28fcfeffdbbcb7468e0fb0fa844e14dbd39a034f68d55d5e2a",
     );
     const switchedHead: StoredPublicationHead = {
       activePublicationId: publicationId,

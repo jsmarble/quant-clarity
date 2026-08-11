@@ -106,7 +106,9 @@ function provider(affiliateRelationshipPresent: boolean) {
 }
 
 function relatedProviderResources(version: 1 | 2) {
-  const evidenceId = id("evd", 30);
+  const offeringEvidenceId = id("evd", 30);
+  const priceEvidenceId = id("evd", 40);
+  const precisionEvidenceId = id("evd", 41);
   const offeringId = id("off", 1);
   const priceId = id("pcs", 1);
   const precisionId = id("prc", 1);
@@ -125,7 +127,7 @@ function relatedProviderResources(version: 1 | 2) {
       value: {
         display_name: known(`Context Offering ${String(version)}`, 31),
         endpoint_class: "chat",
-        evidence_ids: [evidenceId],
+        evidence_ids: [offeringEvidenceId],
         first_observed_at: observedAt,
         last_observed_at: observedAt,
         last_successful_refresh: known(observedAt, 32),
@@ -154,7 +156,7 @@ function relatedProviderResources(version: 1 | 2) {
         currency_provenance: "provider_stated",
         effective_from: null,
         effective_to: null,
-        evidence_ids: [evidenceId],
+        evidence_ids: [priceEvidenceId],
         is_standard_comparable: version === 1,
         observed_at: observedAt,
         offering_id: offeringId,
@@ -170,19 +172,82 @@ function relatedProviderResources(version: 1 | 2) {
       value: {
         applicability,
         components: [],
-        evidence_ids: [evidenceId],
+        evidence_ids: [precisionEvidenceId],
         format_variant: unknown(),
-        normalized_format: known(version === 1 ? "BF16" : "FP8", 36),
+        normalized_format: known(version === 1 ? "BF16" : "FP8", 42),
         observed_at: observedAt,
         offering_id: offeringId,
         precision_id: precisionId,
-        provider_definition: known("Provider-stated precision", 37),
+        provider_definition: known("Provider-stated precision", 43),
         raw_field_name: "precision",
-        raw_precision: known(version === 1 ? "bf16" : "fp8", 38),
-        summary_format: known(version === 1 ? "BF16" : "FP8", 39),
+        raw_precision: known(version === 1 ? "bf16" : "fp8", 44),
+        summary_format: known(version === 1 ? "BF16" : "FP8", 45),
       },
     },
   ];
+}
+
+function evidenceSummary(evidenceId: string, subjectResourceId: string) {
+  return {
+    authenticated_only: false,
+    evidence_id: evidenceId,
+    extraction_method: "deterministic_fixture",
+    extraction_version: "fixture@1",
+    field: "test_fact",
+    integrity_hash: `sha256:${"a".repeat(64)}`,
+    observed_at: observedAt,
+    source_locator: "/redacted/test",
+    source_owner: "QuantClarity test suite",
+    source_type: "fixture",
+    source_url: null,
+    subject_resource_id: subjectResourceId,
+    value: "Synthetic retained test evidence",
+  };
+}
+
+function relatedEvidenceResources(
+  resources: ReturnType<typeof relatedProviderResources>,
+) {
+  const subjects = new Map<string, string>();
+  const results: Readonly<{
+    resourceType: "evidence_summary";
+    resourceId: string;
+    value: Record<string, unknown>;
+  }>[] = [];
+  for (const resource of resources) {
+    const pending: unknown[] = [resource.value];
+    while (pending.length > 0) {
+      const value = pending.pop();
+      if (value === null || typeof value !== "object") continue;
+      if (Array.isArray(value)) {
+        for (const item of value as readonly unknown[]) pending.push(item);
+        continue;
+      }
+      for (const [key, child] of Object.entries(value)) {
+        if (key === "evidence_ids" && Array.isArray(child)) {
+          for (const evidenceId of child) {
+            if (typeof evidenceId !== "string") continue;
+            const existingSubject = subjects.get(evidenceId);
+            if (
+              existingSubject !== undefined &&
+              existingSubject !== resource.resourceId
+            )
+              throw new TypeError(
+                "fixture evidence ID cannot span resource subjects",
+              );
+            if (existingSubject !== undefined) continue;
+            subjects.set(evidenceId, resource.resourceId);
+            results.push({
+              resourceType: "evidence_summary",
+              resourceId: evidenceId,
+              value: evidenceSummary(evidenceId, resource.resourceId),
+            });
+          }
+        } else pending.push(child);
+      }
+    }
+  }
+  return results;
 }
 
 function commonResource(displayName: string | null, sequence: number) {
@@ -417,9 +482,13 @@ async function projectionInput(
     });
   }
   if (options.relatedContextVersion !== undefined) {
-    for (const context of relatedProviderResources(
+    const contextResources = relatedProviderResources(
       options.relatedContextVersion,
-    )) {
+    );
+    for (const context of [
+      ...contextResources,
+      ...relatedEvidenceResources(contextResources),
+    ]) {
       const resourceJson = canonicalizePublicationJson(
         canonicalJson(context.value),
         "object",

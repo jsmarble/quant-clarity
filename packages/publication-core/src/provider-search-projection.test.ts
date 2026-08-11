@@ -172,7 +172,10 @@ async function input(
     offeringCount?: number;
     displayFactOverride?: unknown;
   }>[],
-  options: Readonly<{ includeModel?: boolean }> = {},
+  options: Readonly<{
+    includeModel?: boolean;
+    descriptorOnlyManifest?: boolean;
+  }> = {},
 ): Promise<ProviderSearchProjectionInput> {
   const selected = providers.filter(
     (provider) => provider.freshness !== "unavailable",
@@ -356,7 +359,7 @@ async function input(
           ? 1
           : 0,
   }));
-  const manifest = await buildImmutableManifestFromPersistedContent({
+  const persistedManifestInput = {
     contractVersion: "1.0.0",
     publicationId: publicationId as `pub_${string}`,
     sourceRunId: id("run", 1),
@@ -385,7 +388,7 @@ async function input(
       freshnessState: row.freshness_state as "fresh" | "stale" | "unavailable",
     })),
     providerAttributions: selected.map((provider) => ({
-      resourceType: "provider",
+      resourceType: "provider" as const,
       resourceId: provider.id,
       providerId: provider.id,
     })),
@@ -393,8 +396,28 @@ async function input(
     searchDocuments,
     vectors,
     chunks: [...resourceChunks, ...searchChunks],
-    bundleHash: `sha256:${"b".repeat(64)}`,
-  });
+    bundleHash: `sha256:${"b".repeat(64)}` as const,
+  };
+  const manifest = options.descriptorOnlyManifest
+    ? await buildImmutableManifest({
+        ...persistedManifestInput,
+        resources: persistedManifestInput.resources.map(
+          ({ resourceType, resourceId, contentHash }) => ({
+            resourceType,
+            resourceId,
+            contentHash,
+          }),
+        ),
+        searchDocuments: persistedManifestInput.searchDocuments.map(
+          ({ resourceType, resourceId, documentId, contentHash }) => ({
+            resourceType,
+            resourceId,
+            documentId,
+            contentHash,
+          }),
+        ),
+      })
+    : await buildImmutableManifestFromPersistedContent(persistedManifestInput);
   return {
     manifest,
     providerResources,
@@ -1030,14 +1053,17 @@ describe("trusted provider search projection (SRCH-002, SRCH-006, BE-011)", () =
 
     await expect(
       projectProviderSearchProjection(
-        await input([
-          { id: id("prv", 997), displayName: "\u{1f642}".repeat(201) },
-        ]),
+        await input(
+          [{ id: id("prv", 997), displayName: "\u{1f642}".repeat(201) }],
+          { descriptorOnlyManifest: true },
+        ),
       ),
     ).rejects.toThrow("provider search resource is not contract-valid");
     await expect(
       projectProviderSearchProjection(
-        await input([{ id: id("prv", 996), displayName: "" }]),
+        await input([{ id: id("prv", 996), displayName: "" }], {
+          descriptorOnlyManifest: true,
+        }),
       ),
     ).rejects.toThrow("provider search resource is not contract-valid");
     for (const [sequence, displayName] of [
@@ -1046,7 +1072,9 @@ describe("trusted provider search projection (SRCH-002, SRCH-006, BE-011)", () =
     ] as const)
       await expect(
         projectProviderSearchProjection(
-          await input([{ id: id("prv", sequence), displayName }]),
+          await input([{ id: id("prv", sequence), displayName }], {
+            descriptorOnlyManifest: true,
+          }),
         ),
       ).rejects.toThrow("provider search resource is not contract-valid");
   });
@@ -1396,13 +1424,16 @@ describe("trusted provider search projection (SRCH-002, SRCH-006, BE-011)", () =
       },
     ];
     for (const [index, displayFactOverride] of malformedFacts.entries()) {
-      const source = await input([
-        {
-          id: id("prv", 20 + index),
-          displayName: "Ignored",
-          displayFactOverride,
-        },
-      ]);
+      const source = await input(
+        [
+          {
+            id: id("prv", 20 + index),
+            displayName: "Ignored",
+            displayFactOverride,
+          },
+        ],
+        { descriptorOnlyManifest: true },
+      );
       await expect(projectProviderSearchProjection(source)).rejects.toThrow(
         "not contract-valid",
       );

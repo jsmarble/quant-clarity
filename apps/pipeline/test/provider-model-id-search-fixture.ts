@@ -32,6 +32,30 @@ const knownFact = (value: unknown, observedAt: string, evidence: number) => ({
   value,
 });
 
+const FIXTURE_INTEGRITY_HASH = `sha256:${"a".repeat(64)}`;
+
+const evidenceSummary = (
+  evidenceId: string,
+  offeringId: string,
+  field: string,
+  value: string,
+  observedAt: string,
+) => ({
+  authenticated_only: false,
+  evidence_id: evidenceId,
+  extraction_method: "deterministic_fixture",
+  extraction_version: "provider-model-id-search-fixture@1",
+  field,
+  integrity_hash: FIXTURE_INTEGRITY_HASH,
+  observed_at: observedAt,
+  source_locator: "/redacted/provider-model-id-search-fixture",
+  source_owner: "QuantClarity test suite",
+  source_type: "fixture",
+  source_url: null,
+  subject_resource_id: offeringId,
+  value,
+});
+
 const canonicalJson = (value: unknown): string => {
   if (value === null) return "null";
   if (
@@ -345,7 +369,7 @@ export const createProviderModelIdSearchFixture = async (
       resourceJson: targetResourceJson,
     }),
   };
-  const offeringResources = await Promise.all(
+  const offeringBundles = await Promise.all(
     offerings.map(async (offering, index) => {
       const offeringProvider = providerBySequence.get(
         offering.providerSequence ?? 1,
@@ -353,6 +377,14 @@ export const createProviderModelIdSearchFixture = async (
       if (offeringProvider === undefined)
         throw new Error("provider model ID fixture provider is missing");
       const offeringId = id("off", index + 1);
+      // Keep every evidence ID unique at the fixture's 2,000-Offering envelope.
+      const evidenceSequence = 10_000 + index * 10;
+      const statusEvidence = evidenceSequence + 1;
+      const displayNameEvidence = evidenceSequence + 2;
+      const observationEvidence = evidenceSequence + 3;
+      const refreshEvidence = evidenceSequence + 4;
+      const sourceEvidence = evidenceSequence + 5;
+      const regionsEvidence = evidenceSequence + 6;
       const status =
         offering.status === null
           ? {
@@ -361,22 +393,22 @@ export const createProviderModelIdSearchFixture = async (
               state: "unknown",
               value: null,
             }
-          : knownFact(offering.status ?? "active", observedAt, 40 + index);
+          : knownFact(offering.status ?? "active", observedAt, statusEvidence);
       const resourceJson = canonicalizePublicationJson(
         canonicalJson({
           display_name: knownFact(
             `Offering ${String(index + 1)}`,
             observedAt,
-            60 + index,
+            displayNameEvidence,
           ),
           endpoint_class: "serverless",
-          evidence_ids: [id("evd", 80 + index)],
+          evidence_ids: [id("evd", observationEvidence)],
           first_observed_at: observedAt,
           last_observed_at: observedAt,
           last_successful_refresh: knownFact(
             observedAt,
             observedAt,
-            100 + index,
+            refreshEvidence,
           ),
           material_region_key: "",
           model_resource_id: targetResource.resourceId,
@@ -388,18 +420,18 @@ export const createProviderModelIdSearchFixture = async (
           source_locator: knownFact(
             "https://provider.example/catalog",
             observedAt,
-            120 + index,
+            sourceEvidence,
           ),
           stale: offering.stale ?? false,
           stale_reason:
             (offering.stale ?? false) ? "provider marked stale" : null,
           status,
-          supported_regions: knownFact(["global"], observedAt, 140 + index),
+          supported_regions: knownFact(["global"], observedAt, regionsEvidence),
           tier_key: "standard",
         }),
         "object",
       );
-      return {
+      const offeringResource = {
         resourceType: "offering" as const,
         resourceId: offeringId,
         resourceJson,
@@ -409,7 +441,76 @@ export const createProviderModelIdSearchFixture = async (
           resourceJson,
         }),
       };
+      const evidenceValues = [
+        ...(offering.status === null
+          ? []
+          : [
+              {
+                evidenceId: id("evd", statusEvidence),
+                field: "status",
+                value: offering.status ?? "active",
+              },
+            ]),
+        {
+          evidenceId: id("evd", displayNameEvidence),
+          field: "display_name",
+          value: `Offering ${String(index + 1)}`,
+        },
+        {
+          evidenceId: id("evd", observationEvidence),
+          field: "offering_observation",
+          value: "Synthetic retained Offering observation",
+        },
+        {
+          evidenceId: id("evd", refreshEvidence),
+          field: "last_successful_refresh",
+          value: observedAt,
+        },
+        {
+          evidenceId: id("evd", sourceEvidence),
+          field: "source_locator",
+          value: "https://provider.example/catalog",
+        },
+        {
+          evidenceId: id("evd", regionsEvidence),
+          field: "supported_regions",
+          value: "global",
+        },
+      ];
+      const evidenceResources = await Promise.all(
+        evidenceValues.map(async (evidence) => {
+          const evidenceJson = canonicalizePublicationJson(
+            canonicalJson(
+              evidenceSummary(
+                evidence.evidenceId,
+                offeringId,
+                evidence.field,
+                evidence.value,
+                observedAt,
+              ),
+            ),
+            "object",
+          );
+          return {
+            resourceType: "evidence_summary" as const,
+            resourceId: evidence.evidenceId,
+            resourceJson: evidenceJson,
+            contentHash: await hashPublicationResourceContent({
+              resourceType: "evidence_summary",
+              resourceId: evidence.evidenceId,
+              resourceJson: evidenceJson,
+            }),
+          };
+        }),
+      );
+      return { evidenceResources, offeringResource };
     }),
+  );
+  const offeringResources = offeringBundles.map(
+    (bundle) => bundle.offeringResource,
+  );
+  const evidenceResources = offeringBundles.flatMap(
+    (bundle) => bundle.evidenceResources,
   );
   const baseResources: PersistedResourceDescriptor[] =
     base.closureRows.resources
@@ -429,6 +530,7 @@ export const createProviderModelIdSearchFixture = async (
     ...baseResources,
     ...providerFixtures.map((entry) => entry.resource),
     ...offeringResources,
+    ...evidenceResources,
   ].sort((left, right) => {
     const leftKey = `${left.resourceType}:${left.resourceId}`;
     const rightKey = `${right.resourceType}:${right.resourceId}`;
@@ -554,6 +656,7 @@ export const createProviderModelIdSearchFixture = async (
     stagingRevision:
       base.closureRows.stagingRevision +
       offeringResources.length * 2 +
+      evidenceResources.length +
       (providerFixtures.length - 1) * 4,
     sealedAtMs: base.closureRows.sealedAtMs,
   };

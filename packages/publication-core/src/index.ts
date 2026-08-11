@@ -1,14 +1,20 @@
 import {
+  checkEvidenceSummaryContract,
   checkModelFamilyContract,
   checkModelContract,
   checkOfferingContract,
+  checkPrecisionObservationContract,
+  checkPriceContract,
   checkProviderContract,
   checkVariantContract,
   MODEL_SLUG_HISTORY_ARTIFACT_MAX_BYTES,
   MODEL_SLUG_HISTORY_ARTIFACT_VERSION,
   MODEL_DISPLAY_NAME_MAX_UNICODE_SCALARS,
+  type EvidenceSummary,
   type Model,
   type Offering,
+  type PrecisionObservation,
+  type Price,
   PROVIDER_DISPLAY_NAME_MAX_UNICODE_SCALARS,
   type Variant,
 } from "@quant-clarity/contracts";
@@ -63,6 +69,9 @@ export const MODEL_VARIANT_NAME_SEARCH_MAX_NORMALIZED_NAME_UTF8_BYTES =
   MODEL_VARIANT_NAME_SEARCH_MAX_NORMALIZED_NAME_UNICODE_SCALARS * 4;
 export const MODEL_FAMILY_CLOSURE_MAX_RELEVANT_RESOURCES = 100_000;
 export const MODEL_FAMILY_CLOSURE_MAX_MEMBERSHIP_EDGES = 100_000;
+export const OFFERING_CLOSURE_MAX_RELEVANT_RESOURCES = 100_000;
+export const OFFERING_CLOSURE_MAX_REFERENCE_EDGES = 500_000;
+export const OFFERING_CLOSURE_MAX_TOTAL_RESOURCE_BYTES = 32 * 1_024 * 1_024;
 export const MODEL_SLUG_PROJECTION_VERSION = "model-slug@1" as const;
 export const MODEL_SLUG_HISTORY_ACQUISITION_VERSION =
   "model-slug-history-canonical@1" as const;
@@ -208,6 +217,28 @@ export const assertModelFamilyClosureCapacity = (
     throw new RangeError("model family closure resource input is too large");
   if (familyMembershipEdgeCount > MODEL_FAMILY_CLOSURE_MAX_MEMBERSHIP_EDGES)
     throw new RangeError("model family closure membership input is too large");
+};
+
+export const assertOfferingClosureCapacity = (
+  relevantResourceCount: number,
+  referenceEdgeCount: number,
+  totalResourceBytes: number,
+): void => {
+  if (
+    !Number.isSafeInteger(relevantResourceCount) ||
+    relevantResourceCount < 0 ||
+    !Number.isSafeInteger(referenceEdgeCount) ||
+    referenceEdgeCount < 0 ||
+    !Number.isSafeInteger(totalResourceBytes) ||
+    totalResourceBytes < 0
+  )
+    throw new TypeError("offering closure capacity is invalid");
+  if (relevantResourceCount > OFFERING_CLOSURE_MAX_RELEVANT_RESOURCES)
+    throw new RangeError("offering closure resource input is too large");
+  if (referenceEdgeCount > OFFERING_CLOSURE_MAX_REFERENCE_EDGES)
+    throw new RangeError("offering closure reference input is too large");
+  if (totalResourceBytes > OFFERING_CLOSURE_MAX_TOTAL_RESOURCE_BYTES)
+    throw new RangeError("offering closure resource bytes are too large");
 };
 
 const UUID_V4 =
@@ -5491,6 +5522,321 @@ const assertPersistedModelFamilyClosure = (
   }
 };
 
+const assertPersistedResourceDescriptorBasics = (
+  resources: readonly PersistedResourceDescriptor[],
+): void => {
+  const resourceKeys = new Set<string>();
+  for (const resource of resources) {
+    if (
+      !RESOURCE_TYPES.includes(resource.resourceType) ||
+      !PREFIXED_ID.test(resource.resourceId) ||
+      !resource.resourceId.startsWith(RESOURCE_PREFIX[resource.resourceType])
+    )
+      throw new TypeError("resource type and ID prefix disagree");
+    if (!HASH.test(resource.contentHash))
+      throw new TypeError("resource content hash is invalid");
+    const resourceKey = `${resource.resourceType}:${resource.resourceId}`;
+    if (resourceKeys.has(resourceKey))
+      throw new TypeError("resource inventory contains a duplicate");
+    resourceKeys.add(resourceKey);
+  }
+};
+
+const assertPersistedOfferingClosure = (
+  resources: readonly PersistedResourceDescriptor[],
+  providerAttributions: readonly ProviderAttributionDescriptor[],
+): void => {
+  const providers = new Set<string>();
+  const targets = new Set<string>();
+  const offerings = new Map<string, Offering>();
+  const prices = new Map<string, Price>();
+  const precisionObservations = new Map<string, PrecisionObservation>();
+  const evidenceSummaries = new Map<string, EvidenceSummary>();
+  const evidenceReferences: Readonly<{
+    evidenceId: string;
+    subjectResourceId: string;
+  }>[] = [];
+  let relevantResourceCount = 0;
+  let referenceEdgeCount = 0;
+  let totalResourceBytes = 0;
+
+  const addEdges = (count: number): void => {
+    referenceEdgeCount += count;
+    assertOfferingClosureCapacity(
+      relevantResourceCount,
+      referenceEdgeCount,
+      totalResourceBytes,
+    );
+  };
+  const recordEvidence = (
+    subjectResourceId: string,
+    ids: readonly string[],
+  ): void => {
+    addEdges(ids.length);
+    for (const evidenceId of ids)
+      evidenceReferences.push({ evidenceId, subjectResourceId });
+  };
+
+  for (const resource of resources) {
+    if (
+      resource.resourceType !== "provider" &&
+      resource.resourceType !== "model" &&
+      resource.resourceType !== "variant" &&
+      resource.resourceType !== "offering" &&
+      resource.resourceType !== "price" &&
+      resource.resourceType !== "precision_observation" &&
+      resource.resourceType !== "evidence_summary"
+    )
+      continue;
+    relevantResourceCount += 1;
+    totalResourceBytes += utf8.encode(resource.resourceJson).length;
+    assertOfferingClosureCapacity(
+      relevantResourceCount,
+      referenceEdgeCount,
+      totalResourceBytes,
+    );
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(resource.resourceJson) as unknown;
+    } catch {
+      throw new TypeError("persisted offering graph resource JSON is invalid");
+    }
+    if (resource.resourceType === "provider") {
+      if (!checkProviderContract(parsed))
+        throw new TypeError(
+          "persisted provider resource is not contract-valid",
+        );
+      if (parsed.provider_id !== resource.resourceId)
+        throw new TypeError(
+          "persisted provider resource identity does not match",
+        );
+      providers.add(parsed.provider_id);
+      continue;
+    }
+    if (resource.resourceType === "model") {
+      if (!checkModelContract(parsed))
+        throw new TypeError("persisted model resource is not contract-valid");
+      if (parsed.model_id !== resource.resourceId)
+        throw new TypeError("persisted model resource identity does not match");
+      targets.add(parsed.model_id);
+      continue;
+    }
+    if (resource.resourceType === "variant") {
+      if (!checkVariantContract(parsed))
+        throw new TypeError("persisted variant resource is not contract-valid");
+      if (parsed.variant_id !== resource.resourceId)
+        throw new TypeError(
+          "persisted variant resource identity does not match",
+        );
+      targets.add(parsed.variant_id);
+      continue;
+    }
+    if (resource.resourceType === "offering") {
+      if (!checkOfferingContract(parsed))
+        throw new TypeError(
+          "persisted offering resource is not contract-valid",
+        );
+      if (parsed.offering_id !== resource.resourceId)
+        throw new TypeError(
+          "persisted offering resource identity does not match",
+        );
+      if (parsed.first_observed_at > parsed.last_observed_at)
+        throw new TypeError(
+          "persisted offering observation interval is invalid",
+        );
+      addEdges(
+        2 + parsed.price_ids.length + parsed.precision_observation_ids.length,
+      );
+      for (const evidenceIds of [
+        parsed.evidence_ids,
+        parsed.display_name.evidence_ids,
+        parsed.supported_regions.evidence_ids,
+        parsed.status.evidence_ids,
+        parsed.last_successful_refresh.evidence_ids,
+        parsed.source_locator.evidence_ids,
+      ])
+        recordEvidence(parsed.offering_id, evidenceIds);
+      offerings.set(parsed.offering_id, parsed);
+      continue;
+    }
+    if (resource.resourceType === "price") {
+      if (!checkPriceContract(parsed))
+        throw new TypeError("persisted price resource is not contract-valid");
+      if (parsed.price_id !== resource.resourceId)
+        throw new TypeError("persisted price resource identity does not match");
+      if (
+        parsed.effective_from !== null &&
+        parsed.effective_to !== null &&
+        parsed.effective_from > parsed.effective_to
+      )
+        throw new TypeError("persisted price effective interval is invalid");
+      addEdges(1);
+      recordEvidence(parsed.price_id, parsed.evidence_ids);
+      prices.set(parsed.price_id, parsed);
+      continue;
+    }
+    if (resource.resourceType === "precision_observation") {
+      if (!checkPrecisionObservationContract(parsed))
+        throw new TypeError(
+          "persisted precision observation resource is not contract-valid",
+        );
+      if (parsed.precision_id !== resource.resourceId)
+        throw new TypeError(
+          "persisted precision observation resource identity does not match",
+        );
+      addEdges(2);
+      recordEvidence(parsed.precision_id, parsed.evidence_ids);
+      for (const evidenceIds of [
+        parsed.normalized_format.evidence_ids,
+        parsed.summary_format.evidence_ids,
+        parsed.raw_precision.evidence_ids,
+        parsed.provider_definition.evidence_ids,
+        parsed.format_variant.evidence_ids,
+      ])
+        recordEvidence(parsed.precision_id, evidenceIds);
+      for (const component of parsed.components) {
+        recordEvidence(
+          parsed.precision_id,
+          component.normalized_format.evidence_ids,
+        );
+        recordEvidence(
+          parsed.precision_id,
+          component.raw_precision.evidence_ids,
+        );
+      }
+      precisionObservations.set(parsed.precision_id, parsed);
+      continue;
+    }
+    if (!checkEvidenceSummaryContract(parsed))
+      throw new TypeError(
+        "persisted evidence summary resource is not contract-valid",
+      );
+    if (parsed.evidence_id !== resource.resourceId)
+      throw new TypeError(
+        "persisted evidence summary resource identity does not match",
+      );
+    addEdges(1);
+    evidenceSummaries.set(parsed.evidence_id, parsed);
+  }
+
+  const attributionProviderIds = new Map(
+    providerAttributions.map((attribution) => [
+      `${attribution.resourceType}:${attribution.resourceId}`,
+      attribution.providerId,
+    ]),
+  );
+  for (const providerId of providers)
+    if (attributionProviderIds.get(`provider:${providerId}`) !== providerId)
+      throw new TypeError(
+        "persisted provider attribution does not match its resource",
+      );
+
+  const actualPriceIdsByOffering = new Map<string, Set<string>>();
+  for (const price of prices.values()) {
+    const offering = offerings.get(price.offering_id);
+    if (offering === undefined)
+      throw new TypeError("persisted price references a missing offering");
+    const priceIds = actualPriceIdsByOffering.get(price.offering_id);
+    if (priceIds === undefined)
+      actualPriceIdsByOffering.set(
+        price.offering_id,
+        new Set([price.price_id]),
+      );
+    else priceIds.add(price.price_id);
+    if (
+      attributionProviderIds.get(`price:${price.price_id}`) !==
+      offering.provider_id
+    )
+      throw new TypeError(
+        "persisted price attribution does not match its offering",
+      );
+  }
+
+  const actualPrecisionIdsByOffering = new Map<string, Set<string>>();
+  for (const precision of precisionObservations.values()) {
+    const offering = offerings.get(precision.offering_id);
+    if (offering === undefined)
+      throw new TypeError(
+        "persisted precision observation references a missing offering",
+      );
+    const precisionIds = actualPrecisionIdsByOffering.get(
+      precision.offering_id,
+    );
+    if (precisionIds === undefined)
+      actualPrecisionIdsByOffering.set(
+        precision.offering_id,
+        new Set([precision.precision_id]),
+      );
+    else precisionIds.add(precision.precision_id);
+    if (
+      precision.applicability.provider_id !== offering.provider_id ||
+      precision.applicability.provider_model_id !==
+        offering.provider_model_id ||
+      precision.applicability.tier_key !== offering.tier_key ||
+      precision.applicability.endpoint_class !== offering.endpoint_class ||
+      precision.applicability.material_region_key !==
+        offering.material_region_key
+    )
+      throw new TypeError(
+        "persisted precision applicability does not match its offering",
+      );
+    if (
+      attributionProviderIds.get(
+        `precision_observation:${precision.precision_id}`,
+      ) !== offering.provider_id
+    )
+      throw new TypeError(
+        "persisted precision attribution does not match its offering",
+      );
+  }
+
+  for (const offering of offerings.values()) {
+    if (!providers.has(offering.provider_id))
+      throw new TypeError("persisted offering references a missing provider");
+    if (!targets.has(offering.model_resource_id))
+      throw new TypeError("persisted offering references a missing target");
+    if (
+      attributionProviderIds.get(`offering:${offering.offering_id}`) !==
+      offering.provider_id
+    )
+      throw new TypeError(
+        "persisted offering attribution does not match its provider",
+      );
+    const actualPriceIds = actualPriceIdsByOffering.get(offering.offering_id);
+    if (
+      offering.price_ids.length !== (actualPriceIds?.size ?? 0) ||
+      offering.price_ids.some((priceId) => !actualPriceIds?.has(priceId))
+    )
+      throw new TypeError("persisted offering price membership does not close");
+    const actualPrecisionIds = actualPrecisionIdsByOffering.get(
+      offering.offering_id,
+    );
+    if (
+      offering.precision_observation_ids.length !==
+        (actualPrecisionIds?.size ?? 0) ||
+      offering.precision_observation_ids.some(
+        (precisionId) => !actualPrecisionIds?.has(precisionId),
+      )
+    )
+      throw new TypeError(
+        "persisted offering precision membership does not close",
+      );
+  }
+
+  for (const reference of evidenceReferences) {
+    const evidence = evidenceSummaries.get(reference.evidenceId);
+    if (evidence === undefined)
+      throw new TypeError(
+        "persisted offering graph references missing evidence",
+      );
+    if (evidence.subject_resource_id !== reference.subjectResourceId)
+      throw new TypeError(
+        "persisted offering graph evidence subject does not match",
+      );
+  }
+};
+
 /**
  * Controlled-writer boundary for a serving closure. Content digests are
  * recomputed from persisted bytes before they can participate in the seal.
@@ -5502,7 +5848,10 @@ export const buildImmutableManifestFromPersistedContent = async (
     callerInput,
     true,
   ) as PersistedPublicationManifestInput;
+  assertPersistedResourceDescriptorBasics(input.resources);
   let relevantResourceCount = 0;
+  let offeringRelevantResourceCount = 0;
+  let offeringResourceBytes = 0;
   for (const resource of input.resources) {
     if (
       resource.resourceType === "model_family" ||
@@ -5510,8 +5859,17 @@ export const buildImmutableManifestFromPersistedContent = async (
       resource.resourceType === "variant"
     )
       relevantResourceCount += 1;
+    if (resource.resourceType !== "model_family") {
+      offeringRelevantResourceCount += 1;
+      offeringResourceBytes += utf8.encode(resource.resourceJson).length;
+    }
   }
   assertModelFamilyClosureCapacity(relevantResourceCount, 0);
+  assertOfferingClosureCapacity(
+    offeringRelevantResourceCount,
+    0,
+    offeringResourceBytes,
+  );
   const resources = await Promise.all(
     input.resources.map(async (resource): Promise<ResourceDescriptor> => {
       const contentHash = await hashPublicationResourceContent(resource);
@@ -5548,6 +5906,7 @@ export const buildImmutableManifestFromPersistedContent = async (
     searchDocuments,
   });
   assertPersistedModelFamilyClosure(input.resources);
+  assertPersistedOfferingClosure(input.resources, input.providerAttributions);
   return trustImmutablePublicationManifest(manifest);
 };
 

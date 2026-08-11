@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   assertImmutablePublicationManifest,
   assertModelFamilyClosureCapacity,
+  assertOfferingClosureCapacity,
   buildImmutableManifestFromPersistedContent,
   derivePublicationVectorId,
   hashPublicationResourceChunk,
@@ -12,6 +13,9 @@ import {
   hashPublicationVectorChunk,
   MODEL_FAMILY_CLOSURE_MAX_MEMBERSHIP_EDGES,
   MODEL_FAMILY_CLOSURE_MAX_RELEVANT_RESOURCES,
+  OFFERING_CLOSURE_MAX_REFERENCE_EDGES,
+  OFFERING_CLOSURE_MAX_RELEVANT_RESOURCES,
+  OFFERING_CLOSURE_MAX_TOTAL_RESOURCE_BYTES,
   type PersistedPublicationManifestInput,
   type PublicationId,
   type ResourceType,
@@ -28,11 +32,457 @@ const digest: Sha256 = `sha256:${"a".repeat(64)}`;
 const id = (prefix: "fam" | "mdl" | "var", value: number): string =>
   `${prefix}_00000000-0000-4000-8000-${value.toString(16).padStart(12, "0")}`;
 
+const graphId = (
+  prefix: "off" | "pcs" | "prc" | "evd",
+  value: number,
+): string =>
+  `${prefix}_00000000-0000-4000-8000-${value.toString(16).padStart(12, "0")}`;
+
 const knownFact = <T>(value: T) => ({
   state: "known" as const,
   value,
   observed_at: observedAt,
   evidence_ids: [evidenceId],
+});
+
+const knownWithEvidence = <T>(value: T, evidence: string) => ({
+  state: "known" as const,
+  value,
+  observed_at: observedAt,
+  evidence_ids: [evidence],
+});
+
+const evidenceSummary = (evidence: string, subject: string) => ({
+  evidence_id: evidence,
+  subject_resource_id: subject,
+  field: "test_fact",
+  value: "Synthetic retained test evidence",
+  source_type: "fixture",
+  source_owner: "QuantClarity test suite",
+  source_url: null,
+  source_locator: "/redacted/test",
+  authenticated_only: false,
+  observed_at: observedAt,
+  extraction_method: "deterministic_fixture",
+  extraction_version: "fixture@1",
+  integrity_hash: digest,
+});
+
+const offeringGraph = () => {
+  const familyId = id("fam", 20);
+  const modelId = id("mdl", 20);
+  const offeringId = graphId("off", 20);
+  const priceId = graphId("pcs", 20);
+  const precisionId = graphId("prc", 20);
+  const offeringEvidence = graphId("evd", 20);
+  const priceEvidence = graphId("evd", 21);
+  const precisionEvidence = graphId("evd", 22);
+  return [
+    {
+      resourceType: "model_family" as const,
+      resourceId: familyId,
+      value: family(familyId, [modelId]),
+    },
+    {
+      resourceType: "model" as const,
+      resourceId: modelId,
+      value: model(modelId, familyId),
+    },
+    {
+      resourceType: "provider" as const,
+      resourceId: providerId,
+      value: {
+        provider_id: providerId,
+        slug: knownFact("synthetic-provider"),
+        display_name: knownFact("Synthetic Provider"),
+        official_site: knownFact("https://provider.example"),
+        affiliate_relationship_present: false,
+        status: knownFact("active"),
+        active_offering_count: {
+          value: 1,
+          observed_at: observedAt,
+          derivation_version: "provider-count@1",
+        },
+        precision_coverage: {
+          known_count: 1,
+          unknown_count: 0,
+          known_proportion_decimal: "1",
+          derivation_version: "precision-coverage@1",
+        },
+        last_successful_refresh: knownFact(observedAt),
+      },
+    },
+    {
+      resourceType: "offering" as const,
+      resourceId: offeringId,
+      value: {
+        offering_id: offeringId,
+        provider_id: providerId,
+        model_resource_id: modelId,
+        provider_model_id: "publisher/model",
+        display_name: knownWithEvidence("Synthetic Offering", offeringEvidence),
+        tier_key: "standard",
+        endpoint_class: "serverless",
+        material_region_key: "",
+        supported_regions: knownWithEvidence(["global"], offeringEvidence),
+        status: knownWithEvidence("active", offeringEvidence),
+        stale: false,
+        stale_reason: null,
+        first_observed_at: observedAt,
+        last_observed_at: observedAt,
+        last_successful_refresh: knownWithEvidence(
+          observedAt,
+          offeringEvidence,
+        ),
+        source_locator: knownWithEvidence(
+          "https://provider.example/catalog",
+          offeringEvidence,
+        ),
+        precision_observation_ids: [precisionId],
+        price_ids: [priceId],
+        evidence_ids: [offeringEvidence],
+      },
+    },
+    {
+      resourceType: "price" as const,
+      resourceId: priceId,
+      value: {
+        price_id: priceId,
+        offering_id: offeringId,
+        role: "input",
+        price_class: "standard",
+        amount_decimal: "1.25",
+        currency: "USD",
+        currency_provenance: "provider_stated",
+        unit: "per_million_tokens",
+        conditions: [],
+        is_standard_comparable: true,
+        effective_from: null,
+        effective_to: null,
+        observed_at: observedAt,
+        evidence_ids: [priceEvidence],
+      },
+    },
+    {
+      resourceType: "precision_observation" as const,
+      resourceId: precisionId,
+      value: {
+        precision_id: precisionId,
+        offering_id: offeringId,
+        normalized_format: knownWithEvidence("BF16", precisionEvidence),
+        summary_format: knownWithEvidence("BF16", precisionEvidence),
+        raw_field_name: "precision",
+        raw_precision: knownWithEvidence("bf16", precisionEvidence),
+        provider_definition: knownWithEvidence(
+          "Provider-stated BF16",
+          precisionEvidence,
+        ),
+        format_variant: unknownFact,
+        components: [],
+        applicability: {
+          provider_id: providerId,
+          provider_model_id: "publisher/model",
+          tier_key: "standard",
+          endpoint_class: "serverless",
+          material_region_key: "",
+          component_scope: null,
+        },
+        observed_at: observedAt,
+        evidence_ids: [precisionEvidence],
+      },
+    },
+    {
+      resourceType: "evidence_summary" as const,
+      resourceId: offeringEvidence,
+      value: evidenceSummary(offeringEvidence, offeringId),
+    },
+    {
+      resourceType: "evidence_summary" as const,
+      resourceId: priceEvidence,
+      value: evidenceSummary(priceEvidence, priceId),
+    },
+    {
+      resourceType: "evidence_summary" as const,
+      resourceId: precisionEvidence,
+      value: evidenceSummary(precisionEvidence, precisionId),
+    },
+  ] satisfies readonly ResourceValue[];
+};
+
+describe("persisted Offering comparison relationship closure", () => {
+  it("accepts a complete graph independent of input order", async () => {
+    const graph = offeringGraph();
+    const forward = await buildImmutableManifestFromPersistedContent(
+      await createInput(graph),
+    );
+    const reversed = await buildImmutableManifestFromPersistedContent(
+      await createInput([...graph].reverse()),
+    );
+    assertImmutablePublicationManifest(forward);
+    assertImmutablePublicationManifest(reversed);
+    expect(reversed.closureHash).toBe(forward.closureHash);
+  });
+
+  it.each([
+    ["provider", providerId, /missing provider/u],
+    ["price", graphId("pcs", 20), /price membership does not close/u],
+    [
+      "precision observation",
+      graphId("prc", 20),
+      /precision membership does not close/u,
+    ],
+    ["evidence", graphId("evd", 21), /references missing evidence/u],
+  ])("rejects a missing %s resource", async (_label, resourceId, error) => {
+    const graph = offeringGraph().filter(
+      (resource) => resource.resourceId !== resourceId,
+    );
+    await expect(
+      createInput(graph).then((input) =>
+        buildImmutableManifestFromPersistedContent(input),
+      ),
+    ).rejects.toThrow(error);
+  });
+
+  it("rejects an Offering that references a missing target", async () => {
+    const graph = replaceValue(
+      offeringGraph(),
+      graphId("off", 20),
+      (value) => ({ ...value, model_resource_id: id("mdl", 99) }),
+    );
+    await expect(
+      createInput(graph).then((input) =>
+        buildImmutableManifestFromPersistedContent(input),
+      ),
+    ).rejects.toThrow(/missing target/u);
+  });
+
+  it("rejects forward/reverse child drift", async () => {
+    const graph = replaceValue(
+      offeringGraph(),
+      graphId("off", 20),
+      (value) => ({ ...value, price_ids: [] }),
+    );
+    await expect(
+      createInput(graph).then((input) =>
+        buildImmutableManifestFromPersistedContent(input),
+      ),
+    ).rejects.toThrow(/price membership does not close/u);
+  });
+
+  it.each([
+    ["provider_id", "prv_00000000-0000-4000-8000-000000000099"],
+    ["provider_model_id", "publisher/other"],
+    ["tier_key", "batch"],
+    ["endpoint_class", "dedicated"],
+    ["material_region_key", "eu-west"],
+  ])("rejects precision applicability drift in %s", async (field, drift) => {
+    const graph = replaceValue(
+      offeringGraph(),
+      graphId("prc", 20),
+      (value) => ({
+        ...value,
+        applicability: {
+          ...(value.applicability as Record<string, unknown>),
+          [field]: drift,
+        },
+      }),
+    );
+    await expect(
+      createInput(graph).then((input) =>
+        buildImmutableManifestFromPersistedContent(input),
+      ),
+    ).rejects.toThrow(/precision applicability does not match/u);
+  });
+
+  it("accepts Variant targets, component scope/evidence, and lifecycle states without inference", async () => {
+    const familyId = id("fam", 20);
+    const modelId = id("mdl", 20);
+    const variantId = id("var", 20);
+    const precisionEvidence = graphId("evd", 22);
+    let graph: readonly ResourceValue[] = [
+      ...offeringGraph(),
+      {
+        resourceType: "variant",
+        resourceId: variantId,
+        value: variant(variantId, modelId, familyId),
+      },
+    ];
+    graph = replaceValue(graph, graphId("off", 20), (value) => ({
+      ...value,
+      model_resource_id: variantId,
+      stale: true,
+      stale_reason: "Provider refresh pending",
+      status: knownWithEvidence("inactive", graphId("evd", 20)),
+    }));
+    graph = replaceValue(graph, graphId("prc", 20), (value) => ({
+      ...value,
+      applicability: {
+        ...(value.applicability as Record<string, unknown>),
+        component_scope: "weights",
+      },
+      components: [
+        {
+          component: "weights",
+          normalized_format: knownWithEvidence("BF16", precisionEvidence),
+          raw_precision: knownWithEvidence("bf16", precisionEvidence),
+        },
+      ],
+    }));
+    await expect(
+      createInput(graph).then((input) =>
+        buildImmutableManifestFromPersistedContent(input),
+      ),
+    ).resolves.toBeDefined();
+  });
+
+  it("accepts unordered multi-Price membership and equal effective endpoints", async () => {
+    const firstPriceId = graphId("pcs", 20);
+    const secondPriceId = graphId("pcs", 21);
+    const secondEvidenceId = graphId("evd", 23);
+    const graph = offeringGraph();
+    const firstPrice = graph.find(
+      (resource) => resource.resourceId === firstPriceId,
+    );
+    if (firstPrice?.value === undefined)
+      throw new Error("missing first Price fixture");
+    let expanded: readonly ResourceValue[] = [
+      ...graph,
+      {
+        resourceType: "price",
+        resourceId: secondPriceId,
+        value: {
+          ...(firstPrice.value as Record<string, unknown>),
+          price_id: secondPriceId,
+          role: "output",
+          effective_from: observedAt,
+          effective_to: observedAt,
+          evidence_ids: [secondEvidenceId],
+        },
+      },
+      {
+        resourceType: "evidence_summary",
+        resourceId: secondEvidenceId,
+        value: evidenceSummary(secondEvidenceId, secondPriceId),
+      },
+    ];
+    expanded = replaceValue(expanded, graphId("off", 20), (value) => ({
+      ...value,
+      price_ids: [secondPriceId, firstPriceId],
+    }));
+    await expect(
+      createInput(expanded).then((input) =>
+        buildImmutableManifestFromPersistedContent(input),
+      ),
+    ).resolves.toBeDefined();
+  });
+
+  it.each([
+    [
+      "orphan Price",
+      graphId("pcs", 20),
+      { offering_id: graphId("off", 99) },
+      /missing offering/u,
+    ],
+    [
+      "Price identity",
+      graphId("pcs", 20),
+      { price_id: graphId("pcs", 99) },
+      /identity does not match/u,
+    ],
+    [
+      "Offering attribution",
+      graphId("off", 20),
+      { provider_id: "prv_00000000-0000-4000-8000-000000000099" },
+      /attribution does not match/u,
+    ],
+  ])("rejects %s drift", async (_label, resourceId, override, error) => {
+    const graph = replaceValue(offeringGraph(), resourceId, (value) => ({
+      ...value,
+      ...override,
+    }));
+    await expect(
+      createInput(graph).then((input) =>
+        buildImmutableManifestFromPersistedContent(input),
+      ),
+    ).rejects.toThrow(error);
+  });
+
+  it("rejects evidence subject drift and invalid temporal intervals", async () => {
+    const subjectDrift = replaceValue(
+      offeringGraph(),
+      graphId("evd", 21),
+      (value) => ({ ...value, subject_resource_id: graphId("off", 20) }),
+    );
+    await expect(
+      createInput(subjectDrift).then((input) =>
+        buildImmutableManifestFromPersistedContent(input),
+      ),
+    ).rejects.toThrow(/evidence subject does not match/u);
+
+    const invalidInterval = replaceValue(
+      offeringGraph(),
+      graphId("pcs", 20),
+      (value) => ({
+        ...value,
+        effective_from: "2026-08-03T00:00:00.000Z",
+        effective_to: "2026-08-02T00:00:00.000Z",
+      }),
+    );
+    await expect(
+      createInput(invalidInterval).then((input) =>
+        buildImmutableManifestFromPersistedContent(input),
+      ),
+    ).rejects.toThrow(/price effective interval is invalid/u);
+
+    const offeringInterval = replaceValue(
+      offeringGraph(),
+      graphId("off", 20),
+      (value) => ({
+        ...value,
+        first_observed_at: "2026-08-03T00:00:00.000Z",
+        last_observed_at: "2026-08-02T00:00:00.000Z",
+      }),
+    );
+    await expect(
+      createInput(offeringInterval).then((input) =>
+        buildImmutableManifestFromPersistedContent(input),
+      ),
+    ).rejects.toThrow(/offering observation interval is invalid/u);
+  });
+
+  it("rejects aggregate Offering-graph bytes before parsing invalid JSON", async () => {
+    const input = await createInput(offeringGraph());
+    const invalidJson = "x".repeat(999_000);
+    await expect(
+      buildImmutableManifestFromPersistedContent({
+        ...input,
+        resources: Array.from({ length: 34 }, (_, index) => ({
+          resourceType: "evidence_summary" as const,
+          resourceId: graphId("evd", 1_000 + index),
+          resourceJson: invalidJson,
+          contentHash: digest,
+        })),
+      }),
+    ).rejects.toThrow(/resource bytes are too large/u);
+  });
+
+  it("enforces exported resource, edge, and UTF-8 byte ceilings", () => {
+    expect(OFFERING_CLOSURE_MAX_RELEVANT_RESOURCES).toBe(100_000);
+    expect(OFFERING_CLOSURE_MAX_REFERENCE_EDGES).toBe(500_000);
+    expect(OFFERING_CLOSURE_MAX_TOTAL_RESOURCE_BYTES).toBe(32 * 1_024 * 1_024);
+    expect(() => {
+      assertOfferingClosureCapacity(100_000, 500_000, 32 * 1_024 * 1_024);
+    }).not.toThrow();
+    expect(() => {
+      assertOfferingClosureCapacity(100_001, 500_000, 32 * 1_024 * 1_024);
+    }).toThrow(/resource input is too large/u);
+    expect(() => {
+      assertOfferingClosureCapacity(100_000, 500_001, 32 * 1_024 * 1_024);
+    }).toThrow(/reference input is too large/u);
+    expect(() => {
+      assertOfferingClosureCapacity(100_000, 500_000, 32 * 1_024 * 1_024 + 1);
+    }).toThrow(/resource bytes are too large/u);
+  });
 });
 
 const unknownFact = {
@@ -265,6 +715,21 @@ const createInput = async (
       ),
     },
   ];
+  const providerAttributions = values
+    .filter(
+      (resource) =>
+        resource.resourceType === "provider" ||
+        resource.resourceType === "offering" ||
+        resource.resourceType === "price" ||
+        resource.resourceType === "precision_observation",
+    )
+    .map((resource) => ({
+      resourceType: resource.resourceType as
+        "provider" | "offering" | "price" | "precision_observation",
+      resourceId: resource.resourceId,
+      providerId,
+    }));
+  const hasProviderContent = providerAttributions.length > 0;
   return {
     contractVersion: "1.0.0",
     publicationId,
@@ -286,16 +751,18 @@ const createInput = async (
     providerSlices: [
       {
         providerId,
-        providerSliceId: null,
+        providerSliceId: hasProviderContent
+          ? "prn_00000000-0000-4000-8000-000000000001"
+          : null,
         providerRunId: "pvr_00000000-0000-4000-8000-000000000001",
         adapterVersion: "adapter@1",
         rosterVersion: "roster@1",
         sourceRegisterVersion: "register@1",
         carriedForward: false,
-        freshnessState: "unavailable",
+        freshnessState: hasProviderContent ? "fresh" : "unavailable",
       },
     ],
-    providerAttributions: [],
+    providerAttributions,
     resources,
     searchDocuments,
     vectors,
@@ -583,7 +1050,7 @@ describe("persisted ModelFamily/Model/Variant semantic closure", () => {
     }).toThrow(/membership input is too large/u);
   });
 
-  it("rejects an oversized relevant inventory before parsing or hashing its content", async () => {
+  it("rejects duplicate outer descriptors before parsing or hashing content", async () => {
     const input = await createInput(validGraph());
     const oversizedResource = {
       ...input.resources[0]!,
@@ -598,6 +1065,6 @@ describe("persisted ModelFamily/Model/Variant semantic closure", () => {
           () => oversizedResource,
         ),
       }),
-    ).rejects.toThrow(/resource input is too large/u);
+    ).rejects.toThrow(/resource inventory contains a duplicate/u);
   });
 });
