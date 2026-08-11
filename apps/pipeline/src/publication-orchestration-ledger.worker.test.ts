@@ -1114,6 +1114,24 @@ describe("publication orchestration ledger in workerd/D1", () => {
         .first(),
     ).resolves.toBeNull();
 
+    await expect(
+      env.CANONICAL_DB.prepare(
+        `INSERT INTO publication_run_plan_revocation(
+          run_plan_id, reason_code, effective_at_ms
+        ) VALUES (?1, 'integrity_failure', ?2)`,
+      )
+        .bind(RUN_PLAN_ID, Date.parse(SCHEDULED_AT))
+        .run(),
+    ).rejects.toThrow(/cannot rewrite resolved scheduled history/u);
+    await expect(
+      env.CANONICAL_DB.prepare(
+        `SELECT count(*) AS rows FROM publication_run_plan_revocation
+         WHERE run_plan_id = ?1`,
+      )
+        .bind(RUN_PLAN_ID)
+        .first(),
+    ).resolves.toEqual({ rows: 0 });
+
     const isolation = await env.CANONICAL_DB.prepare(
       `SELECT
         (SELECT count(*) FROM pipeline_run) AS legacy_runs,

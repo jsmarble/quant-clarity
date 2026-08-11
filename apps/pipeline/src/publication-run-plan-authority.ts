@@ -205,12 +205,10 @@ const HEADER_SQL = `SELECT
   revocation.reason_code AS revocation_reason_code,
   revocation.effective_at_ms AS revocation_effective_at_ms
 FROM publication_run_plan AS plan
-JOIN publication_run_plan_seal AS seal USING (run_plan_id)
-JOIN publication_run_plan_approval AS approval USING (run_plan_id)
+LEFT JOIN publication_run_plan_seal AS seal USING (run_plan_id)
+LEFT JOIN publication_run_plan_approval AS approval USING (run_plan_id)
 LEFT JOIN publication_run_plan_revocation AS revocation USING (run_plan_id)
 WHERE plan.run_plan_id = ?1
-  AND plan.plan_hash = ?2
-  AND seal.plan_hash = ?2
 LIMIT 2`;
 
 const PROVIDERS_SQL = `SELECT
@@ -880,7 +878,7 @@ export const resolveAuthorizedPublicationRunPlan = async (input: {
     const session = input.database.withSession("first-primary");
     results = await session.batch([
       session.prepare(METADATA_SQL).bind(1),
-      session.prepare(HEADER_SQL).bind(input.runPlanId, input.planHash),
+      session.prepare(HEADER_SQL).bind(input.runPlanId),
       session.prepare(PROVIDERS_SQL).bind(input.runPlanId),
       session.prepare(POLICIES_SQL).bind(input.runPlanId),
     ]);

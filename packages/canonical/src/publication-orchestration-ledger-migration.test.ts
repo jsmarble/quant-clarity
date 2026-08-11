@@ -5,6 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 
 const MIGRATION = "0006_publication_orchestration_ledger.sql";
+const HARDENING_MIGRATION = "0007_admitted_plan_revocation_history.sql";
 const HASH_A = `sha256:${"a".repeat(64)}`;
 const HASH_B = `sha256:${"b".repeat(64)}`;
 const HASH_C = `sha256:${"c".repeat(64)}`;
@@ -57,6 +58,12 @@ function initializedDatabase() {
       ) VALUES (1, 'preview', 25000000, ?)`,
     )
     .run(SCHEDULED_AT - 10_000);
+  return database;
+}
+
+function hardenedDatabase() {
+  const database = initializedDatabase();
+  applyAtomic(database, sql(HARDENING_MIGRATION));
   return database;
 }
 
@@ -339,6 +346,38 @@ function insertProviderRun(
       admittedAt,
     );
   return providerRunId;
+}
+
+function insertSyntheticRejection(
+  database: DatabaseSync,
+  occurrenceId: string,
+  runPlanId: string,
+) {
+  const report = JSON.stringify({
+    reportSchemaVersion: "publication-run-report@2",
+    kind: "rejected_firing",
+    scheduleName: "provider-refresh-v1",
+    scheduleExpression: "0 5 * * 1,4",
+    occurrenceId,
+    scheduledAt: new Date(SCHEDULED_AT).toISOString(),
+    observedAt: new Date(OBSERVED_AT).toISOString(),
+    rejectionCode: "runtime_version_mismatch",
+    requestedPlan: {
+      runPlanId,
+      runPlanHash: HASH_C,
+      environment: "preview",
+    },
+    seal: { algorithm: "sha256", contentHash: HASH_D },
+  });
+  database
+    .prepare(
+      `INSERT INTO publication_admission_rejection(
+        occurrence_id, rejection_code, report_schema_version, report_text,
+        report_hash, created_at_ms
+      ) VALUES (?, 'runtime_version_mismatch',
+        'publication-run-report@2', ?, ?, ?)`,
+    )
+    .run(occurrenceId, report, HASH_D, OBSERVED_AT);
 }
 
 describe("canonical parallel publication-orchestration migration (PIPE-001–PIPE-008, PIPE-043–PIPE-045)", () => {
@@ -1444,5 +1483,180 @@ describe("canonical parallel publication-orchestration migration (PIPE-001–PIP
         )
         .get(occurrenceId),
     ).toEqual({ count: 1 });
+  });
+});
+
+describe("admitted publication plan-revocation history hardening (PIPE-001–PIPE-004, BE-003–BE-006, QA-006)", () => {
+  it("installs only over the exact orchestration predecessor and rejects object collisions", () => {
+    const database = initializedDatabase();
+    applyAtomic(database, sql(HARDENING_MIGRATION));
+    expect(
+      database
+        .prepare(
+          `SELECT type FROM sqlite_schema
+           WHERE name = 'publication_run_plan_revocation_admitted_history_guard'`,
+        )
+        .get(),
+    ).toEqual({ type: "trigger" });
+
+    const missingPredecessor = initializedDatabase();
+    missingPredecessor.exec(
+      "DROP TRIGGER publication_admission_rejection_activation_blocked",
+    );
+    expectConstraint(() => {
+      applyAtomic(missingPredecessor, sql(HARDENING_MIGRATION));
+    });
+
+    const missingImmutability = initializedDatabase();
+    missingImmutability.exec(
+      "DROP TRIGGER publication_coordination_run_immutable_delete",
+    );
+    expectConstraint(() => {
+      applyAtomic(missingImmutability, sql(HARDENING_MIGRATION));
+    });
+    expect(
+      missingImmutability
+        .prepare(
+          `SELECT count(*) AS count FROM sqlite_schema
+           WHERE name = 'publication_run_plan_revocation_admitted_history_guard'`,
+        )
+        .get(),
+    ).toEqual({ count: 0 });
+
+    const missingAuthorityTable = initializedDatabase();
+    missingAuthorityTable.exec("DROP TABLE publication_run_plan_approval");
+    expectConstraint(() => {
+      applyAtomic(missingAuthorityTable, sql(HARDENING_MIGRATION));
+    });
+
+    const collision = initializedDatabase();
+    collision.exec(
+      "CREATE VIEW publication_run_plan_revocation_admitted_history_guard AS SELECT 1 AS value",
+    );
+    expectConstraint(() => {
+      applyAtomic(collision, sql(HARDENING_MIGRATION));
+    });
+    expect(
+      collision
+        .prepare(
+          `SELECT type FROM sqlite_schema
+           WHERE name = 'publication_run_plan_revocation_admitted_history_guard'`,
+        )
+        .get(),
+    ).toEqual({ type: "view" });
+  });
+
+  it("rolls back a late migration failure and remains retryable", () => {
+    const database = initializedDatabase();
+    expectConstraint(() => {
+      applyAtomic(
+        database,
+        `${sql(HARDENING_MIGRATION)}\nSELECT * FROM __injected_late_failure__;`,
+      );
+    });
+    expect(
+      database
+        .prepare(
+          `SELECT count(*) AS count FROM sqlite_schema
+           WHERE name = 'publication_run_plan_revocation_admitted_history_guard'`,
+        )
+        .get(),
+    ).toEqual({ count: 0 });
+    applyAtomic(database, sql(HARDENING_MIGRATION));
+  });
+
+  it("refuses to bless pre-existing revocation history that contradicts an admitted firing", () => {
+    const database = initializedDatabase();
+    const plan = seedApprovedPlan(database);
+    const occurrenceId = insertOccurrence(database, plan.runPlanId);
+    insertRun(database, occurrenceId, plan.runPlanId);
+    database
+      .prepare(
+        `INSERT INTO publication_run_plan_revocation(
+          run_plan_id, reason_code, effective_at_ms
+        ) VALUES (?, 'integrity_failure', ?)`,
+      )
+      .run(plan.runPlanId, SCHEDULED_AT);
+
+    expectConstraint(() => {
+      applyAtomic(database, sql(HARDENING_MIGRATION));
+    });
+    expect(
+      database
+        .prepare(
+          `SELECT count(*) AS count FROM sqlite_schema
+           WHERE name = 'publication_run_plan_revocation_admitted_history_guard'`,
+        )
+        .get(),
+    ).toEqual({ count: 0 });
+  });
+
+  it("prevents a late revocation from rewriting an admitted scheduled instant", () => {
+    const database = hardenedDatabase();
+    const plan = seedApprovedPlan(database);
+    const occurrenceId = insertOccurrence(database, plan.runPlanId);
+    insertRun(database, occurrenceId, plan.runPlanId);
+
+    for (const effectiveAt of [SCHEDULED_AT - 1, SCHEDULED_AT]) {
+      expectConstraint(() => {
+        database
+          .prepare(
+            `INSERT INTO publication_run_plan_revocation(
+              run_plan_id, reason_code, effective_at_ms
+            ) VALUES (?, 'integrity_failure', ?)`,
+          )
+          .run(plan.runPlanId, effectiveAt);
+      }, "publication run-plan revocation cannot rewrite resolved scheduled history");
+    }
+    expect(
+      database
+        .prepare(
+          "SELECT count(*) AS count FROM publication_run_plan_revocation",
+        )
+        .get(),
+    ).toEqual({ count: 0 });
+
+    database
+      .prepare(
+        `INSERT INTO publication_run_plan_revocation(
+          run_plan_id, reason_code, effective_at_ms
+        ) VALUES (?, 'integrity_failure', ?)`,
+      )
+      .run(plan.runPlanId, SCHEDULED_AT + 1);
+    expect(
+      database
+        .prepare("SELECT effective_at_ms FROM publication_run_plan_revocation")
+        .get(),
+    ).toEqual({ effective_at_ms: SCHEDULED_AT + 1 });
+  });
+
+  it("protects the dormant rejection branch from a later backdated revocation", () => {
+    const database = hardenedDatabase();
+    const plan = seedApprovedPlan(database);
+    const occurrenceId = insertOccurrence(database, plan.runPlanId);
+    database.exec(
+      "DROP TRIGGER publication_admission_rejection_activation_blocked",
+    );
+    insertSyntheticRejection(database, occurrenceId, plan.runPlanId);
+
+    expectConstraint(() => {
+      database
+        .prepare(
+          `INSERT INTO publication_run_plan_revocation(
+            run_plan_id, reason_code, effective_at_ms
+          ) VALUES (?, 'integrity_failure', ?)`,
+        )
+        .run(plan.runPlanId, SCHEDULED_AT);
+    }, "publication run-plan revocation cannot rewrite resolved scheduled history");
+    expect(
+      database
+        .prepare(
+          `SELECT
+            (SELECT count(*) FROM publication_admission_rejection) AS rejections,
+            (SELECT count(*) FROM publication_coordination_run) AS runs,
+            (SELECT count(*) FROM publication_run_plan_revocation) AS revocations`,
+        )
+        .get(),
+    ).toEqual({ rejections: 1, runs: 0, revocations: 0 });
   });
 });
