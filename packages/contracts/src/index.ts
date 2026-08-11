@@ -283,6 +283,12 @@ export const DatasetMetadataSchema = Type.Object(
   { $id: "DatasetMetadata", additionalProperties: false },
 );
 
+/** Validates the closed public dataset-metadata representation. */
+export const checkDatasetMetadataContract = (
+  value: unknown,
+): value is DatasetMetadata =>
+  checkContractSchema(DatasetMetadataSchema, value);
+
 export const MethodologySchema = Type.Object(
   {
     methodology_version: Type.String({ minLength: 1, maxLength: 64 }),

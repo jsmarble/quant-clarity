@@ -1,6 +1,12 @@
 ---
 import EmptyPublication from "../../components/EmptyPublication.astro";
 import BaseLayout from "../../layouts/BaseLayout.astro";
+
+const publicationState = Astro.locals.publicationState;
+const providerCount =
+  publicationState.kind === "published"
+    ? publicationState.metadata.counts.active_providers
+    : null;
 ---
 
 <BaseLayout
@@ -18,7 +24,52 @@ import BaseLayout from "../../layouts/BaseLayout.astro";
     </p>
   </header>
   <div class="shell results-region">
-    <p class="result-summary">0 published providers</p>
-    <EmptyPublication subject="providers" />
+    <p class="result-summary">
+      {
+        publicationState.kind === "published"
+          ? `${providerCount} published ${providerCount === 1 ? "provider" : "providers"}`
+          : publicationState.kind === "not_published"
+            ? "0 published providers"
+            : "Published provider count unavailable"
+      }
+    </p>
+    {
+      publicationState.kind === "not_published" ? (
+        <EmptyPublication subject="providers" />
+      ) : publicationState.kind === "unavailable" ? (
+        <section
+          class="empty-state"
+          aria-labelledby="providers-unavailable-title"
+        >
+          <p class="eyebrow">Status unavailable</p>
+          <h2 id="providers-unavailable-title">
+            Provider publication status is temporarily unavailable
+          </h2>
+          <p>
+            Try again later. QuantClarity does not guess or retain a visitor
+            record when a dependency fails.
+          </p>
+        </section>
+      ) : providerCount === 0 ? (
+        <section class="empty-state" aria-labelledby="providers-empty-title">
+          <p class="eyebrow">Current publication</p>
+          <h2 id="providers-empty-title">
+            This publication contains no active providers
+          </h2>
+          <p>This publication contains zero active provider records.</p>
+        </section>
+      ) : (
+        <section class="empty-state" aria-labelledby="providers-listing-title">
+          <p class="eyebrow">Current publication</p>
+          <h2 id="providers-listing-title">
+            Provider listing is not yet available
+          </h2>
+          <p>
+            The publication metadata is available, but provider collection
+            delivery is not available in this release.
+          </p>
+        </section>
+      )
+    }
   </div>
 </BaseLayout>

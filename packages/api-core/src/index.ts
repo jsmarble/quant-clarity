@@ -13,6 +13,8 @@ import {
   type PublicationRepresentation,
 } from "@quant-clarity/domain/publication-consistency";
 
+export * from "./frontend-api-auth.js";
+
 const UTF8 = new TextEncoder();
 const UUID_V4 =
   "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";

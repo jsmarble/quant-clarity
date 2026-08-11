@@ -8,6 +8,8 @@ export default defineConfig({
     cloudflareTest({
       miniflare: {
         bindings: {
+          FRONTEND_API_HMAC_CURRENT:
+            "frontend-worker-test-secret-with-at-least-32-characters",
           RATE_LIMIT_HMAC_KEY: "test-only-hmac-key-with-at-least-32-characters",
         },
         workers: [

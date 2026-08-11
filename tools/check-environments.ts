@@ -64,8 +64,12 @@ for (const environment of environments) {
     errors.push(`${String(environment.name)} must not have production access`);
 
   const expectedSecrets = {
-    frontend_worker: ["RATE_LIMIT_HMAC_KEY"],
-    api_worker: ["RATE_LIMIT_HMAC_KEY"],
+    frontend_worker: ["FRONTEND_API_HMAC_CURRENT", "RATE_LIMIT_HMAC_KEY"],
+    api_worker: [
+      "FRONTEND_API_HMAC_CURRENT",
+      "FRONTEND_API_HMAC_NEXT",
+      "RATE_LIMIT_HMAC_KEY",
+    ],
   };
   if (
     JSON.stringify(environment.secret_bindings) !==

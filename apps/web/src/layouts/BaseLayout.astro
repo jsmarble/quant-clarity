@@ -9,6 +9,19 @@ interface Props {
 
 const { title, description, currentPath = Astro.url.pathname } = Astro.props;
 const canonicalUrl = Astro.site ? new URL(currentPath, Astro.site) : undefined;
+const publicationState = Astro.locals.publicationState;
+const publishedAt =
+  publicationState.kind === "published"
+    ? new Intl.DateTimeFormat("en", {
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        month: "short",
+        timeZone: "UTC",
+        timeZoneName: "short",
+        year: "numeric",
+      }).format(new Date(publicationState.metadata.generated_at))
+    : null;
 const navigation = [
   { href: "/", label: "Search" },
   { href: "/models", label: "Models" },
@@ -71,9 +84,33 @@ const navigation = [
     <div class="publication-status" role="status">
       <div class="shell status-inner">
         <span class="status-label">Dataset status</span>
-        <span>No public data publication yet</span>
+        <span>
+          {
+            publicationState.kind === "published"
+              ? `Publication ${publicationState.metadata.publication_id}`
+              : publicationState.kind === "not_published"
+                ? "No public data publication yet"
+                : "Publication status temporarily unavailable"
+          }
+        </span>
         <span class="status-separator" aria-hidden="true">•</span>
-        <span>Data refreshed: <strong>Not yet published</strong></span>
+        <span>
+          Data refreshed: {
+            publicationState.kind === "published" && publishedAt !== null ? (
+              <strong>
+                <time datetime={publicationState.metadata.generated_at}>
+                  {publishedAt}
+                </time>
+              </strong>
+            ) : (
+              <strong>
+                {publicationState.kind === "not_published"
+                  ? "Not yet published"
+                  : "Unavailable"}
+              </strong>
+            )
+          }
+        </span>
       </div>
     </div>
 

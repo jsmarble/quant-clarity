@@ -12,6 +12,8 @@ const PUBLICATION = "pub_11111111-1111-4111-8111-111111111111";
 const OTHER_PUBLICATION = "pub_22222222-2222-4222-8222-222222222222";
 const NOW_MS = 1_785_687_200_000;
 const REQUIRED_UNTIL_MS = NOW_MS + 15 * 60 * 1000;
+const DISPOSE_SYMBOL = (Symbol as unknown as { readonly dispose: symbol })
+  .dispose;
 
 const limits: ApiLimits = {
   defaultPageSize: 25,
@@ -141,6 +143,43 @@ describe("dataset metadata API/query seam (META-001–META-004, API-003, API-005
         continuation: null,
         searchPlan: null,
       },
+    });
+  });
+
+  it("accepts the non-enumerable disposal hook added to JSRPC results", async () => {
+    const resolution = {
+      outcome: "selected",
+      publicationId: PUBLICATION,
+      bookmark: "bookmark-test-only",
+      requiredAvailableUntilMs: REQUIRED_UNTIL_MS,
+    };
+    const readOutcome = { outcome: "metadata", metadata: metadata() };
+    for (const value of [resolution, readOutcome])
+      Object.defineProperty(value, DISPOSE_SYMBOL, {
+        configurable: true,
+        enumerable: false,
+        value: () => undefined,
+        writable: true,
+      });
+
+    await expect(execute(rpc(readOutcome, resolution))).resolves.toMatchObject({
+      success: true,
+      publicationId: PUBLICATION,
+    });
+  });
+
+  it("rejects unknown symbolic properties on query results", async () => {
+    const resolution = {
+      outcome: "publication_not_ready",
+    };
+    Object.defineProperty(resolution, Symbol("unexpected"), {
+      enumerable: false,
+      value: () => undefined,
+    });
+
+    await expect(execute(rpc(undefined, resolution))).resolves.toEqual({
+      success: false,
+      code: "integrity_failure",
     });
   });
 

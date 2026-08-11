@@ -10,5 +10,9 @@
   },
   "include": [".astro/types.d.ts", "src/**/*.astro", "src/**/*.ts"],
   "exclude": ["src/**/*.test.ts", "src/lib/rate-limit.ts", "src/worker.ts"],
-  "references": [{ "path": "../../packages/domain" }]
+  "references": [
+    { "path": "../../packages/api-core/tsconfig.build.json" },
+    { "path": "../../packages/contracts" },
+    { "path": "../../packages/domain" }
+  ]
 }

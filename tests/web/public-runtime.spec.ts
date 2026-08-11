@@ -12,6 +12,8 @@ const routes = [
   "/terms",
 ] as const;
 const expectedSiteOrigin = process.env.QUANTCLARITY_EXPECTED_SITE_ORIGIN;
+const publicationState =
+  process.env.QUANTCLARITY_MOCK_PUBLICATION_STATE ?? "published";
 
 async function browserPersistence(page: Page) {
   return page.evaluate(async () => ({
@@ -73,6 +75,91 @@ test("serves every public page through the guarded Worker (FE-001, FE-063, PRIV-
     serviceWorkers: [],
     sessionStorageEntries: 0,
   });
+});
+
+test("renders the configured canonical publication state through the web/API/query Worker chain (FE-007, FE-009, API-003, API-015)", async ({
+  page,
+  request,
+}) => {
+  await page.goto("/");
+  const status = page.getByRole("status");
+  if (publicationState === "not_published") {
+    await page.goto("/models");
+    await expect(
+      page.getByText("0 published models", { exact: true }),
+    ).toBeVisible();
+    await expect(page.getByText("Publication pending")).toBeVisible();
+    await expect(page.getByRole("status")).toContainText("Not yet published");
+    return;
+  }
+  if (publicationState === "unavailable") {
+    await page.goto("/providers");
+    await expect(
+      page.getByText("Published provider count unavailable", { exact: true }),
+    ).toBeVisible();
+    await expect(page.getByRole("status")).toContainText("Unavailable");
+    await expect(page.getByText("0 published providers")).toHaveCount(0);
+    return;
+  }
+  await expect(status).toContainText(
+    "Publication pub_11111111-1111-4111-8111-111111111111",
+  );
+  await expect(status.locator("time")).toHaveAttribute(
+    "datetime",
+    "2026-08-01T00:30:00.000Z",
+  );
+  await expect(status).toContainText("Aug 1, 2026, 12:30 AM UTC");
+
+  if (publicationState === "published_zero") {
+    await page.goto("/models");
+    await expect(
+      page.getByText("0 published models", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", {
+        name: "This publication contains no active models",
+      }),
+    ).toBeVisible();
+    await expect(page.getByText("Publication pending")).toHaveCount(0);
+    await page.goto("/providers");
+    await expect(
+      page.getByText("0 published providers", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", {
+        name: "This publication contains no active providers",
+      }),
+    ).toBeVisible();
+    return;
+  }
+
+  await page.goto("/models");
+  await expect(
+    page.getByText("2 published models", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", {
+      name: "Model listing is not yet available",
+    }),
+  ).toBeVisible();
+  await expect(page.getByText("Publication pending")).toHaveCount(0);
+
+  await page.goto("/providers");
+  await expect(
+    page.getByText("1 published provider", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", {
+      name: "Provider listing is not yet available",
+    }),
+  ).toBeVisible();
+
+  const wildcardHtml = await request.get("/", {
+    headers: { Accept: "*/*" },
+  });
+  expect(await wildcardHtml.text()).toContain(
+    "pub_11111111-1111-4111-8111-111111111111",
+  );
 });
 
 test("passes automated accessibility, keyboard, mobile, and reflow smoke (A11Y-001–A11Y-007, NFR-004)", async ({

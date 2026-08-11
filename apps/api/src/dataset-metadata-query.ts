@@ -19,6 +19,8 @@ const SEMVER =
 const RFC3339_MILLISECONDS =
   /^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\.[0-9]{3}Z$/u;
 const UTF8 = new TextEncoder();
+const DISPOSE_SYMBOL = (Symbol as unknown as { readonly dispose: symbol })
+  .dispose;
 const DEGRADATION_NOTICES = new Set([
   "One or more enabled provider slices are stale.",
   "One or more enabled provider slices are unavailable.",
@@ -63,8 +65,21 @@ const snapshotOwnRecord = (
     const prototype: unknown = Object.getPrototypeOf(value);
     if (prototype !== Object.prototype && prototype !== null) return null;
     const ownKeys = Reflect.ownKeys(value);
-    if (ownKeys.some((key) => typeof key !== "string")) return null;
-    const actualKeys = (ownKeys as string[]).sort();
+    for (const key of ownKeys) {
+      if (typeof key === "string") continue;
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (
+        key !== DISPOSE_SYMBOL ||
+        descriptor === undefined ||
+        !("value" in descriptor) ||
+        typeof descriptor.value !== "function" ||
+        descriptor.enumerable
+      )
+        return null;
+    }
+    const actualKeys = ownKeys
+      .filter((key): key is string => typeof key === "string")
+      .sort();
     const sortedExpected = [...expectedKeys].sort();
     if (
       actualKeys.length !== sortedExpected.length ||

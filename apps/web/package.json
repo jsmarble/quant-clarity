@@ -14,6 +14,8 @@
   },
   "dependencies": {
     "@astrojs/cloudflare": "14.1.7",
+    "@quant-clarity/api-core": "0.0.0",
+    "@quant-clarity/contracts": "0.0.0",
     "@quant-clarity/domain": "0.0.0",
     "astro": "7.1.6"
   },

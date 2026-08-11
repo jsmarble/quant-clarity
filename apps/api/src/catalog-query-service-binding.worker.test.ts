@@ -5,7 +5,11 @@ import {
 } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 
-import type { CatalogQueryRpcV6 } from "@quant-clarity/api-core";
+import {
+  FRONTEND_API_INTERNAL_ORIGIN,
+  signFrontendApiRequest,
+  type CatalogQueryRpcV6,
+} from "@quant-clarity/api-core";
 
 import {
   captureModelDetailRuntimeCapabilities,
@@ -293,6 +297,32 @@ describe("local named catalog query service binding (API-003, API-010, CF-002, C
     );
 
     expect(response.status).toBe(404);
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(response.headers.has("Set-Cookie")).toBe(false);
+    expect(response.headers.has("X-Request-ID")).toBe(false);
+  });
+
+  it("authenticates the identity-free frontend metadata read in actual workerd", async () => {
+    const headers = await signFrontendApiRequest({
+      environment: "local",
+      method: "GET",
+      nowMs: Date.now(),
+      path: "/v1/metadata",
+      secret: "frontend-worker-test-secret-with-at-least-32-characters",
+      subtle: crypto.subtle,
+    });
+    if (headers === null) throw new Error("test signing failed");
+    const response = await exports.default.fetch(
+      new Request(`${FRONTEND_API_INTERNAL_ORIGIN}/v1/metadata`, { headers }),
+    );
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({
+      error: {
+        code: "temporarily_unavailable",
+        message: "The metadata is temporarily unavailable.",
+      },
+    });
     expect(response.headers.get("Cache-Control")).toBe("private, no-store");
     expect(response.headers.has("Set-Cookie")).toBe(false);
     expect(response.headers.has("X-Request-ID")).toBe(false);

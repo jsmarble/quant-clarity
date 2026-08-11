@@ -4,6 +4,11 @@ import SearchForm from "../../components/SearchForm.astro";
 import BaseLayout from "../../layouts/BaseLayout.astro";
 
 const query = Astro.url.searchParams.get("q")?.slice(0, 160) ?? "";
+const publicationState = Astro.locals.publicationState;
+const modelCount =
+  publicationState.kind === "published"
+    ? publicationState.metadata.counts.active_models
+    : null;
 ---
 
 <BaseLayout
@@ -22,7 +27,20 @@ const query = Astro.url.searchParams.get("q")?.slice(0, 160) ?? "";
   </header>
   <div class="shell results-region" aria-live="polite" aria-atomic="true">
     {
-      query ? (
+      publicationState.kind === "unavailable" ? (
+        <p class="result-summary">Published model count unavailable</p>
+      ) : publicationState.kind === "published" ? (
+        query ? (
+          <p class="result-summary">
+            Search results are temporarily unavailable for{" "}
+            <strong>“{query}”</strong>.
+          </p>
+        ) : (
+          <p class="result-summary">
+            {modelCount} published {modelCount === 1 ? "model" : "models"}
+          </p>
+        )
+      ) : query ? (
         <p class="result-summary">
           No published results for <strong>“{query}”</strong> because no dataset
           has been released.
@@ -31,6 +49,38 @@ const query = Astro.url.searchParams.get("q")?.slice(0, 160) ?? "";
         <p class="result-summary">0 published models</p>
       )
     }
-    <EmptyPublication subject="models" />
+    {
+      publicationState.kind === "not_published" ? (
+        <EmptyPublication subject="models" />
+      ) : publicationState.kind === "unavailable" ? (
+        <section class="empty-state" aria-labelledby="models-unavailable-title">
+          <p class="eyebrow">Status unavailable</p>
+          <h2 id="models-unavailable-title">
+            Model publication status is temporarily unavailable
+          </h2>
+          <p>
+            Try again later. QuantClarity does not guess or retain a visitor
+            record when a dependency fails.
+          </p>
+        </section>
+      ) : modelCount === 0 ? (
+        <section class="empty-state" aria-labelledby="models-empty-title">
+          <p class="eyebrow">Current publication</p>
+          <h2 id="models-empty-title">
+            This publication contains no active models
+          </h2>
+          <p>This publication contains zero active model records.</p>
+        </section>
+      ) : (
+        <section class="empty-state" aria-labelledby="models-listing-title">
+          <p class="eyebrow">Current publication</p>
+          <h2 id="models-listing-title">Model listing is not yet available</h2>
+          <p>
+            The publication metadata is available, but model collection delivery
+            is not available in this release.
+          </p>
+        </section>
+      )
+    }
   </div>
 </BaseLayout>

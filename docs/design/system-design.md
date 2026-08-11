@@ -401,6 +401,8 @@ Rejected alternatives:
 
 The product owner approved the design, Section 2.4 defaults, and zero-visitor-data PRD amendment on 2026-08-01. Later source/legal rejection may replace a provider candidate without changing the conceptual model; any further product semantic change still requires PRD amendment.
 
+[ADR 0051](../decisions/0051-signed-frontend-api-metadata.md) and locally implemented [Phase 5S](phase-5s-signed-frontend-metadata.md) realize the approved frontend-to-API internal request for canonical dataset metadata. The frontend performs public ingress limiting, sends no visitor identity across the service binding, and authenticates a canonical 30-second route/environment envelope. Astro SSR validates the closed metadata contract and renders explicit published, unpublished, or unavailable global state. Remote secrets, preview/production conformance, real publication data, and deployment remain pending.
+
 ## 19. Requirement-to-design and requirement-to-test matrix
 
 `docs/design/traceability.md` contains the row-level matrix for 317 normative requirements, 13 success measures, and 24 derived release gates. The coverage graph is:

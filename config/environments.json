@@ -11,8 +11,12 @@
       "write_identity": "local-only",
       "may_access_production": false,
       "secret_bindings": {
-        "frontend_worker": ["RATE_LIMIT_HMAC_KEY"],
-        "api_worker": ["RATE_LIMIT_HMAC_KEY"]
+        "frontend_worker": ["FRONTEND_API_HMAC_CURRENT", "RATE_LIMIT_HMAC_KEY"],
+        "api_worker": [
+          "FRONTEND_API_HMAC_CURRENT",
+          "FRONTEND_API_HMAC_NEXT",
+          "RATE_LIMIT_HMAC_KEY"
+        ]
       }
     },
     {
@@ -24,8 +28,12 @@
       "write_identity": "ci-ephemeral-only",
       "may_access_production": false,
       "secret_bindings": {
-        "frontend_worker": ["RATE_LIMIT_HMAC_KEY"],
-        "api_worker": ["RATE_LIMIT_HMAC_KEY"]
+        "frontend_worker": ["FRONTEND_API_HMAC_CURRENT", "RATE_LIMIT_HMAC_KEY"],
+        "api_worker": [
+          "FRONTEND_API_HMAC_CURRENT",
+          "FRONTEND_API_HMAC_NEXT",
+          "RATE_LIMIT_HMAC_KEY"
+        ]
       }
     },
     {
@@ -37,8 +45,12 @@
       "write_identity": "github-preview-environment-pending",
       "may_access_production": false,
       "secret_bindings": {
-        "frontend_worker": ["RATE_LIMIT_HMAC_KEY"],
-        "api_worker": ["RATE_LIMIT_HMAC_KEY"]
+        "frontend_worker": ["FRONTEND_API_HMAC_CURRENT", "RATE_LIMIT_HMAC_KEY"],
+        "api_worker": [
+          "FRONTEND_API_HMAC_CURRENT",
+          "FRONTEND_API_HMAC_NEXT",
+          "RATE_LIMIT_HMAC_KEY"
+        ]
       }
     },
     {
@@ -50,8 +62,12 @@
       "write_identity": "github-production-environment-pending",
       "may_access_production": true,
       "secret_bindings": {
-        "frontend_worker": ["RATE_LIMIT_HMAC_KEY"],
-        "api_worker": ["RATE_LIMIT_HMAC_KEY"]
+        "frontend_worker": ["FRONTEND_API_HMAC_CURRENT", "RATE_LIMIT_HMAC_KEY"],
+        "api_worker": [
+          "FRONTEND_API_HMAC_CURRENT",
+          "FRONTEND_API_HMAC_NEXT",
+          "RATE_LIMIT_HMAC_KEY"
+        ]
       }
     }
   ],

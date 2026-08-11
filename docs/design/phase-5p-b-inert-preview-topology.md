@@ -45,7 +45,7 @@ Web and API are intended to become the only public Workers, but this proposal se
 
 Web, API, and query logs, invocation logs, traces, destinations, custom request telemetry, and visitor-derived state remain disabled. Pipeline observability also remains disabled until its closed non-visitor event schema, allowed sinks, retention, access, DLP rules, and silence alert are implemented and reviewed. This phase creates no privacy or GDPR acceptance evidence.
 
-The protected secret binding name `RATE_LIMIT_HMAC_KEY` is inventory only for web and API. The proposal stores no value, secret identifier, alias, credential, or token. Web and API must receive distinct values despite sharing the binding name; neither value may be reused across Workers. Each Worker will require its value to be installed independently through a protected Cloudflare secret facility after authorization.
+The protected secret binding name `RATE_LIMIT_HMAC_KEY` is inventory only for web and API. Web and API must receive distinct limiter values despite sharing that binding name; neither value may be reused across Workers. [ADR 0051](../decisions/0051-signed-frontend-api-metadata.md) later adds inventory-only shared `FRONTEND_API_HMAC_CURRENT` to web and API plus API-only optional verification-overlap slot `FRONTEND_API_HMAC_NEXT`; no value may cross environments. The proposal stores no value, secret identifier, alias, credential, or token. Every Worker secret must be installed through a protected Cloudflare secret facility after authorization.
 
 ## Desired identity split
 
