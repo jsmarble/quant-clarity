@@ -2,14 +2,14 @@
 import BaseLayout from "../layouts/BaseLayout.astro";
 
 interface Props {
-  versioned?: boolean;
+  current?: boolean;
 }
 
-const { versioned = false } = Astro.props;
-const currentPath = versioned ? "/methodology/1.0.0" : "/methodology";
-const title = versioned
-  ? "Methodology v1.0.0 — QuantClarity"
-  : "Methodology — QuantClarity";
+const { current = false } = Astro.props;
+const currentPath = current ? "/methodology" : "/methodology/1.0.0";
+const title = current
+  ? "Methodology — QuantClarity"
+  : "Methodology v1.0.0 — QuantClarity";
 ---
 
 <BaseLayout
@@ -19,14 +19,17 @@ const title = versioned
 >
   <article class="prose shell">
     <header class="page-header flush">
-      <p class="eyebrow">Methodology version 1.0.0 · Effective 2026-08-01</p>
+      <p class="eyebrow">
+        Methodology version <strong>1.0.0</strong> · Effective
+        <time datetime="2026-08-01">August 1, 2026</time>
+      </p>
       <h1>How QuantClarity handles facts</h1>
       <p class="lede narrow">
         QuantClarity publishes scoped, evidence-backed facts. It does not rank
         or recommend inference providers.
       </p>
       {
-        !versioned && (
+        current && (
           <p>
             The stable record of this methodology is available at{" "}
             <a href="/methodology/1.0.0">version 1.0.0</a>.
@@ -85,9 +88,9 @@ const title = versioned
     <p>
       A provider's serving precision alone does not split a canonical model. An
       explicitly named and selectable precision or material variant receives its
-      own variant resource and links to its canonical family. Alias matching
-      never hides an explicit variant distinction, and canonical and variant
-      provider comparisons remain separate.
+      own variant resource. Canonical and variant pages link to one another
+      while their provider comparisons remain separate. Alias matching never
+      hides an explicit variant distinction.
     </p>
 
     <h2>Evidence and source precedence</h2>
@@ -104,7 +107,8 @@ const title = versioned
       Applicability and verification are checked before precedence or recency.
       Equally authoritative unresolved conflicts publish as unknown. Every
       non-null fact identifies evidence and an observation time; lower-priority
-      conflicts cannot silently overwrite a winning claim.
+      conflicts are retained internally for audit and cannot silently overwrite
+      a winning claim.
     </p>
 
     <h2>Freshness and status</h2>
@@ -117,14 +121,30 @@ const title = versioned
       remain visible through explicit filters, while the default table is
       limited to active, non-stale offerings.
     </p>
+    <p>
+      Model and provider pages show their most recent successful data refresh;
+      each offering exposes its own observation time.
+    </p>
 
     <h2>Prices</h2>
     <p>
-      Input, output, and cached-input prices stay separate; a missing cached
-      input price is unknown, never zero. The provider-stated currency is
-      preserved without foreign-exchange conversion. If a provider omits
+      Standard input, output, and cached-input read prices are stated per one
+      million tokens, stored as decimal-safe amounts, and stay separate. A
+      missing cached-input price is unknown, never zero or a copy of standard
+      input. The provider-stated currency is preserved, using an ISO 4217 code
+      where one exists, without foreign-exchange conversion. If a provider omits
       currency, USD is visibly labeled as a system default rather than a
       provider statement.
+    </p>
+    <p>
+      Every current price shows its source, unit, currency, effective or
+      observed time, and material qualifiers such as promotion, minimum tier,
+      context-length tier, region, or subscription requirement. Promotional
+      rates are visibly separate from standard rates and excluded from the
+      default standard-price sort unless explicitly included. If only a
+      promotional price is available, that limitation is visible. Normalized
+      historical price and precision observations are retained for the life of
+      the service so changes remain auditable.
     </p>
     <p>
       Standard comparable prices are generally available, on-demand,
@@ -133,26 +153,60 @@ const title = versioned
       batch, volume, committed-use, context-tiered, region-tiered, “from,” and
       promotional prices remain visible with their exact qualifiers, but do not
       replace or enter the default standard-price sort unless explicitly
-      included. Numeric price sorting always uses one visible currency scope.
+      included. Conditional price classes remain separately filterable. Numeric
+      price sorting always uses one visible currency scope.
+    </p>
+    <p>
+      Input, output, and cached-input price fields remain independently sortable
+      and filterable. QuantClarity does not calculate a blended token price,
+      collapse price roles into a single winner, or compute a composite value
+      score.
     </p>
 
     <h2>Neutral comparison and ordering</h2>
+    <p>
+      QuantClarity does not compute or publish a provider winner,
+      recommendation, preferred-provider list, fidelity rank, value rank, or
+      cheapest-provider designation.
+    </p>
     <p>
       The default offering order is provider display name ascending, then stable
       offering ID ascending. Users may explicitly sort by provider, normalized
       precision label, each standard comparable price role, freshness, or
       status. Precision display order is organizational only—not fidelity,
-      quality, or lineage ranking—and mixed, other, and unknown remain explicit.
-      Affiliate status and commission never affect facts, inclusion, relevance,
-      filters, or ordering.
+      quality, or lineage ranking. Mixed, other, unknown, and non-comparable
+      precision states remain explicit and are never forced into a misleading
+      numerical rank. For price sorting, USD is the default currency scope when
+      a matching USD offering exists. Otherwise, the interface requires a
+      currency selection or uses the first available ISO currency in ascending
+      code order, always showing the active scope. Prices in different
+      currencies are never numerically interleaved, converted, or ranked against
+      one another.
+    </p>
+    <p>
+      User-selected sort and filter state is visible in the interface and URL
+      and is not persisted as a global provider preference. Equal factual values
+      remain equal. Affiliate status, commission, and operator preference never
+      break factual ties or affect facts, inclusion, relevance, filters, or
+      ordering; neutral provider name and stable offering ID provide only
+      deterministic navigation.
     </p>
 
     <h2>Material-change log</h2>
+    <ol aria-label="Methodology versions">
+      <li>
+        <h3><a href="/methodology/1.0.0">Version 1.0.0</a></h3>
+        <p>
+          Effective <time datetime="2026-08-01">August 1, 2026</time>. Initial
+          release establishing the precision vocabulary, model-grouping and
+          normalization rules, evidence precedence, freshness policy, price
+          treatment, and neutral comparison and sort behavior.
+        </p>
+      </li>
+    </ol>
     <p>
-      Version 1.0.0 establishes the initial precision vocabulary, model-grouping
-      rules, evidence precedence, freshness policy, price treatment, and neutral
-      comparison behavior. Future material changes will receive a new stable
-      version and an entry here; historical versions will remain available.
+      Future material changes will receive a new stable version and an entry
+      here; historical version URLs will remain available.
     </p>
   </article>
 </BaseLayout>
