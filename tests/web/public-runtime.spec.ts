@@ -4,6 +4,7 @@ import { expect, test, type APIResponse, type Page } from "@playwright/test";
 const routes = [
   "/",
   "/models",
+  "/variants",
   "/providers",
   "/methodology",
   "/methodology/1.0.0",
@@ -202,6 +203,17 @@ test("renders the configured canonical publication state through the web/API/que
         name: "This publication contains no active providers",
       }),
     ).toBeVisible();
+    await page.goto("/variants");
+    await expect(
+      page.getByRole("heading", {
+        name: "Search for an exact explicit Variant match",
+      }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", {
+        name: "This publication contains no active Variant targets",
+      }),
+    ).toHaveCount(0);
     return;
   }
 

@@ -3,10 +3,13 @@ import {
   FRONTEND_API_RESERVED_HEADERS,
   EXACT_MODEL_SEARCH_API_PATH,
   EXACT_MODEL_SEARCH_LIMIT,
+  EXACT_VARIANT_SEARCH_API_PATH,
+  EXACT_VARIANT_SEARCH_LIMIT,
   hasFrontendApiReservedHeaders,
   ifNoneMatchMatches,
   methodologyRegistryEntry,
   parseCanonicalExactModelSearchQuery,
+  parseCanonicalExactVariantSearchQuery,
   parseModelDetailApiPath,
   representationEtag,
   validIfNoneMatch,
@@ -24,6 +27,7 @@ import { readMethodologyDetailFromQueryV1 } from "./methodology-detail-query.js"
 import { limitPublicReadRequest } from "./public-read-limiter.js";
 import { handleAdmittedModelDetailRuntime } from "./model-detail-runtime.js";
 import { handleAdmittedExactModelSearchRuntime } from "./exact-model-search-runtime.js";
+import { handleAdmittedExactVariantSearchRuntime } from "./exact-variant-search-runtime.js";
 
 type Env = Omit<
   CloudflareEnv,
@@ -152,6 +156,63 @@ const normalizeExactModelSearchRequest = (
       validation.request.sort[1] !== "stable_id" ||
       Reflect.ownKeys(validation.request.filters).length !== 1 ||
       validation.request.filters.record_type !== "model" ||
+      publicationHeader === null
+    )
+      return null;
+    return validation.request;
+  } catch {
+    return null;
+  }
+};
+
+const normalizeExactVariantSearchRequest = (
+  request: Request,
+): NormalizedRequest | null => {
+  try {
+    const url = new URL(request.url);
+    const queryMarker = request.url.indexOf(
+      "?",
+      request.url.indexOf("://") + 3,
+    );
+    if (
+      request.method !== "GET" ||
+      request.body !== null ||
+      url.origin !== FRONTEND_API_INTERNAL_ORIGIN ||
+      url.pathname !== EXACT_VARIANT_SEARCH_API_PATH ||
+      queryMarker < 0 ||
+      url.hash !== ""
+    )
+      return null;
+    const rawQuery = request.url.slice(queryMarker + 1);
+    const parsed = parseCanonicalExactVariantSearchQuery(rawQuery);
+    if (parsed === null) return null;
+    const publicationHeader = request.headers.get("X-QuantClarity-Publication");
+    const validation = validateAndNormalizeRequest(
+      {
+        bodyBytes: 0,
+        hasQueryString: true,
+        method: "GET",
+        pathname: EXACT_VARIANT_SEARCH_API_PATH,
+        publicationHeader,
+        rawQuery,
+      },
+      API_LIMITS,
+    );
+    if (
+      !validation.success ||
+      validation.request.operation.kind !== "search" ||
+      validation.request.route.operation.kind !== "search" ||
+      validation.request.route.policy !== "search" ||
+      validation.request.query !== parsed.query ||
+      validation.request.cursor !== parsed.cursor ||
+      validation.request.limit !== EXACT_VARIANT_SEARCH_LIMIT ||
+      !validation.request.limitProvided ||
+      validation.request.sortProvided ||
+      validation.request.sort.length !== 2 ||
+      validation.request.sort[0] !== "relevance" ||
+      validation.request.sort[1] !== "stable_id" ||
+      Reflect.ownKeys(validation.request.filters).length !== 1 ||
+      validation.request.filters.record_type !== "variant" ||
       publicationHeader === null
     )
       return null;
@@ -684,6 +745,49 @@ export async function handleRequest(
           ),
         );
       return handleAdmittedExactModelSearchRuntime(
+        normalized,
+        env,
+        environment,
+        internalNowMs,
+      );
+    } else if (verified.envelope.path === EXACT_VARIANT_SEARCH_API_PATH) {
+      const publicationId = verified.envelope.publication_id;
+      if (
+        (environment !== "local" && environment !== "test") ||
+        transportPolicy !== "local_test" ||
+        publicationId === null ||
+        requestRawQuery === null ||
+        requestSearch !== `?${requestRawQuery}` ||
+        requestUrl !==
+          `${FRONTEND_API_INTERNAL_ORIGIN}${EXACT_VARIANT_SEARCH_API_PATH}?${requestRawQuery}` ||
+        parseCanonicalExactVariantSearchQuery(requestRawQuery) === null ||
+        !exactSignedPinnedReadShape(request)
+      )
+        return send(
+          error(
+            "resource_not_found",
+            "The requested resource does not exist.",
+            404,
+          ),
+        );
+      const admittedRequest = new Request(
+        `${FRONTEND_API_INTERNAL_ORIGIN}${EXACT_VARIANT_SEARCH_API_PATH}?${requestRawQuery}`,
+        {
+          headers: { "X-QuantClarity-Publication": publicationId },
+          method: "GET",
+          redirect: "manual",
+        },
+      );
+      const normalized = normalizeExactVariantSearchRequest(admittedRequest);
+      if (normalized === null)
+        return send(
+          error(
+            "resource_not_found",
+            "The requested resource does not exist.",
+            404,
+          ),
+        );
+      return handleAdmittedExactVariantSearchRuntime(
         normalized,
         env,
         environment,

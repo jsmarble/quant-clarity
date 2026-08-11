@@ -186,6 +186,29 @@ const indexedProbe =
   };
 
 describe("provider-model-ID BLOB insert planner", () => {
+  it("keeps Model targeting by default and supports an explicit canonical Variant target", async () => {
+    expect(fixture.persistence.rows[0]?.target_resource_type).toBe("model");
+    const variantFixture = await createProviderModelIdSearchFixture(
+      "pub_74444444-4444-4444-8444-444444444444",
+      Date.parse("2026-08-02T00:30:00.000Z"),
+      [{ rawProviderModelId: "provider/explicit-variant" }],
+      true,
+      "Alpha Model",
+      "variant",
+    );
+    expect(variantFixture.persistence.rows).toHaveLength(1);
+    expect(variantFixture.persistence.rows[0]).toMatchObject({
+      target_resource_type: "variant",
+      target_resource_id: "var_00000001-0000-4000-8000-000000000001",
+    });
+    const offering = variantFixture.closureRows.resources.find(
+      (resource) => resource.resource_type === "offering",
+    );
+    expect(JSON.parse(offering?.resource_json ?? "null")).toMatchObject({
+      model_resource_id: "var_00000001-0000-4000-8000-000000000001",
+    });
+  });
+
   it("freezes ADR 0028 ceilings and emits lowercase even hex including empty normalized bytes", () => {
     const emptyNormalized = {
       ...fixture.persistence.rows[0],

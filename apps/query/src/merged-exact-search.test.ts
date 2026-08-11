@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Model } from "@quant-clarity/contracts";
+import type { Model, Variant } from "@quant-clarity/contracts";
 import { MODEL_VARIANT_NAME_SEARCH_MAX_NORMALIZED_NAME_UTF8_BYTES } from "@quant-clarity/publication-core";
 
 const mocked = vi.hoisted(() => ({
@@ -42,15 +42,19 @@ import {
   EXACT_PROVIDER_MODEL_ID_RAW_MARKER,
   MergedExactSearchError,
   readExactModelCardSearchPage,
+  readExactVariantCardSearchPage,
   readMergedExactSearchPage,
 } from "./merged-exact-search.js";
 import { attachModelCardView } from "./model-card-view.js";
 import { ProviderModelIdExactError } from "./provider-model-id-exact.js";
+import { attachVariantCardView } from "./variant-card-view.js";
 
 const PUBLICATION = "pub_11111111-1111-4111-8111-111111111111";
 const MODEL_1 = "mdl_11111111-1111-4111-8111-111111111111";
 const MODEL_2 = "mdl_22222222-2222-4222-8222-222222222222";
 const MODEL_3 = "mdl_33333333-3333-4333-8333-333333333333";
+const VARIANT_1 = "var_11111111-1111-4111-8111-111111111111";
+const VARIANT_2 = "var_22222222-2222-4222-8222-222222222222";
 const PROVIDER = "prv_44444444-4444-4444-8444-444444444444";
 const FAMILY = "fam_66666666-6666-4666-8666-666666666666";
 const displayName = Object.freeze({
@@ -93,6 +97,36 @@ const cardModel = (resourceId = MODEL_1) =>
     },
   }) as unknown as Model;
 
+const cardVariant = (resourceId = VARIANT_1) =>
+  ({
+    variant_id: resourceId,
+    model_id: MODEL_1,
+    family_id: FAMILY,
+    display_name: { ...displayName, value: "Fixture Variant FP8" },
+    variant_kind: { ...displayName, value: "publisher_precision_variant" },
+    publisher: { ...displayName, value: "Fixture Publisher" },
+    total_parameters: {
+      ...displayName,
+      value: {
+        raw_value: "8B",
+        normalized_decimal: "8000000000",
+        approximation: "exact",
+      },
+    },
+    active_parameters: unknownFact,
+    source_weight_format: { ...displayName, value: "FP8" },
+    source_quantization: { ...displayName, value: "publisher-provided FP8" },
+    cataloged_provider_count: {
+      value: 2,
+      observed_at: "2026-08-01T00:00:00.000Z",
+      derivation_version: "provider-count@1",
+    },
+    last_model_data_refresh: {
+      ...displayName,
+      value: "2026-08-01T00:00:00.000Z",
+    },
+  }) as unknown as Variant;
+
 const canonical = (resourceId = MODEL_1) => ({
   tier: 1,
   resourceType: "model",
@@ -109,6 +143,16 @@ const providerModelId = (resourceId: string) => ({
   matchKind: "provider_model_id",
   displayName,
   semanticDegraded: "disabled",
+});
+
+const canonicalVariant = (resourceId = VARIANT_1) => ({
+  ...canonical(resourceId),
+  resourceType: "variant",
+});
+
+const providerModelIdVariant = (resourceId = VARIANT_2) => ({
+  ...providerModelId(resourceId),
+  resourceType: "variant",
 });
 
 const provider = () => ({
@@ -318,6 +362,143 @@ describe("merged exact search (SRCH-002, SRCH-006, API-007, PRIV-006)", () => {
     ).rejects.toMatchObject({ code: "invalid_input" });
     expect(mocked.model).not.toHaveBeenCalled();
     expect(mocked.providerModelId).not.toHaveBeenCalled();
+  });
+
+  it("projects closed Variant cards from both exact tiers with no extra read", async () => {
+    const canonicalResult = attachVariantCardView(
+      canonicalVariant(),
+      cardVariant(),
+    );
+    const providerIdResult = attachVariantCardView(
+      providerModelIdVariant(),
+      cardVariant(VARIANT_2),
+    );
+    mocked.model.mockResolvedValue({
+      publicationId: PUBLICATION,
+      results: [canonicalResult],
+      nextAfterResourceId: null,
+    });
+    mocked.providerModelId.mockResolvedValue({
+      publicationId: PUBLICATION,
+      results: [providerIdResult],
+      matchModes: ["raw"],
+      nextContinuation: null,
+    });
+    const database = { prepare: vi.fn() };
+    const page = await readExactVariantCardSearchPage(
+      database,
+      input({ recordType: "variant" }),
+    );
+
+    expect(database.prepare).not.toHaveBeenCalled();
+    expect(page.results.map((result) => result.variantCard.variant_id)).toEqual(
+      [VARIANT_1, VARIANT_2],
+    );
+    expect(page.results[0]?.variantCard).toMatchObject({
+      model_id: MODEL_1,
+      family_id: FAMILY,
+      variant_kind: { state: "known", value: "publisher_precision_variant" },
+    });
+    expect(Object.keys(canonicalResult).sort()).toEqual([
+      "displayName",
+      "matchKind",
+      "resourceId",
+      "resourceType",
+      "semanticDegraded",
+      "tier",
+    ]);
+  });
+
+  it("keeps surviving Variant-card bytes/order invariant under eligibility inputs", async () => {
+    const arrange = () => {
+      mocked.model.mockResolvedValue({
+        publicationId: PUBLICATION,
+        results: [attachVariantCardView(canonicalVariant(), cardVariant())],
+        nextAfterResourceId: null,
+      });
+      mocked.providerModelId.mockResolvedValue({
+        publicationId: PUBLICATION,
+        results: [
+          attachVariantCardView(
+            providerModelIdVariant(),
+            cardVariant(VARIANT_2),
+          ),
+        ],
+        matchModes: ["raw"],
+        nextContinuation: null,
+      });
+    };
+    arrange();
+    const baseline = await readExactVariantCardSearchPage(
+      { prepare: vi.fn() },
+      input({ recordType: "variant" }),
+    );
+    arrange();
+    const filtered = await readExactVariantCardSearchPage(
+      { prepare: vi.fn() },
+      input({
+        eligibilityProviderId: PROVIDER,
+        eligibilityStale: true,
+        recordType: "variant",
+      }),
+    );
+    expect(filtered.results.map((result) => result.tierMarker)).toEqual(
+      baseline.results.map((result) => result.tierMarker),
+    );
+    expect(
+      filtered.results.map((result) => JSON.stringify(result.variantCard)),
+    ).toEqual(
+      baseline.results.map((result) => JSON.stringify(result.variantCard)),
+    );
+
+    mocked.model.mockResolvedValue({
+      publicationId: PUBLICATION,
+      results: [attachVariantCardView(canonicalVariant(), cardVariant())],
+      nextAfterResourceId: null,
+    });
+    mocked.providerModelId.mockResolvedValue({
+      publicationId: PUBLICATION,
+      results: [],
+      matchModes: [],
+      nextContinuation: null,
+    });
+    const reduced = await readExactVariantCardSearchPage(
+      { prepare: vi.fn() },
+      input({
+        eligibilityProviderId: PROVIDER,
+        eligibilityStale: false,
+        recordType: "variant",
+      }),
+    );
+    expect(reduced.results).toHaveLength(1);
+    expect(JSON.stringify(reduced.results[0]?.variantCard)).toBe(
+      JSON.stringify(baseline.results[0]?.variantCard),
+    );
+  });
+
+  it("rejects non-Variant scopes before invoking an exact tier", async () => {
+    await expect(
+      readExactVariantCardSearchPage(
+        { prepare: vi.fn() },
+        input({ recordType: "model" }),
+      ),
+    ).rejects.toMatchObject({ code: "invalid_input" });
+    expect(mocked.model).not.toHaveBeenCalled();
+    expect(mocked.providerModelId).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when a Variant tier omits verified canonical attachment", async () => {
+    mocked.model.mockResolvedValue({
+      publicationId: PUBLICATION,
+      results: [canonicalVariant()],
+      nextAfterResourceId: null,
+    });
+    await expect(
+      readExactVariantCardSearchPage(
+        { prepare: vi.fn() },
+        input({ recordType: "variant" }),
+      ),
+    ).rejects.toMatchObject({ code: "integrity_failure" });
   });
 
   it("stops on a tier-local lookahead and exposes only the compact marker and ID", async () => {

@@ -1,0 +1,213 @@
+---
+import {
+  exactVariantMatchLabel,
+  exactVariantSearchPageHref,
+} from "../lib/exact-variant-search-page.js";
+import type { ExactVariantSearchCollection } from "../lib/exact-variant-search.js";
+
+import FactValue from "./FactValue.astro";
+
+interface Props {
+  collection: ExactVariantSearchCollection;
+  query: string;
+}
+
+const { collection, query } = Astro.props;
+const nextHref =
+  collection.page.next_cursor === null
+    ? null
+    : exactVariantSearchPageHref(
+        query,
+        collection.page.next_cursor,
+        collection.meta.publication_id,
+      );
+const formatTimestamp = (value: string): string =>
+  new Intl.DateTimeFormat("en", {
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    month: "short",
+    timeZone: "UTC",
+    timeZoneName: "short",
+    year: "numeric",
+  }).format(new Date(value));
+const formatParameter = (value: {
+  approximation: string;
+  normalized_decimal: string | null;
+  raw_value: string;
+}): string =>
+  `${value.raw_value}; normalized: ${value.normalized_decimal ?? "unknown"}; approximation: ${value.approximation}`;
+---
+
+<section class="exact-matches" aria-labelledby="exact-variant-matches-title">
+  <p class="quiet results-publication">
+    Results publication: <code>{collection.meta.publication_id}</code>
+  </p>
+  {
+    collection.data.length === 0 ? (
+      <div class="empty-state">
+        <p class="eyebrow">Exact discovery</p>
+        <h2 id="exact-variant-matches-title">No exact Variant matches</h2>
+        <p class="result-summary" role="status">
+          No explicit Variant target matched <strong>“{query}”</strong> in this
+          publication’s exact name or provider model ID indexes.
+        </p>
+        <a class="button-link" href="/variants">
+          Clear search
+        </a>
+      </div>
+    ) : (
+      <>
+        <div class="results-heading">
+          <div>
+            <p class="eyebrow">Exact discovery</p>
+            <h2 id="exact-variant-matches-title">Exact Variant matches</h2>
+          </div>
+          <p class="result-summary" role="status">
+            {collection.data.length} exact{" "}
+            {collection.data.length === 1
+              ? "explicit Variant match"
+              : "explicit Variant matches"}{" "}
+            for <strong>“{query}”</strong>
+          </p>
+        </div>
+        <ol class="exact-match-list" aria-label="Exact Variant matches">
+          {collection.data.map((result, index) => {
+            const variant = result.variant;
+            const displayName =
+              variant.display_name.state === "known"
+                ? variant.display_name.value
+                : "Variant name unknown";
+            const titleId = "exact-variant-match-" + String(index);
+            const matchLabel = exactVariantMatchLabel(result.match_kind);
+            return (
+              <li>
+                <article class="exact-match" aria-labelledby={titleId}>
+                  <p class="eyebrow">Explicit variant</p>
+                  <h3 id={titleId}>{displayName}</h3>
+                  <dl class="match-facts">
+                    <div>
+                      <dt>Match</dt>
+                      <dd>{matchLabel}</dd>
+                    </div>
+                    <div>
+                      <dt>QuantClarity Variant ID</dt>
+                      <dd>
+                        <code>{variant.variant_id}</code>
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Canonical family ID</dt>
+                      <dd>
+                        <code>{variant.family_id}</code>
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Canonical Model</dt>
+                      <dd>
+                        <a href={"/models/" + variant.model_id}>
+                          Open canonical Model Facts
+                        </a>
+                        <br />
+                        <code>{variant.model_id}</code>
+                      </dd>
+                    </div>
+                  </dl>
+                  <dl class="fact-grid model-card-facts">
+                    <FactValue
+                      label="Display name"
+                      fact={variant.display_name}
+                    />
+                    <FactValue
+                      label="Variant kind"
+                      fact={variant.variant_kind}
+                    />
+                    <FactValue label="Publisher" fact={variant.publisher} />
+                    <FactValue
+                      label="Total parameters"
+                      fact={variant.total_parameters}
+                      displayValue={
+                        variant.total_parameters.state === "known"
+                          ? formatParameter(variant.total_parameters.value)
+                          : undefined
+                      }
+                    />
+                    <FactValue
+                      label="Active parameters"
+                      fact={variant.active_parameters}
+                      displayValue={
+                        variant.active_parameters.state === "known"
+                          ? formatParameter(variant.active_parameters.value)
+                          : undefined
+                      }
+                    />
+                    <FactValue
+                      label="Source checkpoint weight format"
+                      fact={variant.source_weight_format}
+                    />
+                    <FactValue
+                      label="Source-provided quantization"
+                      fact={variant.source_quantization}
+                    />
+                    <div class="fact-row">
+                      <dt>Cataloged provider count</dt>
+                      <dd>
+                        <div class="fact-value">
+                          {variant.cataloged_provider_count.value}
+                        </div>
+                        <div class="fact-meta">
+                          <span>
+                            Observed:{" "}
+                            <time
+                              datetime={
+                                variant.cataloged_provider_count.observed_at
+                              }
+                            >
+                              {formatTimestamp(
+                                variant.cataloged_provider_count.observed_at,
+                              )}
+                            </time>
+                          </span>
+                          <span>
+                            Derivation:{" "}
+                            <code>
+                              {
+                                variant.cataloged_provider_count
+                                  .derivation_version
+                              }
+                            </code>
+                          </span>
+                        </div>
+                      </dd>
+                    </div>
+                    <FactValue
+                      label="Last Model-data refresh"
+                      fact={variant.last_model_data_refresh}
+                      displayValue={
+                        variant.last_model_data_refresh.state === "known"
+                          ? formatTimestamp(
+                              variant.last_model_data_refresh.value,
+                            )
+                          : undefined
+                      }
+                    />
+                  </dl>
+                </article>
+              </li>
+            );
+          })}
+        </ol>
+        <nav class="pagination" aria-label="Exact Variant match pages">
+          <a class="button-link secondary" href="/variants">
+            Clear search
+          </a>
+          {nextHref !== null && (
+            <a class="button-link" href={nextHref} rel="next">
+              Next exact matches
+            </a>
+          )}
+        </nav>
+      </>
+    )
+  }
+</section>

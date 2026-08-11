@@ -16,6 +16,8 @@ The current model/variant exact-name follow-up is split by [ADR 0026](../decisio
 
 [ADR 0053](../decisions/0053-publication-pinned-exact-model-discovery.md) and locally implemented [Phase 5V](phase-5v-exact-model-discovery.md) connect publication-pinned exact Model identity results to stable-ID Model Facts. Accepted [ADR 0054](../decisions/0054-canonical-model-card-projection.md) and locally implemented [Phase 5W](phase-5w-exact-model-cards.md) retain canonical Models already read by exact tiers, add zero SQL, and project a dedicated 65,536-byte-bounded Model-card collection whose bytes are invariant to provider/filter witnesses. Variant cards, public/remote ingress, `PublicationWorkflow`, deployment, and every traceability advancement remain pending.
 
+Accepted [ADR 0055](../decisions/0055-publication-pinned-exact-variant-cards.md) and locally implemented [Phase 5X](phase-5x-exact-variant-cards.md) apply the same zero-extra-SQL boundary to explicit Variants without inheriting canonical Model facts. The local `/variants` journey visibly differentiates Variants and links their structural canonical Model while keeping Variant detail, provider comparison, public/remote ingress, and deployment closed. Provider comparison follows only after complete Offering/Provider/target/Price/PrecisionObservation/EvidenceSummary relationship closure and an accepted current-value policy.
+
 ## Design rules
 
 - Trace each component and consequential behavior to PRD requirement IDs.

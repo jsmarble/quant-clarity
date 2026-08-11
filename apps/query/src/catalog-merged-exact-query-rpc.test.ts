@@ -3,6 +3,7 @@ import type * as MergedExactSearchModule from "./merged-exact-search.js";
 
 const mocked = vi.hoisted(() => ({
   readCardPage: vi.fn(),
+  readVariantCardPage: vi.fn(),
   readPage: vi.fn(),
 }));
 
@@ -11,6 +12,7 @@ vi.mock("./merged-exact-search.js", async (importOriginal) => {
   return {
     ...original,
     readExactModelCardSearchPage: mocked.readCardPage,
+    readExactVariantCardSearchPage: mocked.readVariantCardPage,
     readMergedExactSearchPage: mocked.readPage,
   };
 });
@@ -21,12 +23,14 @@ import {
 } from "./merged-exact-search.js";
 import {
   readExactModelCardSearchV1,
+  readExactVariantCardSearchV1,
   readMergedExactSearchV1,
   readMergedExactSearchV2,
 } from "./catalog-query-rpc.js";
 
 const PUBLICATION = "pub_11111111-1111-4111-8111-111111111111";
 const MODEL = "mdl_22222222-2222-4222-8222-222222222222";
+const VARIANT = "var_22222222-2222-4222-8222-222222222222";
 const FAMILY = "fam_33333333-3333-4333-8333-333333333333";
 
 const envelope = (
@@ -82,6 +86,18 @@ const cardInput = (requiredAvailableUntilMs: number) => ({
   version: 1,
 });
 
+const variantCardInput = (
+  requiredAvailableUntilMs: number,
+  continuation: unknown = null,
+) => ({
+  ...inputV2(
+    requiredAvailableUntilMs,
+    { record_type: "variant" },
+    continuation,
+  ),
+  version: 1,
+});
+
 class FakeDatabase {
   readonly sessionInputs: string[] = [];
   readonly session = { prepare: vi.fn() } as unknown as D1DatabaseSession;
@@ -99,7 +115,82 @@ class FakeDatabase {
 describe("merged exact-search RPC (SRCH-002, API-003, API-007, CF-020)", () => {
   beforeEach(() => {
     mocked.readCardPage.mockReset();
+    mocked.readVariantCardPage.mockReset();
     mocked.readPage.mockReset();
+  });
+
+  it("exposes a dedicated V1 Variant-card RPC with exact bookmark/horizon continuity", async () => {
+    const page = {
+      publicationId: PUBLICATION,
+      results: [],
+      nextContinuation: null,
+      semanticDegraded: "disabled",
+    } as const;
+    const horizon = 2_000_000_000_000;
+    mocked.readVariantCardPage.mockResolvedValue(page);
+    const database = new FakeDatabase();
+
+    await expect(
+      readExactVariantCardSearchV1(
+        database.asD1(),
+        "test",
+        variantCardInput(horizon),
+      ),
+    ).resolves.toEqual({ outcome: "page", page });
+    expect(database.sessionInputs).toEqual(["bookmark-test-only"]);
+    expect(mocked.readVariantCardPage).toHaveBeenCalledWith(database.session, {
+      publicationId: PUBLICATION,
+      query: "Fixture",
+      recordType: "variant",
+      eligibilityProviderId: null,
+      familyId: null,
+      continuation: null,
+      limit: 20,
+      requiredAvailableUntilMs: horizon,
+    });
+    expect(mocked.readPage).not.toHaveBeenCalled();
+
+    const continuation = {
+      lastSortTuple: [EXACT_PROVIDER_MODEL_ID_RAW_MARKER, VARIANT],
+      stableId: VARIANT,
+    };
+    await expect(
+      readExactVariantCardSearchV1(
+        database.asD1(),
+        "test",
+        variantCardInput(horizon, continuation),
+      ),
+    ).resolves.toEqual({ outcome: "page", page });
+    expect(mocked.readVariantCardPage).toHaveBeenLastCalledWith(
+      database.session,
+      expect.objectContaining({
+        continuation: {
+          tierMarker: EXACT_PROVIDER_MODEL_ID_RAW_MARKER,
+          resourceId: VARIANT,
+        },
+        requiredAvailableUntilMs: horizon,
+      }),
+    );
+
+    await expect(
+      readExactVariantCardSearchV1(database.asD1(), "test", {
+        ...variantCardInput(horizon),
+        envelope: envelope({ record_type: "model" }),
+      }),
+    ).resolves.toEqual({ outcome: "integrity_failure" });
+    await expect(
+      readExactVariantCardSearchV1(database.asD1(), "preview", {
+        ...variantCardInput(horizon),
+        envelope: {
+          ...envelope({ record_type: "variant" }),
+          environment: "preview",
+          searchPlan: {
+            ...envelope({ record_type: "variant" }).searchPlan,
+            filters: { record_type: "variant" },
+          },
+        },
+      }),
+    ).resolves.toEqual({ outcome: "integrity_failure" });
   });
 
   it("exposes a dedicated V1 Model-card RPC without changing generic V2", async () => {

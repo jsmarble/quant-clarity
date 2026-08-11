@@ -6,6 +6,11 @@ import {
   type ModelCardView,
 } from "./model-card-view.js";
 import {
+  attachExistingVariantCardView,
+  attachedVariantCardView,
+  type VariantCardView,
+} from "./variant-card-view.js";
+import {
   ModelVariantExactNameError,
   readModelVariantExactNamePage,
   type ModelVariantExactNameResult,
@@ -89,6 +94,19 @@ export type ExactModelCardSearchResult = Readonly<{
 export type ExactModelCardSearchPage = Readonly<{
   publicationId: string;
   results: readonly ExactModelCardSearchResult[];
+  nextContinuation: MergedExactSearchContinuation | null;
+  semanticDegraded: "disabled";
+}>;
+
+export type ExactVariantCardSearchResult = Readonly<{
+  tierMarker: MergedExactSearchTierMarker;
+  matchKind: "canonical_name" | "provider_model_id";
+  variantCard: VariantCardView;
+}>;
+
+export type ExactVariantCardSearchPage = Readonly<{
+  publicationId: string;
+  results: readonly ExactVariantCardSearchResult[];
   nextContinuation: MergedExactSearchContinuation | null;
   semanticDegraded: "disabled";
 }>;
@@ -441,6 +459,9 @@ const appendResult = (
   const card = attachedModelCardView(value);
   if (card !== null && merged.resourceType === "model")
     attachExistingModelCardView(merged, card);
+  const variantCard = attachedVariantCardView(value);
+  if (variantCard !== null && merged.resourceType === "variant")
+    attachExistingVariantCardView(merged, variantCard);
   output.push(merged);
 };
 
@@ -706,6 +727,45 @@ export const readExactModelCardSearchPage = async (
         tierMarker: result.tierMarker,
         matchKind: result.matchKind,
         modelCard,
+      }),
+    );
+  }
+  return Object.freeze({
+    publicationId: page.publicationId,
+    results: Object.freeze(results),
+    nextContinuation: page.nextContinuation,
+    semanticDegraded: "disabled",
+  });
+};
+
+/**
+ * Dedicated Variant-only composition over the generic exact ordering seam.
+ * Card bytes come from canonical Variants already hydrated by each tier; this
+ * function performs no additional storage read.
+ */
+export const readExactVariantCardSearchPage = async (
+  database: Pick<D1DatabaseSession, "prepare">,
+  inputValue: unknown,
+): Promise<ExactVariantCardSearchPage> => {
+  const detached = snapshot(inputValue);
+  if (detached?.recordType !== "variant")
+    throw new MergedExactSearchError("invalid_input");
+  const page = await readMergedExactSearchPage(database, detached);
+  const results: ExactVariantCardSearchResult[] = [];
+  for (const result of page.results) {
+    const variantCard = attachedVariantCardView(result);
+    if (
+      result.resourceType !== "variant" ||
+      result.resourceId !== variantCard?.variant_id ||
+      (result.matchKind !== "canonical_name" &&
+        result.matchKind !== "provider_model_id")
+    )
+      throw new MergedExactSearchError("integrity_failure");
+    results.push(
+      Object.freeze({
+        tierMarker: result.tierMarker,
+        matchKind: result.matchKind,
+        variantCard,
       }),
     );
   }

@@ -3,6 +3,7 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 const PUBLICATION = "pub_11111111-1111-4111-8111-111111111111";
 const NEXT_PUBLICATION = "pub_88888888-8888-4888-8888-888888888888";
 const MODEL = "mdl_22222222-2222-4222-8222-222222222222";
+const VARIANT = "var_99999999-9999-4999-8999-999999999999";
 const FAMILY = "fam_33333333-3333-4333-8333-333333333333";
 const EVIDENCE = "evd_44444444-4444-4444-8444-444444444444";
 const CHECKPOINT = "chk_55555555-5555-4555-8555-555555555555";
@@ -17,6 +18,11 @@ const SEARCH_PROVIDER_MODEL_ID_QUERY = "fixture/provider-model-id";
 const SEARCH_EMPTY_QUERY = "No exact fixture match";
 const SEARCH_PAGED_QUERY = "Paged fixture models";
 const SEARCH_FAILURE_QUERY = "Unavailable fixture search";
+const SEARCH_VARIANT_QUERY = "Fixture <script> FP8 Variant";
+const SEARCH_VARIANT_PROVIDER_MODEL_ID_QUERY = "fixture/provider-variant-fp8";
+const SEARCH_VARIANT_EMPTY_QUERY = "No exact fixture Variant match";
+const SEARCH_VARIANT_PAGED_QUERY = "Paged fixture variants";
+const SEARCH_VARIANT_FAILURE_QUERY = "Unavailable fixture Variant search";
 let currentPublication = PUBLICATION;
 let retainedPublicationExpired = false;
 
@@ -37,14 +43,33 @@ const SEARCH_MODELS = Array.from({ length: 21 }, (_, index) => ({
   resourceId: pagedModelId(index),
 }));
 
+const pagedVariantId = (index) =>
+  index === 0
+    ? VARIANT
+    : `var_${(0x99999999 + index).toString(16)}-9999-4999-8999-${(
+        0x999999999999 + index
+      )
+        .toString(16)
+        .padStart(12, "0")}`;
+
+const SEARCH_VARIANTS = Array.from({ length: 21 }, (_, index) => ({
+  displayName:
+    index === 0
+      ? SEARCH_VARIANT_QUERY
+      : `Paged Fixture FP8 Variant ${String(index + 1).padStart(2, "0")}`,
+  resourceId: pagedVariantId(index),
+  resourceType: "variant",
+}));
+
 const searchResult = ({
   displayName,
   matchKind = "canonical_name",
   resourceId,
+  resourceType = "model",
   tierMarker = "exact-v1:c",
 }) => ({
   tierMarker,
-  resourceType: "model",
+  resourceType,
   resourceId,
   matchKind,
   displayName: {
@@ -114,6 +139,29 @@ const MODEL_RECORD = {
   last_model_data_refresh: known("2026-08-01T00:20:00.000Z"),
 };
 
+const VARIANT_RECORD = {
+  variant_id: VARIANT,
+  model_id: MODEL,
+  family_id: FAMILY,
+  variant_kind: known("publisher_precision_variant"),
+  display_name: known(SEARCH_VARIANT_QUERY),
+  publisher: known("Fixture Publisher"),
+  total_parameters: known({
+    raw_value: "~70B",
+    normalized_decimal: "70000000000",
+    approximation: "approximate",
+  }),
+  active_parameters: absent("unknown"),
+  source_weight_format: absent("unavailable"),
+  source_quantization: known("FP8"),
+  cataloged_provider_count: {
+    value: 1,
+    observed_at: OBSERVED_AT,
+    derivation_version: "cataloged-provider-count@1",
+  },
+  last_model_data_refresh: known(OBSERVED_AT),
+};
+
 // The search view is projected from the same canonical Model facts used by
 // Model Facts. Paged synthetic Models vary identity/display name only.
 const searchModelCard = (result) => ({
@@ -129,6 +177,12 @@ const searchModelCard = (result) => ({
   source_quantization: MODEL_RECORD.source_quantization,
   cataloged_provider_count: MODEL_RECORD.cataloged_provider_count,
   last_model_data_refresh: MODEL_RECORD.last_model_data_refresh,
+});
+
+const searchVariantCard = (result) => ({
+  ...VARIANT_RECORD,
+  variant_id: result.resourceId,
+  display_name: known(result.displayName.value),
 });
 
 const publicationState = (env) => {
@@ -235,24 +289,42 @@ export class CatalogQueryService extends WorkerEntrypoint {
     )
       return { outcome: "integrity_failure" };
     const query = envelope?.searchPlan?.query;
-    if (query === SEARCH_FAILURE_QUERY) return { outcome: "read_failure" };
+    if (
+      query === SEARCH_FAILURE_QUERY ||
+      query === SEARCH_VARIANT_FAILURE_QUERY
+    )
+      return { outcome: "read_failure" };
 
     const allResults =
-      query === SEARCH_QUERY
-        ? SEARCH_MODELS.slice(0, 1)
-        : query === SEARCH_PROVIDER_MODEL_ID_QUERY
+      query === SEARCH_VARIANT_QUERY
+        ? SEARCH_VARIANTS.slice(0, 1)
+        : query === SEARCH_VARIANT_PROVIDER_MODEL_ID_QUERY
           ? [
               {
-                ...SEARCH_MODELS[0],
+                ...SEARCH_VARIANTS[0],
                 matchKind: "provider_model_id",
                 tierMarker: "exact-v1:r",
               },
             ]
-          : query === SEARCH_PAGED_QUERY
-            ? SEARCH_MODELS
-            : query === SEARCH_EMPTY_QUERY
+          : query === SEARCH_VARIANT_PAGED_QUERY
+            ? SEARCH_VARIANTS
+            : query === SEARCH_VARIANT_EMPTY_QUERY
               ? []
-              : [];
+              : query === SEARCH_QUERY
+                ? SEARCH_MODELS.slice(0, 1)
+                : query === SEARCH_PROVIDER_MODEL_ID_QUERY
+                  ? [
+                      {
+                        ...SEARCH_MODELS[0],
+                        matchKind: "provider_model_id",
+                        tierMarker: "exact-v1:r",
+                      },
+                    ]
+                  : query === SEARCH_PAGED_QUERY
+                    ? SEARCH_MODELS
+                    : query === SEARCH_EMPTY_QUERY
+                      ? []
+                      : [];
     const continuation = envelope?.continuation;
     let start = 0;
     if (continuation !== null && continuation !== undefined) {
@@ -292,6 +364,13 @@ export class CatalogQueryService extends WorkerEntrypoint {
       envelope.publicationId === PUBLICATION
     )
       retainedPublicationExpired = true;
+    if (
+      query === SEARCH_VARIANT_PAGED_QUERY &&
+      continuation === null &&
+      hasMore
+    )
+      currentPublication =
+        envelope.publicationId === PUBLICATION ? NEXT_PUBLICATION : PUBLICATION;
     return response;
   }
 
@@ -306,6 +385,22 @@ export class CatalogQueryService extends WorkerEntrypoint {
           tierMarker: result.tierMarker,
           matchKind: result.matchKind,
           modelCard: searchModelCard(result),
+        })),
+      },
+    };
+  }
+
+  async readExactVariantCardSearchV1(input) {
+    const response = await this.readMergedExactSearchV2(input);
+    if (response?.outcome !== "page") return response;
+    return {
+      outcome: "page",
+      page: {
+        ...response.page,
+        results: response.page.results.map((result) => ({
+          tierMarker: result.tierMarker,
+          matchKind: result.matchKind,
+          variantCard: searchVariantCard(result),
         })),
       },
     };

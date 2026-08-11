@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { Model } from "@quant-clarity/contracts";
+import type { Model, Variant } from "@quant-clarity/contracts";
 
 import {
   assertApiLimits,
@@ -11,16 +11,20 @@ import {
   buildQueryServiceEnvelope,
   cacheDecision,
   canonicalExactModelSearchQuery,
+  canonicalExactVariantSearchQuery,
   classifyModelDetailIdentifier,
   classifyCost,
   corsHeaders,
   encodeExactModelCardCollectionRepresentation,
+  encodeExactVariantCardCollectionRepresentation,
   encodeMethodologyDetailRepresentation,
   encodeExactModelSearchRepresentation,
   encodeModelDetailRepresentation,
   executeReadBoundary,
   EXACT_MODEL_SEARCH_API_PATH,
   EXACT_MODEL_SEARCH_LIMIT,
+  EXACT_VARIANT_SEARCH_API_PATH,
+  EXACT_VARIANT_SEARCH_LIMIT,
   hashNormalizedQuery,
   ifNoneMatchMatches,
   issueCursor,
@@ -35,6 +39,7 @@ import {
   parseModelDetailApiPath,
   parseModelDetailFrontendPath,
   parseCanonicalExactModelSearchQuery,
+  parseCanonicalExactVariantSearchQuery,
   reconcileRequestCursor,
   representationEtag,
   snapshotModelDetailModel,
@@ -84,6 +89,7 @@ const catalogQueryRpcV6Surface = {
 
 const PUBLICATION = "pub_00000000-0000-4000-8000-000000000001";
 const MODEL = "mdl_00000000-0000-4000-8000-000000000002";
+const VARIANT = "var_00000000-0000-4000-8000-000000000006";
 const PROVIDER = "prv_00000000-0000-4000-8000-000000000003";
 const FAMILY = "fam_00000000-0000-4000-8000-000000000004";
 const EVIDENCE = "evd_00000000-0000-4000-8000-000000000005";
@@ -430,6 +436,49 @@ const modelDetailModel = (): Model => ({
   },
 });
 
+describe("purpose-separated canonical exact-Variant search query (FE-010, API-010, SEC-007, PRIV-006)", () => {
+  it("builds and parses only the fixed Variant first page and continuation", () => {
+    expect(EXACT_VARIANT_SEARCH_API_PATH).toBe("/v1/variant-search");
+    expect(EXACT_VARIANT_SEARCH_LIMIT).toBe(20);
+    const first = canonicalExactVariantSearchQuery("  Cafe\u0301 Variant  ");
+    expect(first).toBe("q=Caf%C3%A9+Variant&record_type=variant&limit=20");
+    expect(parseCanonicalExactVariantSearchQuery(first)).toEqual({
+      cursor: null,
+      query: "Café Variant",
+    });
+    const continuation = canonicalExactVariantSearchQuery(
+      "Café Variant",
+      "payload.signature",
+    );
+    expect(continuation).toBe(
+      "q=Caf%C3%A9+Variant&record_type=variant&limit=20&cursor=payload.signature",
+    );
+    expect(parseCanonicalExactVariantSearchQuery(continuation)).toEqual({
+      cursor: "payload.signature",
+      query: "Café Variant",
+    });
+  });
+
+  it.each([
+    "record_type=variant&q=Variant&limit=20",
+    "q=Variant&record_type=model&limit=20",
+    "q=Variant&record_type=variant&limit=19",
+    "q=Variant&record_type=variant&limit=20&extra=1",
+    "q=Variant%20Name&record_type=variant&limit=20",
+    "q=Variant&record_type=variant&limit=20&cursor=",
+  ])("rejects noncanonical raw query %j", (rawQuery) => {
+    expect(parseCanonicalExactVariantSearchQuery(rawQuery)).toBeNull();
+  });
+
+  it("classifies the internal path as bounded search work", () => {
+    expect(matchRoute(EXACT_VARIANT_SEARCH_API_PATH)).toEqual({
+      operation: { kind: "search" },
+      policy: "search",
+    });
+    expect(classifyCost(EXACT_VARIANT_SEARCH_API_PATH)).toBe("search");
+  });
+});
+
 const exactModelCardCollection = () => {
   const model = modelDetailModel();
   model.total_parameters = {
@@ -595,6 +644,211 @@ describe("exact Model-card collection representation (FE-020, FE-021, FE-023, BE
     expect(exact?.representationBytes.byteLength).toBe(65_536);
     value.page.next_cursor += "x";
     expect(encodeExactModelCardCollectionRepresentation(value)).toBeNull();
+  });
+});
+
+const exactVariantCardCollection = () => {
+  const variant = {
+    variant_id: VARIANT,
+    model_id: MODEL,
+    family_id: FAMILY,
+    variant_kind: {
+      evidence_ids: [EVIDENCE],
+      observed_at: OBSERVED_AT,
+      state: "known",
+      value: "source-provided-quantization",
+    },
+    display_name: {
+      evidence_ids: [EVIDENCE],
+      observed_at: OBSERVED_AT,
+      state: "known",
+      value: "Fixture Variant",
+    },
+    publisher: {
+      evidence_ids: [EVIDENCE],
+      observed_at: OBSERVED_AT,
+      state: "known",
+      value: "Fixture Publisher",
+    },
+    total_parameters: {
+      evidence_ids: [EVIDENCE],
+      observed_at: OBSERVED_AT,
+      state: "known",
+      value: {
+        approximation: "exact",
+        normalized_decimal: "1000000000",
+        raw_value: "1B",
+      },
+    },
+    active_parameters: {
+      evidence_ids: [],
+      observed_at: null,
+      state: "unknown",
+      value: null,
+    },
+    source_weight_format: {
+      evidence_ids: [EVIDENCE],
+      observed_at: OBSERVED_AT,
+      state: "known",
+      value: "BF16",
+    },
+    source_quantization: {
+      evidence_ids: [EVIDENCE],
+      observed_at: OBSERVED_AT,
+      state: "known",
+      value: "INT4",
+    },
+    cataloged_provider_count: {
+      value: 2,
+      observed_at: OBSERVED_AT,
+      derivation_version: "cataloged-provider-count@1",
+    },
+    last_model_data_refresh: {
+      evidence_ids: [EVIDENCE],
+      observed_at: OBSERVED_AT,
+      state: "known",
+      value: OBSERVED_AT,
+    },
+  } satisfies Pick<
+    Variant,
+    | "variant_id"
+    | "model_id"
+    | "family_id"
+    | "variant_kind"
+    | "display_name"
+    | "publisher"
+    | "total_parameters"
+    | "active_parameters"
+    | "source_weight_format"
+    | "source_quantization"
+    | "cataloged_provider_count"
+    | "last_model_data_refresh"
+  >;
+  return {
+    data: [{ match_kind: "canonical_name", variant }],
+    page: { next_cursor: "payload.signature", limit: 20 },
+    meta: {
+      resource: "exact_variant_cards",
+      publication_id: PUBLICATION,
+      schema_version: "1.0.0",
+      sort: ["relevance", "stable_id"],
+      filters: { record_type: "variant" },
+    },
+  };
+};
+
+describe("exact Variant-card collection representation (FE-020–FE-027, BE-007)", () => {
+  it("detaches the closed canonical Variant projection and fixes wire order", () => {
+    const source = exactVariantCardCollection();
+    const encoded = encodeExactVariantCardCollectionRepresentation(source);
+    expect(encoded).not.toBeNull();
+    source.data[0]!.variant.display_name.value = "mutated";
+    source.data[0]!.variant.total_parameters.value.raw_value = "mutated";
+    expect(encoded?.collection.data[0]?.variant.display_name.value).toBe(
+      "Fixture Variant",
+    );
+    expect(
+      encoded?.collection.data[0]?.variant.total_parameters.value,
+    ).toMatchObject({ raw_value: "1B", normalized_decimal: "1000000000" });
+    expect(
+      JSON.parse(new TextDecoder().decode(encoded?.representationBytes)),
+    ).toEqual(encoded?.collection);
+    expect(new TextDecoder().decode(encoded?.representationBytes)).toContain(
+      '"match_kind":"canonical_name","variant":{"variant_id":',
+    );
+  });
+
+  it.each([
+    [
+      "provider identity",
+      (value: ReturnType<typeof exactVariantCardCollection>) => {
+        Object.assign(value.data[0]!.variant, { provider_name: "Provider" });
+      },
+    ],
+    [
+      "serving precision",
+      (value: ReturnType<typeof exactVariantCardCollection>) => {
+        Object.assign(value.data[0]!.variant, { serving_precision: "FP8" });
+      },
+    ],
+    [
+      "wrong parent identifier",
+      (value: ReturnType<typeof exactVariantCardCollection>) => {
+        value.data[0]!.variant.model_id = VARIANT;
+      },
+    ],
+    [
+      "unknown display name",
+      (value: ReturnType<typeof exactVariantCardCollection>) => {
+        Object.assign(value.data[0]!.variant.display_name, {
+          evidence_ids: [],
+          observed_at: null,
+          state: "unknown",
+          value: null,
+        });
+      },
+    ],
+    [
+      "duplicate Variant",
+      (value: ReturnType<typeof exactVariantCardCollection>) => {
+        value.data.push(structuredClone(value.data[0]!));
+      },
+    ],
+    [
+      "wrong filter",
+      (value: ReturnType<typeof exactVariantCardCollection>) => {
+        value.meta.filters.record_type = "model";
+      },
+    ],
+  ])("rejects %s", (_label, mutate) => {
+    const value = exactVariantCardCollection();
+    mutate(value);
+    expect(encodeExactVariantCardCollectionRepresentation(value)).toBeNull();
+  });
+
+  it("rejects hostile accessors without invoking them", () => {
+    const value = exactVariantCardCollection();
+    let reads = 0;
+    Object.defineProperty(value.data[0]!.variant, "publisher", {
+      enumerable: true,
+      get() {
+        reads += 1;
+        return value.data[0]!.variant.display_name;
+      },
+    });
+    expect(encodeExactVariantCardCollectionRepresentation(value)).toBeNull();
+    expect(reads).toBe(0);
+  });
+
+  it("accepts exactly 65,536 bytes and rejects 65,537", () => {
+    const value = exactVariantCardCollection();
+    let admitted = encodeExactVariantCardCollectionRepresentation(value);
+    for (let count = 1_200; count <= 1_500; count += 25) {
+      value.data[0]!.variant.publisher.evidence_ids = Array.from(
+        { length: count },
+        (_, index) =>
+          `evd_00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+      );
+      admitted = encodeExactVariantCardCollectionRepresentation(value);
+      if (
+        admitted !== null &&
+        admitted.representationBytes.byteLength >= 65_536 - 4_000
+      )
+        break;
+    }
+    if (admitted === null)
+      throw new Error("Unable to construct the Variant byte boundary.");
+    const remaining = 65_536 - admitted.representationBytes.byteLength;
+    const cursor = value.page.next_cursor;
+    if (remaining < 0 || cursor.length + remaining + 1 > 4_096)
+      throw new Error("Variant exact-byte boundary cursor budget drifted.");
+    value.page.next_cursor = cursor + "x".repeat(remaining);
+    expect(
+      encodeExactVariantCardCollectionRepresentation(value)?.representationBytes
+        .byteLength,
+    ).toBe(65_536);
+    value.page.next_cursor += "x";
+    expect(encodeExactVariantCardCollectionRepresentation(value)).toBeNull();
   });
 });
 

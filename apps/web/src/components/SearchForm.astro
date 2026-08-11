@@ -2,35 +2,53 @@
 interface Props {
   value?: string;
   compact?: boolean;
+  target?: "models" | "variants";
 }
 
-const { value = "", compact = false } = Astro.props;
+const { value = "", compact = false, target = "models" } = Astro.props;
+const variants = target === "variants";
+const action = variants ? "/variants" : "/models";
+const inputId = variants ? "variant-search" : "model-search";
+const subject = variants ? "explicit Variant" : "Model";
 ---
 
 <form
   class:list={["search-form", { compact }]}
-  action="/models"
+  action={action}
   method="get"
   role="search"
 >
-  <label for="model-search"
-    >Search exact Model names or provider model IDs</label
+  <label for={inputId}>Search exact {subject} names or provider model IDs</label
   >
   <div class="search-row">
     <input
-      id="model-search"
+      id={inputId}
       type="search"
       name="q"
       value={value}
       maxlength="200"
       autocomplete="off"
       enterkeyhint="search"
-      placeholder="Enter an exact Model name or provider model ID"
+      placeholder={variants
+        ? "Enter an exact explicit Variant name or provider model ID"
+        : "Enter an exact Model name or provider model ID"}
     />
     <button type="submit">Search</button>
   </div>
   <p class="form-hint">
-    This slice returns exact Model targets only. QuantClarity does not retain
+    This slice returns exact {subject} targets only. QuantClarity does not retain
     search terms or send them to analytics.
   </p>
+  {
+    variants ? (
+      <p class="form-hint">
+        Looking for a canonical Model? <a href="/models">Search Models</a>.
+      </p>
+    ) : (
+      <p class="form-hint">
+        Looking for a named precision or publisher variant?{" "}
+        <a href="/variants">Search explicit Variants</a>.
+      </p>
+    )
+  }
 </form>
