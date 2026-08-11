@@ -78,6 +78,7 @@ export const createServingV4Fixture = async (
   offerings: readonly ProviderModelIdOfferingFixture[] = DEFAULT_OFFERINGS,
   includeVariant = false,
   providerModelIdFixtureOverride?: ProviderModelIdSearchFixture,
+  providerModelIdTargetResourceType: "model" | "variant" = "model",
 ): Promise<ServingV4Fixture> => {
   const providerModelIdFixture =
     providerModelIdFixtureOverride ??
@@ -86,6 +87,8 @@ export const createServingV4Fixture = async (
       generatedAtMs,
       offerings,
       includeVariant,
+      "Alpha Model",
+      providerModelIdTargetResourceType,
     ));
   const { manifest, closureRows } = providerModelIdFixture;
   const { seal } = await projectServingClosureSeal(closureRows);

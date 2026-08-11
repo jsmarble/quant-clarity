@@ -2,6 +2,7 @@ import {
   assertApiLimits,
   buildQueryServiceEnvelope,
   encodeExactModelCardCollectionRepresentation,
+  encodeExactVariantCardCollectionRepresentation,
   hashNormalizedQuery,
   issueCursor,
   reconcileRequestCursor,
@@ -13,6 +14,8 @@ import {
   type DeploymentEnvironment,
   type ExactModelCard,
   type ExactModelCardCollection,
+  type ExactVariantCard,
+  type ExactVariantCardCollection,
   type NormalizedRequest,
   type QueryServiceEnvelope,
 } from "@quant-clarity/api-core";
@@ -69,6 +72,13 @@ export type ExactModelCardSearchCatalogQueryRpcV1 =
   | Readonly<{
       resolvePublicationV2(input: unknown): Promise<unknown>;
       readExactModelCardSearchV1(input: unknown): Promise<unknown>;
+    }>
+  | Service;
+
+export type ExactVariantCardSearchCatalogQueryRpcV1 =
+  | Readonly<{
+      resolvePublicationV2(input: unknown): Promise<unknown>;
+      readExactVariantCardSearchV1(input: unknown): Promise<unknown>;
     }>
   | Service;
 
@@ -132,6 +142,16 @@ export type ExactModelCardSearchApiInput = Readonly<
 
 export type ExactModelCardSearchApiOutcome =
   | Readonly<{ success: true; collection: ExactModelCardCollection }>
+  | Exclude<MergedExactSearchApiOutcome, { success: true }>;
+
+export type ExactVariantCardSearchApiInput = Readonly<
+  Omit<MergedExactSearchApiInput, "service"> & {
+    service: ExactVariantCardSearchCatalogQueryRpcV1;
+  }
+>;
+
+export type ExactVariantCardSearchApiOutcome =
+  | Readonly<{ success: true; collection: ExactVariantCardCollection }>
   | Exclude<MergedExactSearchApiOutcome, { success: true }>;
 
 const snapshotOwnRecord = (
@@ -904,10 +924,149 @@ const classifyExactModelCardPage = (
   }
 };
 
+type ExactVariantCardPageClassification =
+  | Readonly<{
+      kind: "page";
+      results: readonly Readonly<{
+        tierMarker: ExactTierMarker;
+        matchKind: "canonical_name" | "provider_model_id";
+        variant: ExactVariantCard;
+      }>[];
+      nextContinuation: Readonly<{
+        tierMarker: ExactTierMarker;
+        resourceId: string;
+      }> | null;
+    }>
+  | Readonly<{ kind: "failure"; code: "integrity_failure" | "read_failure" }>
+  | Readonly<{ kind: "invalid" }>;
+
+const classifyExactVariantCardPage = (
+  value: unknown,
+  publicationId: string,
+  limit: number,
+  incomingContinuation: Readonly<{
+    tierMarker: ExactTierMarker;
+    resourceId: string;
+  }> | null,
+): ExactVariantCardPageClassification => {
+  try {
+    const failure = snapshotOwnRecord(value, ["outcome"], true);
+    if (failure !== null)
+      return failure.outcome === "integrity_failure" ||
+        failure.outcome === "read_failure"
+        ? { kind: "failure", code: failure.outcome }
+        : { kind: "invalid" };
+    const response = snapshotOwnRecord(value, ["outcome", "page"], true);
+    if (response?.outcome !== "page") return { kind: "invalid" };
+    const page = snapshotOwnRecord(response.page, [
+      "nextContinuation",
+      "publicationId",
+      "results",
+      "semanticDegraded",
+    ]);
+    if (
+      page?.publicationId !== publicationId ||
+      page.semanticDegraded !== "disabled"
+    )
+      return { kind: "invalid" };
+    const rows = snapshotArray(page.results, limit);
+    if (rows === null) return { kind: "invalid" };
+    const results: Extract<
+      ExactVariantCardPageClassification,
+      { kind: "page" }
+    >["results"][number][] = [];
+    const seen = new Set<string>();
+    let priorMarker: ExactTierMarker | null =
+      incomingContinuation?.tierMarker ?? null;
+    let priorId = incomingContinuation?.resourceId ?? "";
+    for (const row of rows) {
+      const result = snapshotOwnRecord(row, [
+        "matchKind",
+        "tierMarker",
+        "variantCard",
+      ]);
+      if (
+        result === null ||
+        (result.tierMarker !== "exact-v1:c" &&
+          result.tierMarker !== "exact-v1:r" &&
+          result.tierMarker !== "exact-v1:n") ||
+        (result.matchKind !== "canonical_name" &&
+          result.matchKind !== "provider_model_id") ||
+        (result.tierMarker === "exact-v1:c") !==
+          (result.matchKind === "canonical_name")
+      )
+        return { kind: "invalid" };
+      const admitted = encodeExactVariantCardCollectionRepresentation({
+        data: [{ match_kind: result.matchKind, variant: result.variantCard }],
+        page: { next_cursor: null, limit: 20 },
+        meta: {
+          resource: "exact_variant_cards",
+          publication_id: publicationId,
+          schema_version: "1.0.0",
+          sort: ["relevance", "stable_id"],
+          filters: { record_type: "variant" },
+        },
+      });
+      const item = admitted?.collection.data[0];
+      if (item === undefined) return { kind: "invalid" };
+      const tierMarker = result.tierMarker;
+      const variantId = item.variant.variant_id;
+      if (
+        seen.has(variantId) ||
+        (priorMarker !== null &&
+          (markerIndex(tierMarker) < markerIndex(priorMarker) ||
+            (tierMarker === priorMarker && variantId <= priorId)))
+      )
+        return { kind: "invalid" };
+      seen.add(variantId);
+      priorMarker = tierMarker;
+      priorId = variantId;
+      results.push({
+        tierMarker,
+        matchKind: item.match_kind,
+        variant: item.variant,
+      });
+    }
+    let nextContinuation: {
+      tierMarker: ExactTierMarker;
+      resourceId: string;
+    } | null = null;
+    if (page.nextContinuation !== null) {
+      const continuation = snapshotOwnRecord(page.nextContinuation, [
+        "resourceId",
+        "tierMarker",
+      ]);
+      const last = results.at(-1);
+      if (
+        continuation === null ||
+        last === undefined ||
+        continuation.tierMarker !== last.tierMarker ||
+        continuation.resourceId !== last.variant.variant_id ||
+        results.length !== limit
+      )
+        return { kind: "invalid" };
+      nextContinuation = {
+        tierMarker: continuation.tierMarker as ExactTierMarker,
+        resourceId: continuation.resourceId,
+      };
+    }
+    return { kind: "page", results, nextContinuation };
+  } catch {
+    return { kind: "invalid" };
+  }
+};
+
 const readExactSearchFromQuery = async (
-  input: MergedExactSearchApiInput | ExactModelCardSearchApiInput,
-  representation: "search" | "exact_model_cards",
-): Promise<MergedExactSearchApiOutcome | ExactModelCardSearchApiOutcome> => {
+  input:
+    | MergedExactSearchApiInput
+    | ExactModelCardSearchApiInput
+    | ExactVariantCardSearchApiInput,
+  representation: "search" | "exact_model_cards" | "exact_variant_cards",
+): Promise<
+  | MergedExactSearchApiOutcome
+  | ExactModelCardSearchApiOutcome
+  | ExactVariantCardSearchApiOutcome
+> => {
   try {
     const outer = snapshotOwnRecord(input, [
       "cursorKeyring",
@@ -945,9 +1104,11 @@ const readExactSearchFromQuery = async (
     const subtle = outer.subtle as SubtleCrypto;
     let request = parsed.request;
     if (
-      (representation === "exact_model_cards" &&
+      ((representation === "exact_model_cards" ||
+        representation === "exact_variant_cards") &&
         (Reflect.ownKeys(request.filters).length !== 1 ||
-          request.filters.record_type !== "model")) ||
+          request.filters.record_type !==
+            (representation === "exact_model_cards" ? "model" : "variant"))) ||
       request.limit > Math.min(limits.maxSearchResults, limits.maxPageSize) ||
       UTF8.encode(request.query ?? "").byteLength >
         Math.min(limits.maxSearchQueryBytes, limits.maxQueryValueBytes) ||
@@ -1020,9 +1181,11 @@ const readExactSearchFromQuery = async (
       const inherited = parseRequest(request);
       if (inherited === null) return { success: false, code: "invalid_cursor" };
       if (
-        representation === "exact_model_cards" &&
+        (representation === "exact_model_cards" ||
+          representation === "exact_variant_cards") &&
         (Reflect.ownKeys(inherited.request.filters).length !== 1 ||
-          inherited.request.filters.record_type !== "model")
+          inherited.request.filters.record_type !==
+            (representation === "exact_model_cards" ? "model" : "variant"))
       )
         return { success: false, code: "invalid_cursor" };
       if (
@@ -1090,13 +1253,15 @@ const readExactSearchFromQuery = async (
       service,
       representation === "exact_model_cards"
         ? "readExactModelCardSearchV1"
-        : "readMergedExactSearchV2",
+        : representation === "exact_variant_cards"
+          ? "readExactVariantCardSearchV1"
+          : "readMergedExactSearchV2",
     );
     if (read === null) return { success: false, code: "integrity_failure" };
     let pageValue: unknown;
     try {
       pageValue = await read.call(service, {
-        version: representation === "exact_model_cards" ? 1 : 2,
+        version: representation === "search" ? 2 : 1,
         audience: AUDIENCE,
         environment: outer.environment,
         bookmark: resolution.bookmark,
@@ -1135,17 +1300,24 @@ const readExactSearchFromQuery = async (
             request.limit,
             incomingContinuation,
           )
-        : classifyPage(
-            pageValue,
-            resolution.publicationId,
-            request.limit,
-            effectiveRecordType,
-            effectiveProviderId,
-            effectiveFamilyId,
-            effectiveStale,
-            incomingContinuation,
-            limits.maxResponseBytes,
-          );
+        : representation === "exact_variant_cards"
+          ? classifyExactVariantCardPage(
+              pageValue,
+              resolution.publicationId,
+              request.limit,
+              incomingContinuation,
+            )
+          : classifyPage(
+              pageValue,
+              resolution.publicationId,
+              request.limit,
+              effectiveRecordType,
+              effectiveProviderId,
+              effectiveFamilyId,
+              effectiveStale,
+              incomingContinuation,
+              limits.maxResponseBytes,
+            );
     if (page.kind === "failure") return { success: false, code: page.code };
     if (page.kind === "invalid")
       return { success: false, code: "integrity_failure" };
@@ -1202,6 +1374,29 @@ const readExactSearchFromQuery = async (
         ? { success: false, code: "integrity_failure" }
         : { success: true, collection: encoded.collection };
     }
+    if (representation === "exact_variant_cards") {
+      const cardPage = page as Extract<
+        ExactVariantCardPageClassification,
+        { kind: "page" }
+      >;
+      const encoded = encodeExactVariantCardCollectionRepresentation({
+        data: cardPage.results.map((result) => ({
+          match_kind: result.matchKind,
+          variant: result.variant,
+        })),
+        page: { next_cursor: nextCursor, limit: request.limit },
+        meta: {
+          resource: "exact_variant_cards",
+          publication_id: resolution.publicationId,
+          schema_version: "1.0.0",
+          sort: ["relevance", "stable_id"],
+          filters: { record_type: "variant" },
+        },
+      });
+      return encoded === null
+        ? { success: false, code: "integrity_failure" }
+        : { success: true, collection: encoded.collection };
+    }
     const searchPage = page as Extract<PageClassification, { kind: "page" }>;
     const collection: MergedExactSearchCollection = {
       data: searchPage.results.map((result) => ({
@@ -1247,3 +1442,11 @@ export const readExactModelCardSearchFromQueryV1 = (
     input,
     "exact_model_cards",
   ) as Promise<ExactModelCardSearchApiOutcome>;
+
+export const readExactVariantCardSearchFromQueryV1 = (
+  input: ExactVariantCardSearchApiInput,
+): Promise<ExactVariantCardSearchApiOutcome> =>
+  readExactSearchFromQuery(
+    input,
+    "exact_variant_cards",
+  ) as Promise<ExactVariantCardSearchApiOutcome>;

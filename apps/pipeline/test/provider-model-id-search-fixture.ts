@@ -206,6 +206,7 @@ export const createProviderModelIdSearchFixture = async (
   ],
   includeVariant = false,
   modelDisplayNames: string | readonly string[] = "Alpha Model",
+  targetResourceType: "model" | "variant" = "model",
 ): Promise<ProviderModelIdSearchFixture> => {
   const base = await createModelVariantNameSearchFixture(
     publicationId,
@@ -220,7 +221,7 @@ export const createProviderModelIdSearchFixture = async (
     (resource) => resource.resource_type === "provider",
   );
   const target = base.closureRows.resources.find(
-    (resource) => resource.resource_type === "model",
+    (resource) => resource.resource_type === targetResourceType,
   );
   if (
     provider === undefined ||
@@ -335,11 +336,11 @@ export const createProviderModelIdSearchFixture = async (
     "object",
   );
   const targetResource = {
-    resourceType: "model" as const,
+    resourceType: targetResourceType,
     resourceId: target.resource_id,
     resourceJson: targetResourceJson,
     contentHash: await hashPublicationResourceContent({
-      resourceType: "model",
+      resourceType: targetResourceType,
       resourceId: target.resource_id,
       resourceJson: targetResourceJson,
     }),
@@ -414,7 +415,7 @@ export const createProviderModelIdSearchFixture = async (
     base.closureRows.resources
       .filter((resource) => resource.resource_type !== "provider")
       .map((resource) =>
-        resource.resource_type === "model" &&
+        resource.resource_type === targetResourceType &&
         resource.resource_id === targetResource.resourceId
           ? targetResource
           : {
@@ -562,8 +563,7 @@ export const createProviderModelIdSearchFixture = async (
       (resource) =>
         resource.resource_type === "offering" ||
         (offeringResources.length > 0 &&
-          (resource.resource_type === "model" ||
-            resource.resource_type === "variant") &&
+          resource.resource_type === targetResourceType &&
           resource.resource_id === targetResource.resourceId),
     ),
   });

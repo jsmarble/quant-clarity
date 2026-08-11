@@ -48,6 +48,7 @@ import {
 import {
   EXACT_PROVIDER_MODEL_ID_RAW_MARKER,
   readExactModelCardSearchPage,
+  readExactVariantCardSearchPage,
   readMergedExactSearchPage,
 } from "./merged-exact-search.js";
 import { readProviderExactNamePage } from "./provider-exact-name.js";
@@ -128,6 +129,7 @@ vi.mock(
 const PUBLICATION = "pub_17171717-0000-4000-8000-000000000001" as const;
 const PUBLICATION_B = "pub_17171717-0000-4000-8000-000000000002" as const;
 const PUBLICATION_C = "pub_17171717-0000-4000-8000-000000000003" as const;
+const PUBLICATION_D = "pub_17171717-0000-4000-8000-000000000004" as const;
 const NOW = Math.floor(Date.now() / 1_000) * 1_000;
 const GENERATED_AT = NOW - 20 * 60_000;
 const SWITCHED_AT = NOW - 60_000;
@@ -1347,6 +1349,56 @@ describe("schema-1.11 current exact readers (SRCH-002, SRCH-004, SRCH-006, SRCH-
     await proveCardStatementParity("Schema 17\u0000Model");
     await proveCardStatementParity(providerModelIdQuery);
 
+    const genericVariantSql: string[] = [];
+    const cardVariantSql: string[] = [];
+    const counted = (statements: string[]) => ({
+      prepare: (sql: string) => {
+        statements.push(sql);
+        return env.SERVING_DB.prepare(sql);
+      },
+    });
+    const variantInput = {
+      publicationId: PUBLICATION,
+      query: "Beta Variant",
+      recordType: "variant" as const,
+      eligibilityProviderId: null,
+      continuation: null,
+      limit: 20,
+    };
+    const genericVariants = await readMergedExactSearchPage(
+      counted(genericVariantSql),
+      variantInput,
+    );
+    const variantCards = await readExactVariantCardSearchPage(
+      counted(cardVariantSql),
+      variantInput,
+    );
+    expect(cardVariantSql).toEqual(genericVariantSql);
+    expect(variantCards.results).toHaveLength(1);
+    expect(variantCards.results[0]).toMatchObject({
+      matchKind: "canonical_name",
+      variantCard: {
+        variant_id: "var_00000001-0000-4000-8000-000000000001",
+        model_id: "mdl_00000001-0000-4000-8000-000000000001",
+        family_id: "fam_00000001-0000-4000-8000-000000000001",
+        display_name: { state: "known", value: "Beta Variant" },
+        variant_kind: { state: "known", value: "publisher_variant" },
+      },
+    });
+    expect(
+      variantCards.results.map(({ matchKind, tierMarker, variantCard }) => ({
+        matchKind,
+        tierMarker,
+        resourceId: variantCard.variant_id,
+      })),
+    ).toEqual(
+      genericVariants.results.map(({ matchKind, tierMarker, resourceId }) => ({
+        matchKind,
+        tierMarker,
+        resourceId,
+      })),
+    );
+
     const selected = await exports.CatalogQueryService.resolvePublicationV1({
       version: 1,
       audience: "quantclarity-catalog-query-v1",
@@ -1433,6 +1485,34 @@ describe("schema-1.11 current exact readers (SRCH-002, SRCH-004, SRCH-006, SRCH-
         },
       });
     }
+    await expect(
+      exports.CatalogQueryService.readExactVariantCardSearchV1({
+        version: 1,
+        audience: "quantclarity-catalog-query-v1",
+        environment: "local",
+        bookmark: cardSelection.bookmark,
+        requiredAvailableUntilMs,
+        envelope: rpcEnvelope(PUBLICATION, "Beta Variant", {
+          record_type: "variant",
+        }),
+      }),
+    ).resolves.toMatchObject({
+      outcome: "page",
+      page: {
+        publicationId: PUBLICATION,
+        results: [
+          {
+            matchKind: "canonical_name",
+            variantCard: {
+              variant_id: "var_00000001-0000-4000-8000-000000000001",
+              model_id: "mdl_00000001-0000-4000-8000-000000000001",
+              family_id: "fam_00000001-0000-4000-8000-000000000001",
+              display_name: { state: "known", value: "Beta Variant" },
+            },
+          },
+        ],
+      },
+    });
   });
 
   it("uses an independent provider witness and rejects stale, inactive, and unknown witnesses", async () => {
@@ -2019,5 +2099,122 @@ describe("schema-1.11 current exact readers (SRCH-002, SRCH-004, SRCH-006, SRCH-
         from_publication_id, switched_at_ms DESC, new_generation DESC
       ) WHERE from_publication_id IS NOT NULL`,
     ).run();
+
+    // Restore the genuine A -> B -> C switch facts before exercising a new
+    // fully built Variant-target publication. No sealed row is rewritten.
+    await rewriteReferences(switchedAtB, switchedAtC);
+    const providerModelIdQuery = "provider/explicit-variant";
+    const fixtureD = await createServingV4Fixture(
+      PUBLICATION_D,
+      NOW - 10 * 60_000,
+      [{ rawProviderModelId: providerModelIdQuery }],
+      true,
+      undefined,
+      "variant",
+    );
+    await publish(fixtureD);
+    const firstActivatedAtC = new Date(switchedAtC).toISOString();
+    const headC: StoredPublicationHead = {
+      activePublicationId: PUBLICATION_C,
+      rollbackCandidatePublicationId: PUBLICATION_B,
+      switchedAt: firstActivatedAtC,
+      generation: 3,
+    };
+    const switchedAtD = NOW - 30_000;
+    await applyServingSwitchV4(
+      env.SERVING_DB,
+      await activation(
+        fixtureD,
+        switchedAtD,
+        headC,
+        publicationRecord(fixtureC, "active", firstActivatedAtC),
+      ),
+    );
+
+    const genericSql: string[] = [];
+    const variantCardSql: string[] = [];
+    const countedDatabase = (statements: string[]) => ({
+      prepare: (sql: string) => {
+        statements.push(sql);
+        return env.SERVING_DB.prepare(sql);
+      },
+    });
+    const providerVariantInput = {
+      publicationId: PUBLICATION_D,
+      query: providerModelIdQuery,
+      recordType: "variant" as const,
+      eligibilityProviderId: null,
+      continuation: null,
+      limit: 20,
+      requiredAvailableUntilMs,
+    };
+    const genericVariantPage = await readMergedExactSearchPage(
+      countedDatabase(genericSql),
+      providerVariantInput,
+    );
+    const variantCardPage = await readExactVariantCardSearchPage(
+      countedDatabase(variantCardSql),
+      providerVariantInput,
+    );
+    expect(variantCardSql).toEqual(genericSql);
+    expect(genericVariantPage.results).toMatchObject([
+      {
+        resourceType: "variant",
+        resourceId: "var_00000001-0000-4000-8000-000000000001",
+        matchKind: "provider_model_id",
+        tierMarker: EXACT_PROVIDER_MODEL_ID_RAW_MARKER,
+      },
+    ]);
+    expect(variantCardPage.results).toMatchObject([
+      {
+        matchKind: "provider_model_id",
+        tierMarker: EXACT_PROVIDER_MODEL_ID_RAW_MARKER,
+        variantCard: {
+          variant_id: "var_00000001-0000-4000-8000-000000000001",
+          model_id: "mdl_00000001-0000-4000-8000-000000000001",
+          family_id: "fam_00000001-0000-4000-8000-000000000001",
+          display_name: { state: "known", value: "Beta Variant" },
+          variant_kind: { state: "known", value: "publisher_variant" },
+          cataloged_provider_count: { value: 1 },
+        },
+      },
+    ]);
+
+    const selectedD = await exports.CatalogQueryService.resolvePublicationV2({
+      version: 2,
+      audience: "quantclarity-catalog-query-v1",
+      environment: "local",
+      requestedPublicationId: PUBLICATION_D,
+      requiredAvailableUntilMs,
+    });
+    if (selectedD.outcome !== "selected")
+      throw new Error("Variant-target publication selection failed");
+    await expect(
+      exports.CatalogQueryService.readExactVariantCardSearchV1({
+        version: 1,
+        audience: "quantclarity-catalog-query-v1",
+        environment: "local",
+        bookmark: selectedD.bookmark,
+        requiredAvailableUntilMs,
+        envelope: rpcEnvelope(PUBLICATION_D, providerModelIdQuery, {
+          record_type: "variant",
+        }),
+      }),
+    ).resolves.toMatchObject({
+      outcome: "page",
+      page: {
+        publicationId: PUBLICATION_D,
+        results: [
+          {
+            matchKind: "provider_model_id",
+            variantCard: {
+              variant_id: "var_00000001-0000-4000-8000-000000000001",
+              display_name: { state: "known", value: "Beta Variant" },
+              cataloged_provider_count: { value: 1 },
+            },
+          },
+        ],
+      },
+    });
   });
 });

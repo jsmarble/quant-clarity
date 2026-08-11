@@ -2,10 +2,12 @@ import {
   API_ROUTE_POLICIES,
   checkModelContract,
   checkSearchCollectionContract,
+  checkVariantContract,
   type DatasetMetadata,
   type Methodology,
   type Model,
   type SearchCollection,
+  type Variant,
 } from "@quant-clarity/contracts";
 import {
   parsePublicationPin,
@@ -35,6 +37,12 @@ export const EXACT_MODEL_SEARCH_QUERY_MAX_BYTES = 200;
 export const EXACT_MODEL_SEARCH_CURSOR_MAX_CHARACTERS = 4096;
 export const EXACT_MODEL_SEARCH_RAW_QUERY_MAX_BYTES = 4096;
 export const EXACT_MODEL_SEARCH_PUBLIC_MAX_BYTES = 65_536;
+export const EXACT_VARIANT_SEARCH_API_PATH = "/v1/variant-search" as const;
+export const EXACT_VARIANT_SEARCH_LIMIT = 20 as const;
+export const EXACT_VARIANT_SEARCH_QUERY_MAX_BYTES = 200;
+export const EXACT_VARIANT_SEARCH_CURSOR_MAX_CHARACTERS = 4096;
+export const EXACT_VARIANT_SEARCH_RAW_QUERY_MAX_BYTES = 4096;
+export const EXACT_VARIANT_SEARCH_PUBLIC_MAX_BYTES = 65_536;
 const SCHEMA_VERSION = /^[0-9]+\.[0-9]+\.[0-9]+$/u;
 const RFC3339_MILLISECONDS =
   /^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\.[0-9]{3}Z$/u;
@@ -65,6 +73,11 @@ export type ModelDetailIdentifier = Readonly<{
 }>;
 
 export type CanonicalExactModelSearchQuery = Readonly<{
+  cursor: string | null;
+  query: string;
+}>;
+
+export type CanonicalExactVariantSearchQuery = Readonly<{
   cursor: string | null;
   query: string;
 }>;
@@ -151,6 +164,81 @@ export const parseCanonicalExactModelSearchQuery = (
     const cursor = parameters.get("cursor");
     if (query === null) return null;
     const canonical = canonicalExactModelSearchQuery(query, cursor);
+    if (canonical !== rawQuery) return null;
+    return Object.freeze({ cursor, query: query.normalize("NFC").trim() });
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Builds the sole raw query representation accepted by the purpose-separated
+ * signed exact-Variant discovery channel. User text is normalized once;
+ * cursor bytes are not.
+ */
+export const canonicalExactVariantSearchQuery = (
+  query: unknown,
+  cursor: unknown = null,
+): string | null => {
+  try {
+    if (typeof query !== "string" || !hasValidUnicodeScalars(query))
+      return null;
+    const normalizedQuery = query.normalize("NFC").trim();
+    if (
+      normalizedQuery.length === 0 ||
+      UTF8.encode(normalizedQuery).byteLength >
+        EXACT_VARIANT_SEARCH_QUERY_MAX_BYTES ||
+      (cursor !== null &&
+        (typeof cursor !== "string" ||
+          cursor.length === 0 ||
+          cursor.length > EXACT_VARIANT_SEARCH_CURSOR_MAX_CHARACTERS ||
+          !hasValidUnicodeScalars(cursor)))
+    )
+      return null;
+    const parameters = new URLSearchParams();
+    parameters.append("q", normalizedQuery);
+    parameters.append("record_type", "variant");
+    parameters.append("limit", String(EXACT_VARIANT_SEARCH_LIMIT));
+    if (cursor !== null) parameters.append("cursor", cursor);
+    const rawQuery = parameters.toString();
+    return UTF8.encode(rawQuery).byteLength <=
+      EXACT_VARIANT_SEARCH_RAW_QUERY_MAX_BYTES
+      ? rawQuery
+      : null;
+  } catch {
+    return null;
+  }
+};
+
+/** Parses only the byte-canonical exact-Variant discovery query. */
+export const parseCanonicalExactVariantSearchQuery = (
+  rawQuery: unknown,
+): CanonicalExactVariantSearchQuery | null => {
+  try {
+    if (
+      typeof rawQuery !== "string" ||
+      rawQuery.length === 0 ||
+      !hasValidUnicodeScalars(rawQuery) ||
+      UTF8.encode(rawQuery).byteLength >
+        EXACT_VARIANT_SEARCH_RAW_QUERY_MAX_BYTES
+    )
+      return null;
+    const parameters = new URLSearchParams(rawQuery);
+    const keys = [...parameters.keys()];
+    const expectedKeys = parameters.has("cursor")
+      ? ["q", "record_type", "limit", "cursor"]
+      : ["q", "record_type", "limit"];
+    if (
+      keys.length !== expectedKeys.length ||
+      keys.some((key, index) => key !== expectedKeys[index]) ||
+      parameters.get("record_type") !== "variant" ||
+      parameters.get("limit") !== String(EXACT_VARIANT_SEARCH_LIMIT)
+    )
+      return null;
+    const query = parameters.get("q");
+    const cursor = parameters.get("cursor");
+    if (query === null) return null;
+    const canonical = canonicalExactVariantSearchQuery(query, cursor);
     if (canonical !== rawQuery) return null;
     return Object.freeze({ cursor, query: query.normalize("NFC").trim() });
   } catch {
@@ -590,7 +678,10 @@ export function matchRoute(pathname: string): RouteMatch | null {
       operation: { format: "yaml", kind: "openapi" },
       policy: null,
     };
-  if (pathname === "/v1/search")
+  if (
+    pathname === EXACT_MODEL_SEARCH_API_PATH ||
+    pathname === EXACT_VARIANT_SEARCH_API_PATH
+  )
     return { operation: { kind: "search" }, policy: "search" };
 
   const collection = {
@@ -975,7 +1066,10 @@ export function validateAndNormalizeRequest(
 }
 
 export function classifyCost(pathname: string): RateCostClass {
-  return pathname === "/v1/search" ? "search" : "read";
+  return pathname === EXACT_MODEL_SEARCH_API_PATH ||
+    pathname === EXACT_VARIANT_SEARCH_API_PATH
+    ? "search"
+    : "read";
 }
 
 export interface ReadBoundaryEffects<Head, Result> {
@@ -2015,6 +2109,203 @@ export function encodeExactModelCardCollectionRepresentation(
     };
     const representationBytes = UTF8.encode(JSON.stringify(collection));
     if (representationBytes.byteLength > EXACT_MODEL_SEARCH_PUBLIC_MAX_BYTES)
+      return null;
+    return { collection, representationBytes };
+  } catch {
+    return null;
+  }
+}
+
+export type ExactVariantCard = Readonly<
+  Pick<
+    Variant,
+    | "variant_id"
+    | "model_id"
+    | "family_id"
+    | "variant_kind"
+    | "display_name"
+    | "publisher"
+    | "total_parameters"
+    | "active_parameters"
+    | "source_weight_format"
+    | "source_quantization"
+    | "cataloged_provider_count"
+    | "last_model_data_refresh"
+  >
+>;
+
+export type ExactVariantCardCollection = Readonly<{
+  data: readonly Readonly<{
+    match_kind: "canonical_name" | "provider_model_id";
+    variant: ExactVariantCard;
+  }>[];
+  page: Readonly<{
+    next_cursor: string | null;
+    limit: typeof EXACT_VARIANT_SEARCH_LIMIT;
+  }>;
+  meta: Readonly<{
+    resource: "exact_variant_cards";
+    publication_id: string;
+    schema_version: "1.0.0";
+    sort: readonly ["relevance", "stable_id"];
+    filters: Readonly<{ record_type: "variant" }>;
+  }>;
+}>;
+
+export type ExactVariantCardRepresentation = Readonly<{
+  collection: ExactVariantCardCollection;
+  representationBytes: Uint8Array;
+}>;
+
+const EXACT_VARIANT_CARD_KEYS = [
+  "active_parameters",
+  "cataloged_provider_count",
+  "display_name",
+  "family_id",
+  "last_model_data_refresh",
+  "model_id",
+  "publisher",
+  "source_quantization",
+  "source_weight_format",
+  "total_parameters",
+  "variant_id",
+  "variant_kind",
+] as const;
+
+const exactVariantCardContract = (
+  value: unknown,
+): value is ExactVariantCard => {
+  if (!exactObjectKeys(value, EXACT_VARIANT_CARD_KEYS)) return false;
+  const card = value as unknown as ExactVariantCard;
+  const unknown = unknownModelFact();
+  return (
+    card.display_name.state === "known" &&
+    checkVariantContract({
+      variant_id: card.variant_id,
+      model_id: card.model_id,
+      family_id: card.family_id,
+      slug: unknown,
+      display_name: card.display_name,
+      variant_kind: card.variant_kind,
+      selection_evidence: unknown,
+      publisher: card.publisher,
+      release_date: unknown,
+      modalities: unknown,
+      context_window_tokens: unknown,
+      maximum_output_tokens: unknown,
+      license: unknown,
+      architecture: unknown,
+      total_parameters: card.total_parameters,
+      active_parameters: card.active_parameters,
+      source_weight_format: card.source_weight_format,
+      source_quantization: card.source_quantization,
+      checkpoint_ids: [],
+      checkpoints: [],
+      status: unknown,
+      cataloged_provider_count: card.cataloged_provider_count,
+      last_model_data_refresh: card.last_model_data_refresh,
+    })
+  );
+};
+
+const cloneExactVariantCard = (card: ExactVariantCard): ExactVariantCard => ({
+  variant_id: card.variant_id,
+  model_id: card.model_id,
+  family_id: card.family_id,
+  variant_kind: cloneModelFact(card.variant_kind),
+  display_name: cloneModelFact(card.display_name),
+  publisher: cloneModelFact(card.publisher),
+  total_parameters: cloneParameterFact(card.total_parameters),
+  active_parameters: cloneParameterFact(card.active_parameters),
+  source_weight_format: cloneModelFact(card.source_weight_format),
+  source_quantization: cloneModelFact(card.source_quantization),
+  cataloged_provider_count: {
+    value: card.cataloged_provider_count.value,
+    observed_at: card.cataloged_provider_count.observed_at,
+    derivation_version: card.cataloged_provider_count.derivation_version,
+  },
+  last_model_data_refresh: cloneModelFact(card.last_model_data_refresh),
+});
+
+/**
+ * Validates and fixes the exact bytes for the purpose-separated local/test
+ * Variant-card search representation. Only canonical Variant facts plus the
+ * allowed cataloged-provider count are admitted.
+ */
+export function encodeExactVariantCardCollectionRepresentation(
+  input: unknown,
+): ExactVariantCardRepresentation | null {
+  try {
+    const detached = snapshotModelDetailJson(input, {
+      remaining: EXACT_VARIANT_SEARCH_PUBLIC_MAX_BYTES * 2,
+      seen: new WeakSet(),
+    });
+    if (
+      !exactObjectKeys(detached, ["data", "meta", "page"]) ||
+      !Array.isArray(detached.data) ||
+      detached.data.length > EXACT_VARIANT_SEARCH_LIMIT ||
+      !exactObjectKeys(detached.page, ["limit", "next_cursor"]) ||
+      detached.page.limit !== EXACT_VARIANT_SEARCH_LIMIT ||
+      (detached.page.next_cursor !== null &&
+        (typeof detached.page.next_cursor !== "string" ||
+          detached.page.next_cursor.length === 0 ||
+          detached.page.next_cursor.length >
+            EXACT_VARIANT_SEARCH_CURSOR_MAX_CHARACTERS ||
+          !hasValidUnicodeScalars(detached.page.next_cursor))) ||
+      !exactObjectKeys(detached.meta, [
+        "filters",
+        "publication_id",
+        "resource",
+        "schema_version",
+        "sort",
+      ]) ||
+      detached.meta.resource !== "exact_variant_cards" ||
+      typeof detached.meta.publication_id !== "string" ||
+      parsePublicationPin(detached.meta.publication_id) === null ||
+      detached.meta.schema_version !== "1.0.0" ||
+      !Array.isArray(detached.meta.sort) ||
+      detached.meta.sort.length !== 2 ||
+      detached.meta.sort[0] !== "relevance" ||
+      detached.meta.sort[1] !== "stable_id" ||
+      !exactObjectKeys(detached.meta.filters, ["record_type"]) ||
+      detached.meta.filters.record_type !== "variant"
+    )
+      return null;
+
+    const variantIds = new Set<string>();
+    const data: ExactVariantCardCollection["data"][number][] = [];
+    for (const value of detached.data) {
+      if (
+        !exactObjectKeys(value, ["match_kind", "variant"]) ||
+        (value.match_kind !== "canonical_name" &&
+          value.match_kind !== "provider_model_id") ||
+        !exactVariantCardContract(value.variant) ||
+        variantIds.has(value.variant.variant_id)
+      )
+        return null;
+      variantIds.add(value.variant.variant_id);
+      data.push({
+        match_kind: value.match_kind,
+        variant: cloneExactVariantCard(value.variant),
+      });
+    }
+
+    const collection: ExactVariantCardCollection = {
+      data,
+      page: {
+        next_cursor: detached.page.next_cursor,
+        limit: EXACT_VARIANT_SEARCH_LIMIT,
+      },
+      meta: {
+        resource: "exact_variant_cards",
+        publication_id: detached.meta.publication_id,
+        schema_version: "1.0.0",
+        sort: ["relevance", "stable_id"],
+        filters: { record_type: "variant" },
+      },
+    };
+    const representationBytes = UTF8.encode(JSON.stringify(collection));
+    if (representationBytes.byteLength > EXACT_VARIANT_SEARCH_PUBLIC_MAX_BYTES)
       return null;
     return { collection, representationBytes };
   } catch {

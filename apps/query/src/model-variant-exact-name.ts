@@ -24,6 +24,7 @@ import {
   validRequiredAvailableUntilMs,
 } from "./retained-hot-publication.js";
 import { attachModelCardView } from "./model-card-view.js";
+import { attachVariantCardView } from "./variant-card-view.js";
 
 const UUID_V4 =
   "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
@@ -651,7 +652,7 @@ const rehydrate = async (
   });
   return row.resource_type === "model"
     ? attachModelCardView(result, canonical as Model)
-    : result;
+    : attachVariantCardView(result, canonical as Variant);
 };
 
 export const readModelVariantExactNamePage = async (

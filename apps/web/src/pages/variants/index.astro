@@ -1,0 +1,153 @@
+---
+import { env } from "cloudflare:workers";
+
+import EmptyPublication from "../../components/EmptyPublication.astro";
+import ExactVariantMatches from "../../components/ExactVariantMatches.astro";
+import SearchForm from "../../components/SearchForm.astro";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { readExactVariantSearchState } from "../../lib/exact-variant-search.js";
+import { planExactVariantSearchPage } from "../../lib/exact-variant-search-page.js";
+
+const publicationState = Astro.locals.publicationState;
+const plan = planExactVariantSearchPage(
+  Astro.url.search,
+  env.DEPLOYMENT_ENV,
+  publicationState,
+);
+const searchState =
+  plan.kind === "read"
+    ? await readExactVariantSearchState(
+        env,
+        plan.apiQuery,
+        plan.expectedPublicationId,
+      )
+    : null;
+const collection =
+  searchState?.kind === "found" ? searchState.collection : null;
+const collectionQuery =
+  collection !== null && plan.kind === "read" ? plan.search.query : null;
+const invalidSearch =
+  plan.kind === "invalid" || searchState?.kind === "invalid_cursor";
+const searchUnavailable =
+  plan.kind === "unavailable" || searchState?.kind === "unavailable";
+const searchValue =
+  !invalidSearch &&
+  !searchUnavailable &&
+  "search" in plan &&
+  plan.search !== undefined
+    ? plan.search.query
+    : "";
+Astro.response.status = invalidSearch ? 400 : searchUnavailable ? 503 : 200;
+const suppressCanonical = invalidSearch || searchUnavailable;
+---
+
+<BaseLayout
+  title="Find explicit model variants — QuantClarity"
+  description="Find exact explicit Variant targets and their evidence-backed source facts without provider rankings."
+  currentPath="/variants"
+  canonicalPath={suppressCanonical ? null : "/variants"}
+>
+  <header class="page-header shell">
+    <p class="eyebrow">Model-first discovery</p>
+    <h1>Explicit variants</h1>
+    <p class="lede narrow">
+      Find a named publisher or provider Variant without collapsing it into the
+      canonical Model. Variant cards contain source facts only and link back to
+      canonical Model Facts; they never rank providers.
+    </p>
+    <SearchForm value={searchValue} target="variants" compact />
+  </header>
+
+  <div class="shell results-region" aria-live="polite" aria-atomic="false">
+    {
+      invalidSearch ? (
+        <section class="empty-state" aria-labelledby="search-invalid-title">
+          <p class="eyebrow">Invalid search state</p>
+          <h2 id="search-invalid-title">Search URL is invalid</h2>
+          <p>
+            Use the search form to create a valid exact explicit Variant query.
+            No result was accepted from this URL state.
+          </p>
+          <a class="button-link" href="/variants">
+            Clear search
+          </a>
+        </section>
+      ) : searchUnavailable ? (
+        <section class="empty-state" aria-labelledby="search-unavailable-title">
+          <p class="eyebrow">Status unavailable</p>
+          <h2 id="search-unavailable-title">
+            Exact Variant search is temporarily unavailable
+          </h2>
+          <p>
+            Try again later. QuantClarity does not substitute another
+            publication, infer matches, or retain a visitor record when a
+            dependency fails.
+          </p>
+          <a class="button-link" href="/variants">
+            Clear search
+          </a>
+        </section>
+      ) : plan.kind === "closed" ? (
+        <section class="empty-state" aria-labelledby="search-closed-title">
+          <p class="eyebrow">Exact discovery</p>
+          <h2 id="search-closed-title">
+            Exact Variant discovery is not available in this release
+          </h2>
+          <p>
+            This environment keeps publication-pinned Variant discovery closed.
+            No search request was sent to the data service.
+          </p>
+          <a class="button-link" href="/variants">
+            Clear search
+          </a>
+        </section>
+      ) : plan.kind === "not_published" ? (
+        <>
+          <p class="result-summary" role="status">
+            No exact Variant matches because no dataset has been published.
+          </p>
+          <EmptyPublication subject="explicit Variants" />
+          <p>
+            <a class="button-link" href="/variants">
+              Clear search
+            </a>
+          </p>
+        </>
+      ) : collection !== null && collectionQuery !== null ? (
+        <ExactVariantMatches collection={collection} query={collectionQuery} />
+      ) : publicationState.kind === "unavailable" ? (
+        <section
+          class="empty-state"
+          aria-labelledby="variants-unavailable-title"
+        >
+          <p class="eyebrow">Status unavailable</p>
+          <h2 id="variants-unavailable-title">
+            Variant publication status is temporarily unavailable
+          </h2>
+          <p>
+            Try again later. QuantClarity does not guess or retain a visitor
+            record when a dependency fails.
+          </p>
+        </section>
+      ) : publicationState.kind === "not_published" ? (
+        <>
+          <p class="result-summary" role="status">
+            No explicit Variants are published.
+          </p>
+          <EmptyPublication subject="explicit Variants" />
+        </>
+      ) : (
+        <section class="empty-state" aria-labelledby="variants-listing-title">
+          <p class="eyebrow">Exact discovery</p>
+          <h2 id="variants-listing-title">
+            Search for an exact explicit Variant match
+          </h2>
+          <p class="result-summary" role="status">
+            Search a named precision or publisher Variant by its exact name or
+            provider model ID.
+          </p>
+        </section>
+      )
+    }
+  </div>
+</BaseLayout>
