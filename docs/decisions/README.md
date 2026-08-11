@@ -101,3 +101,4 @@ Accepted ADRs describe implementation choices; they do not amend product require
 - [ADR 0063](0063-current-offering-observation-authority.md) — manifest-bound canonical authority required before selecting current Offering facts
 - [ADR 0064](0064-sequence-fenced-claim-authority-cutover.md) — fenced provenance-v2 and one cumulative lifecycle before Offering claim authority
 - [ADR 0065](0065-fenced-provenance-v2-authority.md) — sealed, current-fence-bound provenance-v2 authority graph and dormant writer sequence
+- [ADR 0066](0066-dormant-provenance-v2-registration.md) — dormant normalized provenance-v2 registration and independent-root physical boundary

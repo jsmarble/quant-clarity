@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
 import fc from "fast-check";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { compareExactDecimal } from "@quant-clarity/domain";
 
@@ -478,187 +478,217 @@ function insertClaim(
     );
 }
 
+// Slow migration tests each build a fresh D1-compatible database and replay
+// the full chain. Preserve isolation while allowing for contended CI hosts.
+const canonicalMigrationTestTimeoutMs = 60_000;
+
+vi.setConfig({ testTimeout: canonicalMigrationTestTimeoutMs });
+
 describe("canonical D1 migrations (DATA-001–DATA-067, BE-001–BE-006)", () => {
-  it("applies every migration with foreign-key integrity", () => {
-    const database = applyMigrations("canonical");
-    const violations = database.prepare("PRAGMA foreign_key_check").all();
-    expect(violations).toEqual([]);
-    const tables = database
-      .prepare(
-        "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
-      )
-      .all()
-      .map((row) => row.name);
-    expect(tables).toEqual(
-      expect.arrayContaining([
-        "resource_identity",
-        "claim_scope",
-        "field_claim",
-        "precision_observation",
-        "price_schedule",
-        "source_compliance_record",
-        "roster_outcome",
-      ]),
-    );
-  });
+  it(
+    "applies every migration with foreign-key integrity",
+    () => {
+      const database = applyMigrations("canonical");
+      const violations = database.prepare("PRAGMA foreign_key_check").all();
+      expect(violations).toEqual([]);
+      const tables = database
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+        )
+        .all()
+        .map((row) => row.name);
+      expect(tables).toEqual(
+        expect.arrayContaining([
+          "resource_identity",
+          "claim_scope",
+          "field_claim",
+          "precision_observation",
+          "price_schedule",
+          "source_compliance_record",
+          "roster_outcome",
+        ]),
+      );
+    },
+    canonicalMigrationTestTimeoutMs,
+  );
 
-  it("enforces exact Model slug grammar and half-open non-overlapping history", () => {
-    const database = applyMigrations("canonical");
-    const seed = seedCanonical(database);
-    const insertHistory = database.prepare(
-      "INSERT INTO slug_history VALUES (?, ?, ?, ?, ?)",
-    );
+  it(
+    "enforces exact Model slug grammar and half-open non-overlapping history",
+    () => {
+      const database = applyMigrations("canonical");
+      const seed = seedCanonical(database);
+      const insertHistory = database.prepare(
+        "INSERT INTO slug_history VALUES (?, ?, ?, ?, ?)",
+      );
 
-    for (const [sequence, slug] of [
-      [200, "-leading"],
-      [201, "trailing-"],
-      [202, "two--segments"],
-      [203, "Uppercase"],
-      [204, `a${"b".repeat(128)}`],
-      [211, "leading\u0000nul"],
-      [212, "\u0000leading-nul"],
-      [213, "trailing-nul\u0000"],
-    ] as const)
+      for (const [sequence, slug] of [
+        [200, "-leading"],
+        [201, "trailing-"],
+        [202, "two--segments"],
+        [203, "Uppercase"],
+        [204, `a${"b".repeat(128)}`],
+        [211, "leading\u0000nul"],
+        [212, "\u0000leading-nul"],
+        [213, "trailing-nul\u0000"],
+      ] as const)
+        expectConstraint(
+          () =>
+            insertHistory.run(id("slg", sequence), seed.modelId, slug, 0, 1),
+          "model slug history row is invalid",
+        );
+
       expectConstraint(
-        () => insertHistory.run(id("slg", sequence), seed.modelId, slug, 0, 1),
+        () => insertHistory.run(id("slg", 205), seed.modelId, "equal", 5, 5),
         "model slug history row is invalid",
       );
 
-    expectConstraint(
-      () => insertHistory.run(id("slg", 205), seed.modelId, "equal", 5, 5),
-      "model slug history row is invalid",
-    );
+      insertHistory.run(id("slg", 206), seed.modelId, "first", 0, 10);
+      insertHistory.run(id("slg", 207), seed.modelId, "second", 10, 20);
+      expectConstraint(
+        () => insertHistory.run(id("slg", 208), seed.modelId, "overlap", 9, 11),
+        "model slug history intervals overlap",
+      );
+      insertHistory.run(id("slg", 209), seed.modelId, "current", 20, null);
+      expectConstraint(
+        () =>
+          insertHistory.run(
+            id("slg", 210),
+            seed.modelId,
+            "also-current",
+            30,
+            null,
+          ),
+        "model slug history intervals overlap",
+      );
+    },
+    canonicalMigrationTestTimeoutMs,
+  );
 
-    insertHistory.run(id("slg", 206), seed.modelId, "first", 0, 10);
-    insertHistory.run(id("slg", 207), seed.modelId, "second", 10, 20);
-    expectConstraint(
-      () => insertHistory.run(id("slg", 208), seed.modelId, "overlap", 9, 11),
-      "model slug history intervals overlap",
-    );
-    insertHistory.run(id("slg", 209), seed.modelId, "current", 20, null);
-    expectConstraint(
-      () =>
-        insertHistory.run(
-          id("slg", 210),
-          seed.modelId,
-          "also-current",
-          30,
-          null,
-        ),
-      "model slug history intervals overlap",
-    );
-  });
+  it(
+    "publishes an immutable exact Model slug-history guard capability",
+    () => {
+      const database = applyMigrations("canonical");
+      expect(
+        database
+          .prepare(
+            "SELECT singleton, guard_version FROM model_slug_history_integrity_metadata",
+          )
+          .all(),
+      ).toEqual([
+        { singleton: 1, guard_version: "model-slug-history-guard@1" },
+      ]);
+      expectConstraint(
+        () =>
+          database
+            .prepare(
+              "UPDATE model_slug_history_integrity_metadata SET guard_version = 'model-slug-history-guard@1' WHERE singleton = 1",
+            )
+            .run(),
+        "model slug history integrity metadata is immutable",
+      );
+      expectConstraint(
+        () =>
+          database
+            .prepare(
+              "DELETE FROM model_slug_history_integrity_metadata WHERE singleton = 1",
+            )
+            .run(),
+        "model slug history integrity metadata cannot be deleted",
+      );
+    },
+    canonicalMigrationTestTimeoutMs,
+  );
 
-  it("publishes an immutable exact Model slug-history guard capability", () => {
-    const database = applyMigrations("canonical");
-    expect(
+  it(
+    "permanently reserves every Model slug to one stable Model",
+    () => {
+      const database = applyMigrations("canonical");
+      const seed = seedCanonical(database);
+      const otherModelId = id("mdl", 220);
+      insertIdentity(database, otherModelId, "model");
       database
         .prepare(
-          "SELECT singleton, guard_version FROM model_slug_history_integrity_metadata",
+          "INSERT INTO model VALUES (?, ?, 'other-model', 'Other Model', 'other model', 'active', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1)",
         )
-        .all(),
-    ).toEqual([{ singleton: 1, guard_version: "model-slug-history-guard@1" }]);
-    expectConstraint(
-      () =>
-        database
-          .prepare(
-            "UPDATE model_slug_history_integrity_metadata SET guard_version = 'model-slug-history-guard@1' WHERE singleton = 1",
-          )
-          .run(),
-      "model slug history integrity metadata is immutable",
-    );
-    expectConstraint(
-      () =>
-        database
-          .prepare(
-            "DELETE FROM model_slug_history_integrity_metadata WHERE singleton = 1",
-          )
-          .run(),
-      "model slug history integrity metadata cannot be deleted",
-    );
-  });
+        .run(otherModelId, seed.familyId);
 
-  it("permanently reserves every Model slug to one stable Model", () => {
-    const database = applyMigrations("canonical");
-    const seed = seedCanonical(database);
-    const otherModelId = id("mdl", 220);
-    insertIdentity(database, otherModelId, "model");
-    database
-      .prepare(
-        "INSERT INTO model VALUES (?, ?, 'other-model', 'Other Model', 'other model', 'active', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1)",
-      )
-      .run(otherModelId, seed.familyId);
-
-    const insertHistory = database.prepare(
-      "INSERT INTO slug_history VALUES (?, ?, ?, ?, ?)",
-    );
-    insertHistory.run(id("slg", 221), seed.modelId, "reserved", 0, 10);
-    insertHistory.run(id("slg", 222), seed.modelId, "reserved", 20, 30);
-    expectConstraint(
-      () => insertHistory.run(id("slg", 223), otherModelId, "reserved", 10, 20),
-      "model slug is permanently owned by another model",
-    );
-  });
-
-  it("allows only one strict close transition and keeps Model history append-only", () => {
-    const database = applyMigrations("canonical");
-    const seed = seedCanonical(database);
-    const historyId = id("slg", 230);
-    database
-      .prepare("INSERT INTO slug_history VALUES (?, ?, 'current', 10, NULL)")
-      .run(historyId, seed.modelId);
-
-    for (const sql of [
-      "UPDATE slug_history SET slug_history_id = 'slg_00000000-0000-4000-8000-000000000001' WHERE slug_history_id = ?",
-      `UPDATE slug_history SET resource_id = '${seed.providerId}' WHERE slug_history_id = ?`,
-      "UPDATE slug_history SET slug = 'changed' WHERE slug_history_id = ?",
-      "UPDATE slug_history SET valid_from_ms = 9 WHERE slug_history_id = ?",
-    ])
-      expectConstraint(
-        () => database.prepare(sql).run(historyId),
-        "model slug history identity is immutable",
+      const insertHistory = database.prepare(
+        "INSERT INTO slug_history VALUES (?, ?, ?, ?, ?)",
       );
-    expectConstraint(
-      () =>
-        database
-          .prepare(
-            "UPDATE slug_history SET valid_to_ms = NULL WHERE slug_history_id = ?",
-          )
-          .run(historyId),
-      "model slug history may only close an open interval",
-    );
-    expectConstraint(
-      () =>
-        database
-          .prepare(
-            "UPDATE slug_history SET valid_to_ms = 10 WHERE slug_history_id = ?",
-          )
-          .run(historyId),
-      "model slug history may only close an open interval",
-    );
+      insertHistory.run(id("slg", 221), seed.modelId, "reserved", 0, 10);
+      insertHistory.run(id("slg", 222), seed.modelId, "reserved", 20, 30);
+      expectConstraint(
+        () =>
+          insertHistory.run(id("slg", 223), otherModelId, "reserved", 10, 20),
+        "model slug is permanently owned by another model",
+      );
+    },
+    canonicalMigrationTestTimeoutMs,
+  );
 
-    database
-      .prepare(
-        "UPDATE slug_history SET valid_to_ms = 20 WHERE slug_history_id = ?",
-      )
-      .run(historyId);
-    expectConstraint(
-      () =>
-        database
-          .prepare(
-            "UPDATE slug_history SET valid_to_ms = 30 WHERE slug_history_id = ?",
-          )
-          .run(historyId),
-      "model slug history may only close an open interval",
-    );
-    expectConstraint(
-      () =>
-        database
-          .prepare("DELETE FROM slug_history WHERE slug_history_id = ?")
-          .run(historyId),
-      "model slug history cannot be deleted",
-    );
-  });
+  it(
+    "allows only one strict close transition and keeps Model history append-only",
+    () => {
+      const database = applyMigrations("canonical");
+      const seed = seedCanonical(database);
+      const historyId = id("slg", 230);
+      database
+        .prepare("INSERT INTO slug_history VALUES (?, ?, 'current', 10, NULL)")
+        .run(historyId, seed.modelId);
+
+      for (const sql of [
+        "UPDATE slug_history SET slug_history_id = 'slg_00000000-0000-4000-8000-000000000001' WHERE slug_history_id = ?",
+        `UPDATE slug_history SET resource_id = '${seed.providerId}' WHERE slug_history_id = ?`,
+        "UPDATE slug_history SET slug = 'changed' WHERE slug_history_id = ?",
+        "UPDATE slug_history SET valid_from_ms = 9 WHERE slug_history_id = ?",
+      ])
+        expectConstraint(
+          () => database.prepare(sql).run(historyId),
+          "model slug history identity is immutable",
+        );
+      expectConstraint(
+        () =>
+          database
+            .prepare(
+              "UPDATE slug_history SET valid_to_ms = NULL WHERE slug_history_id = ?",
+            )
+            .run(historyId),
+        "model slug history may only close an open interval",
+      );
+      expectConstraint(
+        () =>
+          database
+            .prepare(
+              "UPDATE slug_history SET valid_to_ms = 10 WHERE slug_history_id = ?",
+            )
+            .run(historyId),
+        "model slug history may only close an open interval",
+      );
+
+      database
+        .prepare(
+          "UPDATE slug_history SET valid_to_ms = 20 WHERE slug_history_id = ?",
+        )
+        .run(historyId);
+      expectConstraint(
+        () =>
+          database
+            .prepare(
+              "UPDATE slug_history SET valid_to_ms = 30 WHERE slug_history_id = ?",
+            )
+            .run(historyId),
+        "model slug history may only close an open interval",
+      );
+      expectConstraint(
+        () =>
+          database
+            .prepare("DELETE FROM slug_history WHERE slug_history_id = ?")
+            .run(historyId),
+        "model slug history cannot be deleted",
+      );
+    },
+    canonicalMigrationTestTimeoutMs,
+  );
 
   it("rejects REPLACE attempts that could erase Model history", () => {
     const database = applyMigrations("canonical");
