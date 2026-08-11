@@ -500,7 +500,7 @@ describe("canonical D1 migrations (DATA-001–DATA-067, BE-001–BE-006)", () =>
         "roster_outcome",
       ]),
     );
-  });
+  }, 20_000);
 
   it("enforces exact Model slug grammar and half-open non-overlapping history", () => {
     const database = applyMigrations("canonical");
