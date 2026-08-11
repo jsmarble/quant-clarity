@@ -2,11 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   canonicalExactModelSearchQuery,
-  encodeExactModelSearchRepresentation,
+  encodeExactModelCardCollectionRepresentation,
   FRONTEND_API_INTERNAL_ORIGIN,
   verifyFrontendApiRequest,
+  type ExactModelCardCollection,
 } from "@quant-clarity/api-core";
-import type { SearchCollection } from "@quant-clarity/contracts";
 
 import {
   readExactModelSearchState,
@@ -36,28 +36,72 @@ const COMMON_HEADERS = {
   "X-Frame-Options": "DENY",
 } as const;
 
-const collection = (publicationId = PUBLICATION): SearchCollection => {
-  const encoded = encodeExactModelSearchRepresentation({
+const collection = (publicationId = PUBLICATION): ExactModelCardCollection => {
+  const encoded = encodeExactModelCardCollectionRepresentation({
     data: [
       {
-        display_name: {
-          evidence_ids: [EVIDENCE],
-          observed_at: OBSERVED,
-          state: "known",
-          value: "Fixture <Model>",
-        },
         match_kind: "canonical_name",
-        resource_id: MODEL,
-        resource_type: "model",
-        semantic_degraded: "disabled",
+        model: {
+          model_id: MODEL,
+          display_name: {
+            evidence_ids: [EVIDENCE],
+            observed_at: OBSERVED,
+            state: "known",
+            value: "Fixture <Model>",
+          },
+          publisher: {
+            evidence_ids: [EVIDENCE],
+            observed_at: OBSERVED,
+            state: "known",
+            value: "Fixture Publisher",
+          },
+          total_parameters: {
+            evidence_ids: [EVIDENCE],
+            observed_at: OBSERVED,
+            state: "known",
+            value: {
+              raw_value: "1B",
+              normalized_decimal: "1000000000",
+              approximation: "exact",
+            },
+          },
+          active_parameters: {
+            evidence_ids: [],
+            observed_at: null,
+            state: "unknown",
+            value: null,
+          },
+          source_weight_format: {
+            evidence_ids: [EVIDENCE],
+            observed_at: OBSERVED,
+            state: "known",
+            value: "BF16",
+          },
+          source_quantization: {
+            evidence_ids: [],
+            observed_at: OBSERVED,
+            state: "unknown",
+            value: null,
+          },
+          cataloged_provider_count: {
+            value: 2,
+            observed_at: OBSERVED,
+            derivation_version: "cataloged-provider-count@1",
+          },
+          last_model_data_refresh: {
+            evidence_ids: [EVIDENCE],
+            observed_at: OBSERVED,
+            state: "known",
+            value: OBSERVED,
+          },
+        },
       },
     ],
     meta: {
       filters: { record_type: "model" },
       publication_id: publicationId,
-      resource: "search",
+      resource: "exact_model_cards",
       schema_version: "1.0.0",
-      semantic_degraded: "disabled",
       sort: ["relevance", "stable_id"],
     },
     page: { limit: 20, next_cursor: null },
@@ -73,7 +117,7 @@ const successResponse = (
   mutateHeaders?: HeaderMutation,
   bytesOverride?: Uint8Array,
 ): Response => {
-  const encoded = encodeExactModelSearchRepresentation(selected);
+  const encoded = encodeExactModelCardCollectionRepresentation(selected);
   if (encoded === null) throw new Error("test collection must encode");
   const bytes = bytesOverride ?? encoded.representationBytes;
   const headers = new Headers({
@@ -290,7 +334,7 @@ describe("publication-pinned frontend exact Model search client (FE-013, API-003
     { ...collection(), meta: { ...collection().meta, filters: {} } },
     {
       ...collection(),
-      meta: { ...collection().meta, semantic_degraded: "none" },
+      meta: { ...collection().meta, resource: "search" },
     },
     { ...collection(), page: { limit: 19, next_cursor: null } },
     {
@@ -298,12 +342,12 @@ describe("publication-pinned frontend exact Model search client (FE-013, API-003
       data: [
         {
           ...collection().data[0]!,
-          match_kind: "alias",
+          match_kind: "provider_name",
         },
       ],
     },
   ])(
-    "rejects a SearchCollection outside the exact Model slice",
+    "rejects a collection outside the exact Model-card slice",
     async (candidate) => {
       const bytes = UTF8.encode(JSON.stringify(candidate));
       await expect(

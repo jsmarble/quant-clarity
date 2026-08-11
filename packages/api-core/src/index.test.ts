@@ -14,6 +14,7 @@ import {
   classifyModelDetailIdentifier,
   classifyCost,
   corsHeaders,
+  encodeExactModelCardCollectionRepresentation,
   encodeMethodologyDetailRepresentation,
   encodeExactModelSearchRepresentation,
   encodeModelDetailRepresentation,
@@ -427,6 +428,174 @@ const modelDetailModel = (): Model => ({
     state: "unknown",
     value: null,
   },
+});
+
+const exactModelCardCollection = () => {
+  const model = modelDetailModel();
+  model.total_parameters = {
+    evidence_ids: [EVIDENCE],
+    observed_at: OBSERVED_AT,
+    state: "known",
+    value: {
+      approximation: "exact",
+      normalized_decimal: "1000000000",
+      raw_value: "1B",
+    },
+  };
+  model.active_parameters = {
+    evidence_ids: [EVIDENCE],
+    observed_at: OBSERVED_AT,
+    state: "known",
+    value: {
+      approximation: "approximate",
+      normalized_decimal: "250000000",
+      raw_value: "about 250M",
+    },
+  };
+  model.source_weight_format = {
+    evidence_ids: [EVIDENCE],
+    observed_at: OBSERVED_AT,
+    state: "known",
+    value: "BF16",
+  };
+  model.source_quantization = {
+    evidence_ids: [],
+    observed_at: OBSERVED_AT,
+    state: "unknown",
+    value: null,
+  };
+  model.cataloged_provider_count.value = 2;
+  return {
+    data: [
+      {
+        match_kind: "canonical_name",
+        model: {
+          model_id: model.model_id,
+          display_name: model.display_name,
+          publisher: model.publisher,
+          total_parameters: model.total_parameters,
+          active_parameters: model.active_parameters,
+          source_weight_format: model.source_weight_format,
+          source_quantization: model.source_quantization,
+          cataloged_provider_count: model.cataloged_provider_count,
+          last_model_data_refresh: model.last_model_data_refresh,
+        },
+      },
+    ],
+    page: { next_cursor: "payload.signature", limit: 20 },
+    meta: {
+      resource: "exact_model_cards",
+      publication_id: PUBLICATION,
+      schema_version: "1.0.0",
+      sort: ["relevance", "stable_id"],
+      filters: { record_type: "model" },
+    },
+  };
+};
+
+describe("exact Model-card collection representation (FE-020, FE-021, FE-023, BE-007)", () => {
+  it("detaches every canonical card Fact and emits one fixed representation", () => {
+    const source = exactModelCardCollection();
+    const encoded = encodeExactModelCardCollectionRepresentation(source);
+    expect(encoded).not.toBeNull();
+    source.data[0]!.model.display_name.value = "mutated";
+    source.data[0]!.model.total_parameters.value.raw_value = "mutated";
+    expect(encoded?.collection.data[0]?.model.display_name.value).toBe(
+      "Fixture Mödel",
+    );
+    expect(
+      encoded?.collection.data[0]?.model.total_parameters.value,
+    ).toMatchObject({ raw_value: "1B", normalized_decimal: "1000000000" });
+    expect(
+      JSON.parse(new TextDecoder().decode(encoded?.representationBytes)),
+    ).toEqual(encoded?.collection);
+    expect(encoded?.representationBytes.byteLength).toBeLessThanOrEqual(65_536);
+  });
+
+  it.each([
+    [
+      "provider field",
+      (value: ReturnType<typeof exactModelCardCollection>) => {
+        Object.assign(value.data[0]!.model, { provider_name: "Paid Provider" });
+      },
+    ],
+    [
+      "serving precision",
+      (value: ReturnType<typeof exactModelCardCollection>) => {
+        Object.assign(value.data[0]!.model, { serving_precision: "FP8" });
+      },
+    ],
+    [
+      "wrong resource",
+      (value: ReturnType<typeof exactModelCardCollection>) => {
+        value.meta.resource = "search";
+      },
+    ],
+    [
+      "unknown display name",
+      (value: ReturnType<typeof exactModelCardCollection>) => {
+        Object.assign(value.data[0]!.model.display_name, {
+          evidence_ids: [],
+          observed_at: null,
+          state: "unknown",
+          value: null,
+        });
+      },
+    ],
+    [
+      "duplicate Model",
+      (value: ReturnType<typeof exactModelCardCollection>) => {
+        value.data.push(structuredClone(value.data[0]!));
+      },
+    ],
+  ])("rejects %s", (_label, mutate) => {
+    const value = exactModelCardCollection();
+    mutate(value);
+    expect(encodeExactModelCardCollectionRepresentation(value)).toBeNull();
+  });
+
+  it("rejects hostile accessors without invoking them", () => {
+    const value = exactModelCardCollection();
+    let reads = 0;
+    Object.defineProperty(value.data[0]!.model, "publisher", {
+      enumerable: true,
+      get() {
+        reads += 1;
+        return modelDetailModel().publisher;
+      },
+    });
+    expect(encodeExactModelCardCollectionRepresentation(value)).toBeNull();
+    expect(reads).toBe(0);
+  });
+
+  it("accepts exactly 65,536 bytes and rejects 65,537", () => {
+    const value = exactModelCardCollection();
+    let admitted = encodeExactModelCardCollectionRepresentation(value);
+    for (let count = 1_250; count <= 1_500; count += 25) {
+      value.data[0]!.model.publisher.evidence_ids = Array.from(
+        { length: count },
+        (_, index) =>
+          `evd_00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+      );
+      admitted = encodeExactModelCardCollectionRepresentation(value);
+      if (
+        admitted !== null &&
+        admitted.representationBytes.byteLength >= 65_536 - 4_000
+      )
+        break;
+    }
+    if (admitted === null)
+      throw new Error("Unable to construct the exact-byte boundary vector.");
+    const remaining = 65_536 - admitted.representationBytes.byteLength;
+    const currentCursor = value.page.next_cursor;
+    if (remaining < 0 || currentCursor.length + remaining + 1 > 4_096)
+      throw new Error("Exact-byte boundary cursor budget drifted.");
+    value.page.next_cursor = currentCursor + "x".repeat(remaining);
+    const exact = encodeExactModelCardCollectionRepresentation(value);
+    expect(exact?.representationBytes.byteLength).toBe(65_536);
+    value.page.next_cursor += "x";
+    expect(encodeExactModelCardCollectionRepresentation(value)).toBeNull();
+  });
 });
 
 const rawModelDetailByteLength = (model: Model): number =>

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { Model } from "@quant-clarity/contracts";
 import { MODEL_VARIANT_NAME_SEARCH_MAX_NORMALIZED_NAME_UTF8_BYTES } from "@quant-clarity/publication-core";
 
 const mocked = vi.hoisted(() => ({
@@ -40,8 +41,10 @@ import {
   EXACT_PROVIDER_MODEL_ID_NORMALIZED_MARKER,
   EXACT_PROVIDER_MODEL_ID_RAW_MARKER,
   MergedExactSearchError,
+  readExactModelCardSearchPage,
   readMergedExactSearchPage,
 } from "./merged-exact-search.js";
+import { attachModelCardView } from "./model-card-view.js";
 import { ProviderModelIdExactError } from "./provider-model-id-exact.js";
 
 const PUBLICATION = "pub_11111111-1111-4111-8111-111111111111";
@@ -56,6 +59,39 @@ const displayName = Object.freeze({
   observed_at: "2026-08-01T00:00:00.000Z",
   evidence_ids: Object.freeze(["evd_55555555-5555-4555-8555-555555555555"]),
 });
+const unknownFact = Object.freeze({
+  state: "unknown" as const,
+  value: null,
+  observed_at: null,
+  evidence_ids: Object.freeze([]),
+});
+const cardModel = (resourceId = MODEL_1) =>
+  ({
+    model_id: resourceId,
+    family_id: FAMILY,
+    display_name: displayName,
+    publisher: { ...displayName, value: "Fixture Publisher" },
+    total_parameters: {
+      ...displayName,
+      value: {
+        raw_value: "8B",
+        normalized_decimal: "8000000000",
+        approximation: "exact",
+      },
+    },
+    active_parameters: unknownFact,
+    source_weight_format: { ...displayName, value: "BF16" },
+    source_quantization: unknownFact,
+    cataloged_provider_count: {
+      value: 2,
+      observed_at: "2026-08-01T00:00:00.000Z",
+      derivation_version: "provider-count@1",
+    },
+    last_model_data_refresh: {
+      ...displayName,
+      value: "2026-08-01T00:00:00.000Z",
+    },
+  }) as unknown as Model;
 
 const canonical = (resourceId = MODEL_1) => ({
   tier: 1,
@@ -146,6 +182,142 @@ describe("merged exact search (SRCH-002, SRCH-006, API-007, PRIV-006)", () => {
       expect.anything(),
       expect.objectContaining({ continuation: null }),
     );
+  });
+
+  it("projects a closed Model card from the canonical bytes already held by each exact tier", async () => {
+    const canonicalResult = attachModelCardView(canonical(), cardModel());
+    const providerIdResult = attachModelCardView(
+      providerModelId(MODEL_2),
+      cardModel(MODEL_2),
+    );
+    mocked.model.mockResolvedValue({
+      publicationId: PUBLICATION,
+      results: [canonicalResult],
+      nextAfterResourceId: null,
+    });
+    mocked.providerModelId.mockResolvedValue({
+      publicationId: PUBLICATION,
+      results: [providerIdResult],
+      matchModes: ["raw"],
+      nextContinuation: null,
+    });
+    const database = { prepare: vi.fn() };
+    const page = await readExactModelCardSearchPage(
+      database,
+      input({ recordType: "model" }),
+    );
+
+    expect(database.prepare).not.toHaveBeenCalled();
+    expect(page.results).toHaveLength(2);
+    expect(page.results[0]?.tierMarker).toBe(EXACT_CANONICAL_MARKER);
+    expect(page.results[0]?.matchKind).toBe("canonical_name");
+    expect(page.results[0]?.modelCard.model_id).toBe(MODEL_1);
+    expect(page.results[0]?.modelCard.cataloged_provider_count).toEqual({
+      value: 2,
+      observed_at: "2026-08-01T00:00:00.000Z",
+      derivation_version: "provider-count@1",
+    });
+    expect(Object.keys(canonicalResult).sort()).toEqual([
+      "displayName",
+      "matchKind",
+      "resourceId",
+      "resourceType",
+      "semanticDegraded",
+      "tier",
+    ]);
+    expect(page.results[1]?.modelCard.model_id).toBe(MODEL_2);
+    expect(page.results[0]?.modelCard).not.toBe(cardModel());
+  });
+
+  it("keeps common Model-card bytes and order invariant under provider and stale eligibility", async () => {
+    const arrangeEligibleResults = () => {
+      mocked.model.mockResolvedValue({
+        publicationId: PUBLICATION,
+        results: [attachModelCardView(canonical(), cardModel())],
+        nextAfterResourceId: null,
+      });
+      mocked.providerModelId.mockResolvedValue({
+        publicationId: PUBLICATION,
+        results: [
+          attachModelCardView(providerModelId(MODEL_2), cardModel(MODEL_2)),
+        ],
+        matchModes: ["raw"],
+        nextContinuation: null,
+      });
+    };
+    arrangeEligibleResults();
+    const baseline = await readExactModelCardSearchPage(
+      { prepare: vi.fn() },
+      input({ recordType: "model" }),
+    );
+
+    arrangeEligibleResults();
+    const filtered = await readExactModelCardSearchPage(
+      { prepare: vi.fn() },
+      input({
+        eligibilityProviderId: PROVIDER,
+        eligibilityStale: true,
+        recordType: "model",
+      }),
+    );
+
+    expect(filtered.results.map(({ modelCard }) => modelCard.model_id)).toEqual(
+      baseline.results.map(({ modelCard }) => modelCard.model_id),
+    );
+    expect(
+      filtered.results.map(({ modelCard }) => JSON.stringify(modelCard)),
+    ).toEqual(
+      baseline.results.map(({ modelCard }) => JSON.stringify(modelCard)),
+    );
+    expect(mocked.model).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        eligibilityProviderId: PROVIDER,
+        eligibilityStale: true,
+      }),
+    );
+    expect(mocked.providerModelId).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        eligibilityProviderId: PROVIDER,
+        eligibilityStale: true,
+      }),
+    );
+
+    mocked.model.mockResolvedValue({
+      publicationId: PUBLICATION,
+      results: [attachModelCardView(canonical(), cardModel())],
+      nextAfterResourceId: null,
+    });
+    mocked.providerModelId.mockResolvedValue({
+      publicationId: PUBLICATION,
+      results: [],
+      matchModes: [],
+      nextContinuation: null,
+    });
+    const membershipReduced = await readExactModelCardSearchPage(
+      { prepare: vi.fn() },
+      input({
+        eligibilityProviderId: PROVIDER,
+        eligibilityStale: false,
+        recordType: "model",
+      }),
+    );
+    expect(membershipReduced.results).toHaveLength(1);
+    expect(JSON.stringify(membershipReduced.results[0]?.modelCard)).toBe(
+      JSON.stringify(baseline.results[0]?.modelCard),
+    );
+  });
+
+  it("rejects non-Model scopes before invoking an exact tier", async () => {
+    await expect(
+      readExactModelCardSearchPage(
+        { prepare: vi.fn() },
+        input({ recordType: "variant" }),
+      ),
+    ).rejects.toMatchObject({ code: "invalid_input" });
+    expect(mocked.model).not.toHaveBeenCalled();
+    expect(mocked.providerModelId).not.toHaveBeenCalled();
   });
 
   it("stops on a tier-local lookahead and exposes only the compact marker and ID", async () => {

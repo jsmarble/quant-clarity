@@ -114,6 +114,23 @@ const MODEL_RECORD = {
   last_model_data_refresh: known("2026-08-01T00:20:00.000Z"),
 };
 
+// The search view is projected from the same canonical Model facts used by
+// Model Facts. Paged synthetic Models vary identity/display name only.
+const searchModelCard = (result) => ({
+  model_id: result.resourceId,
+  display_name: known(result.displayName.value),
+  publisher: MODEL_RECORD.publisher,
+  total_parameters: MODEL_RECORD.total_parameters,
+  active_parameters: MODEL_RECORD.active_parameters,
+  source_weight_format:
+    result.resourceId === MODEL
+      ? MODEL_RECORD.source_weight_format
+      : absent("unavailable"),
+  source_quantization: MODEL_RECORD.source_quantization,
+  cataloged_provider_count: MODEL_RECORD.cataloged_provider_count,
+  last_model_data_refresh: MODEL_RECORD.last_model_data_refresh,
+});
+
 const publicationState = (env) => {
   const value = env.MOCK_PUBLICATION_STATE;
   return value === "published_zero" ||
@@ -276,6 +293,22 @@ export class CatalogQueryService extends WorkerEntrypoint {
     )
       retainedPublicationExpired = true;
     return response;
+  }
+
+  async readExactModelCardSearchV1(input) {
+    const response = await this.readMergedExactSearchV2(input);
+    if (response?.outcome !== "page") return response;
+    return {
+      outcome: "page",
+      page: {
+        ...response.page,
+        results: response.page.results.map((result) => ({
+          tierMarker: result.tierMarker,
+          matchKind: result.matchKind,
+          modelCard: searchModelCard(result),
+        })),
+      },
+    };
   }
 }
 

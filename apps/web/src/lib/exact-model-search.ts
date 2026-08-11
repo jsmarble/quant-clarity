@@ -1,18 +1,14 @@
 import {
   canonicalExactModelSearchQuery,
-  encodeExactModelSearchRepresentation,
+  encodeExactModelCardCollectionRepresentation,
   EXACT_MODEL_SEARCH_API_PATH,
-  EXACT_MODEL_SEARCH_LIMIT,
   EXACT_MODEL_SEARCH_PUBLIC_MAX_BYTES,
   FRONTEND_API_INTERNAL_ORIGIN,
   parseCanonicalExactModelSearchQuery,
   signFrontendApiRequest,
+  type ExactModelCardCollection,
   type FrontendApiEnvironment,
 } from "@quant-clarity/api-core";
-import {
-  checkSearchCollectionContract,
-  type SearchCollection,
-} from "@quant-clarity/contracts";
 import { parsePublicationPin } from "@quant-clarity/domain/publication-consistency";
 
 const SEARCH_DEADLINE_MS = 500;
@@ -52,24 +48,7 @@ export interface ExactModelSearchEnv {
   FRONTEND_API_HMAC_CURRENT?: unknown;
 }
 
-type SearchResult = SearchCollection["data"][number];
-type KnownDisplayName = Extract<
-  SearchResult["display_name"],
-  { state: "known" }
->;
-export type ExactModelSearchCollection = Omit<SearchCollection, "data"> &
-  Readonly<{
-    data: (Omit<
-      SearchResult,
-      "display_name" | "match_kind" | "resource_type" | "semantic_degraded"
-    > &
-      Readonly<{
-        display_name: KnownDisplayName;
-        match_kind: "canonical_name" | "provider_model_id";
-        resource_type: "model";
-        semantic_degraded: "disabled";
-      }>)[];
-  }>;
+export type ExactModelSearchCollection = ExactModelCardCollection;
 
 export type ExactModelSearchState =
   | Readonly<{ collection: ExactModelSearchCollection; kind: "found" }>
@@ -255,30 +234,14 @@ const boundedBytes = async (
 };
 
 const exactCollection = (
-  collection: SearchCollection,
+  collection: ExactModelCardCollection,
   expectedPublicationId: string,
   query: string,
-): collection is ExactModelSearchCollection =>
+): boolean =>
   collection.meta.publication_id === expectedPublicationId &&
-  collection.meta.resource === "search" &&
-  collection.meta.semantic_degraded === "disabled" &&
-  collection.page.limit === EXACT_MODEL_SEARCH_LIMIT &&
-  collection.meta.sort.length === 2 &&
-  collection.meta.sort[0] === "relevance" &&
-  collection.meta.sort[1] === "stable_id" &&
-  Reflect.ownKeys(collection.meta.filters).length === 1 &&
-  collection.meta.filters.record_type === "model" &&
   (collection.page.next_cursor === null ||
     canonicalExactModelSearchQuery(query, collection.page.next_cursor) !==
-      null) &&
-  collection.data.every(
-    (result) =>
-      result.resource_type === "model" &&
-      (result.match_kind === "canonical_name" ||
-        result.match_kind === "provider_model_id") &&
-      result.semantic_degraded === "disabled" &&
-      result.display_name.state === "known",
-  );
+      null);
 
 export async function readExactModelSearchState(
   env: ExactModelSearchEnv,
@@ -381,22 +344,19 @@ export async function readExactModelSearchState(
     } catch {
       return { kind: "unavailable" };
     }
-    if (
-      !checkSearchCollectionContract(collection) ||
-      !exactCollection(collection, expectedPublicationId, parsed.query)
-    )
-      return { kind: "unavailable" };
-    let canonicalBytes: Uint8Array | null = null;
+    let encoded;
     try {
-      canonicalBytes =
-        encodeExactModelSearchRepresentation(collection)?.representationBytes ??
-        null;
+      encoded = encodeExactModelCardCollectionRepresentation(collection);
     } catch {
       return { kind: "unavailable" };
     }
-    if (canonicalBytes === null) return { kind: "unavailable" };
-    return sameBytes(canonicalBytes, bytes)
-      ? { collection, kind: "found" }
+    if (
+      encoded === null ||
+      !exactCollection(encoded.collection, expectedPublicationId, parsed.query)
+    )
+      return { kind: "unavailable" };
+    return sameBytes(encoded.representationBytes, bytes)
+      ? { collection: encoded.collection, kind: "found" }
       : { kind: "unavailable" };
   } catch {
     return { kind: "unavailable" };
