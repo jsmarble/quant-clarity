@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
+import {
+  FRONTEND_API_ENVELOPE_HEADER,
+  FRONTEND_API_INTERNAL_ORIGIN,
+  signFrontendApiRequest,
+} from "@quant-clarity/api-core";
 import type { DatasetMetadata } from "@quant-clarity/contracts";
 
 import { handleRequest } from "./request.js";
@@ -7,6 +12,7 @@ import { handleRequest } from "./request.js";
 const SECRET = "test-only-hmac-key-with-at-least-32-characters";
 const PUBLICATION = "pub_11111111-1111-4111-8111-111111111111";
 const CURRENT_PUBLICATION = "pub_22222222-2222-4222-8222-222222222222";
+const FRONTEND_SECRET = "frontend-test-secret-with-at-least-32-characters";
 
 const metadata = (): DatasetMetadata => ({
   publication_id: PUBLICATION,
@@ -30,6 +36,148 @@ const metadata = (): DatasetMetadata => ({
     active_providers: 1,
   },
   degradation_notices: [],
+});
+
+describe("signed frontend metadata ingress (FE-009, API-003, SEC-001, SEC-011, PRIV-006)", () => {
+  const nowMs = 1_786_339_200_000;
+
+  async function internalRequest(
+    path = "/v1/metadata",
+    rawQuery = "",
+  ): Promise<Request> {
+    const headers = await signFrontendApiRequest({
+      environment: "local",
+      method: "GET",
+      nowMs,
+      path,
+      rawQuery,
+      secret: FRONTEND_SECRET,
+      subtle: crypto.subtle,
+    });
+    if (headers === null) throw new Error("test signing failed");
+    return new Request(
+      `${FRONTEND_API_INTERNAL_ORIGIN}${path}${rawQuery === "" ? "" : `?${rawQuery}`}`,
+      { headers },
+    );
+  }
+
+  it("admits an authenticated service-bound read without an address or second limiter event", async () => {
+    const runtime = environment();
+    const env = {
+      ...runtime.env,
+      FRONTEND_API_HMAC_CURRENT: FRONTEND_SECRET,
+    };
+    const clock = vi.spyOn(Date, "now").mockReturnValue(nowMs);
+    try {
+      const response = await handleRequest(await internalRequest(), env);
+      expect(response.status).toBe(200);
+      expect(runtime.keys).toEqual([]);
+      expect(runtime.rpc.readDatasetMetadataV1).toHaveBeenCalledTimes(1);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it("rejects forged internal ingress without touching limiters or canonical data", async () => {
+    const runtime = environment();
+    const response = await handleRequest(
+      new Request(`${FRONTEND_API_INTERNAL_ORIGIN}/v1/metadata`, {
+        headers: { [FRONTEND_API_ENVELOPE_HEADER]: "forged" },
+      }),
+      {
+        ...runtime.env,
+        FRONTEND_API_HMAC_CURRENT: FRONTEND_SECRET,
+      },
+    );
+    expect(response.status).toBe(404);
+    expect(runtime.keys).toEqual([]);
+    expect(runtime.rpc.readDatasetMetadataV1).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["/v1/methodologies/1.0.0", ""],
+    ["/v1/metadata", "q=visitor-query"],
+  ])(
+    "confines the limiter bypass to exact metadata for %s",
+    async (path, rawQuery) => {
+      const runtime = environment();
+      const clock = vi.spyOn(Date, "now").mockReturnValue(nowMs);
+      try {
+        const response = await handleRequest(
+          await internalRequest(path, rawQuery),
+          {
+            ...runtime.env,
+            FRONTEND_API_HMAC_CURRENT: FRONTEND_SECRET,
+          },
+        );
+        expect(response.status).toBe(404);
+        expect(runtime.keys).toEqual([]);
+        expect(runtime.rpc.resolvePublicationV2).not.toHaveBeenCalled();
+      } finally {
+        clock.mockRestore();
+      }
+    },
+  );
+
+  it("does not read a source address or public limiter capability for authenticated metadata", async () => {
+    const runtime = environment();
+    const signed = await internalRequest();
+    const headers = signed.headers;
+    const guardedRequest = {
+      body: null,
+      headers: {
+        get(name: string) {
+          if (name.toLowerCase() === "cf-connecting-ip")
+            throw new Error("source address must not be read");
+          return headers.get(name);
+        },
+      },
+      method: "GET",
+      url: signed.url,
+    } as unknown as Request;
+    const env = {
+      ...runtime.env,
+      FRONTEND_API_HMAC_CURRENT: FRONTEND_SECRET,
+    };
+    Object.defineProperties(env, {
+      RATE_LIMIT_HMAC_KEY: {
+        get() {
+          throw new Error("public limiter secret must not be read");
+        },
+      },
+      READ_LIMITER: {
+        get() {
+          throw new Error("public limiter must not be read");
+        },
+      },
+      ROTATION_LIMITER: {
+        get() {
+          throw new Error("public rotation limiter must not be read");
+        },
+      },
+    });
+    const clock = vi.spyOn(Date, "now").mockReturnValue(nowMs);
+    try {
+      const response = await handleRequest(guardedRequest, env);
+      expect(response.status).toBe(200);
+      expect(runtime.rpc.readDatasetMetadataV1).toHaveBeenCalledTimes(1);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it("rate-limits a public request before rejecting a reserved internal header", async () => {
+    const runtime = environment();
+    const response = await handleRequest(
+      request(undefined, {
+        headers: { [FRONTEND_API_ENVELOPE_HEADER]: "forged" },
+      }),
+      runtime.env,
+    );
+    expect(response.status).toBe(400);
+    expect(runtime.keys).toHaveLength(1);
+    expect(runtime.rpc.readDatasetMetadataV1).not.toHaveBeenCalled();
+  });
 });
 
 type Rpc = Readonly<{

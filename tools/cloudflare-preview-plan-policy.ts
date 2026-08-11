@@ -62,7 +62,10 @@ export const cloudflarePreviewPlanProposal = {
           },
         ],
         rate_limiters: ["READ_LIMITER", "ROTATION_LIMITER"],
-        protected_secret_names: ["RATE_LIMIT_HMAC_KEY"],
+        protected_secret_names: [
+          "FRONTEND_API_HMAC_CURRENT",
+          "RATE_LIMIT_HMAC_KEY",
+        ],
         variables: [{ name: "DEPLOYMENT_ENV", value: "preview" }],
         storage: [],
         ai: [],
@@ -85,7 +88,11 @@ export const cloudflarePreviewPlanProposal = {
           },
         ],
         rate_limiters: ["READ_LIMITER", "ROTATION_LIMITER"],
-        protected_secret_names: ["RATE_LIMIT_HMAC_KEY"],
+        protected_secret_names: [
+          "FRONTEND_API_HMAC_CURRENT",
+          "FRONTEND_API_HMAC_NEXT",
+          "RATE_LIMIT_HMAC_KEY",
+        ],
         variables: [
           { name: "API_TRANSPORT_POLICY", value: null },
           { name: "DEPLOYMENT_ENV", value: "preview" },
@@ -316,6 +323,18 @@ export const cloudflarePreviewPlanProposal = {
     },
   ],
   protected_secret_requirements: [
+    {
+      binding_name: "FRONTEND_API_HMAC_CURRENT",
+      workers: ["web", "api"],
+      value_separation: "shared_per_environment",
+      values_present: false,
+    },
+    {
+      binding_name: "FRONTEND_API_HMAC_NEXT",
+      workers: ["api"],
+      value_separation: "api_only_optional_overlap",
+      values_present: false,
+    },
     {
       binding_name: "RATE_LIMIT_HMAC_KEY",
       workers: ["web", "api"],

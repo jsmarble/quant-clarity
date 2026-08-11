@@ -9,6 +9,7 @@ export default tseslint.config(
       "**/dist-worker/**",
       "**/.astro/**",
       "**/coverage/**",
+      "**/.wrangler/**",
       "**/worker-configuration.d.ts",
       "contracts/generated/**",
       "eslint.config.js",
@@ -66,12 +67,21 @@ export default tseslint.config(
     },
   },
   {
-    files: ["playwright.config.ts", "tests/web/**/*.ts"],
+    files: ["playwright.config.ts", "tests/**/*.ts"],
     languageOptions: {
       parserOptions: {
         project: ["./tsconfig.playwright.json"],
         projectService: false,
         tsconfigRootDir: import.meta.dirname,
+      },
+    },
+  },
+  {
+    files: ["tests/workers/**/*.mjs"],
+    languageOptions: {
+      globals: {
+        Response: "readonly",
+        URL: "readonly",
       },
     },
   },

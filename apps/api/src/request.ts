@@ -1,9 +1,12 @@
 import {
+  FRONTEND_API_INTERNAL_ORIGIN,
+  hasFrontendApiReservedHeaders,
   ifNoneMatchMatches,
   methodologyRegistryEntry,
   representationEtag,
   validIfNoneMatch,
   validateAndNormalizeRequest,
+  verifyFrontendApiRequest,
   type ApiLimits,
   type CatalogQueryRpcV6,
   type DeploymentEnvironment,
@@ -20,15 +23,21 @@ type Env = Omit<
   | "API_TRANSPORT_POLICY"
   | "DEPLOYMENT_ENV"
   | "PUBLIC_API_ORIGIN"
+  | "FRONTEND_API_HMAC_CURRENT"
+  | "FRONTEND_API_HMAC_NEXT"
   | "RATE_LIMIT_HMAC_KEY"
 > & {
   API_TRANSPORT_POLICY: unknown;
   DEPLOYMENT_ENV: unknown;
+  FRONTEND_API_HMAC_CURRENT?: unknown;
+  FRONTEND_API_HMAC_NEXT?: unknown;
   RATE_LIMIT_HMAC_KEY: unknown;
 };
 
 const PUBLICATION_HEADER_MAX_BYTES = 40;
 const UTF8 = new TextEncoder();
+const LOCAL_FRONTEND_API_HMAC_CURRENT =
+  "quantclarity-local-only-frontend-api-signing-key-v1";
 
 const API_LIMITS: ApiLimits = {
   defaultPageSize: 25,
@@ -463,27 +472,8 @@ export async function handleRequest(
   let queryService: CatalogQueryRpcV6 | Service | null = null;
   let subtle: SubtleCrypto | null = null;
   let nowMs: (() => number) | null = null;
-  try {
-    readLimiter = env.READ_LIMITER;
-  } catch {
-    // A missing or inaccessible capability is handled as limiter failure.
-  }
-  try {
-    rotationLimiter = env.ROTATION_LIMITER;
-  } catch {
-    // A missing or inaccessible capability is handled as limiter failure.
-  }
-  try {
-    const secret = env.RATE_LIMIT_HMAC_KEY;
-    if (typeof secret === "string") rateLimitSecret = secret;
-  } catch {
-    // An inaccessible secret is handled as limiter failure.
-  }
-  try {
-    sourceAddress = request.headers.get("CF-Connecting-IP");
-  } catch {
-    // An inaccessible source address is handled as limiter failure.
-  }
+  let frontendApiHmacCurrent: unknown;
+  let frontendApiHmacNext: unknown;
   try {
     queryService = env.CATALOG_QUERY;
   } catch {
@@ -499,8 +489,118 @@ export async function handleRequest(
   } catch {
     // A missing clock fails only after applicable limiting.
   }
-  const limit =
-    subtle === null
+  try {
+    frontendApiHmacCurrent = env.FRONTEND_API_HMAC_CURRENT;
+  } catch {
+    // An inaccessible internal-auth secret fails the internal boundary closed.
+  }
+  try {
+    frontendApiHmacNext = env.FRONTEND_API_HMAC_NEXT;
+  } catch {
+    // The overlap key is optional and an inaccessible value is never accepted.
+  }
+
+  let internalRequest = false;
+  let internalNowMs: number | null = null;
+  let requestOrigin: string | null = null;
+  let requestSearch: string | null = null;
+  try {
+    const url = new URL(request.url);
+    requestOrigin = url.origin;
+    requestSearch = url.search;
+  } catch {
+    // The bounded protocol plan already selected a malformed-target response.
+  }
+  if (requestOrigin === FRONTEND_API_INTERNAL_ORIGIN) {
+    if (environment === null || subtle === null || nowMs === null)
+      return send(
+        error(
+          "resource_not_found",
+          "The requested resource does not exist.",
+          404,
+        ),
+      );
+    try {
+      internalNowMs = nowMs();
+    } catch {
+      return send(
+        error(
+          "resource_not_found",
+          "The requested resource does not exist.",
+          404,
+        ),
+      );
+    }
+    const currentSecret =
+      frontendApiHmacCurrent ??
+      (environment === "local" ? LOCAL_FRONTEND_API_HMAC_CURRENT : undefined);
+    const verified = await verifyFrontendApiRequest({
+      environment,
+      nowMs: internalNowMs,
+      request,
+      secrets: { current: currentSecret, next: frontendApiHmacNext },
+      subtle,
+    });
+    if (verified === null)
+      return send(
+        error(
+          "resource_not_found",
+          "The requested resource does not exist.",
+          404,
+        ),
+      );
+    if (
+      verified.envelope.method !== "GET" ||
+      verified.envelope.path !== "/v1/metadata" ||
+      requestSearch !== "" ||
+      verified.envelope.publication_id !== null
+    )
+      return send(
+        error(
+          "resource_not_found",
+          "The requested resource does not exist.",
+          404,
+        ),
+      );
+    internalRequest = true;
+  } else if (hasFrontendApiReservedHeaders(request)) {
+    plan = {
+      kind: "response",
+      response: error(
+        "invalid_parameter",
+        "The request contains a reserved header.",
+        400,
+      ),
+    };
+  }
+
+  if (!internalRequest) {
+    try {
+      readLimiter = env.READ_LIMITER;
+    } catch {
+      // A missing or inaccessible capability is handled as limiter failure.
+    }
+    try {
+      rotationLimiter = env.ROTATION_LIMITER;
+    } catch {
+      // A missing or inaccessible capability is handled as limiter failure.
+    }
+    try {
+      const secret = env.RATE_LIMIT_HMAC_KEY;
+      if (typeof secret === "string") rateLimitSecret = secret;
+    } catch {
+      // An inaccessible secret is handled as limiter failure.
+    }
+    try {
+      sourceAddress = request.headers.get("CF-Connecting-IP");
+    } catch {
+      // An inaccessible source address is handled as limiter failure.
+    }
+  }
+
+  const limit = internalRequest
+    ? "allowed"
+    : subtle === null
       ? "unavailable"
       : await limitPublicReadRequest({
           readLimiter,
@@ -573,9 +673,9 @@ export async function handleRequest(
       ),
     );
 
-  let requestNowMs: number;
+  let requestNowMs = internalNowMs;
   try {
-    requestNowMs = nowMs();
+    requestNowMs ??= nowMs();
   } catch {
     return send(
       error(

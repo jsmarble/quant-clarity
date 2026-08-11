@@ -35,12 +35,13 @@
     "test:workers": "npm run test:workers:api && vitest run --config vitest.pipeline.worker.config.ts && vitest run --config vitest.query.worker.config.ts",
     "test:workers:api": "WRANGLER_SEND_METRICS=false wrangler deploy --dry-run --config apps/query/wrangler.jsonc --outdir dist-worker/test-query-worker && vitest run --config vitest.worker.config.ts",
     "test:web": "playwright test --config playwright.config.ts",
+    "test:web:states": "QUANTCLARITY_MOCK_PUBLICATION_STATE=published_zero playwright test --config playwright.config.ts --grep 'configured canonical publication state' && QUANTCLARITY_MOCK_PUBLICATION_STATE=not_published playwright test --config playwright.config.ts --grep 'configured canonical publication state' && QUANTCLARITY_MOCK_PUBLICATION_STATE=unavailable playwright test --config playwright.config.ts --grep 'configured canonical publication state'",
     "test:web:production": "QUANTCLARITY_BUILD_ENV=production QUANTCLARITY_SITE_ORIGIN=https://quantclarity.invalid npm run build -w @quant-clarity/web && QUANTCLARITY_EXPECTED_SITE_ORIGIN=https://quantclarity.invalid playwright test --config playwright.config.ts",
     "test:watch": "vitest",
     "traceability:check": "tsx tools/check-verification-artifacts.ts",
     "typecheck": "tsc -b && tsc -p tsconfig.playwright.json --noEmit && npm run typecheck --workspaces --if-present",
     "unicode:check": "node packages/publication-core/unicode/generate-unicode-17.mjs --check",
-    "verify": "npm run predeployment:check && npm run preview-plan:check && npm run format:check && npm run lint && npm run typecheck && npm run cf:types:check && npm run contracts:check && npm run docs:check && npm run traceability:check && npm run gdpr-accountability:check && npm run environments:check && npm run unicode:check && npm run supply-chain:check && npm test && npm run test:workers && npm run build && npm run test:web && npm run test:web:production && npm run privacy:check"
+    "verify": "npm run predeployment:check && npm run preview-plan:check && npm run format:check && npm run lint && npm run typecheck && npm run cf:types:check && npm run contracts:check && npm run docs:check && npm run traceability:check && npm run gdpr-accountability:check && npm run environments:check && npm run unicode:check && npm run supply-chain:check && npm test && npm run test:workers && npm run build && npm run test:web && npm run test:web:states && npm run test:web:production && npm run privacy:check"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.12.1",

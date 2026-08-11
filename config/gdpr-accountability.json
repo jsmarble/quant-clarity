@@ -21,7 +21,7 @@
   "public_artifacts": [
     {
       "path": "apps/web/src/pages/privacy/index.astro",
-      "sha256": "a7b9022fcd28734e027a1a89ef9ab2a2f8c9c08776fbe4af768e5aeb6200175f"
+      "sha256": "d156ca49fd38ec253449485661df7a41d0193972bd41a7649ce1bb50f87a8a93"
     },
     {
       "path": "docs/compliance/gdpr-accountability.md",

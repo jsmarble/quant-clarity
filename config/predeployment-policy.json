@@ -3,7 +3,7 @@
   "deployment_authorized": false,
   "environment_inventory": {
     "path": "config/environments.json",
-    "config_sha256": "ac359634dd64a45b00b10a12c6f4d73a81f60868d319f632fad3a9d2c8016280"
+    "config_sha256": "b62dd112e2620b10cc2e2d4026cb069dcacdfc05609d592eac84f512e323f6d1"
   },
   "environment_names": ["local", "test", "preview", "production"],
   "npm_configuration": {
@@ -12,12 +12,12 @@
   },
   "npm_lockfile": {
     "path": "package-lock.json",
-    "file_sha256": "04eb7ccca281061afdfc2e0a5a40f08ed1b4cd8be04a32109b0ea4982d676e5c"
+    "file_sha256": "b21c57a7e7ccec385bea6b8a05353a24fdb2d8867669782e8bb03043e7349705"
   },
   "package_manifests": [
     {
       "path": "package.json",
-      "authority_sha256": "5196feded64b35ad93d919ada7f3874fd72161094418d2a72eabc5a441b08cd3"
+      "authority_sha256": "99bfb295ee3be4e799886d5a5d525be0db207cb562eb674b20fb5c8b55515c55"
     },
     {
       "path": "apps/api/package.json",

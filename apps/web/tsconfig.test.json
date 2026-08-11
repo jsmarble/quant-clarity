@@ -3,6 +3,8 @@
   "compilerOptions": {
     "noEmit": true,
     "paths": {
+      "@quant-clarity/api-core": ["../../packages/api-core/src/index.ts"],
+      "@quant-clarity/contracts": ["../../packages/contracts/src/index.ts"],
       "@quant-clarity/domain/source-address": [
         "../../packages/domain/src/source-address.ts"
       ]
@@ -15,5 +17,9 @@
     "src/lib/**/*.ts",
     "worker-configuration.d.ts"
   ],
-  "references": [{ "path": "../../packages/domain" }]
+  "references": [
+    { "path": "../../packages/api-core/tsconfig.build.json" },
+    { "path": "../../packages/contracts" },
+    { "path": "../../packages/domain" }
+  ]
 }
