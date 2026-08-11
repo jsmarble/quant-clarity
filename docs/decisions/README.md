@@ -93,3 +93,4 @@ Accepted ADRs describe implementation choices; they do not amend product require
 - [ADR 0055](0055-publication-pinned-exact-variant-cards.md) — publication-pinned local exact Variant cards from already-read canonical Variants
 - [ADR 0056](0056-offering-relationship-closure.md) — bounded persisted-content hard cutover for complete Offering relationship closure
 - [ADR 0057](0057-selection-free-offering-observation-set.md) — byte-authentic selection-free Offering observation sets with Provider display evidence closure
+- [ADR 0058](0058-dormant-unbound-publication-workflow-planner.md) — actual unbound PublicationWorkflow class with a pure scheduled-occurrence planner and no execution authority
