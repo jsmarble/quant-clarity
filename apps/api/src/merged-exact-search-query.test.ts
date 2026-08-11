@@ -26,6 +26,8 @@ const PROVIDER = "prv_dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 const OTHER_PROVIDER = "prv_ffffffff-ffff-4fff-8fff-ffffffffffff";
 const EVIDENCE = "evd_eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
 const NOW = 1_785_687_200;
+const DISPOSE_SYMBOL = (Symbol as unknown as { readonly dispose: symbol })
+  .dispose;
 
 const limits: ApiLimits = {
   defaultPageSize: 25,
@@ -204,6 +206,50 @@ const cursor = async (
 };
 
 describe("merged exact search API seam (SRCH-001/002, API-003/007, PRIV-006)", () => {
+  it("admits only the exact non-enumerable workerd JSRPC disposal hook", async () => {
+    const resolution = {
+      bookmark: "bookmark-jsrpc",
+      outcome: "selected",
+      publicationId: PUBLICATION,
+      requiredAvailableUntilMs: (NOW + 900) * 1000,
+    };
+    const page = {
+      outcome: "page",
+      page: {
+        nextContinuation: null,
+        publicationId: PUBLICATION,
+        results: [row("exact-v1:c", "model", MODEL_A)],
+        semanticDegraded: "disabled",
+      },
+    };
+    for (const value of [resolution, page])
+      Object.defineProperty(value, DISPOSE_SYMBOL, {
+        configurable: true,
+        enumerable: false,
+        value: () => undefined,
+      });
+    await expect(execute(rpc(page, resolution))).resolves.toMatchObject({
+      success: true,
+    });
+
+    for (const hostile of [Symbol("unknown"), DISPOSE_SYMBOL]) {
+      const badResolution = {
+        bookmark: "bookmark-jsrpc",
+        outcome: "selected",
+        publicationId: PUBLICATION,
+        requiredAvailableUntilMs: (NOW + 900) * 1000,
+      };
+      Object.defineProperty(badResolution, hostile, {
+        enumerable: hostile === DISPOSE_SYMBOL,
+        value: () => undefined,
+      });
+      await expect(execute(rpc(page, badResolution))).resolves.toEqual({
+        code: "integrity_failure",
+        success: false,
+      });
+    }
+  });
+
   it("resolves once, reads once, emits SearchCollection shape, and strips internal state", async () => {
     const service = rpc();
     const outcome = await execute(service);

@@ -1,9 +1,12 @@
 import {
   FRONTEND_API_INTERNAL_ORIGIN,
   FRONTEND_API_RESERVED_HEADERS,
+  EXACT_MODEL_SEARCH_API_PATH,
+  EXACT_MODEL_SEARCH_LIMIT,
   hasFrontendApiReservedHeaders,
   ifNoneMatchMatches,
   methodologyRegistryEntry,
+  parseCanonicalExactModelSearchQuery,
   parseModelDetailApiPath,
   representationEtag,
   validIfNoneMatch,
@@ -20,6 +23,7 @@ import { readDatasetMetadataFromQueryV1 } from "./dataset-metadata-query.js";
 import { readMethodologyDetailFromQueryV1 } from "./methodology-detail-query.js";
 import { limitPublicReadRequest } from "./public-read-limiter.js";
 import { handleAdmittedModelDetailRuntime } from "./model-detail-runtime.js";
+import { handleAdmittedExactModelSearchRuntime } from "./exact-model-search-runtime.js";
 
 type Env = Omit<
   CloudflareEnv,
@@ -42,7 +46,7 @@ const PUBLICATION_HEADER_MAX_BYTES = 40;
 const UTF8 = new TextEncoder();
 const LOCAL_FRONTEND_API_HMAC_CURRENT =
   "quantclarity-local-only-frontend-api-signing-key-v1";
-const INTERNAL_MODEL_HEADER_NAMES = new Set([
+const INTERNAL_PINNED_READ_HEADER_NAMES = new Set([
   ...FRONTEND_API_RESERVED_HEADERS.map((name) => name.toLowerCase()),
   "x-quantclarity-publication",
 ]);
@@ -87,16 +91,73 @@ function deploymentEnvironment(value: unknown): DeploymentEnvironment | null {
     : null;
 }
 
-const exactSignedModelShape = (request: Request): boolean => {
+const exactSignedPinnedReadShape = (request: Request): boolean => {
   try {
     const names = [...request.headers.keys()];
     return (
       request.body === null &&
-      names.length === INTERNAL_MODEL_HEADER_NAMES.size &&
-      names.every((name) => INTERNAL_MODEL_HEADER_NAMES.has(name))
+      names.length === INTERNAL_PINNED_READ_HEADER_NAMES.size &&
+      names.every((name) => INTERNAL_PINNED_READ_HEADER_NAMES.has(name))
     );
   } catch {
     return false;
+  }
+};
+
+const normalizeExactModelSearchRequest = (
+  request: Request,
+): NormalizedRequest | null => {
+  try {
+    const url = new URL(request.url);
+    const queryMarker = request.url.indexOf(
+      "?",
+      request.url.indexOf("://") + 3,
+    );
+    if (
+      request.method !== "GET" ||
+      request.body !== null ||
+      url.origin !== FRONTEND_API_INTERNAL_ORIGIN ||
+      url.pathname !== EXACT_MODEL_SEARCH_API_PATH ||
+      queryMarker < 0 ||
+      url.hash !== ""
+    )
+      return null;
+    const rawQuery = request.url.slice(queryMarker + 1);
+    const parsed = parseCanonicalExactModelSearchQuery(rawQuery);
+    if (parsed === null) return null;
+    const publicationHeader = request.headers.get("X-QuantClarity-Publication");
+    const validation = validateAndNormalizeRequest(
+      {
+        bodyBytes: 0,
+        hasQueryString: true,
+        method: "GET",
+        pathname: EXACT_MODEL_SEARCH_API_PATH,
+        publicationHeader,
+        rawQuery,
+      },
+      API_LIMITS,
+    );
+    if (
+      !validation.success ||
+      validation.request.operation.kind !== "search" ||
+      validation.request.route.operation.kind !== "search" ||
+      validation.request.route.policy !== "search" ||
+      validation.request.query !== parsed.query ||
+      validation.request.cursor !== parsed.cursor ||
+      validation.request.limit !== EXACT_MODEL_SEARCH_LIMIT ||
+      !validation.request.limitProvided ||
+      validation.request.sortProvided ||
+      validation.request.sort.length !== 2 ||
+      validation.request.sort[0] !== "relevance" ||
+      validation.request.sort[1] !== "stable_id" ||
+      Reflect.ownKeys(validation.request.filters).length !== 1 ||
+      validation.request.filters.record_type !== "model" ||
+      publicationHeader === null
+    )
+      return null;
+    return validation.request;
+  } catch {
+    return null;
   }
 };
 
@@ -520,6 +581,7 @@ export async function handleRequest(
   let internalRequest = false;
   let internalNowMs: number | null = null;
   let requestOrigin: string | null = null;
+  let requestRawQuery: string | null = null;
   let requestSearch: string | null = null;
   let requestUrl: string | null = null;
   try {
@@ -527,6 +589,7 @@ export async function handleRequest(
     const url = new URL(requestUrl);
     requestOrigin = url.origin;
     requestSearch = url.search;
+    requestRawQuery = url.search.slice(1);
   } catch {
     // The bounded protocol plan already selected a malformed-target response.
   }
@@ -568,11 +631,7 @@ export async function handleRequest(
           404,
         ),
       );
-    if (
-      verified.envelope.method !== "GET" ||
-      requestSearch !== "" ||
-      requestUrl !== `${FRONTEND_API_INTERNAL_ORIGIN}${verified.envelope.path}`
-    )
+    if (verified.envelope.method !== "GET")
       return send(
         error(
           "resource_not_found",
@@ -582,9 +641,54 @@ export async function handleRequest(
       );
     if (
       verified.envelope.path === "/v1/metadata" &&
-      verified.envelope.publication_id === null
+      verified.envelope.publication_id === null &&
+      requestSearch === "" &&
+      requestUrl === `${FRONTEND_API_INTERNAL_ORIGIN}${verified.envelope.path}`
     ) {
       internalRequest = true;
+    } else if (verified.envelope.path === EXACT_MODEL_SEARCH_API_PATH) {
+      const publicationId = verified.envelope.publication_id;
+      if (
+        environment !== "local" ||
+        transportPolicy !== "local_test" ||
+        publicationId === null ||
+        requestRawQuery === null ||
+        requestSearch !== `?${requestRawQuery}` ||
+        requestUrl !==
+          `${FRONTEND_API_INTERNAL_ORIGIN}${EXACT_MODEL_SEARCH_API_PATH}?${requestRawQuery}` ||
+        parseCanonicalExactModelSearchQuery(requestRawQuery) === null ||
+        !exactSignedPinnedReadShape(request)
+      )
+        return send(
+          error(
+            "resource_not_found",
+            "The requested resource does not exist.",
+            404,
+          ),
+        );
+      const admittedRequest = new Request(
+        `${FRONTEND_API_INTERNAL_ORIGIN}${EXACT_MODEL_SEARCH_API_PATH}?${requestRawQuery}`,
+        {
+          headers: { "X-QuantClarity-Publication": publicationId },
+          method: "GET",
+          redirect: "manual",
+        },
+      );
+      const normalized = normalizeExactModelSearchRequest(admittedRequest);
+      if (normalized === null)
+        return send(
+          error(
+            "resource_not_found",
+            "The requested resource does not exist.",
+            404,
+          ),
+        );
+      return handleAdmittedExactModelSearchRuntime(
+        normalized,
+        env,
+        environment,
+        internalNowMs,
+      );
     } else {
       const identifier = parseModelDetailApiPath(verified.envelope.path);
       const publicationId = verified.envelope.publication_id;
@@ -592,7 +696,10 @@ export async function handleRequest(
         environment !== "local" ||
         identifier === null ||
         publicationId === null ||
-        !exactSignedModelShape(request)
+        requestSearch !== "" ||
+        requestUrl !==
+          `${FRONTEND_API_INTERNAL_ORIGIN}${verified.envelope.path}` ||
+        !exactSignedPinnedReadShape(request)
       )
         return send(
           error(

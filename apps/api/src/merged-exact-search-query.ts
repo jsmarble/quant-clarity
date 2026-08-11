@@ -27,6 +27,8 @@ const RFC3339_MILLISECONDS =
   /^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\.[0-9]{3}Z$/u;
 const KEY_ID = /^[A-Za-z0-9_-]{1,32}$/u;
 const UTF8 = new TextEncoder();
+const DISPOSE_SYMBOL = (Symbol as unknown as { readonly dispose: symbol })
+  .dispose;
 const AUDIENCE = "quantclarity-catalog-query-v1" as const;
 const CURSOR_TTL_SECONDS = 15 * 60;
 const MAX_CLOCK_SKEW_SECONDS = 30;
@@ -58,7 +60,7 @@ export type MergedExactSearchRpcResult = Readonly<{
   }>;
 }>;
 
-export type MergedExactSearchCatalogQueryRpcV2 = CatalogQueryRpcV2;
+export type MergedExactSearchCatalogQueryRpcV2 = CatalogQueryRpcV2 | Service;
 
 export interface MergedExactSearchCatalogQueryRpcV1 {
   resolvePublicationV1(input: unknown): Promise<unknown>;
@@ -115,14 +117,29 @@ export type MergedExactSearchApiInput = Readonly<{
 const snapshotOwnRecord = (
   value: unknown,
   expectedKeys: readonly string[],
+  allowRuntimeDispose = false,
 ): Record<string, unknown> | null => {
   if (typeof value !== "object" || value === null || Array.isArray(value))
     return null;
   const prototype: unknown = Object.getPrototypeOf(value);
   if (prototype !== Object.prototype && prototype !== null) return null;
   const ownKeys = Reflect.ownKeys(value);
-  if (ownKeys.some((key) => typeof key !== "string")) return null;
-  const actual = (ownKeys as string[]).sort();
+  for (const key of ownKeys) {
+    if (typeof key === "string") continue;
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (
+      !allowRuntimeDispose ||
+      key !== DISPOSE_SYMBOL ||
+      descriptor === undefined ||
+      !("value" in descriptor) ||
+      typeof descriptor.value !== "function" ||
+      descriptor.enumerable
+    )
+      return null;
+  }
+  const actual = ownKeys
+    .filter((key): key is string => typeof key === "string")
+    .sort();
   const expected = [...expectedKeys].sort();
   if (
     actual.length !== expected.length ||
@@ -438,7 +455,7 @@ const classifyResolver = (
   expectedRequiredAvailableUntilMs: number,
 ): ResolverClassification => {
   try {
-    const failure = snapshotOwnRecord(value, ["outcome"]);
+    const failure = snapshotOwnRecord(value, ["outcome"], true);
     if (failure !== null)
       return failure.outcome === "integrity_failure" ||
         failure.outcome === "publication_not_ready" ||
@@ -448,10 +465,11 @@ const classifyResolver = (
             outcome: { success: false, code: failure.outcome },
           }
         : { kind: "invalid" };
-    const expired = snapshotOwnRecord(value, [
-      "currentPublicationId",
-      "outcome",
-    ]);
+    const expired = snapshotOwnRecord(
+      value,
+      ["currentPublicationId", "outcome"],
+      true,
+    );
     if (expired !== null)
       return expired.outcome === "publication_expired" &&
         typeof expired.currentPublicationId === "string" &&
@@ -465,12 +483,11 @@ const classifyResolver = (
             },
           }
         : { kind: "invalid" };
-    const selected = snapshotOwnRecord(value, [
-      "bookmark",
-      "outcome",
-      "publicationId",
-      "requiredAvailableUntilMs",
-    ]);
+    const selected = snapshotOwnRecord(
+      value,
+      ["bookmark", "outcome", "publicationId", "requiredAvailableUntilMs"],
+      true,
+    );
     if (
       selected?.outcome !== "selected" ||
       typeof selected.publicationId !== "string" ||
@@ -599,13 +616,13 @@ const classifyPage = (
   maxResponseBytes: number,
 ): PageClassification => {
   try {
-    const failure = snapshotOwnRecord(value, ["outcome"]);
+    const failure = snapshotOwnRecord(value, ["outcome"], true);
     if (failure !== null)
       return failure.outcome === "integrity_failure" ||
         failure.outcome === "read_failure"
         ? { kind: "failure", code: failure.outcome }
         : { kind: "invalid" };
-    const response = snapshotOwnRecord(value, ["outcome", "page"]);
+    const response = snapshotOwnRecord(value, ["outcome", "page"], true);
     if (response?.outcome !== "page") return { kind: "invalid" };
     const page = snapshotOwnRecord(response.page, [
       "nextContinuation",
