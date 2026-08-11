@@ -306,8 +306,9 @@ describe("restart-safe provider reducer (PIPE-004–PIPE-006, BE-004)", () => {
     });
     expect(replay.providerSliceKey).not.toBe(first.providerSliceKey);
     expect(decideProviderStart(replay, [first])).toEqual({
-      action: "resume",
+      action: "wait_for_prior",
       providerSliceId: first.providerSliceId,
+      occurrenceId: first.occurrenceId,
     });
     expect(decideProviderStart(replay, [failed])).toEqual({
       action: "start",
@@ -315,6 +316,35 @@ describe("restart-safe provider reducer (PIPE-004–PIPE-006, BE-004)", () => {
     expect(decideProviderStart(replay, [failed, replay])).toEqual({
       action: "resume",
       providerSliceId: replay.providerSliceId,
+    });
+  });
+
+  it("waits behind a nonterminal Provider from another occurrence", () => {
+    const first = slice();
+    const laterOccurrence = createScheduleOccurrence({
+      config: schedule,
+      scheduledAt: "2026-08-06T05:00:00Z",
+      createdAt: "2026-08-06T05:00:01Z",
+    });
+    const laterRun = createPipelineRun({
+      writer,
+      occurrence: laterOccurrence,
+      attemptNumber: 1,
+      codeVersion: "git:def456",
+      schemaVersion: "1.0.0",
+      providerScope: ["prv_a"],
+      startedAt: "2026-08-06T05:00:02Z",
+    });
+    const requested = createProviderSlice({
+      run: laterRun,
+      occurrence: laterOccurrence,
+      providerId: "prv_a",
+    });
+
+    expect(decideProviderStart(requested, [first])).toEqual({
+      action: "wait_for_prior",
+      providerSliceId: first.providerSliceId,
+      occurrenceId: first.occurrenceId,
     });
   });
 
@@ -712,6 +742,7 @@ describe("provider isolation and roster terminality (PIPE-005, PIPE-019, PIPE-04
       terminal: true,
       publishable: true,
       status: "completed_with_provider_failures",
+      publicationDisposition: "publish_new",
       providers: [
         { providerId: "prv_a", disposition: "new", sliceId: "slice_a_new" },
         {
@@ -732,7 +763,33 @@ describe("provider isolation and roster terminality (PIPE-005, PIPE-019, PIPE-04
     ).toMatchObject({
       terminal: true,
       publishable: false,
+      status: "failed",
+      publicationDisposition: "blocked",
+    });
+  });
+
+  it("retains last-known-good data without minting an identical publication", () => {
+    expect(
+      coordinateRun(
+        ["prv_a"],
+        [
+          completion("prv_a", "failed", {
+            lastKnownGoodSliceId: "slice_a_old",
+            errorCodes: ["source_failed"],
+          }),
+        ],
+      ),
+    ).toMatchObject({
+      terminal: true,
+      publishable: false,
       status: "completed_with_provider_failures",
+      providers: [
+        {
+          providerId: "prv_a",
+          disposition: "carried_forward",
+          sliceId: "slice_a_old",
+        },
+      ],
     });
   });
 });

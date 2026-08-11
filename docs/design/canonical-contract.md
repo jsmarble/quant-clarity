@@ -90,6 +90,15 @@ The sort key is a 43-character unsigned fixed-width representation: 24 integer d
 | `quarantine` | `quarantine_id`, `provider_run_id`, `subject_resource_id`, `reason_code`, `created_at` | released_at, release evidence | Subject FK uses resource registry; release is append-audited and never automatic after a hard budget trip |
 | `policy_version` | `policy_id`, `kind`, `version`, `effective_at`, `content_hash`, `status` | supersedes version | Kind includes source precedence, normalization, display order, extraction, price comparison, and staleness |
 
+This table describes the current pre-orchestration ledger, not the final
+admission contract. [ADR 0060](../decisions/0060-publication-run-admission-and-terminal-coordination.md)
+requires Phase 7.2-D to add immutable admission/run-plan authority, exact
+adjacent replay, scheduled-time deadline, environment-wide fenced Provider
+claims, sealed reports, and separate machine operational terminal evidence.
+Until that reviewed migration exists, `roster_outcome.evidence_id` cannot be
+used to invent source evidence for a pre-acquisition timeout or lock failure,
+and no operational run write is permitted.
+
 ## Current-claim selection
 
 The `source_precedence` policy is versioned by field group. Within one class, recency applies only after applicability and verification; equal-authority conflicts publish unknown unless the policy names a deterministic resolver.

@@ -233,6 +233,12 @@ const sha256Ascii = (value: string): Uint8Array => {
   return result;
 };
 
+/** Runtime-neutral SHA-256 for bounded canonical ASCII control-plane records. */
+export const sha256AsciiDigest = (value: string): string =>
+  `sha256:${[...sha256Ascii(value)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("")}`;
+
 export const scheduleExpression = (config: ScheduleConfig): string => {
   validateSchedule(config);
   return `${String(config.utcMinute)} ${String(config.utcHour)} * * ${[...config.utcWeekdays].sort().join(",")}`;
@@ -588,7 +594,12 @@ export const recordSideEffectReceipt = (
 export type ProviderStartDecision =
   | Readonly<{ action: "start" }>
   | Readonly<{ action: "resume"; providerSliceId: string }>
-  | Readonly<{ action: "noop_terminal"; providerSliceId: string }>;
+  | Readonly<{ action: "noop_terminal"; providerSliceId: string }>
+  | Readonly<{
+      action: "wait_for_prior";
+      providerSliceId: string;
+      occurrenceId: string;
+    }>;
 
 export const decideProviderStart = (
   requested: ProviderSliceSnapshot,
@@ -599,6 +610,15 @@ export const decideProviderStart = (
   );
   if (matches.length > 1)
     throw new TypeError("durable state contains duplicate provider slices");
+  const providerInFlight = durableSlices.filter(
+    (slice) =>
+      slice.providerId === requested.providerId &&
+      slice.state !== "ready" &&
+      slice.state !== "failed" &&
+      slice.state !== "quarantined",
+  );
+  if (providerInFlight.length > 1)
+    throw new TypeError("durable state contains concurrent provider attempts");
   const existing = matches[0];
   if (existing !== undefined)
     return existing.state === "ready" ||
@@ -612,22 +632,13 @@ export const decideProviderStart = (
           action: "resume",
           providerSliceId: existing.providerSliceId,
         });
-  const priorInFlight = durableSlices.filter(
-    (slice) =>
-      slice.occurrenceId === requested.occurrenceId &&
-      slice.providerId === requested.providerId &&
-      slice.state !== "ready" &&
-      slice.state !== "failed" &&
-      slice.state !== "quarantined",
-  );
-  if (priorInFlight.length > 1)
-    throw new TypeError("durable state contains concurrent provider attempts");
-  const prior = priorInFlight[0];
+  const prior = providerInFlight[0];
   return prior === undefined
     ? Object.freeze({ action: "start" })
     : Object.freeze({
-        action: "resume",
+        action: "wait_for_prior",
         providerSliceId: prior.providerSliceId,
+        occurrenceId: prior.occurrenceId,
       });
 };
 
@@ -989,7 +1000,9 @@ export type ProviderPublicationDecision = Readonly<{
 export type RunCoordination = Readonly<{
   terminal: boolean;
   publishable: boolean;
-  status: "running" | "succeeded" | "completed_with_provider_failures";
+  status:
+    "running" | "succeeded" | "completed_with_provider_failures" | "failed";
+  publicationDisposition: "publish_new" | "retain_current" | "blocked";
   providers: readonly ProviderPublicationDecision[];
 }>;
 
@@ -1025,6 +1038,7 @@ export const coordinateRun = (
       terminal: false,
       publishable: false,
       status: "running",
+      publicationDisposition: "blocked",
       providers: Object.freeze([]),
     });
   const providers = expected.map((providerId): ProviderPublicationDecision => {
@@ -1051,13 +1065,29 @@ export const coordinateRun = (
   const hasFailures = completions.some(
     (completion) => completion.state !== "ready",
   );
-  const usableSlices = providers.filter(
-    (provider) => provider.disposition !== "unavailable",
+  // Last-known-good slices preserve the current publication. They do not, by
+  // themselves, justify minting a byte-identical replacement publication.
+  const newSlices = providers.filter(
+    (provider) => provider.disposition === "new",
+  ).length;
+  const carriedSlices = providers.filter(
+    (provider) => provider.disposition === "carried_forward",
   ).length;
   return Object.freeze({
     terminal: true,
-    publishable: usableSlices > 0,
-    status: hasFailures ? "completed_with_provider_failures" : "succeeded",
+    publishable: newSlices > 0,
+    status:
+      newSlices === 0 && carriedSlices === 0
+        ? "failed"
+        : hasFailures
+          ? "completed_with_provider_failures"
+          : "succeeded",
+    publicationDisposition:
+      newSlices > 0
+        ? "publish_new"
+        : carriedSlices > 0
+          ? "retain_current"
+          : "blocked",
     providers: Object.freeze(providers),
   });
 };
