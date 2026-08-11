@@ -29,6 +29,8 @@ const MODEL_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const PUBLICATION_ID = new RegExp(`^pub_${UUID_V4}$`, "u");
 const SCHEMA_VERSION = /^[0-9]+\.[0-9]+\.[0-9]+$/u;
 const UTF8 = new TextEncoder();
+const DISPOSE_SYMBOL = (Symbol as unknown as { readonly dispose: symbol })
+  .dispose;
 const MAX_SCHEMA_VERSION_CHARACTERS = 128;
 const MAX_SCHEMA_VERSION_BYTES = 512;
 const MAX_SNAPSHOT_KEY_CHARACTERS = 128;
@@ -164,6 +166,7 @@ type ModelDetailNormalizedRequest = Omit<
 const snapshotOwnRecord = (
   value: unknown,
   expectedKeys: readonly string[],
+  allowRuntimeDispose = false,
 ): Record<string, unknown> | null => {
   try {
     if (typeof value !== "object" || value === null || Array.isArray(value))
@@ -171,19 +174,34 @@ const snapshotOwnRecord = (
     const prototype: unknown = Object.getPrototypeOf(value);
     if (prototype !== Object.prototype && prototype !== null) return null;
     const ownKeys = Reflect.ownKeys(value);
-    if (
-      ownKeys.length !== expectedKeys.length ||
-      ownKeys.some(
-        (key) =>
-          typeof key !== "string" ||
+    for (const key of ownKeys) {
+      if (typeof key === "string") {
+        if (
           key.length > MAX_SNAPSHOT_KEY_CHARACTERS ||
-          UTF8.encode(key).byteLength > MAX_SNAPSHOT_KEY_BYTES,
+          UTF8.encode(key).byteLength > MAX_SNAPSHOT_KEY_BYTES
+        )
+          return null;
+        continue;
+      }
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (
+        !allowRuntimeDispose ||
+        key !== DISPOSE_SYMBOL ||
+        descriptor === undefined ||
+        !("value" in descriptor) ||
+        typeof descriptor.value !== "function" ||
+        descriptor.enumerable
       )
-    )
-      return null;
-    const actualKeys = (ownKeys as string[]).sort();
+        return null;
+    }
+    const actualKeys = ownKeys
+      .filter((key): key is string => typeof key === "string")
+      .sort();
     const sortedExpected = [...expectedKeys].sort();
-    if (sortedExpected.some((key, index) => actualKeys[index] !== key))
+    if (
+      actualKeys.length !== sortedExpected.length ||
+      sortedExpected.some((key, index) => actualKeys[index] !== key)
+    )
       return null;
     const snapshot: Record<string, unknown> = Object.create(null) as Record<
       string,
@@ -381,7 +399,7 @@ const classifyResolver = (
   value: unknown,
   requiredAvailableUntilMs: number,
 ): ResolverClassification => {
-  const failure = snapshotOwnRecord(value, ["outcome"]);
+  const failure = snapshotOwnRecord(value, ["outcome"], true);
   if (failure !== null)
     return failure.outcome === "integrity_failure" ||
       failure.outcome === "publication_not_ready" ||
@@ -391,7 +409,11 @@ const classifyResolver = (
           outcome: { success: false, code: failure.outcome },
         }
       : { kind: "invalid" };
-  const expired = snapshotOwnRecord(value, ["currentPublicationId", "outcome"]);
+  const expired = snapshotOwnRecord(
+    value,
+    ["currentPublicationId", "outcome"],
+    true,
+  );
   if (expired !== null)
     return expired.outcome === "publication_expired" &&
       typeof expired.currentPublicationId === "string" &&
@@ -405,12 +427,11 @@ const classifyResolver = (
           },
         }
       : { kind: "invalid" };
-  const selected = snapshotOwnRecord(value, [
-    "bookmark",
-    "outcome",
-    "publicationId",
-    "requiredAvailableUntilMs",
-  ]);
+  const selected = snapshotOwnRecord(
+    value,
+    ["bookmark", "outcome", "publicationId", "requiredAvailableUntilMs"],
+    true,
+  );
   if (
     selected?.outcome !== "selected" ||
     typeof selected.publicationId !== "string" ||
@@ -606,7 +627,7 @@ export const readModelDetailFromQueryV1 = async (
     } catch {
       return { success: false, code: "read_failure" };
     }
-    const failure = snapshotOwnRecord(readValue, ["outcome"]);
+    const failure = snapshotOwnRecord(readValue, ["outcome"], true);
     if (failure !== null) {
       if (
         failure.outcome === "integrity_failure" ||
@@ -615,11 +636,11 @@ export const readModelDetailFromQueryV1 = async (
         return { success: false, code: failure.outcome };
       return { success: false, code: "integrity_failure" };
     }
-    const notFound = snapshotOwnRecord(readValue, [
-      "outcome",
-      "publicationId",
-      "schemaVersion",
-    ]);
+    const notFound = snapshotOwnRecord(
+      readValue,
+      ["outcome", "publicationId", "schemaVersion"],
+      true,
+    );
     if (notFound !== null) {
       if (
         notFound.outcome === "not_found" &&
@@ -633,12 +654,11 @@ export const readModelDetailFromQueryV1 = async (
         };
       return { success: false, code: "integrity_failure" };
     }
-    const response = snapshotOwnRecord(readValue, [
-      "model",
-      "outcome",
-      "publicationId",
-      "schemaVersion",
-    ]);
+    const response = snapshotOwnRecord(
+      readValue,
+      ["model", "outcome", "publicationId", "schemaVersion"],
+      true,
+    );
     if (
       response?.outcome !== "model" ||
       response.publicationId !== resolver.publicationId ||
@@ -795,7 +815,7 @@ const readSelectedModelDetailFromQueryV2 = async (
       return { success: false, code: "read_failure" };
     }
 
-    const failure = snapshotOwnRecord(readValue, ["outcome"]);
+    const failure = snapshotOwnRecord(readValue, ["outcome"], true);
     if (failure !== null) {
       if (
         failure.outcome === "integrity_failure" ||
@@ -804,11 +824,11 @@ const readSelectedModelDetailFromQueryV2 = async (
         return { success: false, code: failure.outcome };
       return { success: false, code: "integrity_failure" };
     }
-    const notFound = snapshotOwnRecord(readValue, [
-      "outcome",
-      "publicationId",
-      "schemaVersion",
-    ]);
+    const notFound = snapshotOwnRecord(
+      readValue,
+      ["outcome", "publicationId", "schemaVersion"],
+      true,
+    );
     if (notFound !== null) {
       if (
         notFound.outcome === "not_found" &&
@@ -822,13 +842,17 @@ const readSelectedModelDetailFromQueryV2 = async (
         };
       return { success: false, code: "integrity_failure" };
     }
-    const response = snapshotOwnRecord(readValue, [
-      "lookupProvenance",
-      "model",
-      "outcome",
-      "publicationId",
-      "schemaVersion",
-    ]);
+    const response = snapshotOwnRecord(
+      readValue,
+      [
+        "lookupProvenance",
+        "model",
+        "outcome",
+        "publicationId",
+        "schemaVersion",
+      ],
+      true,
+    );
     const provenance = snapshotOwnRecord(response?.lookupProvenance, [
       "canonicalSlug",
       "matchedBy",

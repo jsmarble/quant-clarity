@@ -2,7 +2,7 @@
 
 | Attribute | Value |
 |---|---|
-| Status | Implementation in progress; shared identity/path and `ModelDetail` contract boundary complete; no public Model API route or remote authority |
+| Status | Local implementation complete; original request-target and every remote/public release gate remain pending |
 | Decision | [ADR 0052](../decisions/0052-publication-pinned-frontend-model-detail.md) |
 | Requirements | `FE-030`, `FE-031`, `FE-060`, `FE-061`, `API-003`, `API-004`, `API-005`, `SEC-001`, `SEC-007`, `SEC-011`, `PRIV-003`, `PRIV-006`, `PRIV-007`, `PRIV-011`, `QA-004`, `QA-009` |
 
@@ -16,7 +16,7 @@ The contracts package now exports the static `ModelDetail` type and one closed W
 
 The API core now owns the exact Model stable-ID/strict-slug classifier, 128-character ASCII slug ceiling, canonical `/v1/models/{identifier}` builder, and single-segment API-path parser. It performs no decoding, coercion, Unicode normalization, or case folding. The existing B3 request planner consumes the shared classifier/parser instead of maintaining a second regex boundary, while preserving its established response status and effect-free behavior. The Worker receives the platform-normalized `Request.url`; original request-target alias rejection cannot be established at this layer and remains pending at the raw frontend/ingress acceptance boundary.
 
-Unit tests cover stable IDs, boundary-length slugs, malformed UUID versions/variants/case, punctuation, Unicode, percent encodings that remain visible after platform parsing, extra/trailing segments, query-bearing paths, exact path construction, frozen classification results, complete Model-detail envelopes, additive/wrong metadata, invalid canonical Models, nested accessors/proxy gets/symbol and `__proto__` keys, and hostile outer accessors. This increment opens no route, creates no service call, and changes no cache, binding, environment, or successful response behavior.
+Unit tests cover stable IDs, boundary-length slugs, malformed UUID versions/variants/case, punctuation, Unicode, percent encodings that remain visible after platform parsing, extra/trailing segments, query-bearing paths, exact path construction, frozen classification results, complete Model-detail envelopes, additive/wrong metadata, invalid canonical Models, nested accessors/proxy gets/symbol and `__proto__` keys, and hostile outer accessors. The completed local slice adds signed admission and SSR behavior without opening the public API route or any preview/production authority.
 
 ## Implementation boundary
 
@@ -24,7 +24,7 @@ The frontend first obtains the existing ADR 0051 publication snapshot. Only a pu
 
 The raw frontend route must be exactly one stable-ID-or-strict-slug segment. Encoded aliases or separators, case-folded IDs, invalid UTF-8, empty/additional segments, and trailing-slash aliases do not call Model detail. A frontend query never enters or changes the signed request or rendered facts; the response remains `private, no-store` and the canonical URL omits it.
 
-The API must factor the existing Model-detail flow into authenticated admission and a shared post-admission executor. The internal path authenticates the exact local environment/method/path/query/pin tuple before any source-address capability is read. The future direct public path retains ADR 0044's independent limiter-before-cache ordering but remains unrouted in this phase. Rejected internal tuples produce static `404` with no resolver, Cache API, or query effect.
+The API factors the existing Model-detail flow into authenticated admission and a shared post-admission executor. The internal path authenticates the exact local environment/method/path/query/pin tuple before any source-address capability is read. The future direct public path retains ADR 0044's independent limiter-before-cache ordering but remains unrouted in this phase. Rejected internal tuples produce static `404` with no resolver, Cache API, or query effect.
 
 The executor keeps the existing resolver V2 horizon, publication-pinned V2 lookup, exact-byte response, response-size admission, ETag calculation, and stable-ID-only protected manual-cache key. No visitor, authentication, public-host, slug, or query material enters that key or the query envelope.
 
@@ -44,21 +44,23 @@ The client uses a 500-millisecond whole-operation deadline, no retry, no conditi
 
 ## Model Facts representation
 
-The SSR page exposes the canonical Model's identity and slug, publisher, architecture, parameter facts, checkpoints, source formats and quantization, context/output limits, modalities, release date, license, lifecycle status, cataloged-provider count, evidence references, observation times, and refresh fact. Every canonical Fact state remains explicit and no unknown value is inferred.
+The SSR page exposes the canonical Model's stable route identity and evidence-backed slug, publisher, architecture, parameter facts, checkpoint repository/revision facts, source formats and quantization, context/output limits, modalities, release date, license, lifecycle status, cataloged-provider count, evidence references, observation times, and refresh fact. Every canonical Fact state remains explicit and no unknown value is inferred. Bare family, checkpoint, organization, and lineage-endpoint IDs are structural contract links rather than evidence-bearing Facts; this local public view omits them until an accepted design establishes independently auditable derivation and provenance. The stable Model ID remains visible solely because it is the canonical route identity. This slice therefore does not claim complete public family or structural-lineage presentation.
 
 The summary contains no provider names, provider prices, serving precision, ranking, recommendation, affiliate action, or provider order. The cataloged-provider count is the sole provider-derived fact. The page may state that offering comparison is not present in this local slice, but it may not claim zero offerings.
 
-The stable Model ID owns frontend canonical identity. Stable-ID and verified current-slug requests may both render `200`, while validated success sets canonical and Open Graph URLs to the protected public frontend origin plus `/models/{stable-model-id}`. Title, description, and share text come only from validated current Model facts. Historical slugs redirect to the stable-ID path. Error and unavailable pages do not reflect request paths into canonical or Open Graph URLs.
+The stable Model ID owns frontend canonical identity. Stable-ID and verified current-slug requests may both render `200`, while validated success sets canonical and Open Graph URLs to the protected public frontend origin plus `/models/{stable-model-id}`. Title, description, and share text combine the validated display-name Fact, when known and nonempty, with the stable Model ID so duplicate names remain unique; the stable ID supplies identity when no usable display name exists. Public copy explicitly identifies that ID as QuantClarity canonical routing identity and does not characterize it as an evidence-backed publisher fact. Historical slugs redirect to the stable-ID path. Error and unavailable pages do not reflect request paths into canonical or Open Graph URLs.
 
 ## Local acceptance target
 
 - API cryptographic and effect-order tests for the exact signed pinned tuple and every rejection class;
 - frontend bounded-client tests for status, bytes, encoding, media type, contract, and publication continuity;
 - actual web-to-API-to-query Worker-runtime cases for stable/current/historical/not-found/race/dependency outcomes;
-- a dedicated or parameterized local-only browser stack for successful Model Facts journeys while the existing preview browser stack remains unchanged and proves closure;
+- a dedicated or parameterized local-only browser stack for successful and deterministic dependency-unavailable Model Facts journeys while the existing preview browser stack remains unchanged and proves closure;
 - raw SSR semantic, hostile-value-escaping, exact route/query behavior, stable-ID canonical/share identity, and error-page non-reflection checks;
 - automated accessibility, no-script, zero-cookie, zero-browser-persistence, no-third-party, and privacy evidence; and
 - full repository verification with all mapped traceability statuses unchanged.
+
+The local acceptance target passes. Focused client, ingress, runtime, route-state, and JSRPC regressions cover exact admission and failure matrices. The dedicated three-Worker browser stack proves stable-ID and current-slug `200`, historical-slug bodyless stable-ID `308`, publication-bound `404`, deterministic dependency `503`, stable unique canonical/share metadata, escaped hostile values, all Fact states, accessibility, reflow, no scripts, no cookies or browser persistence, and no third-party browser requests. Existing preview tests continue to prove closure. Cloudflare's runtime-owned non-enumerable `Symbol.dispose` hook is admitted only at the JSRPC record boundary; unknown symbols remain rejected.
 
 ## Non-claims and remaining gates
 

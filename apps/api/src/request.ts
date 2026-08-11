@@ -1,8 +1,10 @@
 import {
   FRONTEND_API_INTERNAL_ORIGIN,
+  FRONTEND_API_RESERVED_HEADERS,
   hasFrontendApiReservedHeaders,
   ifNoneMatchMatches,
   methodologyRegistryEntry,
+  parseModelDetailApiPath,
   representationEtag,
   validIfNoneMatch,
   validateAndNormalizeRequest,
@@ -17,6 +19,7 @@ import type { ErrorEnvelope } from "@quant-clarity/contracts";
 import { readDatasetMetadataFromQueryV1 } from "./dataset-metadata-query.js";
 import { readMethodologyDetailFromQueryV1 } from "./methodology-detail-query.js";
 import { limitPublicReadRequest } from "./public-read-limiter.js";
+import { handleAdmittedModelDetailRuntime } from "./model-detail-runtime.js";
 
 type Env = Omit<
   CloudflareEnv,
@@ -31,6 +34,7 @@ type Env = Omit<
   DEPLOYMENT_ENV: unknown;
   FRONTEND_API_HMAC_CURRENT?: unknown;
   FRONTEND_API_HMAC_NEXT?: unknown;
+  PUBLIC_API_ORIGIN?: unknown;
   RATE_LIMIT_HMAC_KEY: unknown;
 };
 
@@ -38,6 +42,10 @@ const PUBLICATION_HEADER_MAX_BYTES = 40;
 const UTF8 = new TextEncoder();
 const LOCAL_FRONTEND_API_HMAC_CURRENT =
   "quantclarity-local-only-frontend-api-signing-key-v1";
+const INTERNAL_MODEL_HEADER_NAMES = new Set([
+  ...FRONTEND_API_RESERVED_HEADERS.map((name) => name.toLowerCase()),
+  "x-quantclarity-publication",
+]);
 
 const API_LIMITS: ApiLimits = {
   defaultPageSize: 25,
@@ -78,6 +86,19 @@ function deploymentEnvironment(value: unknown): DeploymentEnvironment | null {
     ? value
     : null;
 }
+
+const exactSignedModelShape = (request: Request): boolean => {
+  try {
+    const names = [...request.headers.keys()];
+    return (
+      request.body === null &&
+      names.length === INTERNAL_MODEL_HEADER_NAMES.size &&
+      names.every((name) => INTERNAL_MODEL_HEADER_NAMES.has(name))
+    );
+  } catch {
+    return false;
+  }
+};
 
 function json(
   body: unknown,
@@ -419,6 +440,7 @@ function methodologyDetailResponse(
 export async function handleRequest(
   request: Request,
   env: Env,
+  context?: ExecutionContext,
 ): Promise<Response> {
   let capturedMethod: string | null = null;
   try {
@@ -475,11 +497,6 @@ export async function handleRequest(
   let frontendApiHmacCurrent: unknown;
   let frontendApiHmacNext: unknown;
   try {
-    queryService = env.CATALOG_QUERY;
-  } catch {
-    // A missing query capability fails only after applicable limiting.
-  }
-  try {
     subtle = crypto.subtle;
   } catch {
     // Web Crypto is required for limiter keys and validators.
@@ -504,8 +521,10 @@ export async function handleRequest(
   let internalNowMs: number | null = null;
   let requestOrigin: string | null = null;
   let requestSearch: string | null = null;
+  let requestUrl: string | null = null;
   try {
-    const url = new URL(request.url);
+    requestUrl = request.url;
+    const url = new URL(requestUrl);
     requestOrigin = url.origin;
     requestSearch = url.search;
   } catch {
@@ -551,9 +570,8 @@ export async function handleRequest(
       );
     if (
       verified.envelope.method !== "GET" ||
-      verified.envelope.path !== "/v1/metadata" ||
       requestSearch !== "" ||
-      verified.envelope.publication_id !== null
+      requestUrl !== `${FRONTEND_API_INTERNAL_ORIGIN}${verified.envelope.path}`
     )
       return send(
         error(
@@ -562,7 +580,45 @@ export async function handleRequest(
           404,
         ),
       );
-    internalRequest = true;
+    if (
+      verified.envelope.path === "/v1/metadata" &&
+      verified.envelope.publication_id === null
+    ) {
+      internalRequest = true;
+    } else {
+      const identifier = parseModelDetailApiPath(verified.envelope.path);
+      const publicationId = verified.envelope.publication_id;
+      if (
+        environment !== "local" ||
+        identifier === null ||
+        publicationId === null ||
+        !exactSignedModelShape(request)
+      )
+        return send(
+          error(
+            "resource_not_found",
+            "The requested resource does not exist.",
+            404,
+          ),
+        );
+      if (context === undefined)
+        return send(
+          error(
+            "temporarily_unavailable",
+            "The Model detail is temporarily unavailable.",
+            503,
+          ),
+        );
+      const admittedRequest = new Request(
+        `${FRONTEND_API_INTERNAL_ORIGIN}${verified.envelope.path}`,
+        {
+          headers: { "X-QuantClarity-Publication": publicationId },
+          method: "GET",
+          redirect: "manual",
+        },
+      );
+      return handleAdmittedModelDetailRuntime(admittedRequest, env, context);
+    }
   } else if (hasFrontendApiReservedHeaders(request)) {
     plan = {
       kind: "response",
@@ -635,6 +691,12 @@ export async function handleRequest(
         { "Retry-After": "60" },
       ),
     );
+
+  try {
+    queryService = env.CATALOG_QUERY;
+  } catch {
+    // Capture the read capability only after signed or public admission.
+  }
 
   if (
     (plan.kind === "methodology_detail" ||

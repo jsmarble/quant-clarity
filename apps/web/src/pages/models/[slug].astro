@@ -1,22 +1,105 @@
 ---
-import BaseLayout from "../../layouts/BaseLayout.astro";
+import { env } from "cloudflare:workers";
 
-const slug = Astro.params.slug ?? "requested-model";
-Astro.response.status = 404;
+import ModelFacts from "../../components/ModelFacts.astro";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { readModelDetailState } from "../../lib/model-detail.js";
+import {
+  modelDetailPageMetadata,
+  planModelDetailPageRead,
+  resolveModelDetailPageState,
+  type ModelDetailPageState,
+} from "../../lib/model-detail-page.js";
+
+const plan = planModelDetailPageRead(
+  Astro.url.pathname,
+  env.DEPLOYMENT_ENV,
+  Astro.locals.publicationState,
+);
+let pageState: ModelDetailPageState;
+if (plan.kind === "read") {
+  pageState = resolveModelDetailPageState(
+    plan.identifier,
+    await readModelDetailState(env, plan.identifier.value, plan.metadata),
+  );
+} else {
+  pageState = plan;
+}
+
+if (pageState.kind === "redirect") {
+  return new Response(null, {
+    headers: {
+      "Cache-Control": "private, no-store",
+      Location: pageState.location,
+    },
+    status: 308,
+  });
+}
+
+const detail = pageState.kind === "found" ? pageState.detail : null;
+const canonicalPath =
+  pageState.kind === "found" ? pageState.canonicalPath : null;
+const displayName =
+  detail?.data.display_name.state === "known"
+    ? detail.data.display_name.value
+    : null;
+let title: string;
+let description: string;
+if (detail === null) {
+  title =
+    pageState.kind === "unavailable"
+      ? "Model Facts temporarily unavailable — QuantClarity"
+      : "Model not published — QuantClarity";
+  description =
+    pageState.kind === "unavailable"
+      ? "The requested Model Facts are temporarily unavailable."
+      : "The requested model is not present in the current QuantClarity publication.";
+} else {
+  const successMetadata = modelDetailPageMetadata(
+    detail.data.model_id,
+    displayName,
+  );
+  title = successMetadata.title;
+  description = successMetadata.description;
+}
+Astro.response.status =
+  detail !== null ? 200 : pageState.kind === "unavailable" ? 503 : 404;
 ---
 
 <BaseLayout
-  title="Model not published — QuantClarity"
-  description="The requested model is not present in the current QuantClarity publication."
-  currentPath={`/models/${slug}`}
+  title={title}
+  description={description}
+  currentPath="/models"
+  canonicalPath={canonicalPath}
 >
-  <section class="page-header shell">
-    <p class="eyebrow">Model Facts unavailable</p>
-    <h1>This model is not published</h1>
-    <p class="lede narrow">
-      No evidence-backed model record exists at this path in the current
-      publication. QuantClarity does not fill missing facts with guesses.
-    </p>
-    <a class="button-link" href="/models">Browse published models</a>
-  </section>
+  {
+    detail !== null ? (
+      <ModelFacts detail={detail} />
+    ) : pageState.kind === "unavailable" ? (
+      <section class="page-header shell">
+        <p class="eyebrow">Model Facts unavailable</p>
+        <h1>Model Facts are temporarily unavailable</h1>
+        <p class="lede narrow">
+          QuantClarity could not verify one publication-consistent Model Facts
+          response. It will not substitute a different publication or infer
+          missing facts.
+        </p>
+        <a class="button-link" href="/models">
+          Browse published models
+        </a>
+      </section>
+    ) : (
+      <section class="page-header shell">
+        <p class="eyebrow">Model Facts unavailable</p>
+        <h1>This model is not published</h1>
+        <p class="lede narrow">
+          No evidence-backed model record exists at this path in the current
+          publication. QuantClarity does not fill missing facts with guesses.
+        </p>
+        <a class="button-link" href="/models">
+          Browse published models
+        </a>
+      </section>
+    )
+  }
 </BaseLayout>

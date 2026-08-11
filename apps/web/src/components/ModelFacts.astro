@@ -1,0 +1,220 @@
+---
+import type { ModelDetail } from "@quant-clarity/contracts";
+
+import FactValue from "./FactValue.astro";
+
+interface Props {
+  detail: ModelDetail;
+}
+
+const { detail } = Astro.props;
+const model = detail.data;
+const displayName =
+  model.display_name.state === "known"
+    ? model.display_name.value
+    : "Model name unknown";
+const formatTimestamp = (value: string): string =>
+  new Intl.DateTimeFormat("en", {
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    month: "short",
+    second: "2-digit",
+    timeZone: "UTC",
+    timeZoneName: "short",
+    year: "numeric",
+  }).format(new Date(value));
+const formatParameter = (value: {
+  approximation: string;
+  normalized_decimal: string | null;
+  raw_value: string;
+}): string =>
+  `${value.raw_value}; normalized: ${value.normalized_decimal ?? "unknown"}; approximation: ${value.approximation}`;
+---
+
+<article class="model-facts" aria-labelledby="model-facts-title">
+  <header class="model-facts-header shell">
+    <p class="eyebrow">Model Facts</p>
+    <h1 id="model-facts-title">{displayName}</h1>
+    <p class="lede narrow">
+      Publisher and source Facts below include their evidence and observation
+      times. The stable Model ID is QuantClarity's canonical routing identity.
+    </p>
+    <dl class="identity-list">
+      <div>
+        <dt>Stable Model ID</dt>
+        <dd><code>{model.model_id}</code></dd>
+      </div>
+    </dl>
+  </header>
+
+  <section class="model-facts-section shell" aria-labelledby="identity-title">
+    <h2 id="identity-title">Identity and architecture</h2>
+    <dl class="fact-grid">
+      <FactValue label="Canonical slug" fact={model.slug} />
+      <FactValue label="Display name" fact={model.display_name} />
+      <FactValue label="Publisher" fact={model.publisher} />
+      <FactValue label="Architecture" fact={model.architecture} />
+      <FactValue label="Release date" fact={model.release_date} />
+      <FactValue
+        label="Modalities"
+        fact={model.modalities}
+        displayValue={model.modalities.state === "known"
+          ? model.modalities.value
+          : undefined}
+      />
+      <FactValue label="License" fact={model.license} />
+      <FactValue label="Lifecycle status" fact={model.status} />
+    </dl>
+  </section>
+
+  <section class="model-facts-section shell" aria-labelledby="capacity-title">
+    <h2 id="capacity-title">Parameters and limits</h2>
+    <dl class="fact-grid">
+      <FactValue
+        label="Total parameters"
+        fact={model.total_parameters}
+        displayValue={model.total_parameters.state === "known"
+          ? formatParameter(model.total_parameters.value)
+          : undefined}
+      />
+      <FactValue
+        label="Active parameters"
+        fact={model.active_parameters}
+        displayValue={model.active_parameters.state === "known"
+          ? formatParameter(model.active_parameters.value)
+          : undefined}
+      />
+      <FactValue
+        label="Context window"
+        fact={model.context_window_tokens}
+        displayValue={model.context_window_tokens.state === "known"
+          ? `${model.context_window_tokens.value} tokens`
+          : undefined}
+      />
+      <FactValue
+        label="Maximum output"
+        fact={model.maximum_output_tokens}
+        displayValue={model.maximum_output_tokens.state === "known"
+          ? `${model.maximum_output_tokens.value} tokens`
+          : undefined}
+      />
+    </dl>
+  </section>
+
+  <section class="model-facts-section shell" aria-labelledby="source-title">
+    <h2 id="source-title">Source representation</h2>
+    <dl class="fact-grid">
+      <FactValue
+        label="Source weight format"
+        fact={model.source_weight_format}
+      />
+      <FactValue label="Source quantization" fact={model.source_quantization} />
+    </dl>
+  </section>
+
+  <section class="model-facts-section shell" aria-labelledby="checkpoint-title">
+    <h2 id="checkpoint-title">Source checkpoints</h2>
+    <p class="notice">
+      Bare family, checkpoint, organization, and lineage-endpoint identifiers
+      are omitted from this public view until their derivation and provenance
+      are independently auditable. Evidence-backed repository and revision Facts
+      identify published checkpoints where available.
+    </p>
+    {
+      model.checkpoints.length === 0 ? (
+        <p class="empty-fact-list">No source checkpoints are published.</p>
+      ) : (
+        <ol class="checkpoint-list">
+          {model.checkpoints.map((checkpoint, index) => (
+            <li>
+              <article
+                class="checkpoint-card"
+                aria-labelledby={`checkpoint-${String(index)}`}
+              >
+                <h3 id={`checkpoint-${String(index)}`}>
+                  Source checkpoint {index + 1}
+                </h3>
+                <dl class="fact-grid">
+                  <FactValue
+                    label="Checkpoint kind"
+                    fact={checkpoint.checkpoint_kind}
+                  />
+                  <FactValue
+                    label="Repository locator"
+                    fact={checkpoint.repository_locator}
+                  />
+                  <FactValue
+                    label="Repository ID"
+                    fact={checkpoint.repository_id}
+                  />
+                  <FactValue label="Revision" fact={checkpoint.revision} />
+                  <FactValue
+                    label="Published at"
+                    fact={checkpoint.published_at}
+                    displayValue={
+                      checkpoint.published_at.state === "known"
+                        ? formatTimestamp(checkpoint.published_at.value)
+                        : undefined
+                    }
+                  />
+                  <FactValue
+                    label="Declared weight format"
+                    fact={checkpoint.declared_weight_format}
+                  />
+                  <FactValue
+                    label="Quantization"
+                    fact={checkpoint.quantization}
+                  />
+                  <FactValue
+                    label="File format"
+                    fact={checkpoint.file_format}
+                  />
+                  <FactValue label="Checkpoint role" fact={checkpoint.role} />
+                </dl>
+              </article>
+            </li>
+          ))}
+        </ol>
+      )
+    }
+  </section>
+
+  <section class="model-facts-section shell" aria-labelledby="freshness-title">
+    <h2 id="freshness-title">Coverage and freshness</h2>
+    <dl class="fact-grid">
+      <div class="fact-row">
+        <dt>Cataloged provider count</dt>
+        <dd>
+          <div class="fact-value">
+            {model.cataloged_provider_count.value}
+          </div>
+          <div class="fact-meta">
+            <span>
+              Observed: {" "}
+              <time datetime={model.cataloged_provider_count.observed_at}>
+                {formatTimestamp(model.cataloged_provider_count.observed_at)}
+              </time>
+            </span>
+            <span>
+              Derivation: <code
+                >{model.cataloged_provider_count.derivation_version}</code
+              >
+            </span>
+          </div>
+        </dd>
+      </div>
+      <FactValue
+        label="Last Model-data refresh"
+        fact={model.last_model_data_refresh}
+        displayValue={model.last_model_data_refresh.state === "known"
+          ? formatTimestamp(model.last_model_data_refresh.value)
+          : undefined}
+      />
+    </dl>
+    <p class="notice">
+      Provider-offering comparison is not included in this local implementation
+      slice.
+    </p>
+  </section>
+</article>

@@ -14,6 +14,8 @@ const rateLimitTestNamespace =
   process.env.QUANTCLARITY_EXPECTED_SITE_ORIGIN === undefined
     ? publicationState
     : "production";
+const runtimeEnvironment =
+  process.env.QUANTCLARITY_MODEL_DETAIL_LOCAL === "1" ? "local" : "preview";
 
 export default defineConfig({
   forbidOnly: true,
@@ -37,7 +39,7 @@ export default defineConfig({
       url: "http://127.0.0.1:8791/",
     },
     {
-      command: `WRANGLER_SEND_METRICS=false npx wrangler dev --config apps/api/wrangler.jsonc --port 8790 --var DEPLOYMENT_ENV:preview --var FRONTEND_API_HMAC_CURRENT:frontend-browser-test-secret-with-at-least-32-characters --var RATE_LIMIT_HMAC_KEY:api-browser-test-secret-with-at-least-32-characters-${rateLimitTestNamespace}`,
+      command: `WRANGLER_SEND_METRICS=false npx wrangler dev --config apps/api/wrangler.jsonc --port 8790 --var DEPLOYMENT_ENV:${runtimeEnvironment} --var FRONTEND_API_HMAC_CURRENT:frontend-browser-test-secret-with-at-least-32-characters --var RATE_LIMIT_HMAC_KEY:api-browser-test-secret-with-at-least-32-characters-${rateLimitTestNamespace}`,
       reuseExistingServer: false,
       stderr: "pipe",
       stdout: "pipe",
@@ -45,7 +47,7 @@ export default defineConfig({
       port: 8790,
     },
     {
-      command: `WRANGLER_SEND_METRICS=false npx wrangler dev --config apps/web/dist/server/wrangler.json --port 8789 --var DEPLOYMENT_ENV:preview --var FRONTEND_API_HMAC_CURRENT:frontend-browser-test-secret-with-at-least-32-characters --var RATE_LIMIT_HMAC_KEY:test-only-web-hmac-key-with-at-least-32-characters-${rateLimitTestNamespace}`,
+      command: `WRANGLER_SEND_METRICS=false npx wrangler dev --config apps/web/dist/server/wrangler.json --port 8789 --var DEPLOYMENT_ENV:${runtimeEnvironment} --var FRONTEND_API_HMAC_CURRENT:frontend-browser-test-secret-with-at-least-32-characters --var RATE_LIMIT_HMAC_KEY:test-only-web-hmac-key-with-at-least-32-characters-${rateLimitTestNamespace}`,
       reuseExistingServer: false,
       stderr: "pipe",
       stdout: "pipe",

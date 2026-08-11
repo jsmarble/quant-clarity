@@ -1,0 +1,84 @@
+---
+interface PublicFact {
+  readonly evidence_ids: readonly string[];
+  readonly observed_at: string | null;
+  readonly state: "known" | "not_applicable" | "unavailable" | "unknown";
+  readonly value: unknown;
+}
+
+interface Props {
+  displayValue?: string | readonly string[] | undefined;
+  fact: PublicFact;
+  label: string;
+}
+
+const { displayValue, fact, label } = Astro.props;
+const stateLabels = {
+  known: "Known",
+  not_applicable: "Not applicable",
+  unavailable: "Unavailable",
+  unknown: "Unknown",
+} as const;
+const formatTimestamp = (value: string): string =>
+  new Intl.DateTimeFormat("en", {
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    month: "short",
+    second: "2-digit",
+    timeZone: "UTC",
+    timeZoneName: "short",
+    year: "numeric",
+  }).format(new Date(value));
+const values = Array.isArray(displayValue) ? displayValue : null;
+---
+
+<div class="fact-row">
+  <dt>{label}</dt>
+  <dd>
+    <span class:list={["fact-state", `fact-state-${fact.state}`]}>
+      {stateLabels[fact.state]}
+    </span>
+    {
+      fact.state === "known" && (
+        <div class="fact-value">
+          {values === null ? (
+            (displayValue ?? String(fact.value))
+          ) : (
+            <ul class="inline-value-list" aria-label={`${label} values`}>
+              {values.map((value) => (
+                <li>{value}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )
+    }
+    <div class="fact-meta">
+      <span>
+        <span class="fact-meta-label">Observed</span>: {
+          fact.observed_at === null ? (
+            "Not recorded"
+          ) : (
+            <time datetime={fact.observed_at}>
+              {formatTimestamp(fact.observed_at)}
+            </time>
+          )
+        }
+      </span>
+      <span>
+        <span class="fact-meta-label">Evidence</span>: {
+          fact.evidence_ids.length === 0 ? (
+            "No references"
+          ) : (
+            <span class="identifier-list">
+              {fact.evidence_ids.map((evidenceId) => (
+                <code>{evidenceId}</code>
+              ))}
+            </span>
+          )
+        }
+      </span>
+    </div>
+  </dd>
+</div>

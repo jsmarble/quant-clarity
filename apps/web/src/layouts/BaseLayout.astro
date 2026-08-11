@@ -5,10 +5,18 @@ interface Props {
   title: string;
   description: string;
   currentPath?: string;
+  canonicalPath?: string | null;
 }
 
 const { title, description, currentPath = Astro.url.pathname } = Astro.props;
-const canonicalUrl = Astro.site ? new URL(currentPath, Astro.site) : undefined;
+const canonicalPath =
+  Astro.props.canonicalPath === undefined
+    ? currentPath
+    : Astro.props.canonicalPath;
+const canonicalUrl =
+  Astro.site && canonicalPath !== null
+    ? new URL(canonicalPath, Astro.site)
+    : undefined;
 const publicationState = Astro.locals.publicationState;
 const publishedAt =
   publicationState.kind === "published"
