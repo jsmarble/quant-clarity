@@ -28,6 +28,76 @@ async function browserPersistence(page: Page) {
   }));
 }
 
+async function expectMethodologyVersion100(page: Page) {
+  const article = page.getByRole("article");
+  await expect(article.locator('time[datetime="2026-08-01"]')).toHaveCount(2);
+  for (const term of [
+    "Source-checkpoint precision",
+    "Source-provided quantization",
+    "Serving-weights precision",
+    "Compute and component precision",
+    "Normalized labels",
+    "Mixed, other, and unknown",
+  ]) {
+    await expect(page.locator("dt").filter({ hasText: term })).toBeVisible();
+  }
+
+  for (const heading of [
+    "Model grouping",
+    "Evidence and source precedence",
+    "Freshness and status",
+    "Prices",
+    "Neutral comparison and ordering",
+    "Material-change log",
+  ]) {
+    await expect(page.getByRole("heading", { name: heading })).toBeVisible();
+  }
+
+  for (const requiredRule of [
+    "serving precision alone does not split a canonical model",
+    "explicitly named and selectable precision or material variant receives its own variant resource",
+    "Canonical and variant pages link to one another while their provider comparisons remain separate",
+    "Alias matching never hides an explicit variant distinction",
+    "Precedence is field-specific, not simply “newest wins.”",
+    "Exact provider API or authenticated-catalog facts lead for the exact offering",
+    "Publisher-controlled checkpoints and documentation lead for upstream identity",
+    "community discussion is only a lead for investigation",
+    "Equally authoritative unresolved conflicts publish as unknown",
+    "lower-priority conflicts are retained internally for audit",
+    "two consecutive completed Monday/Thursday refresh opportunities",
+    "more than eight elapsed days since its last successful observation",
+    "Stale active and historical offerings remain visible through explicit filters",
+    "default table is limited to active, non-stale offerings",
+    "each offering exposes its own observation time",
+    "does not rank or recommend inference providers",
+    "prices are stated per one million tokens, stored as decimal-safe amounts, and stay separate",
+    "missing cached-input price is unknown, never zero or a copy of standard input",
+    "provider-stated currency is preserved, using an ISO 4217 code where one exists, without foreign-exchange conversion",
+    "USD is visibly labeled as a system default rather than a provider statement",
+    "Every current price shows its source, unit, currency, effective or observed time",
+    "If only a promotional price is available, that limitation is visible",
+    "historical price and precision observations are retained for the life of the service",
+    "Conditional price classes remain separately filterable",
+    "Input, output, and cached-input price fields remain independently sortable and filterable",
+    "does not calculate a blended token price",
+    "compute a composite value score",
+    "USD is the default currency scope when a matching USD offering exists",
+    "requires a currency selection or uses the first available ISO currency in ascending code order",
+    "Prices in different currencies are never numerically interleaved, converted, or ranked",
+    "sort and filter state is visible in the interface and URL and is not persisted as a global provider preference",
+    "Equal factual values remain equal",
+    "commission, and operator preference never break factual ties",
+    "does not compute or publish a provider winner, recommendation, preferred-provider list, fidelity rank, value rank, or cheapest-provider designation",
+    "default offering order is provider display name ascending, then stable offering ID ascending",
+    "sort by provider, normalized precision label, each standard comparable price role, freshness, or status",
+    "Precision display order is organizational only—not fidelity, quality, or lineage ranking",
+    "Mixed, other, unknown, and non-comparable precision states remain explicit and are never forced into a misleading numerical rank",
+    "Affiliate status, commission, and operator preference never break factual ties or affect facts, inclusion, relevance, filters, or ordering",
+  ]) {
+    await expect(article, requiredRule).toContainText(requiredRule);
+  }
+}
+
 test("serves every public page through the guarded Worker (FE-001, FE-063, PRIV-006)", async ({
   context,
   page,
@@ -160,6 +230,41 @@ test("renders the configured canonical publication state through the web/API/que
   expect(await wildcardHtml.text()).toContain(
     "pub_11111111-1111-4111-8111-111111111111",
   );
+});
+
+test("publishes complete versioned methodology and material-change semantics (FE-050–FE-052)", async ({
+  page,
+}) => {
+  await page.goto("/methodology");
+  await expect(page).toHaveTitle("Methodology — QuantClarity");
+  await expect(page.getByText("Methodology version 1.0.0")).toBeVisible();
+  await expect(page.locator('time[datetime="2026-08-01"]')).toHaveCount(2);
+
+  await expect(
+    page.getByText(
+      "QuantClarity publishes scoped, evidence-backed facts. It does not rank or recommend inference providers.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+
+  const versions = page.getByRole("list", { name: "Methodology versions" });
+  await expect(
+    versions.getByRole("link", { name: "Version 1.0.0", exact: true }),
+  ).toHaveAttribute("href", "/methodology/1.0.0");
+  await expect(versions).toContainText(
+    "model-grouping and normalization rules",
+  );
+  await expect(versions).toContainText("neutral comparison and sort behavior");
+  await expectMethodologyVersion100(page);
+
+  const historical = await page.goto("/methodology/1.0.0");
+  expect(historical?.status()).toBe(200);
+  await expect(page).toHaveTitle("Methodology v1.0.0 — QuantClarity");
+  await expect(page.getByText("Methodology version 1.0.0")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Material-change log" }),
+  ).toBeVisible();
+  await expectMethodologyVersion100(page);
 });
 
 test("passes automated accessibility, keyboard, mobile, and reflow smoke (A11Y-001–A11Y-007, NFR-004)", async ({
