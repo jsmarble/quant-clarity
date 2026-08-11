@@ -99,3 +99,4 @@ Accepted ADRs describe implementation choices; they do not amend product require
 - [ADR 0061](0061-additive-publication-orchestration-ledger.md) — additive closed D1 orchestration ledger with exact admission, replay, fencing, operational closure, and reconciliation
 - [ADR 0062](0062-admission-authority-monotonicity.md) — true missing-plan classification and monotone admitted revocation history
 - [ADR 0063](0063-current-offering-observation-authority.md) — manifest-bound canonical authority required before selecting current Offering facts
+- [ADR 0064](0064-sequence-fenced-claim-authority-cutover.md) — fenced provenance-v2 and one cumulative lifecycle before Offering claim authority
