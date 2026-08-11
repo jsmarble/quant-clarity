@@ -91,3 +91,4 @@ Accepted ADRs describe implementation choices; they do not amend product require
 - [ADR 0053](0053-publication-pinned-exact-model-discovery.md) — publication-pinned local exact Model discovery without public API routing or partial Model cards
 - [ADR 0054](0054-canonical-model-card-projection.md) — canonical exact Model-card projection from already-read Models without N+1 reads
 - [ADR 0055](0055-publication-pinned-exact-variant-cards.md) — publication-pinned local exact Variant cards from already-read canonical Variants
+- [ADR 0056](0056-offering-relationship-closure.md) — bounded persisted-content hard cutover for complete Offering relationship closure

@@ -18,6 +18,8 @@ The current model/variant exact-name follow-up is split by [ADR 0026](../decisio
 
 Accepted [ADR 0055](../decisions/0055-publication-pinned-exact-variant-cards.md) and locally implemented [Phase 5X](phase-5x-exact-variant-cards.md) apply the same zero-extra-SQL boundary to explicit Variants without inheriting canonical Model facts. The local `/variants` journey visibly differentiates Variants and links their structural canonical Model while keeping Variant detail, provider comparison, public/remote ingress, and deployment closed. Provider comparison follows only after complete Offering/Provider/target/Price/PrecisionObservation/EvidenceSummary relationship closure and an accepted current-value policy.
 
+Accepted [ADR 0056](../decisions/0056-offering-relationship-closure.md) and locally implemented [Phase 5Y-A](phase-5y-a-offering-relationship-closure.md) define the first provider-comparison prerequisite as a persisted-content hard cutover. Before a trusted manifest escapes, the bounded validator proves complete Provider/Offering/Model-or-Variant/Price/PrecisionObservation/EvidenceSummary contracts and identities, exact forward/reverse child sets, exact Offering applicability except component scope, evidence existence and subject ownership, and time ordering. Current-value selection, evidence field/value semantics, comparison projection, API/UI, source access, remote resources, and deployment remain explicitly deferred; every traceability status remains unchanged.
+
 ## Design rules
 
 - Trace each component and consequential behavior to PRD requirement IDs.

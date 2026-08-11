@@ -534,6 +534,7 @@ const ownDataRecordSnapshot = (
 
 const denseOwnDataArraySnapshot = (
   value: unknown,
+  maximumItems = Number.MAX_SAFE_INTEGER,
 ): readonly unknown[] | null => {
   if (!Array.isArray(value)) return null;
   let prototype: object | null;
@@ -541,7 +542,6 @@ const denseOwnDataArraySnapshot = (
   let lengthDescriptor: PropertyDescriptor | undefined;
   try {
     prototype = Object.getPrototypeOf(value) as object | null;
-    ownKeys = Reflect.ownKeys(value);
     lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
   } catch {
     return null;
@@ -552,10 +552,16 @@ const denseOwnDataArraySnapshot = (
     !("value" in lengthDescriptor) ||
     typeof lengthDescriptor.value !== "number" ||
     !Number.isSafeInteger(lengthDescriptor.value) ||
-    lengthDescriptor.value < 0
+    lengthDescriptor.value < 0 ||
+    lengthDescriptor.value > maximumItems
   )
     return null;
   const length = lengthDescriptor.value;
+  try {
+    ownKeys = Reflect.ownKeys(value);
+  } catch {
+    return null;
+  }
   if (
     ownKeys.length !== length + 1 ||
     ownKeys.some(
@@ -1092,6 +1098,60 @@ export const PriceSchema = Type.Object(
   { $id: "Price", additionalProperties: false },
 );
 
+export type Price = Static<typeof PriceSchema>;
+
+const PRICE_KEYS = Object.freeze([
+  "price_id",
+  "offering_id",
+  "role",
+  "price_class",
+  "amount_decimal",
+  "currency",
+  "currency_provenance",
+  "unit",
+  "conditions",
+  "is_standard_comparable",
+  "effective_from",
+  "effective_to",
+  "observed_at",
+  "evidence_ids",
+] as const);
+
+const workerSafePriceCandidate = (value: unknown): unknown => {
+  const price = ownDataRecordSnapshot(value, PRICE_KEYS);
+  if (price === null) return Object.freeze({ invalidPrice: true });
+  const conditions = denseOwnDataArraySnapshot(price.conditions, 32);
+  const evidenceIds = denseOwnDataArraySnapshot(price.evidence_ids);
+  return Object.freeze({
+    ...price,
+    role: workerSafeBoundedUnicodeString(price.role, 128),
+    price_class: workerSafeBoundedUnicodeString(price.price_class, 128),
+    currency_provenance: workerSafeBoundedUnicodeString(
+      price.currency_provenance,
+      128,
+    ),
+    unit: workerSafeBoundedUnicodeString(price.unit, 128),
+    conditions:
+      conditions === null
+        ? null
+        : Object.freeze(
+            conditions.map((condition) =>
+              workerSafeBoundedUnicodeString(condition, 256),
+            ),
+          ),
+    evidence_ids: evidenceIds,
+  });
+};
+
+/** Complete Worker-safe Price validation with JSON Schema scalar lengths. */
+export const checkPriceContract = (value: unknown): value is Price => {
+  try {
+    return checkContractSchema(PriceSchema, workerSafePriceCandidate(value));
+  } catch {
+    return false;
+  }
+};
+
 export const PrecisionFormatSchema = extensibleString(
   [
     "BF16",
@@ -1144,6 +1204,158 @@ export const PrecisionObservationSchema = Type.Object(
   },
   { $id: "PrecisionObservation", additionalProperties: false },
 );
+
+export type PrecisionObservation = Static<typeof PrecisionObservationSchema>;
+
+const PRECISION_OBSERVATION_KEYS = Object.freeze([
+  "precision_id",
+  "offering_id",
+  "normalized_format",
+  "summary_format",
+  "raw_field_name",
+  "raw_precision",
+  "provider_definition",
+  "format_variant",
+  "components",
+  "applicability",
+  "observed_at",
+  "evidence_ids",
+] as const);
+
+const PRECISION_COMPONENT_KEYS = Object.freeze([
+  "component",
+  "normalized_format",
+  "raw_precision",
+] as const);
+
+const OFFERING_APPLICABILITY_KEYS = Object.freeze([
+  "provider_id",
+  "provider_model_id",
+  "tier_key",
+  "endpoint_class",
+  "material_region_key",
+  "component_scope",
+] as const);
+
+const workerSafeFactCandidate = (
+  value: unknown,
+  transformKnownValue: (knownValue: unknown) => unknown,
+): unknown => {
+  const fact = ownDataRecordSnapshot(value, [
+    "state",
+    "value",
+    "observed_at",
+    "evidence_ids",
+  ]);
+  if (fact === null) return Object.freeze({ invalidFact: true });
+  const evidenceIds = denseOwnDataArraySnapshot(fact.evidence_ids);
+  return Object.freeze({
+    ...fact,
+    value:
+      fact.state === "known" ? transformKnownValue(fact.value) : fact.value,
+    evidence_ids: evidenceIds,
+  });
+};
+
+const workerSafePrecisionComponent = (value: unknown): unknown => {
+  const component = ownDataRecordSnapshot(value, PRECISION_COMPONENT_KEYS);
+  if (component === null)
+    return Object.freeze({ invalidPrecisionComponent: true });
+  return Object.freeze({
+    ...component,
+    component: workerSafeBoundedUnicodeString(component.component, 128),
+    normalized_format: workerSafeFactCandidate(
+      component.normalized_format,
+      (format) => workerSafeBoundedUnicodeString(format, 128),
+    ),
+    raw_precision: workerSafeFactCandidate(component.raw_precision, (raw) =>
+      workerSafeBoundedUnicodeString(raw, 256),
+    ),
+  });
+};
+
+const workerSafeOfferingApplicability = (value: unknown): unknown => {
+  const applicability = ownDataRecordSnapshot(
+    value,
+    OFFERING_APPLICABILITY_KEYS,
+  );
+  if (applicability === null)
+    return Object.freeze({ invalidOfferingApplicability: true });
+  return Object.freeze({
+    ...applicability,
+    provider_model_id: workerSafeBoundedUnicodeString(
+      applicability.provider_model_id,
+      256,
+    ),
+    tier_key: workerSafeBoundedUnicodeString(applicability.tier_key, 128),
+    endpoint_class: workerSafeBoundedUnicodeString(
+      applicability.endpoint_class,
+      128,
+    ),
+    material_region_key: workerSafeBoundedUnicodeString(
+      applicability.material_region_key,
+      128,
+    ),
+    component_scope:
+      applicability.component_scope === null
+        ? null
+        : workerSafeBoundedUnicodeString(applicability.component_scope, 128),
+  });
+};
+
+const workerSafePrecisionObservationCandidate = (value: unknown): unknown => {
+  const observation = ownDataRecordSnapshot(value, PRECISION_OBSERVATION_KEYS);
+  if (observation === null)
+    return Object.freeze({ invalidPrecisionObservation: true });
+  const components = denseOwnDataArraySnapshot(observation.components, 64);
+  const evidenceIds = denseOwnDataArraySnapshot(observation.evidence_ids);
+  return Object.freeze({
+    ...observation,
+    normalized_format: workerSafeFactCandidate(
+      observation.normalized_format,
+      (format) => workerSafeBoundedUnicodeString(format, 128),
+    ),
+    summary_format: workerSafeFactCandidate(
+      observation.summary_format,
+      (summary) => workerSafeBoundedUnicodeString(summary, 128),
+    ),
+    raw_field_name: workerSafeBoundedUnicodeString(
+      observation.raw_field_name,
+      256,
+    ),
+    raw_precision: workerSafeFactCandidate(observation.raw_precision, (raw) =>
+      workerSafeBoundedUnicodeString(raw, 256),
+    ),
+    provider_definition: workerSafeFactCandidate(
+      observation.provider_definition,
+      (definition) => workerSafeBoundedUnicodeString(definition, 1_000),
+    ),
+    format_variant: workerSafeFactCandidate(
+      observation.format_variant,
+      (variant) => workerSafeBoundedUnicodeString(variant, 128),
+    ),
+    components:
+      components === null
+        ? null
+        : Object.freeze(components.map(workerSafePrecisionComponent)),
+    applicability: workerSafeOfferingApplicability(observation.applicability),
+    evidence_ids: evidenceIds,
+  });
+};
+
+/** Complete Worker-safe PrecisionObservation validation with scalar lengths. */
+export const checkPrecisionObservationContract = (
+  value: unknown,
+): value is PrecisionObservation => {
+  try {
+    return checkContractSchema(
+      PrecisionObservationSchema,
+      workerSafePrecisionObservationCandidate(value),
+    );
+  } catch {
+    return false;
+  }
+};
 
 export const EvidenceSummarySchema = Type.Object(
   {

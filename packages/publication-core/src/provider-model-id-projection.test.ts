@@ -162,13 +162,14 @@ function offering(
   rawProviderModelId: string,
   overrides: Record<string, unknown> = {},
 ) {
+  const evidenceBase = sequence * 100;
   return {
-    display_name: known(`Offering ${String(sequence)}`, sequence + 40),
+    display_name: known(`Offering ${String(sequence)}`, evidenceBase + 40),
     endpoint_class: "serverless",
-    evidence_ids: [id("evd", sequence + 41)],
+    evidence_ids: [id("evd", evidenceBase + 41)],
     first_observed_at: observedAt,
     last_observed_at: observedAt,
-    last_successful_refresh: known(observedAt, sequence + 42),
+    last_successful_refresh: known(observedAt, evidenceBase + 42),
     material_region_key: "",
     model_resource_id: targetId,
     offering_id: id("off", sequence),
@@ -176,11 +177,14 @@ function offering(
     price_ids: [],
     provider_id: id("prv", 1),
     provider_model_id: rawProviderModelId,
-    source_locator: known("https://provider.example/catalog", sequence + 43),
+    source_locator: known(
+      "https://provider.example/catalog",
+      evidenceBase + 43,
+    ),
     stale: false,
     stale_reason: null,
-    status: known("active", sequence + 44),
-    supported_regions: known(["global"], sequence + 45),
+    status: known("active", evidenceBase + 44),
+    supported_regions: known(["global"], evidenceBase + 45),
     tier_key: "standard",
     ...overrides,
   };
@@ -226,11 +230,14 @@ function spec(
   return { resourceType, resourceId, value };
 }
 
-function contextResources(version: 1 | 2, offeringId: string): ResourceSpec[] {
+function contextResources(
+  version: 1 | 2,
+  offeringId: string,
+  offeringValue: Record<string, unknown>,
+): ResourceSpec[] {
   const priceId = id("pcs", 1);
   const precisionId = id("prc", 1);
   return [
-    spec("provider", id("prv", 1), provider(version)),
     spec("price", priceId, {
       amount_decimal: version === 1 ? "1" : "999",
       conditions: version === 1 ? [] : ["promotional context"],
@@ -238,7 +245,7 @@ function contextResources(version: 1 | 2, offeringId: string): ResourceSpec[] {
       currency_provenance: "provider_stated",
       effective_from: null,
       effective_to: null,
-      evidence_ids: [id("evd", 80)],
+      evidence_ids: [id("evd", 800)],
       is_standard_comparable: version === 1,
       observed_at: observedAt,
       offering_id: offeringId,
@@ -253,22 +260,87 @@ function contextResources(version: 1 | 2, offeringId: string): ResourceSpec[] {
         endpoint_class: "serverless",
         material_region_key: "",
         provider_id: id("prv", 1),
-        provider_model_id: "context-only",
-        tier_key: "standard",
+        provider_model_id: offeringValue.provider_model_id,
+        tier_key: offeringValue.tier_key,
       },
       components: [],
-      evidence_ids: [id("evd", 81)],
+      evidence_ids: [id("evd", 810)],
       format_variant: unknown(),
-      normalized_format: known(version === 1 ? "BF16" : "FP8", 82),
+      normalized_format: known(version === 1 ? "BF16" : "FP8", 811),
       observed_at: observedAt,
       offering_id: offeringId,
       precision_id: precisionId,
-      provider_definition: known(`Context ${String(version)}`, 83),
+      provider_definition: known(`Context ${String(version)}`, 812),
       raw_field_name: "precision",
-      raw_precision: known(version === 1 ? "bf16" : "fp8", 84),
-      summary_format: known(version === 1 ? "BF16" : "FP8", 85),
+      raw_precision: known(version === 1 ? "bf16" : "fp8", 813),
+      summary_format: known(version === 1 ? "BF16" : "FP8", 814),
     }),
   ];
+}
+
+function evidenceSummary(evidenceId: string, subjectResourceId: string) {
+  return {
+    authenticated_only: false,
+    evidence_id: evidenceId,
+    extraction_method: "deterministic_fixture",
+    extraction_version: "fixture@1",
+    field: "test_fact",
+    integrity_hash: `sha256:${"a".repeat(64)}`,
+    observed_at: observedAt,
+    source_locator: "/redacted/test",
+    source_owner: "QuantClarity test suite",
+    source_type: "fixture",
+    source_url: null,
+    subject_resource_id: subjectResourceId,
+    value: "Synthetic retained test evidence",
+  };
+}
+
+function evidenceResources(resources: readonly ResourceSpec[]): ResourceSpec[] {
+  const subjects = new Map<string, string>();
+  const results: ResourceSpec[] = [];
+  for (const resource of resources) {
+    if (
+      resource.resourceType !== "offering" &&
+      resource.resourceType !== "price" &&
+      resource.resourceType !== "precision_observation"
+    )
+      continue;
+    const pending: unknown[] = [resource.value];
+    while (pending.length > 0) {
+      const value = pending.pop();
+      if (value === null || typeof value !== "object") continue;
+      if (Array.isArray(value)) {
+        for (const item of value as readonly unknown[]) pending.push(item);
+        continue;
+      }
+      for (const [key, child] of Object.entries(value)) {
+        if (key === "evidence_ids" && Array.isArray(child)) {
+          for (const evidenceId of child) {
+            if (typeof evidenceId !== "string") continue;
+            const existingSubject = subjects.get(evidenceId);
+            if (
+              existingSubject !== undefined &&
+              existingSubject !== resource.resourceId
+            )
+              throw new TypeError(
+                "fixture evidence ID cannot span resource subjects",
+              );
+            if (existingSubject !== undefined) continue;
+            subjects.set(evidenceId, resource.resourceId);
+            results.push(
+              spec(
+                "evidence_summary",
+                evidenceId,
+                evidenceSummary(evidenceId, resource.resourceId),
+              ),
+            );
+          }
+        } else pending.push(child);
+      }
+    }
+  }
+  return results;
 }
 
 function resourceKey(resource: { resourceType: string; resourceId: string }) {
@@ -369,13 +441,40 @@ async function makeFixture(options: FixtureOptions = {}): Promise<Fixture> {
   const context =
     options.contextVersion === undefined || offerings.length === 0
       ? []
-      : contextResources(options.contextVersion, offerings[0]!.resourceId);
+      : contextResources(
+          options.contextVersion,
+          offerings[0]!.resourceId,
+          offerings[0]!.value,
+        );
+  const effectiveOfferings = offerings.map((resource, index) =>
+    index === 0 && context.length > 0
+      ? spec("offering", resource.resourceId, {
+          ...resource.value,
+          precision_observation_ids: [id("prc", 1)],
+          price_ids: [id("pcs", 1)],
+        })
+      : resource,
+  );
+  const graphResources = [...effectiveOfferings, ...context];
+  const evidence = evidenceResources(graphResources);
+  const providerIds = new Set([
+    id("prv", 1),
+    ...effectiveOfferings.map((resource) => String(resource.value.provider_id)),
+  ]);
+  const providerResources = [...providerIds].map((providerId) =>
+    spec("provider", providerId, {
+      ...provider(options.contextVersion ?? 1),
+      provider_id: providerId,
+    }),
+  );
   const source = [
     ...families,
     ...targets,
-    ...offerings,
+    ...providerResources,
+    ...effectiveOfferings,
     ...unrelatedTargets,
     ...context,
+    ...evidence,
   ];
   const persistedResources: PersistedResourceDescriptor[] = [];
   for (const resource of source) {
@@ -471,7 +570,12 @@ async function makeFixture(options: FixtureOptions = {}): Promise<Fixture> {
   ];
   const enabledProviderIds = options.enabledProviderIds ?? [id("prv", 1)];
   const providerAttributions = [
-    ...offerings.map((resource) => ({
+    ...providerResources.map((resource) => ({
+      providerId: resource.resourceId,
+      resourceId: resource.resourceId,
+      resourceType: "provider" as const,
+    })),
+    ...effectiveOfferings.map((resource) => ({
       providerId:
         options.attributionProviderId ?? String(resource.value.provider_id),
       resourceId: resource.resourceId,
@@ -549,7 +653,9 @@ async function makeFixture(options: FixtureOptions = {}): Promise<Fixture> {
     }),
   );
   const referencedIds = new Set(
-    offerings.map((resource) => String(resource.value.model_resource_id)),
+    effectiveOfferings.map((resource) =>
+      String(resource.value.model_resource_id),
+    ),
   );
   const resources = allRows.filter(
     (resource) =>
@@ -1135,6 +1241,8 @@ describe("trusted provider-model-ID projection", () => {
 
   it("rejects attribution/provider disagreement, invalid Offering/target contracts, identity mismatch, and absent targets", async () => {
     const wrongProvider = await makeFixture({
+      descriptorOnlyManifest: true,
+      enabledProviderIds: [id("prv", 1), id("prv", 2)],
       attributionProviderId: id("prv", 1),
       offerings: [
         spec(
@@ -1152,6 +1260,7 @@ describe("trusted provider-model-ID projection", () => {
     ).rejects.toThrow(/attribution/u);
 
     const invalidOffering = await makeFixture({
+      descriptorOnlyManifest: true,
       offerings: [
         spec(
           "offering",
@@ -1185,6 +1294,7 @@ describe("trusted provider-model-ID projection", () => {
     ).rejects.toThrow(/contract-valid/u);
 
     const wrongIdentity = await makeFixture({
+      descriptorOnlyManifest: true,
       offerings: [
         spec(
           "offering",
@@ -1199,6 +1309,7 @@ describe("trusted provider-model-ID projection", () => {
     ).rejects.toThrow(/identity/u);
 
     const absentTarget = await makeFixture({
+      descriptorOnlyManifest: true,
       offerings: [
         spec(
           "offering",
@@ -1246,6 +1357,7 @@ describe("trusted provider-model-ID projection", () => {
     ).toBe(false);
 
     const malformed = await makeFixture({
+      descriptorOnlyManifest: true,
       offerings: [
         spec(
           "offering",
@@ -1294,6 +1406,7 @@ describe("trusted provider-model-ID projection", () => {
       );
       expect(checkOfferingContract(value), testCase.label).toBe(false);
       const input = await makeFixture({
+        descriptorOnlyManifest: true,
         offerings: [spec("offering", id("off", index + 1), value)],
         targets: [spec("model", id("mdl", 1), model(1))],
       });
@@ -1628,15 +1741,15 @@ describe("trusted provider-model-ID projection", () => {
       empty:
         "sha256:bc21facd75d1eeca188409fe26f45da33d4d87182cefffa8d03baec43669a3bc",
       mixed:
-        "sha256:6e7928ba78086c4b65a577db74e49df2810c2eeadb1ef2f52eddc349a5a9a9fa",
+        "sha256:43f0543967987c72beea3ac00b47b9ebddafc6796ca4a1d590ebc078ea345d90",
       model:
-        "sha256:e3687167d9941041d549fd77e791f5e410ef20d6e3422e8648e20233362ffef0",
+        "sha256:a25dea0fd8b0ec29d77915932dc67149f6f481d8f71648a8e9a2e9998379eb0e",
       duplicateNul:
-        "sha256:01f992dddd50a921b64cc3d825fb9303ee782693464c2cb2d0d30dfe7eb26303",
+        "sha256:88bf1edc9b3e948c94feda8eae3b00e44f4b45c3e2a714b628d14d9ec0332d58",
       permutation:
-        "sha256:6e7928ba78086c4b65a577db74e49df2810c2eeadb1ef2f52eddc349a5a9a9fa",
+        "sha256:43f0543967987c72beea3ac00b47b9ebddafc6796ca4a1d590ebc078ea345d90",
       variant:
-        "sha256:5848e79f44b1558e53242fd3c61e34af561a409daa52840676cdf08346974e5b",
+        "sha256:ef32ae7cb0e4c49991aaabf707280e6e8801199c2255a3b3c2ff4b4adfa3c628",
     });
     expect(
       projections.duplicateNul.documents.map(
@@ -2027,7 +2140,7 @@ describe("provider-model-ID dormant storage and v4 queryability proofs", () => {
       "provider_model_id_storage_exact_parity",
     ]);
     expect(fixture.persistence.inventoryHash).toBe(
-      "sha256:0aa56fb2945663e2bd535d6c9b49d8cd82939dce2a8d02a0e94dfc399693eed2",
+      "sha256:23a20e9abe767be57a73c0f1ca76805c20dd28848a471ffe8d1255d68a600738",
     );
   });
 
