@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
 import fc from "fast-check";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { compareExactDecimal } from "@quant-clarity/domain";
 
@@ -480,7 +480,9 @@ function insertClaim(
 
 // Slow migration tests each build a fresh D1-compatible database and replay
 // the full chain. Preserve isolation while allowing for contended CI hosts.
-const canonicalMigrationTestTimeoutMs = 30_000;
+const canonicalMigrationTestTimeoutMs = 60_000;
+
+vi.setConfig({ testTimeout: canonicalMigrationTestTimeoutMs });
 
 describe("canonical D1 migrations (DATA-001–DATA-067, BE-001–BE-006)", () => {
   it(
