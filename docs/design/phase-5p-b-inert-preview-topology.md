@@ -26,7 +26,7 @@ The code-owned proposal is the only accepted local shape. Its checked-in JSON mu
 | Evidence R2 | `quant-clarity-evidence-preview` | `EVIDENCE_BUCKET` | Private; identifier, jurisdiction/location, and retention policy absent |
 | Backup R2 | `quant-clarity-backup-preview` | `BACKUP_BUCKET` | Private; identifier, jurisdiction/location, and prefix retention policy absent |
 | Vectorize | `quant-clarity-search-preview` | `SEARCH_INDEX`; publication ID reserved as namespace | Identifier, dimensions, metric, and accepted embedding policy absent |
-| Workflow | `quant-clarity-publication-preview` | `PUBLICATION_WORKFLOW`; `PublicationWorkflow` class reserved | Identifier and schedule absent; class not implemented |
+| Workflow | `quant-clarity-publication-preview` | `PUBLICATION_WORKFLOW`; locally implemented dormant `PublicationWorkflow` class reserved | Identifier, binding, schedule, execution authority, and provisioning absent |
 
 The two R2 buckets separate evidence retention from backup/recovery prefix rules. Evidence requires at least 24 months of lock coverage; accepted recovery artifacts can require indefinite prefix lock coverage. The proposal deliberately records both policies as pending so no broad lifecycle rule can shorten either requirement.
 

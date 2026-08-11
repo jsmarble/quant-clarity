@@ -1,3 +1,33 @@
+import {
+  WorkflowEntrypoint,
+  type WorkflowEvent,
+  type WorkflowStep,
+} from "cloudflare:workers";
+import { NonRetryableError } from "cloudflare:workflows";
+
+import {
+  DormantPublicationWorkflowInputError,
+  runDormantPublicationWorkflow,
+} from "./publication-workflow-plan.js";
+
+export class PublicationWorkflow extends WorkflowEntrypoint<
+  CloudflareEnv,
+  Record<string, never>
+> {
+  override async run(
+    event: WorkflowEvent<Record<string, never>>,
+    step: WorkflowStep,
+  ) {
+    try {
+      return await runDormantPublicationWorkflow(event, step);
+    } catch (error) {
+      if (error instanceof DormantPublicationWorkflowInputError)
+        throw new NonRetryableError(error.code, error.name);
+      throw error;
+    }
+  }
+}
+
 function fetch(): Response {
   return Response.json(
     {
