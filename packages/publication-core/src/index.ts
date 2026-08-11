@@ -15,6 +15,7 @@ import {
   type Offering,
   type PrecisionObservation,
   type Price,
+  type Provider,
   PROVIDER_DISPLAY_NAME_MAX_UNICODE_SCALARS,
   type Variant,
 } from "@quant-clarity/contracts";
@@ -114,6 +115,57 @@ export const PROVIDER_MODEL_ID_SEARCH_RAW_EXACT_INDEX_NAME =
 export const PROVIDER_MODEL_ID_SEARCH_NORMALIZED_EXACT_INDEX_NAME =
   "publication_provider_model_id_normalized_exact_idx" as const;
 export const DATASET_METADATA_SUMMARY_VERSION = "1.0.0" as const;
+export const OFFERING_OBSERVATION_SET_VERSION =
+  "offering-observation-set@1" as const;
+export const OFFERING_OBSERVATION_SET_MAX_EMITTED_MEMBERSHIPS = 500_000;
+
+export const advanceOfferingObservationSetOutputCapacity = (
+  currentMemberships: number,
+  addedMemberships: number,
+): number => {
+  if (
+    !Number.isSafeInteger(currentMemberships) ||
+    currentMemberships < 0 ||
+    !Number.isSafeInteger(addedMemberships) ||
+    addedMemberships < 0
+  )
+    throw new TypeError(
+      "offering observation output membership capacity is invalid",
+    );
+  const nextMemberships = currentMemberships + addedMemberships;
+  if (
+    !Number.isSafeInteger(nextMemberships) ||
+    nextMemberships > OFFERING_OBSERVATION_SET_MAX_EMITTED_MEMBERSHIPS
+  )
+    throw new RangeError("offering observation output membership is too large");
+  return nextMemberships;
+};
+
+export const advanceOfferingObservationSetMemberships = (
+  currentMemberships: number,
+  set: Readonly<{
+    priceCount: number;
+    precisionObservationCount: number;
+    evidenceSummaryCount: number;
+  }>,
+): number => {
+  for (const count of [
+    set.priceCount,
+    set.precisionObservationCount,
+    set.evidenceSummaryCount,
+  ])
+    if (!Number.isSafeInteger(count) || count < 0)
+      throw new TypeError(
+        "offering observation set membership count is invalid",
+      );
+  return advanceOfferingObservationSetOutputCapacity(
+    currentMemberships,
+    3 +
+      set.priceCount +
+      set.precisionObservationCount +
+      set.evidenceSummaryCount,
+  );
+};
 
 export const assertProviderModelIdSearchResourceByteBudget = (
   resourceByteLengths: readonly number[],
@@ -5908,6 +5960,426 @@ export const buildImmutableManifestFromPersistedContent = async (
   assertPersistedModelFamilyClosure(input.resources);
   assertPersistedOfferingClosure(input.resources, input.providerAttributions);
   return trustImmutablePublicationManifest(manifest);
+};
+
+export type OfferingObservationSet = Readonly<{
+  offering: Offering;
+  provider: Readonly<{
+    provider_id: string;
+    display_name: Provider["display_name"];
+  }>;
+  target: Readonly<{
+    resource_type: "model" | "variant";
+    resource_id: string;
+  }>;
+  prices: readonly Price[];
+  precision_observations: readonly PrecisionObservation[];
+  evidence_summaries: readonly EvidenceSummary[];
+  observation_set_hash: Sha256;
+}>;
+
+export type OfferingObservationSetProjection = Readonly<{
+  projection_version: typeof OFFERING_OBSERVATION_SET_VERSION;
+  authority: "selection_free_observations";
+  claim_authority: "unproven";
+  publication_id: PublicationId;
+  closure_hash: Sha256;
+  resource_inventory_hash: Sha256;
+  offering_set_count: number;
+  price_count: number;
+  precision_observation_count: number;
+  evidence_summary_count: number;
+  offering_sets: readonly OfferingObservationSet[];
+  inventory_hash: Sha256;
+}>;
+
+const deepFreezeParsedJson = <T>(value: T): T => {
+  if (typeof value !== "object" || value === null || Object.isFrozen(value))
+    return value;
+  for (const child of Object.values(value)) deepFreezeParsedJson(child);
+  return Object.freeze(value);
+};
+
+const snapshotOfferingObservationResources = (
+  callerResources: unknown,
+): readonly PersistedResourceDescriptor[] => {
+  const values = denseArraySnapshot(
+    callerResources,
+    MAX_MANIFEST_COLLECTION_ITEMS,
+    "offering observation resources",
+  );
+  const bytes = { bytes: 0 };
+  return Object.freeze(
+    values.map((value) => {
+      const row = ownDataRecordSnapshot(
+        value,
+        ["resourceType", "resourceId", "contentHash", "resourceJson"],
+        "offering observation resource",
+      );
+      return Object.freeze({
+        resourceType: boundedInputString(
+          row.resourceType,
+          "offering observation resource type",
+          bytes,
+        ) as ResourceType,
+        resourceId: boundedInputString(
+          row.resourceId,
+          "offering observation resource ID",
+          bytes,
+        ),
+        contentHash: boundedInputString(
+          row.contentHash,
+          "offering observation resource hash",
+          bytes,
+        ) as Sha256,
+        resourceJson: boundedInputString(
+          row.resourceJson,
+          "offering observation resource JSON",
+          bytes,
+        ),
+      });
+    }),
+  );
+};
+
+const assertOfferingObservationResourceCount = (
+  callerResources: unknown,
+  expectedCount: number,
+): void => {
+  if (!Array.isArray(callerResources))
+    throw new TypeError("offering observation resources are invalid");
+  let lengthDescriptor: PropertyDescriptor | undefined;
+  try {
+    lengthDescriptor = Object.getOwnPropertyDescriptor(
+      callerResources,
+      "length",
+    );
+  } catch {
+    throw new TypeError("offering observation resources are invalid");
+  }
+  if (
+    lengthDescriptor === undefined ||
+    !("value" in lengthDescriptor) ||
+    lengthDescriptor.value !== expectedCount
+  )
+    throw new TypeError(
+      "offering observation resources do not match the trusted manifest",
+    );
+};
+
+const factEvidenceIds = (fact: {
+  readonly evidence_ids: readonly string[];
+}): readonly string[] => fact.evidence_ids;
+
+const offeringEvidenceIds = (offering: Offering): readonly string[] => [
+  ...offering.evidence_ids,
+  ...factEvidenceIds(offering.display_name),
+  ...factEvidenceIds(offering.supported_regions),
+  ...factEvidenceIds(offering.status),
+  ...factEvidenceIds(offering.last_successful_refresh),
+  ...factEvidenceIds(offering.source_locator),
+];
+
+const precisionEvidenceIds = (
+  observation: PrecisionObservation,
+): readonly string[] => [
+  ...observation.evidence_ids,
+  ...factEvidenceIds(observation.normalized_format),
+  ...factEvidenceIds(observation.summary_format),
+  ...factEvidenceIds(observation.raw_precision),
+  ...factEvidenceIds(observation.provider_definition),
+  ...factEvidenceIds(observation.format_variant),
+  ...observation.components.flatMap((component) => [
+    ...factEvidenceIds(component.normalized_format),
+    ...factEvidenceIds(component.raw_precision),
+  ]),
+];
+
+/**
+ * Projects complete, selection-free Offering observation sets from exact bytes
+ * already admitted by the persisted-content publication boundary. The result
+ * is not claim-selection authority and deliberately defines no current value,
+ * ranking, aggregation, display order, or comparison row.
+ */
+export const projectOfferingObservationSets = async (input: {
+  manifest: TrustedImmutablePublicationManifest;
+  resources: readonly PersistedResourceDescriptor[];
+}): Promise<OfferingObservationSetProjection> => {
+  const inputSnapshot = ownDataRecordSnapshot(
+    input,
+    ["manifest", "resources"],
+    "offering observation projection input",
+  );
+  const manifest = inputSnapshot.manifest;
+  assertImmutablePublicationManifest(manifest);
+  assertOfferingObservationResourceCount(
+    inputSnapshot.resources,
+    manifest.resources.length,
+  );
+  const resources = snapshotOfferingObservationResources(
+    inputSnapshot.resources,
+  );
+  assertPersistedResourceDescriptorBasics(resources);
+  const manifestResources = new Map(
+    manifest.resources.map((resource) => [
+      `${resource.resourceType}:${resource.resourceId}`,
+      resource,
+    ]),
+  );
+  const contentHashes = new Map<string, Sha256>();
+  let relevantResourceCount = 0;
+  let relevantResourceBytes = 0;
+  for (const resource of resources) {
+    if (resource.resourceType === "model_family") continue;
+    relevantResourceCount += 1;
+    relevantResourceBytes += utf8.encode(resource.resourceJson).length;
+    assertOfferingClosureCapacity(
+      relevantResourceCount,
+      0,
+      relevantResourceBytes,
+    );
+  }
+  for (const resource of resources) {
+    const key = `${resource.resourceType}:${resource.resourceId}`;
+    const trusted = manifestResources.get(key);
+    if (
+      trusted?.contentHash !== resource.contentHash ||
+      (await hashPublicationResourceContent(resource)) !== resource.contentHash
+    )
+      throw new TypeError(
+        "offering observation resource does not match the trusted manifest",
+      );
+    contentHashes.set(key, resource.contentHash);
+  }
+  if (contentHashes.size !== manifestResources.size)
+    throw new TypeError(
+      "offering observation resources do not match the trusted manifest",
+    );
+
+  // Re-run the complete structural closure over the exact caller-supplied
+  // bytes before projecting them. This also enforces the Phase 5Y-A caps.
+  assertPersistedOfferingClosure(resources, manifest.providerAttributions);
+
+  const providers = new Map<string, Provider>();
+  const targetTypes = new Map<string, "model" | "variant">();
+  const offerings = new Map<string, Offering>();
+  const prices = new Map<string, Price>();
+  const precisionObservations = new Map<string, PrecisionObservation>();
+  const evidenceSummaries = new Map<string, EvidenceSummary>();
+
+  for (const resource of resources) {
+    if (resource.resourceType === "model") {
+      targetTypes.set(resource.resourceId, "model");
+      continue;
+    }
+    if (resource.resourceType === "variant") {
+      targetTypes.set(resource.resourceId, "variant");
+      continue;
+    }
+    if (resource.resourceType === "model_family") continue;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(resource.resourceJson) as unknown;
+    } catch {
+      throw new TypeError("offering observation resource JSON is invalid");
+    }
+    if (resource.resourceType === "provider") {
+      if (!checkProviderContract(parsed))
+        throw new TypeError("offering observation Provider is invalid");
+      providers.set(resource.resourceId, deepFreezeParsedJson(parsed));
+    } else if (resource.resourceType === "offering") {
+      if (!checkOfferingContract(parsed))
+        throw new TypeError("offering observation Offering is invalid");
+      offerings.set(resource.resourceId, deepFreezeParsedJson(parsed));
+    } else if (resource.resourceType === "price") {
+      if (!checkPriceContract(parsed))
+        throw new TypeError("offering observation Price is invalid");
+      prices.set(resource.resourceId, deepFreezeParsedJson(parsed));
+    } else if (resource.resourceType === "precision_observation") {
+      if (!checkPrecisionObservationContract(parsed))
+        throw new TypeError(
+          "offering observation PrecisionObservation is invalid",
+        );
+      precisionObservations.set(
+        resource.resourceId,
+        deepFreezeParsedJson(parsed),
+      );
+    } else {
+      if (!checkEvidenceSummaryContract(parsed))
+        throw new TypeError("offering observation EvidenceSummary is invalid");
+      evidenceSummaries.set(resource.resourceId, deepFreezeParsedJson(parsed));
+    }
+  }
+
+  const projectedSets: OfferingObservationSet[] = [];
+  let emittedMembershipCount = 0;
+  for (const offering of [...offerings.values()].sort((left, right) =>
+    compareAscii(left.offering_id, right.offering_id),
+  )) {
+    const provider = providers.get(offering.provider_id);
+    const targetType = targetTypes.get(offering.model_resource_id);
+    if (provider === undefined || targetType === undefined)
+      throw new TypeError("offering observation identity closure is invalid");
+
+    const setPrices = offering.price_ids
+      .map((priceId) => prices.get(priceId))
+      .sort((left, right) =>
+        compareAscii(left?.price_id ?? "", right?.price_id ?? ""),
+      );
+    const setPrecision = offering.precision_observation_ids
+      .map((precisionId) => precisionObservations.get(precisionId))
+      .sort((left, right) =>
+        compareAscii(left?.precision_id ?? "", right?.precision_id ?? ""),
+      );
+    if (
+      setPrices.some((price) => price === undefined) ||
+      setPrecision.some((observation) => observation === undefined)
+    )
+      throw new TypeError("offering observation child closure is invalid");
+    const exactPrices = setPrices as readonly Price[];
+    const exactPrecision = setPrecision as readonly PrecisionObservation[];
+    const referencedEvidenceIds = new Set<string>([
+      ...factEvidenceIds(provider.display_name),
+      ...offeringEvidenceIds(offering),
+      ...exactPrices.flatMap((price) => price.evidence_ids),
+      ...exactPrecision.flatMap(precisionEvidenceIds),
+    ]);
+    const setEvidence = [...referencedEvidenceIds]
+      .sort(compareAscii)
+      .map((evidenceId) => evidenceSummaries.get(evidenceId));
+    if (setEvidence.some((evidence) => evidence === undefined))
+      throw new TypeError("offering observation evidence closure is invalid");
+    const exactEvidence = setEvidence as readonly EvidenceSummary[];
+    // Count every emitted graph membership, including Provider/target/Offering
+    // and repeated evidence references across otherwise independent sets.
+    emittedMembershipCount = advanceOfferingObservationSetMemberships(
+      emittedMembershipCount,
+      {
+        priceCount: exactPrices.length,
+        precisionObservationCount: exactPrecision.length,
+        evidenceSummaryCount: exactEvidence.length,
+      },
+    );
+    for (const evidenceId of factEvidenceIds(provider.display_name)) {
+      const evidence = evidenceSummaries.get(evidenceId);
+      if (evidence?.subject_resource_id !== provider.provider_id)
+        throw new TypeError(
+          "offering observation Provider display evidence does not match",
+        );
+    }
+
+    const referencedResources = [
+      ["provider", provider.provider_id],
+      [targetType, offering.model_resource_id],
+      ["offering", offering.offering_id],
+      ...exactPrices.map((price) => ["price", price.price_id]),
+      ...exactPrecision.map((observation) => [
+        "precision_observation",
+        observation.precision_id,
+      ]),
+      ...exactEvidence.map((evidence) => [
+        "evidence_summary",
+        evidence.evidence_id,
+      ]),
+    ] as const;
+    const observationSetHash = await hashRecords("offering-observation-set", [
+      [
+        field("projection_version", "text", OFFERING_OBSERVATION_SET_VERSION),
+        field("projection_authority", "text", "selection_free_observations"),
+        field("claim_authority", "text", "unproven"),
+        field("publication_id", "identifier", manifest.publicationId),
+        field("offering_id", "identifier", offering.offering_id),
+      ],
+      ...referencedResources.map(([resourceType, resourceId]) => {
+        const contentHash = contentHashes.get(`${resourceType}:${resourceId}`);
+        if (contentHash === undefined)
+          throw new TypeError("offering observation hash resource is missing");
+        return [
+          field("resource_type", "text", resourceType),
+          field("resource_id", "identifier", resourceId),
+          field("content_hash", "digest", contentHash),
+        ];
+      }),
+    ]);
+    projectedSets.push(
+      Object.freeze({
+        offering,
+        provider: Object.freeze({
+          provider_id: provider.provider_id,
+          display_name: provider.display_name,
+        }),
+        target: Object.freeze({
+          resource_type: targetType,
+          resource_id: offering.model_resource_id,
+        }),
+        prices: Object.freeze([...exactPrices]),
+        precision_observations: Object.freeze([...exactPrecision]),
+        evidence_summaries: Object.freeze([...exactEvidence]),
+        observation_set_hash: observationSetHash,
+      }),
+    );
+  }
+
+  const offeringSets = Object.freeze(projectedSets);
+  const priceCount = offeringSets.reduce(
+    (count, set) => count + set.prices.length,
+    0,
+  );
+  const precisionObservationCount = offeringSets.reduce(
+    (count, set) => count + set.precision_observations.length,
+    0,
+  );
+  const evidenceSummaryCount = offeringSets.reduce(
+    (count, set) => count + set.evidence_summaries.length,
+    0,
+  );
+  const inventoryHash = await hashRecords(
+    "offering-observation-set-inventory",
+    [
+      [
+        field("projection_version", "text", OFFERING_OBSERVATION_SET_VERSION),
+        field("projection_authority", "text", "selection_free_observations"),
+        field("claim_authority", "text", "unproven"),
+        field("publication_id", "identifier", manifest.publicationId),
+        field("closure_hash", "digest", manifest.closureHash),
+        field(
+          "resource_inventory_hash",
+          "digest",
+          manifest.resourceInventoryHash,
+        ),
+        field("offering_set_count", "integer", String(offeringSets.length)),
+        field("price_count", "integer", String(priceCount)),
+        field(
+          "precision_observation_count",
+          "integer",
+          String(precisionObservationCount),
+        ),
+        field(
+          "evidence_summary_count",
+          "integer",
+          String(evidenceSummaryCount),
+        ),
+      ],
+      ...offeringSets.map((set) => [
+        field("offering_id", "identifier", set.offering.offering_id),
+        field("observation_set_hash", "digest", set.observation_set_hash),
+      ]),
+    ],
+  );
+  return Object.freeze({
+    projection_version: OFFERING_OBSERVATION_SET_VERSION,
+    authority: "selection_free_observations",
+    claim_authority: "unproven",
+    publication_id: manifest.publicationId,
+    closure_hash: manifest.closureHash,
+    resource_inventory_hash: manifest.resourceInventoryHash,
+    offering_set_count: offeringSets.length,
+    price_count: priceCount,
+    precision_observation_count: precisionObservationCount,
+    evidence_summary_count: evidenceSummaryCount,
+    offering_sets: offeringSets,
+    inventory_hash: inventoryHash,
+  });
 };
 
 const closedString = <T extends string>(
