@@ -222,7 +222,16 @@ describe("publication run-plan authority in workerd/D1 (PIPE-003, PIPE-004, QA-0
     expect(counts).toEqual({ occurrences: 0, runs: 0, provider_runs: 0 });
   });
 
-  it("fails closed for an unknown hash and for post-seal authority mutation", async () => {
+  it("distinguishes an existing plan with the wrong hash and rejects post-seal authority mutation", async () => {
+    await expect(
+      resolveAuthorizedPublicationRunPlan({
+        database: env.CANONICAL_DB,
+        runPlanId: "rpl_70000000-0000-4000-8000-000000000098",
+        planHash: HASH_C,
+        ...EXPECTED_RUNTIME,
+        scheduledAt: MONDAY,
+      }),
+    ).rejects.toMatchObject({ code: "plan_not_found" });
     await expect(
       resolveAuthorizedPublicationRunPlan({
         database: env.CANONICAL_DB,
@@ -232,8 +241,38 @@ describe("publication run-plan authority in workerd/D1 (PIPE-003, PIPE-004, QA-0
         scheduledAt: MONDAY,
       }),
     ).rejects.toMatchObject({
-      code: "plan_not_found",
+      code: "plan_invalid",
     });
+    const incompleteRunPlanId = "rpl_70000000-0000-4000-8000-000000000099";
+    await env.CANONICAL_DB.prepare(
+      `INSERT INTO publication_run_plan(
+        run_plan_id, contract_version, environment, schedule_name,
+        schedule_expression, effective_from_ms, effective_to_ms,
+        canonical_schema_version, pipeline_contract_version, provider_count,
+        provider_scope_hash, policy_set_hash, plan_hash, created_at_ms
+      ) VALUES (?1, 'publication-run-plan@1', 'preview',
+        'provider-refresh-v1', '0 5 * * 1,4', ?2, ?3, '1.0.0',
+        'pipeline-run-contract@1', 1, ?4, ?5, ?6, ?7)`,
+    )
+      .bind(
+        incompleteRunPlanId,
+        EFFECTIVE_FROM_MS,
+        EFFECTIVE_TO_MS,
+        HASH_A,
+        HASH_B,
+        HASH_D,
+        CREATED_AT_MS,
+      )
+      .run();
+    await expect(
+      resolveAuthorizedPublicationRunPlan({
+        database: env.CANONICAL_DB,
+        runPlanId: incompleteRunPlanId,
+        planHash: HASH_D,
+        ...EXPECTED_RUNTIME,
+        scheduledAt: MONDAY,
+      }),
+    ).rejects.toMatchObject({ code: "plan_invalid" });
     await expect(
       env.CANONICAL_DB.prepare(
         "UPDATE publication_run_plan_provider SET request_ceiling = 999 WHERE run_plan_id = ?1",

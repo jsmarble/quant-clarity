@@ -187,6 +187,8 @@ The scheduled parent Workflow derives an immutable occurrence ID from schedule n
 
 [ADR 0061](../decisions/0061-additive-publication-orchestration-ledger.md) and locally implemented [Phase 7.2-D](phase-7-2-d-publication-orchestration-ledger.md) select a parallel coordination ledger because the legacy run graph cannot truthfully encode pre-acquisition terminal failure or partial-refresh outcome without synthetic evidence. One environment-initialized database owns immutable occurrence, attempt-1 run/Provider authority, UTC-month reservation, fenced claim/reconciliation/release history, operational roster closure, and sealed report state. Rejection and replay persistence are dormant until atomic/protected resolvers exist. Provider slices use `prn_`, distinct from `pvr_` Provider runs; carried data requires a same-environment retained-publication head authority. No source or canonical effect may execute until a later provenance-v2 graph carries and transactionally rechecks the coordination fence.
 
+[ADR 0062](../decisions/0062-admission-authority-monotonicity.md) and locally implemented [Phase 7.2-D1](phase-7-2-d1-admission-authority-hardening.md) harden that boundary before atomic rejection work. The run-plan resolver distinguishes an absent ID from an existing wrong-hash or incomplete identity, and forward migration 0007 prevents later backdated revocation from contradicting any immutable exact resolved scheduled occurrence. Rejection activation remains fail-closed pending one reviewed D1 resolver with explicit reason precedence and protected runtime authority.
+
 ```text
 scheduled -> budget_check -> acquire -> redact/store evidence -> parse/extract
           -> validate/applicability -> anomaly re-fetch -> canonicalize

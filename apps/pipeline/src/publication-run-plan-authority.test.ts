@@ -501,7 +501,10 @@ describe("closed authorized publication run plan (PIPE-003, PIPE-004)", () => {
       "plan.run_plan_id = ?1",
     );
     expect(PUBLICATION_RUN_PLAN_AUTHORITY_SQL.header).toContain(
-      "seal.plan_hash = ?2",
+      "LEFT JOIN publication_run_plan_seal",
+    );
+    expect(PUBLICATION_RUN_PLAN_AUTHORITY_SQL.header).not.toContain(
+      "plan.plan_hash = ?2",
     );
     expect(PUBLICATION_RUN_PLAN_AUTHORITY_SQL.providers).toContain("LIMIT 17");
     expect(PUBLICATION_RUN_PLAN_AUTHORITY_SQL.policies).toContain("LIMIT 4");

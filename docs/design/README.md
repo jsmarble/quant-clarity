@@ -30,6 +30,8 @@ Accepted [ADR 0060](../decisions/0060-publication-run-admission-and-terminal-coo
 
 Accepted [ADR 0061](../decisions/0061-additive-publication-orchestration-ledger.md) and locally implemented [Phase 7.2-D](phase-7-2-d-publication-orchestration-ledger.md) define a parallel coordination D1 authority rather than overloading or shadow-writing the legacy run/evidence vocabulary. Attempt 1 is the only active admitted receipt, budget reservation exact-compares one allocated global monthly state, Provider ownership requires immutable claim/reconciliation/release history plus a monotone guarded head, and source-free roster failures use operational outcomes instead of invented evidence. Rejection and replay shapes are present but activation is blocked until atomic D1 admission and protected replay resolvers exist; retained publication and source effects are likewise blocked. The Phase C report boundary distinguishes canonical `prn_` Provider slices from `pvr_` Provider runs. Local migration/adapter verification passes; bindings, remote migrations, runtime activation, and deployment remain prohibited.
 
+Accepted [ADR 0062](../decisions/0062-admission-authority-monotonicity.md) and locally implemented [Phase 7.2-D1](phase-7-2-d1-admission-authority-hardening.md) reserve `plan_not_found` for a truly absent run-plan ID and add canonical migration `0007_admitted_plan_revocation_history.sql`, which refuses contradictory predecessor history and prevents late revocation from rewriting an immutable admitted scheduled instant. The generic admission-rejection blocker remains installed; no binding, remote migration, runtime activation, or deployment is authorized.
+
 ## Design rules
 
 - Trace each component and consequential behavior to PRD requirement IDs.

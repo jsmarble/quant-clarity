@@ -110,6 +110,13 @@ evidence, claim, and fact writes. A later provenance-v2 migration must reference
 the active coordination fence before source, evidence, or canonical effects can
 resume.
 
+[ADR 0062](../decisions/0062-admission-authority-monotonicity.md) adds forward
+canonical migration `0007_admitted_plan_revocation_history.sql`. It preserves
+an admitted occurrence's scheduled-time revocation truth against later
+backdated revocation and refuses installation over already contradictory
+history. The migration does not remove the admission-rejection activation
+blocker.
+
 ## Current-claim selection
 
 The `source_precedence` policy is versioned by field group. Within one class, recency applies only after applicability and verification; equal-authority conflicts publish unknown unless the policy names a deterministic resolver.
