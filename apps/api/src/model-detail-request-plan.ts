@@ -1,5 +1,8 @@
 import {
   assertApiLimits,
+  classifyModelDetailIdentifier,
+  MODEL_DETAIL_API_PATH_PREFIX,
+  parseModelDetailApiPath,
   validIfNoneMatch,
   validateAndNormalizeRequest,
   type ApiError,
@@ -8,12 +11,6 @@ import {
   type RequestInput,
 } from "@quant-clarity/api-core";
 
-const UUID_V4 =
-  "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
-const MODEL_ID = new RegExp(`^mdl_${UUID_V4}$`, "u");
-const MODEL_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
-const MODEL_SLUG_MAX_BYTES = 128;
-const MODEL_PATH_PREFIX = "/v1/models/";
 const UTF8 = new TextEncoder();
 
 export type ModelDetailRequestPlan =
@@ -85,25 +82,10 @@ const failure = (
 });
 
 const modelPathHasInvalidSyntax = (pathname: string): boolean => {
-  if (!pathname.startsWith(MODEL_PATH_PREFIX)) return false;
-  const identifier = pathname.slice(MODEL_PATH_PREFIX.length);
   return (
-    identifier.length === 0 ||
-    identifier.includes("/") ||
-    (!MODEL_ID.test(identifier) &&
-      (!MODEL_SLUG.test(identifier) ||
-        UTF8.encode(identifier).byteLength > MODEL_SLUG_MAX_BYTES))
+    pathname.startsWith(MODEL_DETAIL_API_PATH_PREFIX) &&
+    parseModelDetailApiPath(pathname) === null
   );
-};
-
-const modelIdentifierKind = (
-  identifier: string,
-): "stable_id" | "slug" | null => {
-  if (MODEL_ID.test(identifier)) return "stable_id";
-  return MODEL_SLUG.test(identifier) &&
-    UTF8.encode(identifier).byteLength <= MODEL_SLUG_MAX_BYTES
-    ? "slug"
-    : null;
 };
 
 /** Pure B3-B request plan. It performs no limiter, cache, query, or logging effect. */
@@ -172,8 +154,8 @@ export const planModelDetailRequest = (
         "If-None-Match is malformed or exceeds the configured size limit.",
         400,
       );
-    const identifierKind = modelIdentifierKind(operation.identifier);
-    if (identifierKind === null)
+    const identifier = classifyModelDetailIdentifier(operation.identifier);
+    if (identifier === null)
       return failure(
         "invalid_parameter",
         "The Model identifier path is malformed.",
@@ -182,7 +164,7 @@ export const planModelDetailRequest = (
     if (validation.request.method === "OPTIONS") return { kind: "preflight" };
     return {
       identifier: operation.identifier,
-      identifierKind,
+      identifierKind: identifier.kind,
       ifNoneMatch: requestInput.ifNoneMatch,
       kind: "lookup",
       request: validation.request,

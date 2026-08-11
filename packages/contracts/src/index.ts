@@ -12,6 +12,8 @@ import { fullFormats } from "ajv-formats/dist/formats.js";
 const UUID_V4 =
   "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
 const SEMVER = "^[0-9]+\\.[0-9]+\\.[0-9]+$";
+const PUBLICATION_ID_VALUE = new RegExp(`^pub_${UUID_V4}$`, "u");
+const SEMVER_VALUE = new RegExp(SEMVER, "u");
 const SHA256 = "^sha256:[0-9a-f]{64}$";
 const DECIMAL = "^(0|[1-9][0-9]{0,23})(\\.[0-9]{1,18})?$";
 const UTC_MILLISECOND_TIMESTAMP =
@@ -582,6 +584,89 @@ const denseOwnDataArraySnapshot = (
     snapshot.push(descriptor.value);
   }
   return Object.freeze(snapshot);
+};
+
+const INVALID_JSON_DATA_SNAPSHOT = Symbol("invalid-json-data-snapshot");
+const JSON_DATA_SNAPSHOT_MAX_DEPTH = 32;
+const JSON_DATA_SNAPSHOT_MAX_NODES = 65_536;
+
+interface JsonDataSnapshotState {
+  remainingNodes: number;
+  seen: WeakSet<object>;
+}
+
+interface JsonDataSnapshotObject {
+  readonly [key: string]: JsonDataSnapshotValue;
+}
+
+type JsonDataSnapshotValue =
+  | boolean
+  | number
+  | string
+  | null
+  | readonly JsonDataSnapshotValue[]
+  | JsonDataSnapshotObject;
+
+/**
+ * Copies an already bounded JSON-shaped value without invoking property
+ * accessors. Proxy reflection traps can still run because JavaScript exposes no
+ * trap-free proxy detection; every trap failure is caught and rejected.
+ */
+const ownDataJsonSnapshot = (
+  value: unknown,
+  state: JsonDataSnapshotState,
+  depth = 0,
+): JsonDataSnapshotValue | typeof INVALID_JSON_DATA_SNAPSHOT => {
+  if (state.remainingNodes <= 0 || depth > JSON_DATA_SNAPSHOT_MAX_DEPTH)
+    return INVALID_JSON_DATA_SNAPSHOT;
+  state.remainingNodes -= 1;
+  if (value === null || typeof value === "string" || typeof value === "boolean")
+    return value;
+  if (typeof value === "number")
+    return Number.isFinite(value) ? value : INVALID_JSON_DATA_SNAPSHOT;
+  if (typeof value !== "object") return INVALID_JSON_DATA_SNAPSHOT;
+  if (state.seen.has(value)) return INVALID_JSON_DATA_SNAPSHOT;
+  state.seen.add(value);
+  try {
+    if (Array.isArray(value)) {
+      const items = denseOwnDataArraySnapshot(value);
+      if (items === null) return INVALID_JSON_DATA_SNAPSHOT;
+      const output: JsonDataSnapshotValue[] = [];
+      for (const item of items) {
+        const snapshot = ownDataJsonSnapshot(item, state, depth + 1);
+        if (snapshot === INVALID_JSON_DATA_SNAPSHOT)
+          return INVALID_JSON_DATA_SNAPSHOT;
+        output.push(snapshot);
+      }
+      return Object.freeze(output);
+    }
+
+    const prototype = Object.getPrototypeOf(value) as object | null;
+    if (prototype !== Object.prototype && prototype !== null)
+      return INVALID_JSON_DATA_SNAPSHOT;
+    const keys = Reflect.ownKeys(value);
+    if (keys.some((key) => typeof key !== "string"))
+      return INVALID_JSON_DATA_SNAPSHOT;
+    const output = Object.create(null) as Record<string, JsonDataSnapshotValue>;
+    for (const key of keys as string[]) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (
+        descriptor === undefined ||
+        !("value" in descriptor) ||
+        descriptor.enumerable !== true
+      )
+        return INVALID_JSON_DATA_SNAPSHOT;
+      const snapshot = ownDataJsonSnapshot(descriptor.value, state, depth + 1);
+      if (snapshot === INVALID_JSON_DATA_SNAPSHOT)
+        return INVALID_JSON_DATA_SNAPSHOT;
+      output[key] = snapshot;
+    }
+    return Object.freeze(output);
+  } catch {
+    return INVALID_JSON_DATA_SNAPSHOT;
+  } finally {
+    state.seen.delete(value);
+  }
 };
 
 const workerSafeModelFamilyFact = (value: unknown): unknown => {
@@ -1414,6 +1499,49 @@ export const ModelDetailSchema = Type.Object(
   { data: ModelSchema, meta: ModelDetailMetaSchema },
   { $id: "ModelDetail", additionalProperties: false },
 );
+export type ModelDetail = Static<typeof ModelDetailSchema>;
+
+/**
+ * Complete Worker-safe validation for the closed public Model-detail envelope.
+ * The outer/meta objects and sort tuple are snapshotted through own data
+ * descriptors before validation, so accessors are rejected without invocation.
+ */
+export const checkModelDetailContract = (
+  value: unknown,
+): value is ModelDetail => {
+  try {
+    const snapshot = ownDataJsonSnapshot(value, {
+      remainingNodes: JSON_DATA_SNAPSHOT_MAX_NODES,
+      seen: new WeakSet(),
+    });
+    if (snapshot === INVALID_JSON_DATA_SNAPSHOT) return false;
+    const detail = ownDataRecordSnapshot(snapshot, ["data", "meta"]);
+    if (detail === null || !checkModelContract(detail.data)) return false;
+    const meta = ownDataRecordSnapshot(detail.meta, [
+      "resource",
+      "publication_id",
+      "schema_version",
+      "sort",
+      "filters",
+    ]);
+    if (meta === null) return false;
+    const sort = denseOwnDataArraySnapshot(meta.sort);
+    const filters = ownDataRecordSnapshot(meta.filters, []);
+    if (sort === null || filters === null) return false;
+    return (
+      meta.resource === "models" &&
+      typeof meta.publication_id === "string" &&
+      PUBLICATION_ID_VALUE.test(meta.publication_id) &&
+      typeof meta.schema_version === "string" &&
+      SEMVER_VALUE.test(meta.schema_version) &&
+      sort.length === 2 &&
+      sort[0] === "name" &&
+      sort[1] === "stable_id"
+    );
+  } catch {
+    return false;
+  }
+};
 export const VariantCollectionSchema = CollectionSchema(
   VariantSchema,
   "VariantCollection",
