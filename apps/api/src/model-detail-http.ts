@@ -448,3 +448,45 @@ export const handleModelDetailHttp = (
   capabilities: ModelDetailHttpCapabilities,
 ): Promise<Response> =>
   prepareRequest(request, capabilities).then(executePreparedRequest);
+
+/**
+ * Executes one already-authenticated, identity-free Model-detail request.
+ * Callers must reconstruct the Request from the verified path and publication
+ * pin before this boundary. Public limiter capabilities are deliberately null:
+ * the frontend Worker already admitted the visitor request and no visitor
+ * identity crosses the service binding.
+ */
+export const handleAdmittedModelDetailHttp = (
+  request: Request,
+  capabilities: ModelDetailHttpCapabilities,
+): Promise<Response> => {
+  const capturedRequest = captureRequest(request);
+  const captured = captureCapabilities(capabilities);
+  const publicationPin =
+    capturedRequest.plan.kind === "lookup"
+      ? capturedRequest.plan.request.publicationHeader
+      : null;
+  const exactAdmission =
+    capturedRequest.method === "GET" &&
+    capturedRequest.sourceAddress === null &&
+    capturedRequest.plan.kind === "lookup" &&
+    capturedRequest.plan.request.method === "GET" &&
+    capturedRequest.plan.ifNoneMatch === null &&
+    publicationPin !== null;
+  if (!exactAdmission)
+    return Promise.resolve(
+      renderModelDetailGateResponse(
+        { kind: "unavailable" },
+        capturedRequest.method,
+        captured.transportPolicy,
+      ),
+    );
+  return executePreparedRequest({
+    downstream: captured.downstream,
+    limit: "allowed",
+    method: capturedRequest.method,
+    plan: capturedRequest.plan,
+    policyReady: captured.policyReady,
+    transportPolicy: captured.transportPolicy,
+  });
+};

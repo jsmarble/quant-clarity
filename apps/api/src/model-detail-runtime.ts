@@ -1,4 +1,5 @@
 import {
+  handleAdmittedModelDetailHttp,
   handleModelDetailHttp,
   type ModelDetailHttpCapabilities,
 } from "./model-detail-http.js";
@@ -12,6 +13,12 @@ type ModelDetailRuntimeBindings = Readonly<{
   READ_LIMITER: RateLimit;
   ROTATION_LIMITER: RateLimit;
 }>;
+
+type AdmittedModelDetailRuntimeBindings = Pick<
+  ModelDetailRuntimeBindings,
+  "API_TRANSPORT_POLICY" | "CATALOG_QUERY" | "DEPLOYMENT_ENV"
+> &
+  Readonly<{ PUBLIC_API_ORIGIN?: unknown }>;
 
 export type ModelDetailRuntimePrimitives = Readonly<{
   cache: Pick<Cache, "match" | "put">;
@@ -58,6 +65,32 @@ export const captureModelDetailRuntimeCapabilities = (
   });
 };
 
+/** Captures the signed-route executor without reading public limiter bindings. */
+export const captureAdmittedModelDetailRuntimeCapabilities = (
+  bindings: AdmittedModelDetailRuntimeBindings,
+  primitives: ModelDetailRuntimePrimitives,
+): ModelDetailHttpCapabilities => {
+  const environment = capture(() => bindings.DEPLOYMENT_ENV);
+  const protectedCacheOrigin = capture(() => bindings.PUBLIC_API_ORIGIN);
+  const transportPolicy = capture(() => bindings.API_TRANSPORT_POLICY);
+  return Object.freeze({
+    cache: capture(() => primitives.cache),
+    context: capture(() => primitives.context),
+    environment: environment === "local" ? "local" : null,
+    nowMs: capture(() => primitives.nowMs),
+    protectedCacheOrigin:
+      protectedCacheOrigin === "https://api.example.test"
+        ? protectedCacheOrigin
+        : null,
+    queryService: capture(() => bindings.CATALOG_QUERY),
+    rateLimitSecret: null,
+    readLimiter: null,
+    rotationLimiter: null,
+    subtle: capture(() => primitives.subtle),
+    transportPolicy: transportPolicy === "local_test" ? "local_test" : null,
+  });
+};
+
 /**
  * Closed runtime composition. The live Worker intentionally does not import
  * this function until the remaining route-opening gates are approved.
@@ -70,6 +103,25 @@ export const handleModelDetailRuntime = (
   handleModelDetailHttp(
     request,
     captureModelDetailRuntimeCapabilities(bindings, {
+      cache: caches.default,
+      context,
+      nowMs: Date.now,
+      subtle: crypto.subtle,
+    }),
+  );
+
+/**
+ * Captures only canonical read/cache capabilities after signed admission. It
+ * never reads the public limiter bindings or their secret.
+ */
+export const handleAdmittedModelDetailRuntime = (
+  request: Request,
+  bindings: AdmittedModelDetailRuntimeBindings,
+  context: ExecutionContext,
+): Promise<Response> =>
+  handleAdmittedModelDetailHttp(
+    request,
+    captureAdmittedModelDetailRuntimeCapabilities(bindings, {
       cache: caches.default,
       context,
       nowMs: Date.now,

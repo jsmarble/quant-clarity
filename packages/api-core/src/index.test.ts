@@ -22,11 +22,13 @@ import {
   matchRoute,
   methodologyRegistryEntry,
   modelDetailApiPath,
+  modelDetailFrontendPath,
   MODEL_DETAIL_API_PATH_PREFIX,
   MODEL_DETAIL_IDENTIFIER_MAX_CHARACTERS,
   MODEL_DETAIL_PUBLIC_MAX_BYTES,
   operationName,
   parseModelDetailApiPath,
+  parseModelDetailFrontendPath,
   reconcileRequestCursor,
   representationEtag,
   snapshotModelDetailModel,
@@ -138,6 +140,39 @@ describe("shared Model-detail identity boundary (API-002, API-004, SEC-007)", ()
   ])("rejects noncanonical API path %j", (value) => {
     expect(parseModelDetailApiPath(value)).toBeNull();
   });
+});
+
+describe("shared frontend Model-detail path boundary (FE-030, SEC-007)", () => {
+  it.each([
+    [MODEL, "stable_id"],
+    ["fixture-model-2", "slug"],
+  ] as const)("round-trips canonical %s paths", (value, kind) => {
+    const path = modelDetailFrontendPath(value);
+    expect(path).toBe(`/models/${value}`);
+    expect(parseModelDetailFrontendPath(path)).toEqual({ kind, value });
+  });
+
+  it.each([
+    null,
+    undefined,
+    "/models",
+    "/models/",
+    `/models/${MODEL}/`,
+    `/models/${MODEL}/extra`,
+    `/models/${MODEL}?visitor=query`,
+    `/models/%66ixture-model`,
+    "/models/fixture\\model",
+    "/v1/models/fixture-model",
+  ])("rejects noncanonical frontend path %j", (value) => {
+    expect(parseModelDetailFrontendPath(value)).toBeNull();
+  });
+
+  it.each(["", "Uppercase", "bad/extra", "%61", null, undefined])(
+    "does not build a path from invalid identifier %j",
+    (value) => {
+      expect(modelDetailFrontendPath(value)).toBeNull();
+    },
+  );
 });
 
 const modelDetailModel = (): Model => ({

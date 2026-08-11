@@ -26,6 +26,7 @@ const MODEL_STABLE_ID = new RegExp(`^mdl_${UUID_V4}$`, "u");
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 export const MODEL_DETAIL_IDENTIFIER_MAX_CHARACTERS = 128;
 export const MODEL_DETAIL_API_PATH_PREFIX = "/v1/models/" as const;
+export const MODEL_DETAIL_FRONTEND_PATH_PREFIX = "/models/" as const;
 const SCHEMA_VERSION = /^[0-9]+\.[0-9]+\.[0-9]+$/u;
 const RFC3339_MILLISECONDS =
   /^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\.[0-9]{3}Z$/u;
@@ -95,6 +96,34 @@ export const parseModelDetailApiPath = (
   } catch {
     return null;
   }
+};
+
+/** Parses only one exact, single-segment frontend Model pathname. */
+export const parseModelDetailFrontendPath = (
+  pathname: unknown,
+): ModelDetailIdentifier | null => {
+  try {
+    if (
+      typeof pathname !== "string" ||
+      !pathname.startsWith(MODEL_DETAIL_FRONTEND_PATH_PREFIX)
+    )
+      return null;
+    return classifyModelDetailIdentifier(
+      pathname.slice(MODEL_DETAIL_FRONTEND_PATH_PREFIX.length),
+    );
+  } catch {
+    return null;
+  }
+};
+
+/** Builds the only canonical frontend path for a valid Model identifier. */
+export const modelDetailFrontendPath = (
+  identifier: unknown,
+): `/models/${string}` | null => {
+  const classified = classifyModelDetailIdentifier(identifier);
+  return classified === null
+    ? null
+    : `${MODEL_DETAIL_FRONTEND_PATH_PREFIX}${classified.value}`;
 };
 
 /** Builds the only canonical internal/public API path for a valid identifier. */

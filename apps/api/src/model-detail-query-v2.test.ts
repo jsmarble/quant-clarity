@@ -19,6 +19,8 @@ const HISTORICAL_SLUG = "former-fixture-model";
 const OBSERVED_AT = "2026-08-03T00:00:00.000Z";
 const NOW_MS = 1_785_774_000_000;
 const REQUIRED_UNTIL_MS = NOW_MS + 15 * 60 * 1000;
+const DISPOSE_SYMBOL = (Symbol as unknown as { readonly dispose: symbol })
+  .dispose;
 
 const limits: ApiLimits = {
   defaultPageSize: 25,
@@ -613,6 +615,70 @@ describe("resolver-minted Model detail V2 read continuation", () => {
       success: true,
     });
     expect(events).toEqual(["resolve", "read"]);
+  });
+
+  it("accepts the non-enumerable disposal hook added to JSRPC results", async () => {
+    const resolution = {
+      bookmark: "bookmark-model-detail-v2",
+      outcome: "selected",
+      publicationId: PUBLICATION,
+      requiredAvailableUntilMs: REQUIRED_UNTIL_MS,
+    };
+    const readOutcome = modelOutcome(provenance("stable_id"));
+    for (const value of [resolution, readOutcome])
+      Object.defineProperty(value, DISPOSE_SYMBOL, {
+        configurable: true,
+        enumerable: false,
+        value: () => undefined,
+        writable: true,
+      });
+    const service = rpc(readOutcome);
+    service.resolvePublicationV2.mockResolvedValueOnce(resolution);
+
+    await expect(execute(MODEL_ID, service)).resolves.toMatchObject({
+      lookup: { kind: "stable_id", value: MODEL_ID },
+      publicationId: PUBLICATION,
+      success: true,
+    });
+    expect(service.readModelDetailV2).toHaveBeenCalledOnce();
+  });
+
+  it("rejects the JSRPC disposal hook on nested response records", async () => {
+    const nestedProvenance = provenance("stable_id");
+    Object.defineProperty(nestedProvenance, DISPOSE_SYMBOL, {
+      configurable: true,
+      enumerable: false,
+      value: () => undefined,
+      writable: true,
+    });
+    const service = rpc(modelOutcome(nestedProvenance));
+
+    await expect(execute(MODEL_ID, service)).resolves.toEqual({
+      code: "integrity_failure",
+      success: false,
+    });
+    expect(service.readModelDetailV2).toHaveBeenCalledOnce();
+  });
+
+  it("rejects unknown symbolic properties on JSRPC results", async () => {
+    const resolution = {
+      bookmark: "bookmark-model-detail-v2",
+      outcome: "selected",
+      publicationId: PUBLICATION,
+      requiredAvailableUntilMs: REQUIRED_UNTIL_MS,
+    };
+    Object.defineProperty(resolution, Symbol("unexpected"), {
+      enumerable: false,
+      value: () => undefined,
+    });
+    const service = rpc(modelOutcome(provenance("stable_id")));
+    service.resolvePublicationV2.mockResolvedValueOnce(resolution);
+
+    await expect(execute(MODEL_ID, service)).resolves.toEqual({
+      code: "integrity_failure",
+      success: false,
+    });
+    expect(service.readModelDetailV2).not.toHaveBeenCalled();
   });
 
   it.each([

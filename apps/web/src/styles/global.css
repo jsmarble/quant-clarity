@@ -361,6 +361,179 @@ button:hover,
   font-size: clamp(2.4rem, 6vw, 4.5rem);
 }
 
+.model-facts-header {
+  padding-top: clamp(3.5rem, 7vw, 6rem);
+  padding-bottom: clamp(2.5rem, 5vw, 4rem);
+}
+
+.model-facts-header h1 {
+  max-width: 20ch;
+  font-size: clamp(2.4rem, 6vw, 4.5rem);
+  overflow-wrap: anywhere;
+}
+
+.model-facts-section {
+  padding-block: clamp(2.5rem, 5vw, 4.5rem);
+  border-top: 1px solid var(--line);
+}
+
+.model-facts-section > h2 {
+  max-width: 22ch;
+  margin-bottom: 1.5rem;
+}
+
+.identity-list,
+.fact-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin: 0;
+}
+
+.identity-list {
+  max-width: 58rem;
+  margin-top: 2rem;
+}
+
+.identity-list > div,
+.fact-row,
+.fact-summary,
+.checkpoint-card {
+  min-width: 0;
+  padding: 1.1rem 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  background: var(--surface);
+}
+
+.identity-list dt,
+.fact-row dt {
+  margin-bottom: 0.45rem;
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.identity-list dd,
+.fact-row dd {
+  min-width: 0;
+  margin: 0;
+}
+
+.fact-state {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.75rem;
+  margin-bottom: 0.55rem;
+  padding: 0.12rem 0.55rem;
+  border: 1px solid currentColor;
+  border-radius: 99px;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.fact-state-known {
+  color: var(--brand-dark);
+  background: #dce8df;
+}
+
+.fact-state-unknown,
+.fact-state-unavailable {
+  color: var(--warning);
+  background: #fff1c9;
+}
+
+.fact-state-not_applicable {
+  color: var(--ink-soft);
+  background: #e7e8e0;
+}
+
+.fact-value {
+  margin-bottom: 0.65rem;
+  font-size: 1.08rem;
+  font-weight: 720;
+  overflow-wrap: anywhere;
+}
+
+.fact-meta {
+  display: grid;
+  gap: 0.3rem;
+  color: var(--ink-soft);
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+.fact-meta-label {
+  font-weight: 780;
+}
+
+.inline-value-list,
+.identifier-list,
+.checkpoint-list,
+.lineage-list ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.inline-value-list,
+.identifier-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.65rem;
+}
+
+.identifier-list code,
+.identity-list code,
+.checkpoint-card code {
+  overflow-wrap: anywhere;
+}
+
+.fact-summary {
+  margin-bottom: 1rem;
+}
+
+.fact-summary p:last-child,
+.checkpoint-card p:last-child,
+.lineage-list p {
+  margin-bottom: 0;
+}
+
+.checkpoint-list {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.checkpoint-card h3 {
+  overflow-wrap: anywhere;
+}
+
+.lineage-list {
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--line);
+}
+
+.lineage-list h4 {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+}
+
+.lineage-list li + li {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+}
+
+.empty-fact-list {
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  background: var(--surface);
+}
+
 .results-region {
   min-height: 22rem;
   padding-bottom: 6rem;
@@ -447,6 +620,11 @@ code {
   .principle-grid {
     grid-template-columns: 1fr;
   }
+
+  .identity-list,
+  .fact-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 38rem) {
@@ -487,6 +665,7 @@ code {
 @media (forced-colors: active) {
   .brand-mark,
   .status-label,
+  .fact-state,
   button,
   .button-link {
     border: 2px solid ButtonText;
