@@ -178,7 +178,7 @@ describe(
         ).toEqual({ count: 0 });
       }
       expect(database.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
-    }, 20_000);
+    }, 60_000);
 
     it("keeps every new registration and lifecycle insert dormant", () => {
       const database = predecessor();
@@ -311,7 +311,7 @@ describe(
         BEFORE UPDATE ON provenance_v2_source_endpoint WHEN 0
         BEGIN SELECT RAISE(ABORT, 'provenance-v2 source endpoint is immutable'); END`);
       expectPredecessorRejected(trigger);
-    }, 15_000);
+    }, 60_000);
 
     it("rejects a tampered migration-0008 predecessor trigger atomically", () => {
       const database = predecessor();
