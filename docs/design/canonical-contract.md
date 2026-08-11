@@ -92,12 +92,23 @@ The sort key is a 43-character unsigned fixed-width representation: 24 integer d
 
 This table describes the current pre-orchestration ledger, not the final
 admission contract. [ADR 0060](../decisions/0060-publication-run-admission-and-terminal-coordination.md)
-requires Phase 7.2-D to add immutable admission/run-plan authority, exact
-adjacent replay, scheduled-time deadline, environment-wide fenced Provider
-claims, sealed reports, and separate machine operational terminal evidence.
-Until that reviewed migration exists, `roster_outcome.evidence_id` cannot be
-used to invent source evidence for a pre-acquisition timeout or lock failure,
-and no operational run write is permitted.
+requires Phase 7.2-D to add immutable admission/run-plan authority,
+scheduled-time deadline, environment-wide fenced Provider claims, sealed
+reports, and separate machine operational terminal evidence. Its local
+migration now supplies the safe attempt-1 foundation; rejection, replay,
+retained-publication, and source-effect activation remain blocked pending their
+atomic/protected resolvers. `roster_outcome.evidence_id` is never used to
+invent source evidence for a pre-acquisition timeout or lock failure.
+
+[ADR 0061](../decisions/0061-additive-publication-orchestration-ledger.md)
+resolves this boundary with a parallel coordination graph rather than a legacy
+status/evidence reinterpretation. Coordination `run_`/`pvr_` identities do not
+create legacy `pipeline_run`/`provider_run` rows; selected publication slices
+remain `prn_`. Environment initialization first proves no legacy run graph
+owner remains pending/running, then freezes new legacy run, observation,
+evidence, claim, and fact writes. A later provenance-v2 migration must reference
+the active coordination fence before source, evidence, or canonical effects can
+resume.
 
 ## Current-claim selection
 

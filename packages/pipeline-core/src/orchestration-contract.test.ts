@@ -4,7 +4,9 @@ import { describe, expect, it } from "vitest";
 
 import { type BudgetAmounts } from "./index.js";
 import {
+  DURABLE_ADMISSION_REJECTION_CODES,
   ORCHESTRATION_POLICY_REGISTRY,
+  PROVIDER_TERMINAL_REPORT_CODES,
   buildRejectedFiringReportV2,
   buildTerminalRunReportV2,
   decideFencedProviderStart,
@@ -12,15 +14,19 @@ import {
   decideRegisteredProviderRetry,
   decideRunBudgetAdmission,
   decideTerminalRun,
+  encodeOrchestrationReportV2,
   policyContentHash,
   publicationPlanProviderScopeHash,
   resolveOrchestrationPolicies,
   terminalDeadlineAt,
   validateAdjacentExplicitReplay,
+  verifyAdmittedFiringDecision,
   verifyOrchestrationReportV2,
+  verifyRejectedFiringDecision,
   type AdmittedFiringDecision,
   type PlanAdmissionState,
   type PolicyReference,
+  type ProviderTerminalReportCode,
   type ProviderTerminalReportInputV2,
 } from "./orchestration-contract.js";
 
@@ -31,9 +37,10 @@ const RUN_ID = "run_00000000-0000-4000-8000-000000000003";
 const PRIOR_RUN_ID = "run_00000000-0000-4000-8000-000000000004";
 const PROVIDER_A = "prv_00000000-0000-4000-8000-000000000005";
 const PROVIDER_B = "prv_00000000-0000-4000-8000-000000000006";
-const SLICE_A = "pvr_00000000-0000-4000-8000-000000000008";
-const SLICE_B = "pvr_00000000-0000-4000-8000-000000000009";
-const SLICE_OLD = "pvr_00000000-0000-4000-8000-00000000000a";
+const SLICE_A = "prn_00000000-0000-4000-8000-000000000008";
+const SLICE_B = "prn_00000000-0000-4000-8000-000000000009";
+const SLICE_OLD = "prn_00000000-0000-4000-8000-00000000000a";
+const RETAINED_PUBLICATION_ID = "pub_00000000-0000-4000-8000-00000000000b";
 const SCHEDULED_AT = "2026-08-03T05:00:00.000Z";
 const DEADLINE_AT = "2026-08-03T17:00:00.000Z";
 
@@ -240,6 +247,109 @@ describe("closed executable orchestration policies", () => {
     ).toThrow(/exact closed fields/);
   });
 
+  it("canonicalizes one descriptor-only policy snapshot", () => {
+    const registered = ORCHESTRATION_POLICY_REGISTRY.run_budget.policy;
+    if (registered.schema !== "run-budget@1")
+      throw new Error("run budget policy registry is inconsistent");
+    const expected = policyContentHash(registered);
+    const nullPrototypeCeilings = { ...registered.maximumRunCeilings };
+    Reflect.setPrototypeOf(nullPrototypeCeilings, null);
+    const nullPrototypePolicy = {
+      ...registered,
+      maximumRunCeilings: nullPrototypeCeilings,
+    };
+    Reflect.setPrototypeOf(nullPrototypePolicy, null);
+    expect(policyContentHash(nullPrototypePolicy)).toBe(expected);
+
+    let getterCalls = 0;
+    const accessorPolicy = { ...registered };
+    Object.defineProperty(accessorPolicy, "schema", {
+      enumerable: true,
+      get: () => {
+        getterCalls += 1;
+        return "run-budget@1";
+      },
+    });
+    expect(() =>
+      policyContentHash(
+        accessorPolicy as Parameters<typeof policyContentHash>[0],
+      ),
+    ).toThrow(/own enumerable data fields/);
+    expect(getterCalls).toBe(0);
+
+    const nonEnumerablePolicy = { ...registered };
+    Object.defineProperty(nonEnumerablePolicy, "visitor", {
+      enumerable: false,
+      value: "visitor-canary",
+    });
+    expect(() =>
+      policyContentHash(
+        nonEnumerablePolicy as Parameters<typeof policyContentHash>[0],
+      ),
+    ).toThrow(/own enumerable data fields/);
+
+    const symbolPolicy = { ...registered };
+    Object.defineProperty(symbolPolicy, Symbol("visitor-canary"), {
+      enumerable: true,
+      value: "visitor-canary",
+    });
+    expect(() =>
+      policyContentHash(
+        symbolPolicy as Parameters<typeof policyContentHash>[0],
+      ),
+    ).toThrow(/own enumerable data fields/);
+
+    let schemaDescriptorReads = 0;
+    const statefulPolicy = new Proxy(
+      { ...registered },
+      {
+        getOwnPropertyDescriptor(target, property) {
+          const descriptor = Reflect.getOwnPropertyDescriptor(target, property);
+          if (property !== "schema" || descriptor === undefined)
+            return descriptor;
+          schemaDescriptorReads += 1;
+          return {
+            ...descriptor,
+            value:
+              schemaDescriptorReads === 1 ? "run-budget@1" : "visitor-canary",
+          };
+        },
+      },
+    );
+    expect(
+      policyContentHash(
+        statefulPolicy as Parameters<typeof policyContentHash>[0],
+      ),
+    ).toBe(expected);
+    expect(schemaDescriptorReads).toBe(1);
+
+    const reflectionCanary = "authorization:reflection-canary";
+    const hostileProxy = new Proxy(
+      { ...registered },
+      {
+        ownKeys() {
+          throw new Error(reflectionCanary);
+        },
+      },
+    );
+    let reflectedMessage = "";
+    try {
+      policyContentHash(hostileProxy);
+    } catch (error) {
+      reflectedMessage = String(error);
+    }
+    expect(reflectedMessage).toMatch(/own enumerable data fields/);
+    expect(reflectedMessage).not.toContain(reflectionCanary);
+
+    const oversizedSparseArray = new Array(100_000_000);
+    expect(() =>
+      policyContentHash({
+        ...registered,
+        alertPercents: oversizedSparseArray,
+      } as unknown as Parameters<typeof policyContentHash>[0]),
+    ).toThrow(/canonical arrays must contain only dense data items/);
+  });
+
   it("anchors the terminal deadline to scheduled time and caps Retry-After", () => {
     const policies = resolveOrchestrationPolicies(policyReferences());
     expect(terminalDeadlineAt(SCHEDULED_AT, policies.terminalDeadline)).toBe(
@@ -378,6 +488,71 @@ describe("closed executable orchestration policies", () => {
 });
 
 describe("scheduled admission and explicit replay", () => {
+  it("keeps malformed platform-envelope failures outside durable admission", () => {
+    expect(DURABLE_ADMISSION_REJECTION_CODES).toEqual([
+      "plan_unavailable",
+      "plan_invalid",
+      "plan_not_effective",
+      "plan_revoked",
+      "source_authority_invalid",
+      "runtime_version_mismatch",
+      "plan_context_mismatch",
+      "policy_mismatch",
+      "budget_exceeded",
+      "expensive_work_breaker",
+      "terminal_deadline_elapsed",
+    ]);
+    for (const envelopeCode of [
+      "event_not_scheduled",
+      "event_payload_not_empty",
+      "workflow_name_mismatch",
+      "schedule_mismatch",
+      "scheduled_time_invalid",
+      "scheduled_time_in_future",
+    ])
+      expect(DURABLE_ADMISSION_REJECTION_CODES).not.toContain(envelopeCode);
+  });
+
+  it("mints nominal authority for durable rejection persistence", () => {
+    const decision = decideFiringAdmission({
+      ...admissionInput(),
+      plan: { state: "revoked" },
+    });
+    expect(decision).toEqual({
+      decision: "rejected",
+      runAction: "none",
+      reason: "plan_revoked",
+    });
+    expect(verifyRejectedFiringDecision(decision)).toBe(true);
+    expect(
+      verifyRejectedFiringDecision({
+        decision: "rejected",
+        runAction: "none",
+        reason: "plan_revoked",
+      }),
+    ).toBe(false);
+  });
+
+  it("runtime-validates an admitted persistence authority", () => {
+    const admission = reportAdmission();
+    expect(verifyAdmittedFiringDecision(admission)).toBe(true);
+    expect(
+      verifyAdmittedFiringDecision({
+        ...admission,
+        runPlanHash: `sha256:${"b".repeat(64)}`,
+      }),
+    ).toBe(true);
+    expect(
+      verifyAdmittedFiringDecision({
+        ...admission,
+        projectedMonthlyCostMicrousd: 25_000_001,
+      }),
+    ).toBe(false);
+    expect(
+      verifyAdmittedFiringDecision({ ...admission, cookie: "visitor-canary" }),
+    ).toBe(false);
+  });
+
   it("admits attempt one with the schedule-anchored deadline", () => {
     expect(decideFiringAdmission(admissionInput())).toMatchObject({
       decision: "admitted",
@@ -762,6 +937,129 @@ describe("terminal outcome and sealed publication-run-report@2", () => {
     });
   });
 
+  it.each([
+    "partial_provider_refresh",
+    "last_known_good_only",
+    "zero_usable_providers",
+    "run_wide_quarantine",
+  ] as const)(
+    "rejects the run-derived %s code at every Provider boundary",
+    (runDerivedCode) => {
+      const hostileCodes = [
+        "provider_failed",
+        runDerivedCode,
+      ] as unknown as readonly ProviderTerminalReportCode[];
+      expect(() =>
+        decideTerminalRun({
+          providers: [
+            {
+              providerId: PROVIDER_A,
+              state: "failed",
+              usableSlice: "none",
+              errorCodes: hostileCodes,
+            },
+          ],
+          runWideQuarantine: false,
+          terminalDeadlineElapsed: false,
+        }),
+      ).toThrow(/non-Provider terminal code/);
+      expect(() =>
+        buildTerminalRunReportV2({
+          ...terminalReportInput(),
+          providers: [
+            {
+              providerId: PROVIDER_A,
+              state: "failed",
+              rosterComplete: true,
+              publicationDisposition: "unavailable",
+              cost: budget(1),
+              errorCodes: hostileCodes,
+            },
+            provider(PROVIDER_B),
+          ],
+        }),
+      ).toThrow(/non-Provider terminal code/);
+    },
+  );
+
+  it("binds the quarantine code to quarantined Provider state", () => {
+    const contradictoryCodes = [
+      "provider_failed",
+      "provider_quarantined",
+      "provider_unavailable",
+    ] as const;
+    expect(() =>
+      decideTerminalRun({
+        providers: [
+          {
+            providerId: PROVIDER_A,
+            state: "failed",
+            usableSlice: "none",
+            errorCodes: contradictoryCodes,
+          },
+        ],
+        runWideQuarantine: false,
+        terminalDeadlineElapsed: false,
+      }),
+    ).toThrow(/cannot carry the quarantine terminal code/);
+    expect(() =>
+      buildTerminalRunReportV2({
+        ...terminalReportInput(),
+        providers: [
+          {
+            providerId: PROVIDER_A,
+            state: "failed",
+            rosterComplete: true,
+            publicationDisposition: "unavailable",
+            cost: budget(1),
+            errorCodes: contradictoryCodes,
+          },
+          provider(PROVIDER_B),
+        ],
+      }),
+    ).toThrow(/cannot carry the quarantine terminal code/);
+
+    expect(
+      decideTerminalRun({
+        providers: [
+          {
+            providerId: PROVIDER_A,
+            state: "quarantined",
+            usableSlice: "none",
+            errorCodes: contradictoryCodes,
+          },
+        ],
+        runWideQuarantine: false,
+        terminalDeadlineElapsed: false,
+      }),
+    ).toMatchObject({
+      runOutcome: "failed",
+      reasonCodes: ["zero_usable_providers"],
+    });
+    const mixedRosterReport = buildTerminalRunReportV2({
+      ...terminalReportInput(),
+      providers: [
+        {
+          providerId: PROVIDER_A,
+          state: "quarantined",
+          rosterComplete: true,
+          publicationDisposition: "unavailable",
+          cost: budget(1),
+          errorCodes: contradictoryCodes,
+        },
+        provider(PROVIDER_B),
+      ],
+    });
+    expect(mixedRosterReport.providers[0]?.errorCodes).toEqual([
+      "provider_failed",
+      "provider_quarantined",
+      "provider_unavailable",
+    ]);
+    expect(mixedRosterReport.errorCodes).toContain("partial_provider_refresh");
+    expect(mixedRosterReport.errorCodes).toContain("provider_failed");
+    expect(mixedRosterReport.errorCodes).toContain("provider_quarantined");
+  });
+
   it("builds a deterministic, complete, privacy-closed terminal report", () => {
     const hostile = {
       ...terminalReportInput(),
@@ -906,6 +1204,12 @@ describe("terminal outcome and sealed publication-run-report@2", () => {
   it("aggregates closed Provider errors and requires failure evidence", () => {
     const report = buildTerminalRunReportV2({
       ...terminalReportInput(),
+      retainedPublication: {
+        authoritySchema: "retained-publication-head@1",
+        environment: "preview",
+        publicationId: RETAINED_PUBLICATION_ID,
+        closureHash: HASH_A,
+      },
       providers: [
         provider(PROVIDER_A),
         provider(PROVIDER_B, {
@@ -920,6 +1224,52 @@ describe("terminal outcome and sealed publication-run-report@2", () => {
       "partial_provider_refresh",
       "provider_failed",
     ]);
+    expect(report.retainedPublication).toEqual({
+      authoritySchema: "retained-publication-head@1",
+      environment: "preview",
+      publicationId: RETAINED_PUBLICATION_ID,
+      closureHash: HASH_A,
+    });
+    expect(() =>
+      buildTerminalRunReportV2({
+        ...terminalReportInput(),
+        retainedPublication: {
+          authoritySchema: "retained-publication-head@1",
+          environment: "production",
+          publicationId: RETAINED_PUBLICATION_ID,
+          closureHash: HASH_A,
+        },
+        providers: [
+          provider(PROVIDER_A),
+          provider(PROVIDER_B, {
+            state: "failed",
+            publicationDisposition: "carried_forward",
+            sliceId: SLICE_OLD,
+            errorCodes: ["provider_failed"],
+          }),
+        ],
+      }),
+    ).toThrow(/run environment/);
+    expect(() =>
+      buildTerminalRunReportV2({
+        ...terminalReportInput(),
+        retainedPublication: {
+          authoritySchema: "retained-publication-head@1",
+          environment: "preview",
+          publicationId: RETAINED_PUBLICATION_ID,
+          closureHash: HASH_A,
+        },
+        providers: [
+          provider(PROVIDER_A),
+          provider(PROVIDER_B, {
+            state: "failed",
+            publicationDisposition: "carried_forward",
+            sliceId: "pvr_00000000-0000-4000-8000-00000000000a",
+            errorCodes: ["provider_failed"],
+          }),
+        ],
+      }),
+    ).toThrow(/provider slice ID/);
     expect(() =>
       buildTerminalRunReportV2({
         ...terminalReportInput(),
@@ -933,6 +1283,20 @@ describe("terminal outcome and sealed publication-run-report@2", () => {
         ],
       }),
     ).toThrow(/requires an error code/);
+    expect(() =>
+      buildTerminalRunReportV2({
+        ...terminalReportInput(),
+        providers: [
+          provider(PROVIDER_A),
+          provider(PROVIDER_B, {
+            state: "failed",
+            publicationDisposition: "carried_forward",
+            sliceId: SLICE_OLD,
+            errorCodes: ["provider_failed"],
+          }),
+        ],
+      }),
+    ).toThrow(/retained publication authority/);
     expect(() =>
       buildTerminalRunReportV2({
         ...terminalReportInput(),
@@ -960,11 +1324,15 @@ describe("terminal outcome and sealed publication-run-report@2", () => {
       buildTerminalRunReportV2({
         ...terminalReportInput(),
         providers: [
-          provider(PROVIDER_A, { errorCodes: ["run_wide_quarantine"] }),
+          provider(PROVIDER_A, {
+            errorCodes: [
+              "run_wide_quarantine",
+            ] as unknown as readonly ProviderTerminalReportCode[],
+          }),
           provider(PROVIDER_B),
         ],
       }),
-    ).toThrow(/ready Provider report cannot carry/);
+    ).toThrow(/non-Provider terminal code/);
     expect(() =>
       buildTerminalRunReportV2({
         ...terminalReportInput(),
@@ -1008,6 +1376,287 @@ describe("terminal outcome and sealed publication-run-report@2", () => {
         rejectionCode: "plan_invalid",
       }),
     ).toBe(false);
+  });
+
+  it("encodes one deterministic persistence representation after authority verification", () => {
+    const input = terminalReportInput();
+    const report = buildTerminalRunReportV2(input);
+    const { seal, ...body } = report;
+    const reordered = { seal, ...body };
+    const encoded = encodeOrchestrationReportV2(
+      report,
+      input.admission,
+      input.runAuthority,
+    );
+    expect(
+      encodeOrchestrationReportV2(
+        reordered,
+        input.admission,
+        input.runAuthority,
+      ),
+    ).toBe(encoded);
+    expect(new TextEncoder().encode(encoded).byteLength).toBeLessThanOrEqual(
+      16_384,
+    );
+    expect(encoded).toContain(
+      '"reportSchemaVersion":"publication-run-report@2"',
+    );
+    expect(() => encodeOrchestrationReportV2(report)).toThrow(
+      /immutable authority/,
+    );
+
+    const providerScopeWithCanary = [...report.providerScope];
+    Object.defineProperty(providerScopeWithCanary, "cookie", {
+      value: "visitor-canary",
+      enumerable: true,
+    });
+    expect(() =>
+      encodeOrchestrationReportV2(
+        { ...report, providerScope: providerScopeWithCanary },
+        input.admission,
+        input.runAuthority,
+      ),
+    ).toThrow(/immutable authority/);
+
+    const rejected = buildRejectedFiringReportV2({
+      scheduleName: "provider-refresh-v1",
+      scheduleExpression: "0 5 * * 1,4",
+      occurrenceId: OCCURRENCE_ID,
+      scheduledAt: SCHEDULED_AT,
+      observedAt: "2026-08-03T05:00:01.000Z",
+      rejectionCode: "plan_revoked",
+      requestedPlan: {
+        runPlanId: PLAN_ID,
+        runPlanHash: HASH_A,
+        environment: "preview",
+      },
+    });
+    expect(encodeOrchestrationReportV2(rejected)).toContain(
+      '"kind":"rejected_firing"',
+    );
+  });
+
+  it("rejects hidden report fields and encodes one immutable proxy snapshot", () => {
+    const input = terminalReportInput();
+    const report = buildTerminalRunReportV2(input);
+    const expected = encodeOrchestrationReportV2(
+      report,
+      input.admission,
+      input.runAuthority,
+    );
+
+    let getterCalls = 0;
+    const accessorReport = { ...report };
+    Object.defineProperty(accessorReport, "kind", {
+      enumerable: true,
+      get: () => {
+        getterCalls += 1;
+        return "terminal_run";
+      },
+    });
+    expect(() =>
+      encodeOrchestrationReportV2(
+        accessorReport,
+        input.admission,
+        input.runAuthority,
+      ),
+    ).toThrow(/immutable authority/);
+    expect(getterCalls).toBe(0);
+
+    const nonEnumerableReport = { ...report };
+    Object.defineProperty(nonEnumerableReport, "visitor", {
+      enumerable: false,
+      value: "visitor-canary",
+    });
+    expect(() =>
+      encodeOrchestrationReportV2(
+        nonEnumerableReport,
+        input.admission,
+        input.runAuthority,
+      ),
+    ).toThrow(/immutable authority/);
+
+    const symbolReport = { ...report };
+    Object.defineProperty(symbolReport, Symbol("visitor-canary"), {
+      enumerable: true,
+      value: "visitor-canary",
+    });
+    expect(() =>
+      encodeOrchestrationReportV2(
+        symbolReport,
+        input.admission,
+        input.runAuthority,
+      ),
+    ).toThrow(/immutable authority/);
+
+    let kindDescriptorReads = 0;
+    let propertyReads = 0;
+    const statefulReport = new Proxy(report, {
+      get() {
+        propertyReads += 1;
+        return "visitor-canary";
+      },
+      getOwnPropertyDescriptor(target, property) {
+        const descriptor = Reflect.getOwnPropertyDescriptor(target, property);
+        if (property === "kind") kindDescriptorReads += 1;
+        return descriptor;
+      },
+    });
+    expect(
+      encodeOrchestrationReportV2(
+        statefulReport,
+        input.admission,
+        input.runAuthority,
+      ),
+    ).toBe(expected);
+    expect(kindDescriptorReads).toBe(1);
+    expect(propertyReads).toBe(0);
+
+    const reflectionCanary = "authorization:reflection-canary";
+    const hostileProxy = new Proxy(report, {
+      ownKeys() {
+        throw new Error(reflectionCanary);
+      },
+    });
+    let reflectedMessage = "";
+    try {
+      encodeOrchestrationReportV2(
+        hostileProxy,
+        input.admission,
+        input.runAuthority,
+      );
+    } catch (error) {
+      reflectedMessage = String(error);
+    }
+    expect(reflectedMessage).toMatch(/immutable authority/);
+    expect(reflectedMessage).not.toContain(reflectionCanary);
+  });
+
+  it("enforces the byte ceiling against the final sealed report", () => {
+    const providerIds = Array.from(
+      { length: 16 },
+      (_, index) =>
+        `prv_00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+    );
+    let largestEncoding = "";
+    let largestReport: ReturnType<typeof buildTerminalRunReportV2> | undefined;
+    let firstRejectedWidth: number | undefined;
+    for (let width = 1; width <= 128; width += 1) {
+      const base = admissionInput();
+      const plan = authorizedPlan(providerIds);
+      if (plan.state !== "authorized")
+        throw new Error("boundary plan was not authorized");
+      const canonicalSchemaVersion = "c".repeat(64);
+      const pipelineContractVersion = "p".repeat(128);
+      const decision = decideFiringAdmission({
+        ...base,
+        protectedContext: {
+          ...base.protectedContext,
+          canonicalSchemaVersion,
+          pipelineContractVersion,
+        },
+        plan: {
+          ...plan,
+          canonicalSchemaVersion,
+          pipelineContractVersion,
+          providers: plan.providers.map((entry) => ({
+            ...entry,
+            adapterVersion: "a".repeat(width),
+            rosterVersion: "r".repeat(width),
+            sourceRegisterVersion: "s".repeat(width),
+            requestCeiling: 625,
+            byteCeiling: 46_875_000,
+            aiTokenCeiling: 62_500,
+            browserMillisecondCeiling: 450_000,
+            elapsedMillisecondCeiling: 10_800_000,
+            costMicrousdCeiling: 1_562_500,
+          })),
+        },
+      });
+      if (decision.decision !== "admitted")
+        throw new Error("boundary report authority was not admitted");
+      try {
+        const report = buildTerminalRunReportV2({
+          admission: decision,
+          runAuthority: {
+            kind: "attempt_1",
+            occurrenceId: OCCURRENCE_ID,
+            runId: RUN_ID,
+            codeVersion: `git:${"a".repeat(64)}`,
+          },
+          startedAt: "2026-08-03T05:00:01.000Z",
+          endedAt: "2026-08-03T06:00:00.000Z",
+          retainedPublication: {
+            authoritySchema: "retained-publication-head@1",
+            environment: "preview",
+            publicationId: RETAINED_PUBLICATION_ID,
+            closureHash: HASH_A,
+          },
+          providers: providerIds.map((providerId) =>
+            provider(providerId, {
+              state: "quarantined",
+              publicationDisposition: "carried_forward",
+              sliceId: SLICE_OLD,
+              cost: {
+                requests: 625,
+                bytes: 46_875_000,
+                aiTokens: 62_500,
+                browserMilliseconds: 450_000,
+                elapsedMilliseconds: 10_800_000,
+                costMicrousd: 1_562_500,
+              },
+              errorCodes: PROVIDER_TERMINAL_REPORT_CODES,
+            }),
+          ),
+          runWideQuarantine: false,
+        });
+        largestEncoding = encodeOrchestrationReportV2(report, decision, {
+          kind: "attempt_1",
+          occurrenceId: OCCURRENCE_ID,
+          runId: RUN_ID,
+          codeVersion: `git:${"a".repeat(64)}`,
+        });
+        largestReport = report;
+      } catch (error) {
+        expect(String(error)).toMatch(/bounded representation/);
+        firstRejectedWidth = width;
+        break;
+      }
+    }
+    expect(
+      new TextEncoder().encode(largestEncoding).byteLength,
+    ).toBeLessThanOrEqual(16_384);
+    expect(firstRejectedWidth).toBeDefined();
+    if (largestReport === undefined || firstRejectedWidth === undefined)
+      throw new Error("boundary report transition was not established");
+    const { seal, ...largestBody } = largestReport;
+    expect(seal.algorithm).toBe("sha256");
+    const rejectedBody = {
+      ...largestBody,
+      providers: largestBody.providers.map((entry) => ({
+        ...entry,
+        adapterVersion: "a".repeat(firstRejectedWidth),
+        rosterVersion: "r".repeat(firstRejectedWidth),
+        sourceRegisterVersion: "s".repeat(firstRejectedWidth),
+      })),
+    };
+    const rejectedHashInput = canonicalJsonForTest({
+      domain: "quantclarity:publication-run-report@2",
+      body: rejectedBody,
+    });
+    const rejectedFinalEncoding = canonicalJsonForTest({
+      ...rejectedBody,
+      seal: {
+        algorithm: "sha256",
+        contentHash: `sha256:${createHash("sha256").update(rejectedHashInput).digest("hex")}`,
+      },
+    });
+    expect(
+      new TextEncoder().encode(rejectedHashInput).byteLength,
+    ).toBeLessThanOrEqual(16_384);
+    expect(
+      new TextEncoder().encode(rejectedFinalEncoding).byteLength,
+    ).toBeGreaterThan(16_384);
   });
 
   it("rejects a correctly re-sealed report with an extra visitor field", () => {

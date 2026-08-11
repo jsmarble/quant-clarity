@@ -33,7 +33,9 @@ The pure contract covers:
    zero-usable failure, and run-wide quarantine; and
 9. bounded, closed, deterministic `publication-run-report@2` projections with
    admitted-plan-derived runtime and Provider authority, derived terminal error
-   codes, and no arbitrary error or visitor-derived fields.
+   codes, canonical `prn_` selected-slice identities, explicit same-environment
+   retained-publication head authority for carried data, and no arbitrary error
+   or visitor-derived fields.
 
 The oracles perform no I/O and create no authority. They are inputs to the next
 canonical migration and D1 adapter review.
@@ -54,6 +56,10 @@ canonical migration and D1 adapter review.
   publish a new identical snapshot.
 - Reports accept only closed states/codes, bounded integers, canonical times,
   exact sorted identifiers, and fixed fields.
+- `pvr_` Provider-run and `prn_` Provider-slice identities remain distinct;
+  carried data requires an exact retained head publication ID and closure hash.
+- Malformed platform-envelope failures remain in-memory only and are excluded
+  from the durable admission-rejection subset.
 - Report callers cannot independently supply plan, environment, runtime,
   Provider-version, scope, or derived top-level error fields.
 - Terminal report verification requires the matching admitted and run/replay
