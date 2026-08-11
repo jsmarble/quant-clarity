@@ -1,57 +1,125 @@
 ---
+import { env } from "cloudflare:workers";
+
 import EmptyPublication from "../../components/EmptyPublication.astro";
+import ExactModelMatches from "../../components/ExactModelMatches.astro";
 import SearchForm from "../../components/SearchForm.astro";
 import BaseLayout from "../../layouts/BaseLayout.astro";
+import { readExactModelSearchState } from "../../lib/exact-model-search.js";
+import { planExactModelSearchPage } from "../../lib/exact-model-search-page.js";
 
-const query = Astro.url.searchParams.get("q")?.slice(0, 160) ?? "";
 const publicationState = Astro.locals.publicationState;
+const plan = planExactModelSearchPage(
+  Astro.url.search,
+  env.DEPLOYMENT_ENV,
+  publicationState,
+);
+const searchState =
+  plan.kind === "read"
+    ? await readExactModelSearchState(
+        env,
+        plan.apiQuery,
+        plan.expectedPublicationId,
+      )
+    : null;
+const collection =
+  searchState?.kind === "found" ? searchState.collection : null;
+const collectionQuery =
+  collection !== null && plan.kind === "read" ? plan.search.query : null;
+const invalidSearch =
+  plan.kind === "invalid" || searchState?.kind === "invalid_cursor";
+const searchUnavailable =
+  plan.kind === "unavailable" || searchState?.kind === "unavailable";
+const searchValue =
+  !invalidSearch &&
+  !searchUnavailable &&
+  "search" in plan &&
+  plan.search !== undefined
+    ? plan.search.query
+    : "";
 const modelCount =
   publicationState.kind === "published"
     ? publicationState.metadata.counts.active_models
     : null;
+
+Astro.response.status = invalidSearch ? 400 : searchUnavailable ? 503 : 200;
+const suppressCanonical = invalidSearch || searchUnavailable;
 ---
 
 <BaseLayout
   title="Browse models — QuantClarity"
-  description="Search and browse canonical models and explicit variants using evidence-backed model facts."
+  description="Find exact Model targets by canonical name or provider model ID, then open evidence-backed Model Facts."
   currentPath="/models"
+  canonicalPath={suppressCanonical ? null : "/models"}
 >
   <header class="page-header shell">
     <p class="eyebrow">Model-first discovery</p>
-    <h1>Models and explicit variants</h1>
+    <h1>Models</h1>
     <p class="lede narrow">
-      Model cards contain model facts only. Provider filters may determine
-      eligibility but never alter card facts or ordering.
+      Find exact Model targets by canonical name or provider model ID, then open
+      the stable Model Facts page. Results contain Model identity facts only and
+      never rank providers.
     </p>
-    <SearchForm value={query} compact />
+    <SearchForm value={searchValue} compact />
   </header>
-  <div class="shell results-region" aria-live="polite" aria-atomic="true">
+
+  <div class="shell results-region" aria-live="polite" aria-atomic="false">
     {
-      publicationState.kind === "unavailable" ? (
-        <p class="result-summary">Published model count unavailable</p>
-      ) : publicationState.kind === "published" ? (
-        query ? (
-          <p class="result-summary">
-            Search results are temporarily unavailable for{" "}
-            <strong>“{query}”</strong>.
+      invalidSearch ? (
+        <section class="empty-state" aria-labelledby="search-invalid-title">
+          <p class="eyebrow">Invalid search state</p>
+          <h2 id="search-invalid-title">Search URL is invalid</h2>
+          <p>
+            Use the search form to create a valid exact Model query. No result
+            was accepted from this URL state.
           </p>
-        ) : (
-          <p class="result-summary">
-            {modelCount} published {modelCount === 1 ? "model" : "models"}
+          <a class="button-link" href="/models">
+            Clear search
+          </a>
+        </section>
+      ) : searchUnavailable ? (
+        <section class="empty-state" aria-labelledby="search-unavailable-title">
+          <p class="eyebrow">Status unavailable</p>
+          <h2 id="search-unavailable-title">
+            Exact Model search is temporarily unavailable
+          </h2>
+          <p>
+            Try again later. QuantClarity does not substitute another
+            publication, infer matches, or retain a visitor record when a
+            dependency fails.
           </p>
-        )
-      ) : query ? (
-        <p class="result-summary">
-          No published results for <strong>“{query}”</strong> because no dataset
-          has been released.
-        </p>
-      ) : (
-        <p class="result-summary">0 published models</p>
-      )
-    }
-    {
-      publicationState.kind === "not_published" ? (
-        <EmptyPublication subject="models" />
+          <a class="button-link" href="/models">
+            Clear search
+          </a>
+        </section>
+      ) : plan.kind === "closed" ? (
+        <section class="empty-state" aria-labelledby="search-closed-title">
+          <p class="eyebrow">Exact discovery</p>
+          <h2 id="search-closed-title">
+            Exact Model discovery is not available in this release
+          </h2>
+          <p>
+            This environment keeps publication-pinned Model discovery closed. No
+            search request was sent to the data service.
+          </p>
+          <a class="button-link" href="/models">
+            Clear search
+          </a>
+        </section>
+      ) : plan.kind === "not_published" ? (
+        <>
+          <p class="result-summary" role="status">
+            No exact Model matches because no dataset has been published.
+          </p>
+          <EmptyPublication subject="models" />
+          <p>
+            <a class="button-link" href="/models">
+              Clear search
+            </a>
+          </p>
+        </>
+      ) : collection !== null && collectionQuery !== null ? (
+        <ExactModelMatches collection={collection} query={collectionQuery} />
       ) : publicationState.kind === "unavailable" ? (
         <section class="empty-state" aria-labelledby="models-unavailable-title">
           <p class="eyebrow">Status unavailable</p>
@@ -63,21 +131,30 @@ const modelCount =
             record when a dependency fails.
           </p>
         </section>
+      ) : publicationState.kind === "not_published" ? (
+        <>
+          <p class="result-summary" role="status">
+            0 published models
+          </p>
+          <EmptyPublication subject="models" />
+        </>
       ) : modelCount === 0 ? (
         <section class="empty-state" aria-labelledby="models-empty-title">
           <p class="eyebrow">Current publication</p>
           <h2 id="models-empty-title">
             This publication contains no active models
           </h2>
-          <p>This publication contains zero active model records.</p>
+          <p class="result-summary" role="status">
+            This publication contains zero active Model records.
+          </p>
         </section>
       ) : (
         <section class="empty-state" aria-labelledby="models-listing-title">
-          <p class="eyebrow">Current publication</p>
-          <h2 id="models-listing-title">Model listing is not yet available</h2>
-          <p>
-            The publication metadata is available, but model collection delivery
-            is not available in this release.
+          <p class="eyebrow">Exact discovery</p>
+          <h2 id="models-listing-title">Search for an exact Model match</h2>
+          <p class="result-summary" role="status">
+            {modelCount} published {modelCount === 1 ? "Model" : "Models"} are
+            available for exact name or provider model ID discovery.
           </p>
         </section>
       )

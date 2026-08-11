@@ -88,3 +88,4 @@ Accepted ADRs describe implementation choices; they do not amend product require
 - [ADR 0050](0050-gdpr-accountability-readiness.md) — deterministic pending-only GDPR accountability readiness without engineering compliance authority
 - [ADR 0051](0051-signed-frontend-api-metadata.md) — signed identity-free frontend-to-API metadata reads and SSR publication state
 - [ADR 0052](0052-publication-pinned-frontend-model-detail.md) — publication-pinned identity-free frontend Model-detail read without public API routing
+- [ADR 0053](0053-publication-pinned-exact-model-discovery.md) — publication-pinned local exact Model discovery without public API routing or partial Model cards

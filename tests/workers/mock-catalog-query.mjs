@@ -1,6 +1,7 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
 
 const PUBLICATION = "pub_11111111-1111-4111-8111-111111111111";
+const NEXT_PUBLICATION = "pub_88888888-8888-4888-8888-888888888888";
 const MODEL = "mdl_22222222-2222-4222-8222-222222222222";
 const FAMILY = "fam_33333333-3333-4333-8333-333333333333";
 const EVIDENCE = "evd_44444444-4444-4444-8444-444444444444";
@@ -10,6 +11,49 @@ const CURRENT_SLUG = "fixture-model";
 const HISTORICAL_SLUG = "fixture-model-old";
 const UNAVAILABLE_SLUG = "fixture-model-unavailable";
 const OBSERVED_AT = "2026-08-01T00:20:00.000Z";
+const SEARCH_EVIDENCE = "evd_77777777-7777-4777-8777-777777777777";
+const SEARCH_QUERY = "Fixture <script> & Model";
+const SEARCH_PROVIDER_MODEL_ID_QUERY = "fixture/provider-model-id";
+const SEARCH_EMPTY_QUERY = "No exact fixture match";
+const SEARCH_PAGED_QUERY = "Paged fixture models";
+const SEARCH_FAILURE_QUERY = "Unavailable fixture search";
+let currentPublication = PUBLICATION;
+let retainedPublicationExpired = false;
+
+const pagedModelId = (index) => {
+  if (index === 0) return MODEL;
+  return `mdl_${(0x22222222 + index).toString(16)}-2222-4222-8222-${(
+    0x222222222222 + index
+  )
+    .toString(16)
+    .padStart(12, "0")}`;
+};
+
+const SEARCH_MODELS = Array.from({ length: 21 }, (_, index) => ({
+  displayName:
+    index === 0
+      ? "Fixture <script> & Model"
+      : `Paged Fixture Model ${String(index + 1).padStart(2, "0")}`,
+  resourceId: pagedModelId(index),
+}));
+
+const searchResult = ({
+  displayName,
+  matchKind = "canonical_name",
+  resourceId,
+  tierMarker = "exact-v1:c",
+}) => ({
+  tierMarker,
+  resourceType: "model",
+  resourceId,
+  matchKind,
+  displayName: {
+    state: "known",
+    value: displayName,
+    observed_at: OBSERVED_AT,
+    evidence_ids: [SEARCH_EVIDENCE],
+  },
+});
 
 const known = (value) => ({
   state: "known",
@@ -84,20 +128,35 @@ export class CatalogQueryService extends WorkerEntrypoint {
     const state = publicationState(this.env);
     if (state === "not_published") return { outcome: "publication_not_ready" };
     if (state === "unavailable") return { outcome: "read_failure" };
+    const requested = input?.requestedPublicationId;
+    if (requested === PUBLICATION && retainedPublicationExpired)
+      return {
+        outcome: "publication_expired",
+        currentPublicationId: currentPublication,
+      };
+    const selected = requested ?? currentPublication;
+    if (selected !== PUBLICATION && selected !== NEXT_PUBLICATION)
+      return {
+        outcome: "publication_expired",
+        currentPublicationId: currentPublication,
+      };
     return {
       outcome: "selected",
-      publicationId: PUBLICATION,
+      publicationId: selected,
       bookmark: "synthetic-browser-bookmark",
       requiredAvailableUntilMs: input.requiredAvailableUntilMs,
     };
   }
 
-  async readDatasetMetadataV1() {
+  async readDatasetMetadataV1(input) {
     const zero = publicationState(this.env) === "published_zero";
+    const publicationId = input?.envelope?.publicationId;
+    if (publicationId !== PUBLICATION && publicationId !== NEXT_PUBLICATION)
+      return { outcome: "integrity_failure" };
     return {
       outcome: "metadata",
       metadata: {
-        publication_id: PUBLICATION,
+        publication_id: publicationId,
         schema_version: "1.0.0",
         api_version: "1",
         methodology_version: "1.0.0",
@@ -149,6 +208,74 @@ export class CatalogQueryService extends WorkerEntrypoint {
       publicationId: PUBLICATION,
       schemaVersion: "1.0.0",
     };
+  }
+
+  async readMergedExactSearchV2(input) {
+    const envelope = input?.envelope;
+    if (
+      envelope?.publicationId !== PUBLICATION &&
+      envelope?.publicationId !== NEXT_PUBLICATION
+    )
+      return { outcome: "integrity_failure" };
+    const query = envelope?.searchPlan?.query;
+    if (query === SEARCH_FAILURE_QUERY) return { outcome: "read_failure" };
+
+    const allResults =
+      query === SEARCH_QUERY
+        ? SEARCH_MODELS.slice(0, 1)
+        : query === SEARCH_PROVIDER_MODEL_ID_QUERY
+          ? [
+              {
+                ...SEARCH_MODELS[0],
+                matchKind: "provider_model_id",
+                tierMarker: "exact-v1:r",
+              },
+            ]
+          : query === SEARCH_PAGED_QUERY
+            ? SEARCH_MODELS
+            : query === SEARCH_EMPTY_QUERY
+              ? []
+              : [];
+    const continuation = envelope?.continuation;
+    let start = 0;
+    if (continuation !== null && continuation !== undefined) {
+      const priorIndex = allResults.findIndex(
+        ({ resourceId }) => resourceId === continuation.stableId,
+      );
+      if (priorIndex < 0) return { outcome: "integrity_failure" };
+      start = priorIndex + 1;
+    }
+    const limit =
+      Number.isSafeInteger(envelope?.limit) && envelope.limit > 0
+        ? envelope.limit
+        : 20;
+    const selected = allResults.slice(start, start + limit).map(searchResult);
+    const last = selected.at(-1);
+    const hasMore = start + selected.length < allResults.length;
+    const response = {
+      outcome: "page",
+      page: {
+        publicationId: envelope.publicationId,
+        results: selected,
+        nextContinuation:
+          hasMore && last !== undefined
+            ? {
+                tierMarker: last.tierMarker,
+                resourceId: last.resourceId,
+              }
+            : null,
+        semanticDegraded: "disabled",
+      },
+    };
+    if (query === SEARCH_PAGED_QUERY && continuation === null && hasMore)
+      currentPublication = NEXT_PUBLICATION;
+    else if (
+      query === SEARCH_PAGED_QUERY &&
+      continuation !== null &&
+      envelope.publicationId === PUBLICATION
+    )
+      retainedPublicationExpired = true;
+    return response;
   }
 }
 

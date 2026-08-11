@@ -13,22 +13,24 @@ const { value = "", compact = false } = Astro.props;
   method="get"
   role="search"
 >
-  <label for="model-search">Search models and variants</label>
+  <label for="model-search"
+    >Search exact Model names or provider model IDs</label
+  >
   <div class="search-row">
     <input
       id="model-search"
       type="search"
       name="q"
       value={value}
-      maxlength="160"
+      maxlength="200"
       autocomplete="off"
       enterkeyhint="search"
-      placeholder="Try a model name, alias, publisher, provider, or provider model ID"
+      placeholder="Enter an exact Model name or provider model ID"
     />
     <button type="submit">Search</button>
   </div>
   <p class="form-hint">
-    Search terms remain in this request only. They are not stored or sent to
-    analytics.
+    This slice returns exact Model targets only. QuantClarity does not retain
+    search terms or send them to analytics.
   </p>
 </form>

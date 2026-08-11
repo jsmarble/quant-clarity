@@ -1,0 +1,135 @@
+---
+import {
+  exactModelMatchLabel,
+  exactModelSearchPageHref,
+} from "../lib/exact-model-search-page.js";
+import type { ExactModelSearchCollection } from "../lib/exact-model-search.js";
+
+interface Props {
+  collection: ExactModelSearchCollection;
+  query: string;
+}
+
+const { collection, query } = Astro.props;
+const nextHref =
+  collection.page.next_cursor === null
+    ? null
+    : exactModelSearchPageHref(
+        query,
+        collection.page.next_cursor,
+        collection.meta.publication_id,
+      );
+const formatTimestamp = (value: string): string =>
+  new Intl.DateTimeFormat("en", {
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    month: "short",
+    timeZone: "UTC",
+    timeZoneName: "short",
+    year: "numeric",
+  }).format(new Date(value));
+---
+
+<section class="exact-matches" aria-labelledby="exact-model-matches-title">
+  <p class="quiet results-publication">
+    Results publication: <code>{collection.meta.publication_id}</code>
+  </p>
+  {
+    collection.data.length === 0 ? (
+      <div class="empty-state">
+        <p class="eyebrow">Exact discovery</p>
+        <h2 id="exact-model-matches-title">No exact Model matches</h2>
+        <p class="result-summary" role="status">
+          No Model target matched <strong>“{query}”</strong> in this
+          publication’s exact name or provider model ID indexes.
+        </p>
+        <a class="button-link" href="/models">
+          Clear search
+        </a>
+      </div>
+    ) : (
+      <>
+        <div class="results-heading">
+          <div>
+            <p class="eyebrow">Exact discovery</p>
+            <h2 id="exact-model-matches-title">Exact Model matches</h2>
+          </div>
+          <p class="result-summary" role="status">
+            {collection.data.length} exact{" "}
+            {collection.data.length === 1 ? "Model match" : "Model matches"} for{" "}
+            <strong>“{query}”</strong>
+          </p>
+        </div>
+        <ol class="exact-match-list" aria-label="Exact Model matches">
+          {collection.data.map((result, index) => {
+            const displayName =
+              result.display_name.state === "known"
+                ? result.display_name.value
+                : "Model name unknown";
+            const titleId = `exact-model-match-${String(index)}`;
+            const matchLabel = exactModelMatchLabel(result.match_kind);
+            return (
+              <li>
+                <article class="exact-match" aria-labelledby={titleId}>
+                  <p class="eyebrow">Canonical Model</p>
+                  <h3 id={titleId}>
+                    <a href={`/models/${result.resource_id}`}>{displayName}</a>
+                  </h3>
+                  <dl class="match-facts">
+                    <div>
+                      <dt>Match</dt>
+                      <dd>{matchLabel}</dd>
+                    </div>
+                    <div>
+                      <dt>QuantClarity Model ID</dt>
+                      <dd>
+                        <code>{result.resource_id}</code>
+                      </dd>
+                    </div>
+                    {result.display_name.state === "known" && (
+                      <>
+                        <div>
+                          <dt>Observed</dt>
+                          <dd>
+                            <time datetime={result.display_name.observed_at}>
+                              {formatTimestamp(result.display_name.observed_at)}
+                            </time>
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>Evidence</dt>
+                          <dd class="identifier-list">
+                            {result.display_name.evidence_ids.map(
+                              (evidenceId) => (
+                                <code>{evidenceId}</code>
+                              ),
+                            )}
+                          </dd>
+                        </div>
+                      </>
+                    )}
+                  </dl>
+                  <p class="quiet routing-note">
+                    The Model ID is QuantClarity’s canonical routing identity;
+                    publisher Facts carry evidence and observation times.
+                  </p>
+                </article>
+              </li>
+            );
+          })}
+        </ol>
+        <nav class="pagination" aria-label="Exact Model match pages">
+          <a class="button-link secondary" href="/models">
+            Clear search
+          </a>
+          {nextHref !== null && (
+            <a class="button-link" href={nextHref} rel="next">
+              Next exact matches
+            </a>
+          )}
+        </nav>
+      </>
+    )
+  }
+</section>

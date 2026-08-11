@@ -1,9 +1,11 @@
 import {
   API_ROUTE_POLICIES,
   checkModelContract,
+  checkSearchCollectionContract,
   type DatasetMetadata,
   type Methodology,
   type Model,
+  type SearchCollection,
 } from "@quant-clarity/contracts";
 import {
   parsePublicationPin,
@@ -27,6 +29,12 @@ const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 export const MODEL_DETAIL_IDENTIFIER_MAX_CHARACTERS = 128;
 export const MODEL_DETAIL_API_PATH_PREFIX = "/v1/models/" as const;
 export const MODEL_DETAIL_FRONTEND_PATH_PREFIX = "/models/" as const;
+export const EXACT_MODEL_SEARCH_API_PATH = "/v1/search" as const;
+export const EXACT_MODEL_SEARCH_LIMIT = 20 as const;
+export const EXACT_MODEL_SEARCH_QUERY_MAX_BYTES = 200;
+export const EXACT_MODEL_SEARCH_CURSOR_MAX_CHARACTERS = 4096;
+export const EXACT_MODEL_SEARCH_RAW_QUERY_MAX_BYTES = 4096;
+export const EXACT_MODEL_SEARCH_PUBLIC_MAX_BYTES = 65_536;
 const SCHEMA_VERSION = /^[0-9]+\.[0-9]+\.[0-9]+$/u;
 const RFC3339_MILLISECONDS =
   /^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\.[0-9]{3}Z$/u;
@@ -55,6 +63,100 @@ export type ModelDetailIdentifier = Readonly<{
   kind: "stable_id" | "slug";
   value: string;
 }>;
+
+export type CanonicalExactModelSearchQuery = Readonly<{
+  cursor: string | null;
+  query: string;
+}>;
+
+const hasValidUnicodeScalars = (value: string): boolean => {
+  for (let index = 0; index < value.length; index += 1) {
+    const unit = value.charCodeAt(index);
+    if (unit >= 0xd800 && unit <= 0xdbff) {
+      if (index + 1 >= value.length) return false;
+      const trailing = value.charCodeAt(index + 1);
+      if (trailing < 0xdc00 || trailing > 0xdfff) return false;
+      index += 1;
+    } else if (unit >= 0xdc00 && unit <= 0xdfff) return false;
+  }
+  return true;
+};
+
+/**
+ * Builds the sole raw query representation accepted by the signed exact-Model
+ * discovery channel. User text is normalized once; cursor bytes are not.
+ */
+export const canonicalExactModelSearchQuery = (
+  query: unknown,
+  cursor: unknown = null,
+): string | null => {
+  try {
+    if (typeof query !== "string" || !hasValidUnicodeScalars(query))
+      return null;
+    const normalizedQuery = query.normalize("NFC").trim();
+    if (
+      normalizedQuery.length === 0 ||
+      UTF8.encode(normalizedQuery).byteLength >
+        EXACT_MODEL_SEARCH_QUERY_MAX_BYTES ||
+      (cursor !== null &&
+        (typeof cursor !== "string" ||
+          cursor.length === 0 ||
+          cursor.length > EXACT_MODEL_SEARCH_CURSOR_MAX_CHARACTERS ||
+          !hasValidUnicodeScalars(cursor)))
+    )
+      return null;
+    const parameters = new URLSearchParams();
+    parameters.append("q", normalizedQuery);
+    parameters.append("record_type", "model");
+    parameters.append("limit", String(EXACT_MODEL_SEARCH_LIMIT));
+    if (cursor !== null) parameters.append("cursor", cursor);
+    const rawQuery = parameters.toString();
+    return UTF8.encode(rawQuery).byteLength <=
+      EXACT_MODEL_SEARCH_RAW_QUERY_MAX_BYTES
+      ? rawQuery
+      : null;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Parses only the byte-canonical exact-Model discovery query. Equivalent
+ * encodings, reordered parameters, defaults, additions, and duplicates fail.
+ */
+export const parseCanonicalExactModelSearchQuery = (
+  rawQuery: unknown,
+): CanonicalExactModelSearchQuery | null => {
+  try {
+    if (
+      typeof rawQuery !== "string" ||
+      rawQuery.length === 0 ||
+      !hasValidUnicodeScalars(rawQuery) ||
+      UTF8.encode(rawQuery).byteLength > EXACT_MODEL_SEARCH_RAW_QUERY_MAX_BYTES
+    )
+      return null;
+    const parameters = new URLSearchParams(rawQuery);
+    const keys = [...parameters.keys()];
+    const expectedKeys = parameters.has("cursor")
+      ? ["q", "record_type", "limit", "cursor"]
+      : ["q", "record_type", "limit"];
+    if (
+      keys.length !== expectedKeys.length ||
+      keys.some((key, index) => key !== expectedKeys[index]) ||
+      parameters.get("record_type") !== "model" ||
+      parameters.get("limit") !== String(EXACT_MODEL_SEARCH_LIMIT)
+    )
+      return null;
+    const query = parameters.get("q");
+    const cursor = parameters.get("cursor");
+    if (query === null) return null;
+    const canonical = canonicalExactModelSearchQuery(query, cursor);
+    if (canonical !== rawQuery) return null;
+    return Object.freeze({ cursor, query: query.normalize("NFC").trim() });
+  } catch {
+    return null;
+  }
+};
 
 /**
  * Classifies one exact public Model identifier without decoding, coercion, or
@@ -1678,6 +1780,81 @@ export function snapshotModelDetailModel(
     )
       return null;
     return detached;
+  } catch {
+    return null;
+  }
+}
+
+export type ExactModelSearchRepresentation = Readonly<{
+  collection: SearchCollection;
+  representationBytes: Uint8Array;
+}>;
+
+/**
+ * Validates, detaches, and serializes the sole exact-Model SearchCollection
+ * wire representation. The explicit reconstruction fixes property order for
+ * byte-for-byte admission by both API and frontend.
+ */
+export function encodeExactModelSearchRepresentation(
+  input: unknown,
+): ExactModelSearchRepresentation | null {
+  try {
+    const detached = snapshotModelDetailJson(input, {
+      remaining: EXACT_MODEL_SEARCH_PUBLIC_MAX_BYTES * 2,
+      seen: new WeakSet(),
+    });
+    if (!checkSearchCollectionContract(detached)) return null;
+    if (
+      detached.page.limit !== EXACT_MODEL_SEARCH_LIMIT ||
+      detached.meta.resource !== "search" ||
+      detached.meta.schema_version !== "1.0.0" ||
+      detached.meta.sort.length !== 2 ||
+      detached.meta.sort[0] !== "relevance" ||
+      detached.meta.sort[1] !== "stable_id" ||
+      detached.meta.semantic_degraded !== "disabled" ||
+      Reflect.ownKeys(detached.meta.filters).length !== 1 ||
+      detached.meta.filters.record_type !== "model" ||
+      detached.data.some(
+        (result) =>
+          result.resource_type !== "model" ||
+          result.semantic_degraded !== "disabled" ||
+          (result.match_kind !== "canonical_name" &&
+            result.match_kind !== "provider_model_id"),
+      )
+    )
+      return null;
+    parsePublicationPin(detached.meta.publication_id);
+    const collection: unknown = {
+      data: detached.data.map((result) => ({
+        resource_type: result.resource_type,
+        resource_id: result.resource_id,
+        display_name: {
+          state: result.display_name.state,
+          value: result.display_name.value,
+          observed_at: result.display_name.observed_at,
+          evidence_ids: [...result.display_name.evidence_ids],
+        },
+        match_kind: result.match_kind,
+        semantic_degraded: result.semantic_degraded,
+      })),
+      page: {
+        next_cursor: detached.page.next_cursor,
+        limit: detached.page.limit,
+      },
+      meta: {
+        resource: "search",
+        publication_id: detached.meta.publication_id,
+        schema_version: "1.0.0",
+        sort: ["relevance", "stable_id"],
+        filters: { record_type: "model" },
+        semantic_degraded: "disabled",
+      },
+    };
+    if (!checkSearchCollectionContract(collection)) return null;
+    const representationBytes = UTF8.encode(JSON.stringify(collection));
+    if (representationBytes.byteLength > EXACT_MODEL_SEARCH_PUBLIC_MAX_BYTES)
+      return null;
+    return { collection, representationBytes };
   } catch {
     return null;
   }

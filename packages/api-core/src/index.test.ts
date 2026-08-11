@@ -10,12 +10,16 @@ import {
   buildExactStructuredSearchPlan,
   buildQueryServiceEnvelope,
   cacheDecision,
+  canonicalExactModelSearchQuery,
   classifyModelDetailIdentifier,
   classifyCost,
   corsHeaders,
   encodeMethodologyDetailRepresentation,
+  encodeExactModelSearchRepresentation,
   encodeModelDetailRepresentation,
   executeReadBoundary,
+  EXACT_MODEL_SEARCH_API_PATH,
+  EXACT_MODEL_SEARCH_LIMIT,
   hashNormalizedQuery,
   ifNoneMatchMatches,
   issueCursor,
@@ -29,6 +33,7 @@ import {
   operationName,
   parseModelDetailApiPath,
   parseModelDetailFrontendPath,
+  parseCanonicalExactModelSearchQuery,
   reconcileRequestCursor,
   representationEtag,
   snapshotModelDetailModel,
@@ -82,6 +87,153 @@ const PROVIDER = "prv_00000000-0000-4000-8000-000000000003";
 const FAMILY = "fam_00000000-0000-4000-8000-000000000004";
 const EVIDENCE = "evd_00000000-0000-4000-8000-000000000005";
 const OBSERVED_AT = "2026-08-03T00:00:00.000Z";
+
+describe("shared canonical exact-Model search query (FE-010, API-010, SEC-007, PRIV-006)", () => {
+  it("builds and parses the sole first-page and continuation representations", () => {
+    expect(EXACT_MODEL_SEARCH_API_PATH).toBe("/v1/search");
+    expect(EXACT_MODEL_SEARCH_LIMIT).toBe(20);
+    const first = canonicalExactModelSearchQuery("  Cafe\u0301 Model  ");
+    expect(first).toBe("q=Caf%C3%A9+Model&record_type=model&limit=20");
+    const parsedFirst = parseCanonicalExactModelSearchQuery(first);
+    expect(parsedFirst).toEqual({ cursor: null, query: "Café Model" });
+    expect(Object.isFrozen(parsedFirst)).toBe(true);
+
+    const continuation = canonicalExactModelSearchQuery(
+      "Café Model",
+      "payload.signature",
+    );
+    expect(continuation).toBe(
+      "q=Caf%C3%A9+Model&record_type=model&limit=20&cursor=payload.signature",
+    );
+    expect(parseCanonicalExactModelSearchQuery(continuation)).toEqual({
+      cursor: "payload.signature",
+      query: "Café Model",
+    });
+  });
+
+  it.each([
+    "record_type=model&q=Model&limit=20",
+    "q=Model&limit=20&record_type=model",
+    "q=Model&record_type=model",
+    "q=Model&record_type=model&limit=020",
+    "q=Model&record_type=variant&limit=20",
+    "q=Model&record_type=model&limit=20&sort=relevance",
+    "q=Model&q=Model&record_type=model&limit=20",
+    "q=%4dodel&record_type=model&limit=20",
+    "q=Model%20Name&record_type=model&limit=20",
+    "q=+Model+&record_type=model&limit=20",
+    "q=Model&record_type=model&limit=20&cursor=",
+    "q=Model&record_type=model&limit=20&cursor=a&cursor=b",
+    "",
+  ])("rejects noncanonical raw query %j", (rawQuery) => {
+    expect(parseCanonicalExactModelSearchQuery(rawQuery)).toBeNull();
+  });
+
+  it.each([
+    ["", null],
+    ["   ", null],
+    ["x".repeat(201), null],
+    ["\ud800", null],
+    ["Model", ""],
+    ["Model", "x".repeat(4097)],
+    ["Model", "\udfff"],
+    [null, null],
+  ])("does not build an invalid query/cursor tuple", (query, cursor) => {
+    expect(canonicalExactModelSearchQuery(query, cursor)).toBeNull();
+  });
+});
+
+describe("exact-Model SearchCollection representation (API-004, API-010, SEC-007)", () => {
+  const collection = () => ({
+    data: [
+      {
+        display_name: {
+          evidence_ids: [EVIDENCE],
+          observed_at: OBSERVED_AT,
+          state: "known",
+          value: "Fixture Model",
+        },
+        match_kind: "canonical_name",
+        resource_id: MODEL,
+        resource_type: "model",
+        semantic_degraded: "disabled",
+      },
+    ],
+    meta: {
+      filters: { record_type: "model" },
+      publication_id: PUBLICATION,
+      resource: "search",
+      schema_version: "1.0.0",
+      semantic_degraded: "disabled",
+      sort: ["relevance", "stable_id"],
+    },
+    page: { limit: 20, next_cursor: "payload.signature" },
+  });
+
+  it("detaches and emits one fixed byte representation", () => {
+    const source = collection();
+    const encoded = encodeExactModelSearchRepresentation(source);
+    expect(encoded).not.toBeNull();
+    source.data[0]!.display_name.value = "mutated";
+    expect(encoded?.collection.data[0]?.display_name.value).toBe(
+      "Fixture Model",
+    );
+    expect(new TextDecoder().decode(encoded?.representationBytes)).toBe(
+      `{"data":[{"resource_type":"model","resource_id":"${MODEL}","display_name":{"state":"known","value":"Fixture Model","observed_at":"${OBSERVED_AT}","evidence_ids":["${EVIDENCE}"]},"match_kind":"canonical_name","semantic_degraded":"disabled"}],"page":{"next_cursor":"payload.signature","limit":20},"meta":{"resource":"search","publication_id":"${PUBLICATION}","schema_version":"1.0.0","sort":["relevance","stable_id"],"filters":{"record_type":"model"},"semantic_degraded":"disabled"}}`,
+    );
+  });
+
+  it.each([
+    [
+      "wrong record type",
+      (value: ReturnType<typeof collection>) => {
+        value.data[0]!.resource_type = "provider";
+      },
+    ],
+    [
+      "wrong limit",
+      (value: ReturnType<typeof collection>) => {
+        value.page.limit = 19;
+      },
+    ],
+    [
+      "wrong filter",
+      (value: ReturnType<typeof collection>) => {
+        value.meta.filters.record_type = "variant";
+      },
+    ],
+    [
+      "semantic result",
+      (value: ReturnType<typeof collection>) => {
+        value.data[0]!.match_kind = "semantic";
+      },
+    ],
+    [
+      "additive field",
+      (value: ReturnType<typeof collection>) => {
+        Object.assign(value.meta, { visitor: "leak" });
+      },
+    ],
+  ])("rejects %s", (_label, mutate) => {
+    const value = collection();
+    mutate(value);
+    expect(encodeExactModelSearchRepresentation(value)).toBeNull();
+  });
+
+  it("rejects accessors without invoking them", () => {
+    const value = collection();
+    let reads = 0;
+    Object.defineProperty(value.meta, "publication_id", {
+      enumerable: true,
+      get() {
+        reads += 1;
+        return PUBLICATION;
+      },
+    });
+    expect(encodeExactModelSearchRepresentation(value)).toBeNull();
+    expect(reads).toBe(0);
+  });
+});
 
 describe("shared Model-detail identity boundary (API-002, API-004, SEC-007)", () => {
   it.each([

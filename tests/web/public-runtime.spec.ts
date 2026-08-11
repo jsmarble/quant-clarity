@@ -152,14 +152,14 @@ test("renders the configured canonical publication state through the web/API/que
   request,
 }) => {
   await page.goto("/");
-  const status = page.getByRole("status");
+  const status = page.locator(".publication-status");
   if (publicationState === "not_published") {
     await page.goto("/models");
     await expect(
       page.getByText("0 published models", { exact: true }),
     ).toBeVisible();
     await expect(page.getByText("Publication pending")).toBeVisible();
-    await expect(page.getByRole("status")).toContainText("Not yet published");
+    await expect(status).toContainText("Not yet published");
     return;
   }
   if (publicationState === "unavailable") {
@@ -167,7 +167,7 @@ test("renders the configured canonical publication state through the web/API/que
     await expect(
       page.getByText("Published provider count unavailable", { exact: true }),
     ).toBeVisible();
-    await expect(page.getByRole("status")).toContainText("Unavailable");
+    await expect(status).toContainText("Unavailable");
     await expect(page.getByText("0 published providers")).toHaveCount(0);
     return;
   }
@@ -183,7 +183,9 @@ test("renders the configured canonical publication state through the web/API/que
   if (publicationState === "published_zero") {
     await page.goto("/models");
     await expect(
-      page.getByText("0 published models", { exact: true }),
+      page.getByText("This publication contains zero active Model records.", {
+        exact: true,
+      }),
     ).toBeVisible();
     await expect(
       page.getByRole("heading", {
@@ -205,11 +207,14 @@ test("renders the configured canonical publication state through the web/API/que
 
   await page.goto("/models");
   await expect(
-    page.getByText("2 published models", { exact: true }),
+    page.getByText(
+      "2 published Models are available for exact name or provider model ID discovery.",
+      { exact: true },
+    ),
   ).toBeVisible();
   await expect(
     page.getByRole("heading", {
-      name: "Model listing is not yet available",
+      name: "Search for an exact Model match",
     }),
   ).toBeVisible();
   await expect(page.getByText("Publication pending")).toHaveCount(0);
