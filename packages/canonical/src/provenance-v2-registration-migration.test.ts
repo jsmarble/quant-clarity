@@ -145,7 +145,10 @@ function expectPredecessorRejected(database: DatabaseSync): void {
 
 describe(
   "dormant provenance-v2 registration migration",
-  { timeout: 20_000 },
+  // The tamper cases intentionally replay the entire migration chain several
+  // times. Shared CI runners can take substantially longer than local runs,
+  // so this is a test-harness budget rather than a weaker integrity check.
+  { timeout: 60_000 },
   () => {
     it("installs one immutable capability and empty normalized tables", () => {
       const database = predecessor();
