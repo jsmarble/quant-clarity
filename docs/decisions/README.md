@@ -87,3 +87,4 @@ Accepted ADRs describe implementation choices; they do not amend product require
 - [ADR 0049](0049-public-methodology-detail.md) — exact historical methodology metadata over a dedicated publication-context read and shared immutable registry
 - [ADR 0050](0050-gdpr-accountability-readiness.md) — deterministic pending-only GDPR accountability readiness without engineering compliance authority
 - [ADR 0051](0051-signed-frontend-api-metadata.md) — signed identity-free frontend-to-API metadata reads and SSR publication state
+- [ADR 0052](0052-publication-pinned-frontend-model-detail.md) — publication-pinned identity-free frontend Model-detail read without public API routing
