@@ -2,13 +2,21 @@
 
 | Attribute | Value |
 |---|---|
-| Status | Accepted for local implementation; no public Model API route or remote authority |
+| Status | Implementation in progress; shared identity/path and `ModelDetail` contract boundary complete; no public Model API route or remote authority |
 | Decision | [ADR 0052](../decisions/0052-publication-pinned-frontend-model-detail.md) |
 | Requirements | `FE-030`, `FE-031`, `FE-060`, `FE-061`, `API-003`, `API-004`, `API-005`, `SEC-001`, `SEC-007`, `SEC-011`, `PRIV-003`, `PRIV-006`, `PRIV-007`, `PRIV-011`, `QA-004`, `QA-009` |
 
 ## Objective
 
 Replace the fixed local Model-page `404` with one server-rendered canonical Model Facts slice over the existing V2 Model-detail authority. The frontend pins the detail read to its canonical metadata publication and sends no visitor identity across the service binding. Public API Model routing, Variants, offerings, preview, production, and deployment remain closed.
+
+## Implemented prerequisite boundary
+
+The contracts package now exports the static `ModelDetail` type and one closed Worker-safe `checkModelDetailContract` guard. A 65,536-node/32-depth acyclic JSON-data snapshot copies every outer, metadata, Model, Fact, checkpoint, and lineage property through own enumerable data descriptors before validation; accessors are rejected without invocation, proxy `get` traps are not used, symbol keys and non-JSON values fail closed, and reflection-trap failures are caught. The guard then requires exact outer and metadata keys, delegates the complete canonical Model validation, and fixes resource, publication-ID, schema-version, empty-filter, and `name`/`stable_id` sort semantics.
+
+The API core now owns the exact Model stable-ID/strict-slug classifier, 128-character ASCII slug ceiling, canonical `/v1/models/{identifier}` builder, and single-segment API-path parser. It performs no decoding, coercion, Unicode normalization, or case folding. The existing B3 request planner consumes the shared classifier/parser instead of maintaining a second regex boundary, while preserving its established response status and effect-free behavior. The Worker receives the platform-normalized `Request.url`; original request-target alias rejection cannot be established at this layer and remains pending at the raw frontend/ingress acceptance boundary.
+
+Unit tests cover stable IDs, boundary-length slugs, malformed UUID versions/variants/case, punctuation, Unicode, percent encodings that remain visible after platform parsing, extra/trailing segments, query-bearing paths, exact path construction, frozen classification results, complete Model-detail envelopes, additive/wrong metadata, invalid canonical Models, nested accessors/proxy gets/symbol and `__proto__` keys, and hostile outer accessors. This increment opens no route, creates no service call, and changes no cache, binding, environment, or successful response behavior.
 
 ## Implementation boundary
 

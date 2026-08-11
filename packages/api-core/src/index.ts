@@ -22,7 +22,10 @@ const STABLE_ID = new RegExp(
   `^(?:fam|mdl|var|prv|off|pcs|prc|evd)_${UUID_V4}$`,
   "u",
 );
+const MODEL_STABLE_ID = new RegExp(`^mdl_${UUID_V4}$`, "u");
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
+export const MODEL_DETAIL_IDENTIFIER_MAX_CHARACTERS = 128;
+export const MODEL_DETAIL_API_PATH_PREFIX = "/v1/models/" as const;
 const SCHEMA_VERSION = /^[0-9]+\.[0-9]+\.[0-9]+$/u;
 const RFC3339_MILLISECONDS =
   /^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\.[0-9]{3}Z$/u;
@@ -46,6 +49,63 @@ export type MethodologyRegistryEntry = Readonly<{
   path: `/v1/methodologies/${string}`;
   version: string;
 }>;
+
+export type ModelDetailIdentifier = Readonly<{
+  kind: "stable_id" | "slug";
+  value: string;
+}>;
+
+/**
+ * Classifies one exact public Model identifier without decoding, coercion, or
+ * normalization. Slugs are ASCII by grammar, so their character and UTF-8
+ * byte lengths are identical.
+ */
+export const classifyModelDetailIdentifier = (
+  value: unknown,
+): ModelDetailIdentifier | null => {
+  try {
+    if (typeof value !== "string") return null;
+    if (MODEL_STABLE_ID.test(value))
+      return Object.freeze({ kind: "stable_id", value });
+    if (
+      value.length > 0 &&
+      value.length <= MODEL_DETAIL_IDENTIFIER_MAX_CHARACTERS &&
+      SLUG.test(value)
+    )
+      return Object.freeze({ kind: "slug", value });
+    return null;
+  } catch {
+    return null;
+  }
+};
+
+/** Parses only one exact, single-segment v1 Model-detail API pathname. */
+export const parseModelDetailApiPath = (
+  pathname: unknown,
+): ModelDetailIdentifier | null => {
+  try {
+    if (
+      typeof pathname !== "string" ||
+      !pathname.startsWith(MODEL_DETAIL_API_PATH_PREFIX)
+    )
+      return null;
+    return classifyModelDetailIdentifier(
+      pathname.slice(MODEL_DETAIL_API_PATH_PREFIX.length),
+    );
+  } catch {
+    return null;
+  }
+};
+
+/** Builds the only canonical internal/public API path for a valid identifier. */
+export const modelDetailApiPath = (
+  identifier: unknown,
+): `/v1/models/${string}` | null => {
+  const classified = classifyModelDetailIdentifier(identifier);
+  return classified === null
+    ? null
+    : `${MODEL_DETAIL_API_PATH_PREFIX}${classified.value}`;
+};
 
 const METHODOLOGY_REGISTRY: Readonly<Record<string, MethodologyRegistryEntry>> =
   Object.freeze({

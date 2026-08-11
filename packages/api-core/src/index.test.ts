@@ -10,6 +10,7 @@ import {
   buildExactStructuredSearchPlan,
   buildQueryServiceEnvelope,
   cacheDecision,
+  classifyModelDetailIdentifier,
   classifyCost,
   corsHeaders,
   encodeMethodologyDetailRepresentation,
@@ -20,8 +21,12 @@ import {
   issueCursor,
   matchRoute,
   methodologyRegistryEntry,
+  modelDetailApiPath,
+  MODEL_DETAIL_API_PATH_PREFIX,
+  MODEL_DETAIL_IDENTIFIER_MAX_CHARACTERS,
   MODEL_DETAIL_PUBLIC_MAX_BYTES,
   operationName,
+  parseModelDetailApiPath,
   reconcileRequestCursor,
   representationEtag,
   snapshotModelDetailModel,
@@ -75,6 +80,65 @@ const PROVIDER = "prv_00000000-0000-4000-8000-000000000003";
 const FAMILY = "fam_00000000-0000-4000-8000-000000000004";
 const EVIDENCE = "evd_00000000-0000-4000-8000-000000000005";
 const OBSERVED_AT = "2026-08-03T00:00:00.000Z";
+
+describe("shared Model-detail identity boundary (API-002, API-004, SEC-007)", () => {
+  it.each([
+    [MODEL, "stable_id"],
+    ["a", "slug"],
+    ["fixture-model-2", "slug"],
+    ["a".repeat(MODEL_DETAIL_IDENTIFIER_MAX_CHARACTERS), "slug"],
+  ] as const)("classifies %s as %s", (value, kind) => {
+    const classified = classifyModelDetailIdentifier(value);
+    expect(classified).toEqual({ kind, value });
+    expect(Object.isFrozen(classified)).toBe(true);
+    expect(modelDetailApiPath(value)).toBe(
+      `${MODEL_DETAIL_API_PATH_PREFIX}${value}`,
+    );
+    expect(parseModelDetailApiPath(modelDetailApiPath(value))).toEqual({
+      kind,
+      value,
+    });
+  });
+
+  it.each([
+    null,
+    undefined,
+    1,
+    "",
+    "Uppercase",
+    "has_underscore",
+    "has.dot",
+    "-leading",
+    "trailing-",
+    "double--hyphen",
+    "mødel",
+    "a".repeat(MODEL_DETAIL_IDENTIFIER_MAX_CHARACTERS + 1),
+    "mdl_00000000-0000-3000-8000-000000000001",
+    "mdl_00000000-0000-4000-7000-000000000001",
+    "mdl_00000000-0000-4000-8000-00000000000A",
+    "%61",
+    "%2f",
+    "bad/extra",
+    "prv_00000000-0000-4000-8000-000000000001",
+  ])("rejects noncanonical identifier %j", (value) => {
+    expect(classifyModelDetailIdentifier(value)).toBeNull();
+    expect(modelDetailApiPath(value)).toBeNull();
+  });
+
+  it.each([
+    null,
+    undefined,
+    "/v1/models",
+    "/v1/models/",
+    `/v1/models/${MODEL}/`,
+    `/v1/models/${MODEL}/extra`,
+    `/v1/models/${MODEL}?query=visitor`,
+    `/models/${MODEL}`,
+    `/v1/providers/${MODEL}`,
+  ])("rejects noncanonical API path %j", (value) => {
+    expect(parseModelDetailApiPath(value)).toBeNull();
+  });
+});
 
 const modelDetailModel = (): Model => ({
   active_parameters: {

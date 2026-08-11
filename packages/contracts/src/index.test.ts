@@ -11,6 +11,7 @@ import {
   checkEvidenceSummaryContract,
   checkModelFamilyContract,
   checkModelContract,
+  checkModelDetailContract,
   checkProviderContract,
   checkVariantContract,
   derivePublicationVectorId,
@@ -23,7 +24,9 @@ import {
   type IdPrefix,
   MethodologyDetailSchema,
   type ModelFamily,
+  type ModelDetail,
   ModelFamilySchema,
+  type ModelDetailSchema,
   ModelSchema,
   PriceSchema,
   PrecisionFormatSchema,
@@ -488,6 +491,97 @@ describe("canonical public contracts (DATA-040–DATA-061, API-002–API-006)", 
       }),
     ).toBe(false);
     expect(checkVariantContract({ ...variant, unexpected: true })).toBe(false);
+
+    const modelDetail = {
+      data: model,
+      meta: {
+        resource: "models",
+        publication_id: `pub_${UUID}`,
+        schema_version: "1.13.0",
+        sort: ["name", "stable_id"],
+        filters: {},
+      },
+    } as const;
+    expect(checkModelDetailContract(modelDetail)).toBe(true);
+    expectTypeOf<ModelDetail>().toEqualTypeOf<
+      Static<typeof ModelDetailSchema>
+    >();
+    expect(
+      checkModelDetailContract({
+        ...modelDetail,
+        meta: { ...modelDetail.meta, unexpected: true },
+      }),
+    ).toBe(false);
+    expect(
+      checkModelDetailContract({
+        ...modelDetail,
+        meta: { ...modelDetail.meta, sort: ["stable_id", "name"] },
+      }),
+    ).toBe(false);
+    expect(
+      checkModelDetailContract({
+        ...modelDetail,
+        data: { ...model, model_id: `mdl_${"f".repeat(36)}` },
+      }),
+    ).toBe(false);
+
+    let detailAccessorCalls = 0;
+    const hostileDetail = { ...modelDetail };
+    Object.defineProperty(hostileDetail, "meta", {
+      enumerable: true,
+      get: () => {
+        detailAccessorCalls += 1;
+        return modelDetail.meta;
+      },
+    });
+    expect(checkModelDetailContract(hostileDetail)).toBe(false);
+    expect(detailAccessorCalls).toBe(0);
+
+    let nestedAccessorCalls = 0;
+    const hostileModel = { ...model };
+    Object.defineProperty(hostileModel, "checkpoints", {
+      enumerable: true,
+      get: () => {
+        nestedAccessorCalls += 1;
+        return [];
+      },
+    });
+    expect(
+      checkModelDetailContract({ ...modelDetail, data: hostileModel }),
+    ).toBe(false);
+    expect(nestedAccessorCalls).toBe(0);
+
+    let nestedProxyGets = 0;
+    const proxiedModel = new Proxy(model, {
+      get: () => {
+        nestedProxyGets += 1;
+        throw new Error("nested proxy get must not run");
+      },
+    });
+    expect(
+      checkModelDetailContract({ ...modelDetail, data: proxiedModel }),
+    ).toBe(true);
+    expect(nestedProxyGets).toBe(0);
+
+    const symbolModel = { ...model };
+    Object.defineProperty(symbolModel, Symbol("hostile"), {
+      enumerable: true,
+      value: "hidden",
+    });
+    expect(
+      checkModelDetailContract({ ...modelDetail, data: symbolModel }),
+    ).toBe(false);
+
+    const protoKeyModel = { ...model };
+    Object.defineProperty(protoKeyModel, "__proto__", {
+      configurable: true,
+      enumerable: true,
+      value: { injected: true },
+      writable: true,
+    });
+    expect(
+      checkModelDetailContract({ ...modelDetail, data: protoKeyModel }),
+    ).toBe(false);
   });
 
   it("requires evidence for public identity names and slugs", () => {
