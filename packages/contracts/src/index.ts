@@ -23,9 +23,11 @@ import {
   ProvenanceV2RegistrationPlanSchema,
   ProvenanceV2SuccessorManifestSchema,
 } from "./provenance-v2-registration.js";
+import { ProvenanceV2RootBindingPlanSchema } from "./provenance-v2-root-binding-plan.js";
 
 export * from "./provenance-v2-authority-root-vectors.js";
 export * from "./provenance-v2-registration.js";
+export * from "./provenance-v2-root-binding-plan.js";
 export { AdapterManifestSchema } from "./adapter-manifest.js";
 
 const UUID_V4 =
@@ -3478,6 +3480,7 @@ export const GENERATED_SCHEMAS = {
   ProvenanceV2RawFieldMapping: ProvenanceV2RawFieldMappingSchema,
   ProvenanceV2RegistrationLimits: ProvenanceV2RegistrationLimitsSchema,
   ProvenanceV2RegistrationPlan: ProvenanceV2RegistrationPlanSchema,
+  ProvenanceV2RootBindingPlan: ProvenanceV2RootBindingPlanSchema,
   ProvenanceV2SuccessorManifest: ProvenanceV2SuccessorManifestSchema,
   Provider: ProviderSchema,
   ProviderCollection: ProviderCollectionSchema,

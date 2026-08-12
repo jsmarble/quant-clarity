@@ -1,0 +1,1906 @@
+{
+  "$id": "ProvenanceV2RootBindingPlan",
+  "additionalProperties": false,
+  "x-quantclarity-contract-status": "review_candidate",
+  "type": "object",
+  "required": [
+    "contract_version",
+    "status",
+    "registry_contract_version",
+    "target_migration",
+    "migration_schema_closure_status",
+    "traversal_contract",
+    "digest_bindings",
+    "count_bindings",
+    "traversals",
+    "record_frames",
+    "successor_claim_bindings"
+  ],
+  "properties": {
+    "contract_version": {
+      "const": "provenance-v2-root-binding-plan@1",
+      "type": "string"
+    },
+    "status": {
+      "const": "review_candidate",
+      "type": "string"
+    },
+    "registry_contract_version": {
+      "const": "provenance-v2-root-registry@1",
+      "type": "string"
+    },
+    "target_migration": {
+      "const": "0010_activate_provenance_v2_registration.sql",
+      "type": "string"
+    },
+    "migration_schema_closure_status": {
+      "const": "pending_target_migration",
+      "type": "string"
+    },
+    "traversal_contract": {
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "member_projection_domain",
+        "member_projection_fields",
+        "source_order",
+        "row_order",
+        "collection_frame",
+        "caller_order_authoritative"
+      ],
+      "properties": {
+        "member_projection_domain": {
+          "const": "provenance-v2-traversal-member@1",
+          "type": "string"
+        },
+        "member_projection_fields": {
+          "minItems": 3,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "const": "source_ordinal:integer",
+                "type": "string"
+              },
+              {
+                "const": "family_tag:text",
+                "type": "string"
+              },
+              {
+                "const": "member_digest:digest",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "source_order": {
+          "const": "dense_source_ordinal_ascending",
+          "type": "string"
+        },
+        "row_order": {
+          "const": "complete_declared_order_tuple_ascending",
+          "type": "string"
+        },
+        "collection_frame": {
+          "const": "scope_fields_then_total_member_count_then_projected_member_digests",
+          "type": "string"
+        },
+        "caller_order_authoritative": {
+          "const": false,
+          "type": "boolean"
+        }
+      }
+    },
+    "digest_bindings": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "table",
+          "field",
+          "hash_class",
+          "binding"
+        ],
+        "properties": {
+          "table": {
+            "pattern": "^(provenance_v2|publication_run_plan|source_compliance_record)[a-z0-9_]*$",
+            "type": "string"
+          },
+          "field": {
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "type": "string"
+          },
+          "hash_class": {
+            "anyOf": [
+              {
+                "const": "digest_output",
+                "type": "string"
+              },
+              {
+                "const": "safe_preimage",
+                "type": "string"
+              },
+              {
+                "const": "external_anchor",
+                "type": "string"
+              },
+              {
+                "const": "top_level_root",
+                "type": "string"
+              },
+              {
+                "const": "lifecycle_metadata",
+                "type": "string"
+              }
+            ]
+          },
+          "binding": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "leaf_output",
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "kind",
+                  "document",
+                  "pointer_pattern",
+                  "selectors",
+                  "encoding",
+                  "null_result"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "document_value",
+                    "type": "string"
+                  },
+                  "document": {
+                    "const": "registration_plan",
+                    "type": "string"
+                  },
+                  "pointer_pattern": {
+                    "pattern": "^/(?:[^/~]|~[01]|\\*)+(?:/(?:[^/~]|~[01]|\\*)+)*$",
+                    "type": "string"
+                  },
+                  "selectors": {
+                    "maxItems": 4,
+                    "type": "array",
+                    "items": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": false,
+                          "type": "object",
+                          "required": [
+                            "wildcard_ordinal",
+                            "kind",
+                            "row_column",
+                            "member_field"
+                          ],
+                          "properties": {
+                            "wildcard_ordinal": {
+                              "minimum": 0,
+                              "maximum": 15,
+                              "type": "integer"
+                            },
+                            "kind": {
+                              "const": "array_object_by_field",
+                              "type": "string"
+                            },
+                            "row_column": {
+                              "pattern": "^[a-z][a-z0-9_]*$",
+                              "type": "string"
+                            },
+                            "member_field": {
+                              "pattern": "^[a-z][a-z0-9_]*$",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "additionalProperties": false,
+                          "type": "object",
+                          "required": [
+                            "wildcard_ordinal",
+                            "kind",
+                            "row_column"
+                          ],
+                          "properties": {
+                            "wildcard_ordinal": {
+                              "minimum": 0,
+                              "maximum": 15,
+                              "type": "integer"
+                            },
+                            "kind": {
+                              "const": "array_index_by_ordinal",
+                              "type": "string"
+                            },
+                            "row_column": {
+                              "pattern": "^[a-z][a-z0-9_]*$",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "additionalProperties": false,
+                          "type": "object",
+                          "required": [
+                            "wildcard_ordinal",
+                            "kind",
+                            "row_column",
+                            "lookup_array_pointer",
+                            "lookup_match_field",
+                            "lookup_value_field"
+                          ],
+                          "properties": {
+                            "wildcard_ordinal": {
+                              "minimum": 0,
+                              "maximum": 15,
+                              "type": "integer"
+                            },
+                            "kind": {
+                              "const": "object_key_via_array_lookup",
+                              "type": "string"
+                            },
+                            "row_column": {
+                              "pattern": "^[a-z][a-z0-9_]*$",
+                              "type": "string"
+                            },
+                            "lookup_array_pointer": {
+                              "pattern": "^/(?:[^/~]|~[01]|\\*)+(?:/(?:[^/~]|~[01]|\\*)+)*$",
+                              "type": "string"
+                            },
+                            "lookup_match_field": {
+                              "pattern": "^[a-z][a-z0-9_]*$",
+                              "type": "string"
+                            },
+                            "lookup_value_field": {
+                              "pattern": "^[a-z][a-z0-9_]*$",
+                              "type": "string"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  "encoding": {
+                    "anyOf": [
+                      {
+                        "const": "rfc8785_jcs",
+                        "type": "string"
+                      },
+                      {
+                        "const": "nfc_utf8",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "null_result": {
+                    "anyOf": [
+                      {
+                        "const": "null",
+                        "type": "string"
+                      },
+                      {
+                        "const": "reject",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "kind",
+                  "source"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "retained_bytes",
+                    "type": "string"
+                  },
+                  "source": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "table",
+                          "bytes_column",
+                          "length_column",
+                          "joins"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "const": "exact_row_blob",
+                            "type": "string"
+                          },
+                          "table": {
+                            "pattern": "^(provenance_v2|publication_run_plan|source_compliance_record)[a-z0-9_]*$",
+                            "type": "string"
+                          },
+                          "bytes_column": {
+                            "pattern": "^[a-z][a-z0-9_]*$",
+                            "type": "string"
+                          },
+                          "length_column": {
+                            "pattern": "^[a-z][a-z0-9_]*$",
+                            "type": "string"
+                          },
+                          "joins": {
+                            "minItems": 1,
+                            "type": "array",
+                            "items": {
+                              "additionalProperties": false,
+                              "type": "object",
+                              "required": [
+                                "local_column",
+                                "remote_column"
+                              ],
+                              "properties": {
+                                "local_column": {
+                                  "pattern": "^[a-z][a-z0-9_]*$",
+                                  "type": "string"
+                                },
+                                "remote_column": {
+                                  "pattern": "^[a-z][a-z0-9_]*$",
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "additionalProperties": false,
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "table",
+                          "bytes_column",
+                          "ordinal_column",
+                          "offset_column",
+                          "length_column",
+                          "joins",
+                          "count_table",
+                          "count_column",
+                          "total_length_column"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "const": "contiguous_chunk_sequence",
+                            "type": "string"
+                          },
+                          "table": {
+                            "pattern": "^(provenance_v2|publication_run_plan|source_compliance_record)[a-z0-9_]*$",
+                            "type": "string"
+                          },
+                          "bytes_column": {
+                            "pattern": "^[a-z][a-z0-9_]*$",
+                            "type": "string"
+                          },
+                          "ordinal_column": {
+                            "pattern": "^[a-z][a-z0-9_]*$",
+                            "type": "string"
+                          },
+                          "offset_column": {
+                            "pattern": "^[a-z][a-z0-9_]*$",
+                            "type": "string"
+                          },
+                          "length_column": {
+                            "pattern": "^[a-z][a-z0-9_]*$",
+                            "type": "string"
+                          },
+                          "joins": {
+                            "minItems": 1,
+                            "type": "array",
+                            "items": {
+                              "additionalProperties": false,
+                              "type": "object",
+                              "required": [
+                                "local_column",
+                                "remote_column"
+                              ],
+                              "properties": {
+                                "local_column": {
+                                  "pattern": "^[a-z][a-z0-9_]*$",
+                                  "type": "string"
+                                },
+                                "remote_column": {
+                                  "pattern": "^[a-z][a-z0-9_]*$",
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          },
+                          "count_table": {
+                            "pattern": "^(provenance_v2|publication_run_plan|source_compliance_record)[a-z0-9_]*$",
+                            "type": "string"
+                          },
+                          "count_column": {
+                            "pattern": "^[a-z][a-z0-9_]*$",
+                            "type": "string"
+                          },
+                          "total_length_column": {
+                            "pattern": "^[a-z][a-z0-9_]*$",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "kind",
+                  "table",
+                  "digest_column",
+                  "joins",
+                  "required_predicates",
+                  "cardinality"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "external_row_digest",
+                    "type": "string"
+                  },
+                  "table": {
+                    "pattern": "^(provenance_v2|publication_run_plan|source_compliance_record)[a-z0-9_]*$",
+                    "type": "string"
+                  },
+                  "digest_column": {
+                    "pattern": "^[a-z][a-z0-9_]*$",
+                    "type": "string"
+                  },
+                  "joins": {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "local_column",
+                        "remote_column"
+                      ],
+                      "properties": {
+                        "local_column": {
+                          "pattern": "^[a-z][a-z0-9_]*$",
+                          "type": "string"
+                        },
+                        "remote_column": {
+                          "pattern": "^[a-z][a-z0-9_]*$",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "required_predicates": {
+                    "type": "array",
+                    "items": {
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "column",
+                        "value"
+                      ],
+                      "properties": {
+                        "column": {
+                          "pattern": "^[a-z][a-z0-9_]*$",
+                          "type": "string"
+                        },
+                        "value": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "boolean"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "cardinality": {
+                    "const": "exactly_one",
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "kind",
+                  "path_source",
+                  "allowed_prefix",
+                  "encoding",
+                  "require_tracked",
+                  "build_manifest_status",
+                  "null_result"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "repository_artifact",
+                    "type": "string"
+                  },
+                  "path_source": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "pointer_pattern",
+                          "selectors"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "const": "document_value",
+                            "type": "string"
+                          },
+                          "pointer_pattern": {
+                            "pattern": "^/(?:[^/~]|~[01]|\\*)+(?:/(?:[^/~]|~[01]|\\*)+)*$",
+                            "type": "string"
+                          },
+                          "selectors": {
+                            "maxItems": 4,
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "type": "object",
+                                  "required": [
+                                    "wildcard_ordinal",
+                                    "kind",
+                                    "row_column",
+                                    "member_field"
+                                  ],
+                                  "properties": {
+                                    "wildcard_ordinal": {
+                                      "minimum": 0,
+                                      "maximum": 15,
+                                      "type": "integer"
+                                    },
+                                    "kind": {
+                                      "const": "array_object_by_field",
+                                      "type": "string"
+                                    },
+                                    "row_column": {
+                                      "pattern": "^[a-z][a-z0-9_]*$",
+                                      "type": "string"
+                                    },
+                                    "member_field": {
+                                      "pattern": "^[a-z][a-z0-9_]*$",
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "type": "object",
+                                  "required": [
+                                    "wildcard_ordinal",
+                                    "kind",
+                                    "row_column"
+                                  ],
+                                  "properties": {
+                                    "wildcard_ordinal": {
+                                      "minimum": 0,
+                                      "maximum": 15,
+                                      "type": "integer"
+                                    },
+                                    "kind": {
+                                      "const": "array_index_by_ordinal",
+                                      "type": "string"
+                                    },
+                                    "row_column": {
+                                      "pattern": "^[a-z][a-z0-9_]*$",
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "type": "object",
+                                  "required": [
+                                    "wildcard_ordinal",
+                                    "kind",
+                                    "row_column",
+                                    "lookup_array_pointer",
+                                    "lookup_match_field",
+                                    "lookup_value_field"
+                                  ],
+                                  "properties": {
+                                    "wildcard_ordinal": {
+                                      "minimum": 0,
+                                      "maximum": 15,
+                                      "type": "integer"
+                                    },
+                                    "kind": {
+                                      "const": "object_key_via_array_lookup",
+                                      "type": "string"
+                                    },
+                                    "row_column": {
+                                      "pattern": "^[a-z][a-z0-9_]*$",
+                                      "type": "string"
+                                    },
+                                    "lookup_array_pointer": {
+                                      "pattern": "^/(?:[^/~]|~[01]|\\*)+(?:/(?:[^/~]|~[01]|\\*)+)*$",
+                                      "type": "string"
+                                    },
+                                    "lookup_match_field": {
+                                      "pattern": "^[a-z][a-z0-9_]*$",
+                                      "type": "string"
+                                    },
+                                    "lookup_value_field": {
+                                      "pattern": "^[a-z][a-z0-9_]*$",
+                                      "type": "string"
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "additionalProperties": false,
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "table",
+                          "column",
+                          "joins"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "const": "row_column",
+                            "type": "string"
+                          },
+                          "table": {
+                            "pattern": "^(provenance_v2|publication_run_plan|source_compliance_record)[a-z0-9_]*$",
+                            "type": "string"
+                          },
+                          "column": {
+                            "pattern": "^[a-z][a-z0-9_]*$",
+                            "type": "string"
+                          },
+                          "joins": {
+                            "minItems": 1,
+                            "type": "array",
+                            "items": {
+                              "additionalProperties": false,
+                              "type": "object",
+                              "required": [
+                                "local_column",
+                                "remote_column"
+                              ],
+                              "properties": {
+                                "local_column": {
+                                  "pattern": "^[a-z][a-z0-9_]*$",
+                                  "type": "string"
+                                },
+                                "remote_column": {
+                                  "pattern": "^[a-z][a-z0-9_]*$",
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "additionalProperties": false,
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "value"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "const": "literal",
+                            "type": "string"
+                          },
+                          "value": {
+                            "minLength": 1,
+                            "maxLength": 512,
+                            "type": "string"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  "allowed_prefix": {
+                    "pattern": "^[a-z][a-z0-9_/-]*/$",
+                    "type": "string"
+                  },
+                  "encoding": {
+                    "const": "exact_file_bytes",
+                    "type": "string"
+                  },
+                  "require_tracked": {
+                    "const": true,
+                    "type": "boolean"
+                  },
+                  "build_manifest_status": {
+                    "const": "pending_reviewed_manifest",
+                    "type": "string"
+                  },
+                  "null_result": {
+                    "anyOf": [
+                      {
+                        "const": "paired_null",
+                        "type": "string"
+                      },
+                      {
+                        "const": "reject",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "kind",
+                  "table",
+                  "digest_column",
+                  "joins",
+                  "digest_source"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "row_digest",
+                    "type": "string"
+                  },
+                  "table": {
+                    "pattern": "^(provenance_v2|publication_run_plan|source_compliance_record)[a-z0-9_]*$",
+                    "type": "string"
+                  },
+                  "digest_column": {
+                    "pattern": "^[a-z][a-z0-9_]*$",
+                    "type": "string"
+                  },
+                  "joins": {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "local_column",
+                        "remote_column"
+                      ],
+                      "properties": {
+                        "local_column": {
+                          "pattern": "^[a-z][a-z0-9_]*$",
+                          "type": "string"
+                        },
+                        "remote_column": {
+                          "pattern": "^[a-z][a-z0-9_]*$",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "digest_source": {
+                    "const": "independently_recomputed_leaf",
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "kind",
+                  "traversal"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "collection_digest",
+                    "type": "string"
+                  },
+                  "traversal": {
+                    "pattern": "^[a-z][a-z0-9_]*$",
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "kind",
+                  "record_frame"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "record_frame_digest",
+                    "type": "string"
+                  },
+                  "record_frame": {
+                    "pattern": "^[a-z][a-z0-9_]*$",
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "kind",
+                  "record_frame"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "frame_output",
+                    "type": "string"
+                  },
+                  "record_frame": {
+                    "pattern": "^[a-z][a-z0-9_]*$",
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "count_bindings": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "table",
+          "binding"
+        ],
+        "properties": {
+          "table": {
+            "pattern": "^(provenance_v2|publication_run_plan|source_compliance_record)[a-z0-9_]*$",
+            "type": "string"
+          },
+          "binding": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "kind",
+                  "pointer_pattern",
+                  "selectors"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "document_array_length",
+                    "type": "string"
+                  },
+                  "pointer_pattern": {
+                    "pattern": "^/(?:[^/~]|~[01]|\\*)+(?:/(?:[^/~]|~[01]|\\*)+)*$",
+                    "type": "string"
+                  },
+                  "selectors": {
+                    "maxItems": 4,
+                    "type": "array",
+                    "items": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": false,
+                          "type": "object",
+                          "required": [
+                            "wildcard_ordinal",
+                            "kind",
+                            "row_column",
+                            "member_field"
+                          ],
+                          "properties": {
+                            "wildcard_ordinal": {
+                              "minimum": 0,
+                              "maximum": 15,
+                              "type": "integer"
+                            },
+                            "kind": {
+                              "const": "array_object_by_field",
+                              "type": "string"
+                            },
+                            "row_column": {
+                              "pattern": "^[a-z][a-z0-9_]*$",
+                              "type": "string"
+                            },
+                            "member_field": {
+                              "pattern": "^[a-z][a-z0-9_]*$",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "additionalProperties": false,
+                          "type": "object",
+                          "required": [
+                            "wildcard_ordinal",
+                            "kind",
+                            "row_column"
+                          ],
+                          "properties": {
+                            "wildcard_ordinal": {
+                              "minimum": 0,
+                              "maximum": 15,
+                              "type": "integer"
+                            },
+                            "kind": {
+                              "const": "array_index_by_ordinal",
+                              "type": "string"
+                            },
+                            "row_column": {
+                              "pattern": "^[a-z][a-z0-9_]*$",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "additionalProperties": false,
+                          "type": "object",
+                          "required": [
+                            "wildcard_ordinal",
+                            "kind",
+                            "row_column",
+                            "lookup_array_pointer",
+                            "lookup_match_field",
+                            "lookup_value_field"
+                          ],
+                          "properties": {
+                            "wildcard_ordinal": {
+                              "minimum": 0,
+                              "maximum": 15,
+                              "type": "integer"
+                            },
+                            "kind": {
+                              "const": "object_key_via_array_lookup",
+                              "type": "string"
+                            },
+                            "row_column": {
+                              "pattern": "^[a-z][a-z0-9_]*$",
+                              "type": "string"
+                            },
+                            "lookup_array_pointer": {
+                              "pattern": "^/(?:[^/~]|~[01]|\\*)+(?:/(?:[^/~]|~[01]|\\*)+)*$",
+                              "type": "string"
+                            },
+                            "lookup_match_field": {
+                              "pattern": "^[a-z][a-z0-9_]*$",
+                              "type": "string"
+                            },
+                            "lookup_value_field": {
+                              "pattern": "^[a-z][a-z0-9_]*$",
+                              "type": "string"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "kind",
+                  "pointer_pattern"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "document_declared_integer",
+                    "type": "string"
+                  },
+                  "pointer_pattern": {
+                    "pattern": "^/(?:[^/~]|~[01]|\\*)+(?:/(?:[^/~]|~[01]|\\*)+)*$",
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "kind",
+                  "pointer_pattern",
+                  "selectors",
+                  "predicate"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "document_filtered_array_length",
+                    "type": "string"
+                  },
+                  "pointer_pattern": {
+                    "pattern": "^/(?:[^/~]|~[01]|\\*)+(?:/(?:[^/~]|~[01]|\\*)+)*$",
+                    "type": "string"
+                  },
+                  "selectors": {
+                    "maxItems": 4,
+                    "type": "array",
+                    "items": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": false,
+                          "type": "object",
+                          "required": [
+                            "wildcard_ordinal",
+                            "kind",
+                            "row_column",
+                            "member_field"
+                          ],
+                          "properties": {
+                            "wildcard_ordinal": {
+                              "minimum": 0,
+                              "maximum": 15,
+                              "type": "integer"
+                            },
+                            "kind": {
+                              "const": "array_object_by_field",
+                              "type": "string"
+                            },
+                            "row_column": {
+                              "pattern": "^[a-z][a-z0-9_]*$",
+                              "type": "string"
+                            },
+                            "member_field": {
+                              "pattern": "^[a-z][a-z0-9_]*$",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "additionalProperties": false,
+                          "type": "object",
+                          "required": [
+                            "wildcard_ordinal",
+                            "kind",
+                            "row_column"
+                          ],
+                          "properties": {
+                            "wildcard_ordinal": {
+                              "minimum": 0,
+                              "maximum": 15,
+                              "type": "integer"
+                            },
+                            "kind": {
+                              "const": "array_index_by_ordinal",
+                              "type": "string"
+                            },
+                            "row_column": {
+                              "pattern": "^[a-z][a-z0-9_]*$",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "additionalProperties": false,
+                          "type": "object",
+                          "required": [
+                            "wildcard_ordinal",
+                            "kind",
+                            "row_column",
+                            "lookup_array_pointer",
+                            "lookup_match_field",
+                            "lookup_value_field"
+                          ],
+                          "properties": {
+                            "wildcard_ordinal": {
+                              "minimum": 0,
+                              "maximum": 15,
+                              "type": "integer"
+                            },
+                            "kind": {
+                              "const": "object_key_via_array_lookup",
+                              "type": "string"
+                            },
+                            "row_column": {
+                              "pattern": "^[a-z][a-z0-9_]*$",
+                              "type": "string"
+                            },
+                            "lookup_array_pointer": {
+                              "pattern": "^/(?:[^/~]|~[01]|\\*)+(?:/(?:[^/~]|~[01]|\\*)+)*$",
+                              "type": "string"
+                            },
+                            "lookup_match_field": {
+                              "pattern": "^[a-z][a-z0-9_]*$",
+                              "type": "string"
+                            },
+                            "lookup_value_field": {
+                              "pattern": "^[a-z][a-z0-9_]*$",
+                              "type": "string"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  "predicate": {
+                    "additionalProperties": false,
+                    "type": "object",
+                    "required": [
+                      "member_field",
+                      "equals"
+                    ],
+                    "properties": {
+                      "member_field": {
+                        "pattern": "^[a-z][a-z0-9_]*$",
+                        "type": "string"
+                      },
+                      "equals": {
+                        "minLength": 1,
+                        "maxLength": 128,
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "kind",
+                  "artifact",
+                  "pointer_pattern",
+                  "selectors"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "contract_sequence_length",
+                    "type": "string"
+                  },
+                  "artifact": {
+                    "minLength": 1,
+                    "maxLength": 512,
+                    "type": "string"
+                  },
+                  "pointer_pattern": {
+                    "pattern": "^/(?:[^/~]|~[01]|\\*)+(?:/(?:[^/~]|~[01]|\\*)+)*$",
+                    "type": "string"
+                  },
+                  "selectors": {
+                    "maxItems": 4,
+                    "type": "array",
+                    "items": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": false,
+                          "type": "object",
+                          "required": [
+                            "wildcard_ordinal",
+                            "kind",
+                            "row_column",
+                            "member_field"
+                          ],
+                          "properties": {
+                            "wildcard_ordinal": {
+                              "minimum": 0,
+                              "maximum": 15,
+                              "type": "integer"
+                            },
+                            "kind": {
+                              "const": "array_object_by_field",
+                              "type": "string"
+                            },
+                            "row_column": {
+                              "pattern": "^[a-z][a-z0-9_]*$",
+                              "type": "string"
+                            },
+                            "member_field": {
+                              "pattern": "^[a-z][a-z0-9_]*$",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "additionalProperties": false,
+                          "type": "object",
+                          "required": [
+                            "wildcard_ordinal",
+                            "kind",
+                            "row_column"
+                          ],
+                          "properties": {
+                            "wildcard_ordinal": {
+                              "minimum": 0,
+                              "maximum": 15,
+                              "type": "integer"
+                            },
+                            "kind": {
+                              "const": "array_index_by_ordinal",
+                              "type": "string"
+                            },
+                            "row_column": {
+                              "pattern": "^[a-z][a-z0-9_]*$",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "additionalProperties": false,
+                          "type": "object",
+                          "required": [
+                            "wildcard_ordinal",
+                            "kind",
+                            "row_column",
+                            "lookup_array_pointer",
+                            "lookup_match_field",
+                            "lookup_value_field"
+                          ],
+                          "properties": {
+                            "wildcard_ordinal": {
+                              "minimum": 0,
+                              "maximum": 15,
+                              "type": "integer"
+                            },
+                            "kind": {
+                              "const": "object_key_via_array_lookup",
+                              "type": "string"
+                            },
+                            "row_column": {
+                              "pattern": "^[a-z][a-z0-9_]*$",
+                              "type": "string"
+                            },
+                            "lookup_array_pointer": {
+                              "pattern": "^/(?:[^/~]|~[01]|\\*)+(?:/(?:[^/~]|~[01]|\\*)+)*$",
+                              "type": "string"
+                            },
+                            "lookup_match_field": {
+                              "pattern": "^[a-z][a-z0-9_]*$",
+                              "type": "string"
+                            },
+                            "lookup_value_field": {
+                              "pattern": "^[a-z][a-z0-9_]*$",
+                              "type": "string"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "kind",
+                  "table",
+                  "column",
+                  "joins"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "row_integer",
+                    "type": "string"
+                  },
+                  "table": {
+                    "pattern": "^(provenance_v2|publication_run_plan|source_compliance_record)[a-z0-9_]*$",
+                    "type": "string"
+                  },
+                  "column": {
+                    "pattern": "^[a-z][a-z0-9_]*$",
+                    "type": "string"
+                  },
+                  "joins": {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "local_column",
+                        "remote_column"
+                      ],
+                      "properties": {
+                        "local_column": {
+                          "pattern": "^[a-z][a-z0-9_]*$",
+                          "type": "string"
+                        },
+                        "remote_column": {
+                          "pattern": "^[a-z][a-z0-9_]*$",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "kind",
+                  "traversal"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "computed_sequence_length",
+                    "type": "string"
+                  },
+                  "traversal": {
+                    "pattern": "^[a-z][a-z0-9_]*$",
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "traversals": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "kind",
+          "purpose",
+          "domain",
+          "scope_columns",
+          "zero_members",
+          "sources"
+        ],
+        "properties": {
+          "name": {
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "type": "string"
+          },
+          "kind": {
+            "const": "ordered_digest_set",
+            "type": "string"
+          },
+          "purpose": {
+            "anyOf": [
+              {
+                "const": "plan_root",
+                "type": "string"
+              },
+              {
+                "const": "successor_claim",
+                "type": "string"
+              }
+            ]
+          },
+          "domain": {
+            "pattern": "^provenance-v2-[a-z0-9-]+@1$",
+            "type": "string"
+          },
+          "scope_columns": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "pattern": "^[a-z][a-z0-9_]*$",
+              "type": "string"
+            }
+          },
+          "zero_members": {
+            "anyOf": [
+              {
+                "const": "allowed",
+                "type": "string"
+              },
+              {
+                "const": "rejected",
+                "type": "string"
+              }
+            ]
+          },
+          "sources": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "additionalProperties": false,
+              "type": "object",
+              "required": [
+                "ordinal",
+                "table",
+                "family_tag",
+                "scope_binding",
+                "cardinality",
+                "order_by",
+                "digest_column",
+                "digest_source",
+                "child_traversal"
+              ],
+              "properties": {
+                "ordinal": {
+                  "minimum": 0,
+                  "maximum": 255,
+                  "type": "integer"
+                },
+                "table": {
+                  "pattern": "^(provenance_v2|publication_run_plan|source_compliance_record)[a-z0-9_]*$",
+                  "type": "string"
+                },
+                "family_tag": {
+                  "pattern": "^[a-z][a-z0-9_]*$",
+                  "type": "string"
+                },
+                "scope_binding": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "kind",
+                        "joins"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "const": "plan_scope",
+                          "type": "string"
+                        },
+                        "joins": {
+                          "minItems": 1,
+                          "type": "array",
+                          "items": {
+                            "additionalProperties": false,
+                            "type": "object",
+                            "required": [
+                              "scope_column",
+                              "row_column"
+                            ],
+                            "properties": {
+                              "scope_column": {
+                                "pattern": "^[a-z][a-z0-9_]*$",
+                                "type": "string"
+                              },
+                              "row_column": {
+                                "pattern": "^[a-z][a-z0-9_]*$",
+                                "type": "string"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "kind",
+                        "artifact",
+                        "contract_version"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "const": "global_contract",
+                          "type": "string"
+                        },
+                        "artifact": {
+                          "const": "contracts/generated/provenance-v2/field-corpus.v1.json",
+                          "type": "string"
+                        },
+                        "contract_version": {
+                          "const": "provenance-v2-field-corpus@1",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "cardinality": {
+                  "anyOf": [
+                    {
+                      "const": "one",
+                      "type": "string"
+                    },
+                    {
+                      "const": "zero_or_one",
+                      "type": "string"
+                    },
+                    {
+                      "const": "many",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "order_by": {
+                  "minItems": 1,
+                  "type": "array",
+                  "items": {
+                    "additionalProperties": false,
+                    "type": "object",
+                    "required": [
+                      "column",
+                      "frame_type",
+                      "direction",
+                      "comparison"
+                    ],
+                    "properties": {
+                      "column": {
+                        "pattern": "^[a-z][a-z0-9_]*$",
+                        "type": "string"
+                      },
+                      "frame_type": {
+                        "anyOf": [
+                          {
+                            "const": "text",
+                            "type": "string"
+                          },
+                          {
+                            "const": "integer",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "direction": {
+                        "const": "asc",
+                        "type": "string"
+                      },
+                      "comparison": {
+                        "anyOf": [
+                          {
+                            "const": "integer",
+                            "type": "string"
+                          },
+                          {
+                            "const": "utf8_binary",
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                },
+                "digest_column": {
+                  "anyOf": [
+                    {
+                      "pattern": "^[a-z][a-z0-9_]*$",
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "digest_source": {
+                  "anyOf": [
+                    {
+                      "const": "independently_recomputed_leaf",
+                      "type": "string"
+                    },
+                    {
+                      "const": "independently_recomputed_child_traversal",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "child_traversal": {
+                  "anyOf": [
+                    {
+                      "pattern": "^[a-z][a-z0-9_]*$",
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "record_frames": {
+      "minItems": 2,
+      "type": "array",
+      "items": {
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "domain",
+          "fields"
+        ],
+        "properties": {
+          "name": {
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "type": "string"
+          },
+          "domain": {
+            "pattern": "^provenance-v2-[a-z0-9-]+@1$",
+            "type": "string"
+          },
+          "fields": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "additionalProperties": false,
+              "type": "object",
+              "required": [
+                "ordinal",
+                "name",
+                "frame_type",
+                "source"
+              ],
+              "properties": {
+                "ordinal": {
+                  "minimum": 0,
+                  "maximum": 255,
+                  "type": "integer"
+                },
+                "name": {
+                  "pattern": "^[a-z][a-z0-9_]*$",
+                  "type": "string"
+                },
+                "frame_type": {
+                  "anyOf": [
+                    {
+                      "const": "text",
+                      "type": "string"
+                    },
+                    {
+                      "const": "integer",
+                      "type": "string"
+                    },
+                    {
+                      "const": "boolean",
+                      "type": "string"
+                    },
+                    {
+                      "const": "digest",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "source": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "kind",
+                        "lookup",
+                        "column"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "const": "row_column",
+                          "type": "string"
+                        },
+                        "lookup": {
+                          "minItems": 1,
+                          "type": "array",
+                          "items": {
+                            "additionalProperties": false,
+                            "type": "object",
+                            "required": [
+                              "table",
+                              "cardinality",
+                              "joins"
+                            ],
+                            "properties": {
+                              "table": {
+                                "pattern": "^(provenance_v2|publication_run_plan|source_compliance_record)[a-z0-9_]*$",
+                                "type": "string"
+                              },
+                              "cardinality": {
+                                "const": "exactly_one",
+                                "type": "string"
+                              },
+                              "joins": {
+                                "minItems": 1,
+                                "type": "array",
+                                "items": {
+                                  "additionalProperties": false,
+                                  "type": "object",
+                                  "required": [
+                                    "left",
+                                    "right_column"
+                                  ],
+                                  "properties": {
+                                    "left": {
+                                      "anyOf": [
+                                        {
+                                          "additionalProperties": false,
+                                          "type": "object",
+                                          "required": [
+                                            "kind",
+                                            "column"
+                                          ],
+                                          "properties": {
+                                            "kind": {
+                                              "const": "scope",
+                                              "type": "string"
+                                            },
+                                            "column": {
+                                              "pattern": "^[a-z][a-z0-9_]*$",
+                                              "type": "string"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "type": "object",
+                                          "required": [
+                                            "kind",
+                                            "column"
+                                          ],
+                                          "properties": {
+                                            "kind": {
+                                              "const": "prior_row",
+                                              "type": "string"
+                                            },
+                                            "column": {
+                                              "pattern": "^[a-z][a-z0-9_]*$",
+                                              "type": "string"
+                                            }
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    "right_column": {
+                                      "pattern": "^[a-z][a-z0-9_]*$",
+                                      "type": "string"
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "column": {
+                          "pattern": "^[a-z][a-z0-9_]*$",
+                          "type": "string"
+                        }
+                      }
+                    },
+                    {
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "kind",
+                        "traversal"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "const": "collection",
+                          "type": "string"
+                        },
+                        "traversal": {
+                          "pattern": "^[a-z][a-z0-9_]*$",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "successor_claim_bindings": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "field",
+          "kind",
+          "traversal",
+          "table",
+          "column",
+          "scope_joins"
+        ],
+        "properties": {
+          "field": {
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "type": "string"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "const": "count",
+                "type": "string"
+              },
+              {
+                "const": "collection_digest",
+                "type": "string"
+              },
+              {
+                "const": "row_digest",
+                "type": "string"
+              }
+            ]
+          },
+          "traversal": {
+            "anyOf": [
+              {
+                "pattern": "^[a-z][a-z0-9_]*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "table": {
+            "anyOf": [
+              {
+                "pattern": "^(provenance_v2|publication_run_plan|source_compliance_record)[a-z0-9_]*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "column": {
+            "anyOf": [
+              {
+                "pattern": "^[a-z][a-z0-9_]*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "scope_joins": {
+            "type": "array",
+            "items": {
+              "additionalProperties": false,
+              "type": "object",
+              "required": [
+                "scope_column",
+                "row_column"
+              ],
+              "properties": {
+                "scope_column": {
+                  "pattern": "^[a-z][a-z0-9_]*$",
+                  "type": "string"
+                },
+                "row_column": {
+                  "pattern": "^[a-z][a-z0-9_]*$",
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

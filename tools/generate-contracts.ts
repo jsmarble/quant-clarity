@@ -10,6 +10,7 @@ import {
   PROVENANCE_V2_FIELD_CORPUS,
   PROVENANCE_V2_FRAME_CONTRACT,
   PROVENANCE_V2_RAW_FIELD_MAPPING_CONTRACT,
+  PROVENANCE_V2_ROOT_BINDING_PLAN,
   PROVENANCE_V2_SEMANTIC_POLICY,
   PROVENANCE_V2_SUCCESSOR_MANIFEST_CONTRACT,
 } from "@quant-clarity/contracts";
@@ -1536,6 +1537,10 @@ const files = new Map<string, string>([
   [
     "provenance-v2/root-registry.v1.json",
     `${JSON.stringify(PROVENANCE_V2_AUTHORITY_ROOT_REGISTRY, null, 2)}\n`,
+  ],
+  [
+    "provenance-v2/root-binding-plan.v1.json",
+    `${JSON.stringify(PROVENANCE_V2_ROOT_BINDING_PLAN, null, 2)}\n`,
   ],
   [
     "provenance-v2/golden-vectors.v1.json",

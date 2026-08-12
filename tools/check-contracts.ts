@@ -13,9 +13,11 @@ import {
   PROVENANCE_V2_FIELD_CORPUS,
   PROVENANCE_V2_FRAME_CONTRACT,
   PROVENANCE_V2_RAW_FIELD_MAPPING_CONTRACT,
+  PROVENANCE_V2_ROOT_BINDING_PLAN,
   PROVENANCE_V2_SEMANTIC_POLICY,
   PROVENANCE_V2_SUCCESSOR_MANIFEST_CONTRACT,
   validateProvenanceV2ContractArtifacts,
+  validateProvenanceV2RootBindingPlan,
 } from "@quant-clarity/contracts";
 
 type JsonObject = Record<string, unknown>;
@@ -44,8 +46,17 @@ const provenanceArtifacts = [
     PROVENANCE_V2_SUCCESSOR_MANIFEST_CONTRACT,
   ],
   ["root-registry.v1.json", PROVENANCE_V2_AUTHORITY_ROOT_REGISTRY],
+  ["root-binding-plan.v1.json", PROVENANCE_V2_ROOT_BINDING_PLAN],
   ["golden-vectors.v1.json", PROVENANCE_V2_AUTHORITY_ROOT_VECTORS],
 ] as const;
+
+const rootBindingErrors = validateProvenanceV2RootBindingPlan(
+  PROVENANCE_V2_ROOT_BINDING_PLAN,
+);
+if (rootBindingErrors.length > 0)
+  throw new Error(
+    `Invalid provenance-v2 root binding plan: ${rootBindingErrors.join("; ")}`,
+  );
 for (const [filename, expected] of provenanceArtifacts) {
   const generated = JSON.parse(
     await readFile(
@@ -68,6 +79,7 @@ for (const schemaName of [
   "ProvenanceV2RawFieldMapping",
   "ProvenanceV2RegistrationLimits",
   "ProvenanceV2RegistrationPlan",
+  "ProvenanceV2RootBindingPlan",
   "ProvenanceV2SuccessorManifest",
 ]) {
   const schema = JSON.parse(
