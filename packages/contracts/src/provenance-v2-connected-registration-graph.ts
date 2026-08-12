@@ -210,6 +210,9 @@ const CORPUS_GROUPS = CORPUS.record_groups as unknown as readonly CorpusGroup[];
 
 const fixtureDigest = (ordinal: number): string =>
   `sha256:${ordinal.toString(16).padStart(64, "0")}`;
+const SOURCE_REGISTER_ARTIFACT_HASH = fixtureDigest(900_001);
+const ADAPTER_MANIFEST_HASH = fixtureDigest(900_002);
+const PATH_TEMPLATE_HASH = fixtureDigest(900_003);
 let rowSequence = 0;
 
 const defaultValue = (name: string): Scalar => {
@@ -401,6 +404,7 @@ const adapterRows = (): GraphRow[] => [
     provider_owner_relationship: "provider_controlled",
   }),
   makeRow("provenance_v2_source_register_receipt", "receipt", {
+    artifact_hash: SOURCE_REGISTER_ARTIFACT_HASH,
     member_count: 1,
     access_permitted: true,
     retention_permitted: true,
@@ -409,6 +413,7 @@ const adapterRows = (): GraphRow[] => [
     approval_state: "approved",
   }),
   makeRow("provenance_v2_source_register_member", "member", {
+    artifact_hash: SOURCE_REGISTER_ARTIFACT_HASH,
     ordinal: 0,
   }),
   makeRow("provenance_v2_adapter_manifest_receipt", "receipt", {
@@ -418,6 +423,8 @@ const adapterRows = (): GraphRow[] => [
     environment_count: 1,
     credential_count: 11,
     extraction_policy_version: null,
+    adapter_manifest_hash: ADAPTER_MANIFEST_HASH,
+    source_artifact_hash: SOURCE_REGISTER_ARTIFACT_HASH,
   }),
   makeRow("provenance_v2_adapter_manifest_environment", "environment", {
     ordinal: 0,
@@ -434,6 +441,7 @@ const adapterRows = (): GraphRow[] => [
   ),
   makeRow("provenance_v2_adapter_manifest_source", "source", {
     source_ordinal: 0,
+    path_template_hash: PATH_TEMPLATE_HASH,
   }),
 ];
 
@@ -441,8 +449,15 @@ const endpointRows = (): GraphRow[] => {
   const rows: GraphRow[] = [
     makeRow("provenance_v2_source_endpoint", "endpoint", {
       endpoint_ordinal: 0,
+      source_register_artifact_hash: SOURCE_REGISTER_ARTIFACT_HASH,
+      path_template_hash: PATH_TEMPLATE_HASH,
+      adapter_manifest_hash: ADAPTER_MANIFEST_HASH,
     }),
-    makeRow("provenance_v2_source_endpoint_registration", "registration"),
+    makeRow("provenance_v2_source_endpoint_registration", "registration", {
+      source_register_artifact_hash: SOURCE_REGISTER_ARTIFACT_HASH,
+      path_template_hash: PATH_TEMPLATE_HASH,
+      adapter_manifest_hash: ADAPTER_MANIFEST_HASH,
+    }),
     makeRow("provenance_v2_source_endpoint_request", "request", {
       scheme: "https",
       method: "GET",
@@ -548,7 +563,7 @@ const verifierRows = (): GraphRow[] => [
     implementation_kind: "deterministic_parser",
     family_key: "deterministic-parser",
     prompt_hash: null,
-    deterministic_procedure_hash: fixtureDigest(900_001),
+    deterministic_procedure_hash: fixtureDigest(900_004),
   }),
   makeRow("provenance_v2_verifier_policy", "policy", {
     ordinal: 0,

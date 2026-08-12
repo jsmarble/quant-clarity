@@ -25,11 +25,13 @@ import {
 } from "./provenance-v2-registration.js";
 import { ProvenanceV2CompositeRootVectorsSchema } from "./provenance-v2-composite-root-vectors.js";
 import { ProvenanceV2ConnectedRegistrationGraphSchema } from "./provenance-v2-connected-registration-graph.js";
+import { ProvenanceV2ConnectedTraversalVectorsSchema } from "./provenance-v2-connected-traversal-vectors.js";
 import { ProvenanceV2RootBindingPlanSchema } from "./provenance-v2-root-binding-plan.js";
 
 export * from "./provenance-v2-authority-root-vectors.js";
 export * from "./provenance-v2-composite-root-vectors.js";
 export * from "./provenance-v2-connected-registration-graph.js";
+export * from "./provenance-v2-connected-traversal-vectors.js";
 export * from "./provenance-v2-registration.js";
 export * from "./provenance-v2-root-binding-plan.js";
 export { AdapterManifestSchema } from "./adapter-manifest.js";
@@ -3483,6 +3485,8 @@ export const GENERATED_SCHEMAS = {
   ProvenanceV2CompositeRootVectors: ProvenanceV2CompositeRootVectorsSchema,
   ProvenanceV2ConnectedRegistrationGraph:
     ProvenanceV2ConnectedRegistrationGraphSchema,
+  ProvenanceV2ConnectedTraversalVectors:
+    ProvenanceV2ConnectedTraversalVectorsSchema,
   ProvenanceV2FieldCorpus: ProvenanceV2FieldCorpusSchema,
   ProvenanceV2RawFieldMapping: ProvenanceV2RawFieldMappingSchema,
   ProvenanceV2RegistrationLimits: ProvenanceV2RegistrationLimitsSchema,

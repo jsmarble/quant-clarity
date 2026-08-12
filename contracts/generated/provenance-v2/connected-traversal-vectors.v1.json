@@ -1,0 +1,320 @@
+{
+  "contract_version": "provenance-v2-connected-traversal-vectors@1",
+  "status": "review_candidate",
+  "coverage": "connected_plan_root_traversal_and_synthetic_frame_linkage",
+  "authority_eligible": false,
+  "outcome": "authority_refused",
+  "persisted": false,
+  "semantic_oracle_executed": false,
+  "source_graph_contract_version": "provenance-v2-connected-registration-graph@1",
+  "registry_contract_version": "provenance-v2-root-registry@1",
+  "binding_plan_contract_version": "provenance-v2-root-binding-plan@1",
+  "pending": {
+    "document_and_anchor_resolvers": "pending",
+    "successor_manifest_preimage_parity": "pending",
+    "semantic_oracle": "pending",
+    "repository_build_manifest": "pending",
+    "migration_schema_parity": "pending",
+    "frozen_d1_enumeration_and_row_lookup_closure": "pending",
+    "accepted_aggregate_limits": "pending"
+  },
+  "evidence_counts": {
+    "root_member_rows": 371,
+    "leaf_outputs": 371,
+    "plan_root_projections": 371,
+    "provider_claim_projections": 15,
+    "total_projections": 386,
+    "traversal_instances": 9,
+    "derived_digest_substitutions": 3,
+    "unresolved_safe_preimage_digests": 30,
+    "unresolved_external_anchor_digests": 10
+  },
+  "derived_digest_substitutions": [
+    {
+      "target_row_id": "row-source_register_receipt-receipt",
+      "target_field": "member_set_root",
+      "source_kind": "collection_digest",
+      "source_name": "source_register_member_set_root",
+      "computed_digest": "sha256:42f00a7ebfcb485e23adfd593c30112c4b76563025edfab536dafa6e94757317"
+    },
+    {
+      "target_row_id": "row-source_endpoint_registration-registration",
+      "target_field": "endpoint_content_hash",
+      "source_kind": "row_digest",
+      "source_name": "provenance_v2_source_endpoint.endpoint_content_hash",
+      "computed_digest": "sha256:7caf7ce80f9a17633e263aa3b968fce43da9d45a309522716c91954b0f985882"
+    },
+    {
+      "target_row_id": "row-source_endpoint_registration-registration",
+      "target_field": "manifest_source_hash",
+      "source_kind": "row_digest",
+      "source_name": "provenance_v2_adapter_manifest_source.manifest_source_hash",
+      "computed_digest": "sha256:a11ef6c66c8d2e60e531d6c1c16b244c58d90578f6663f675eeca392fc29e0b2"
+    }
+  ],
+  "leaf_output_manifest": {
+    "domain": "provenance-v2-connected-leaf-manifest@1",
+    "member_count": 371,
+    "sha256": "sha256:6794b40f432ecd03f5eeb424e5379f4c17a7699bdb2f5b85953eed61aa25c3db"
+  },
+  "traversals": [
+    {
+      "name": "source_owner_set_root",
+      "purpose": "successor_claim",
+      "member_count": 1,
+      "ordered_row_id_manifest_sha256": "sha256:5b679ce2f7c8bbda525fce799f97bb8c36bd392137cc132d838b1a1d5c66aba5",
+      "collection_sha256": "sha256:bb57b8f091888e72eff82aee5ba264927354b4e3824f389af1840542b0cedb36"
+    },
+    {
+      "name": "source_register_member_set_root",
+      "purpose": "successor_claim",
+      "member_count": 1,
+      "ordered_row_id_manifest_sha256": "sha256:c9a8268279d1803de21957743d3782707248d04be710c6b65517047a8219f503",
+      "collection_sha256": "sha256:42f00a7ebfcb485e23adfd593c30112c4b76563025edfab536dafa6e94757317"
+    },
+    {
+      "name": "environment_set_root",
+      "purpose": "successor_claim",
+      "member_count": 1,
+      "ordered_row_id_manifest_sha256": "sha256:01ca48d8e0d2c6de68dd0a677274ed6813f14a65ca67296078b646af4e19734a",
+      "collection_sha256": "sha256:75e45a2d14b93f86852b2523f71deda92e34dfc1af56bbfe9d76d31af8518d92"
+    },
+    {
+      "name": "credential_set_root",
+      "purpose": "successor_claim",
+      "member_count": 11,
+      "ordered_row_id_manifest_sha256": "sha256:8e3da257c9270733ae8dbcac8a664331fb39cf02d7142c72cfad5156c321b40c",
+      "collection_sha256": "sha256:ec51feaaba25341507329ca9e16e28634215db0d85672cfdace9cbe0724115bb"
+    },
+    {
+      "name": "source_set_root",
+      "purpose": "successor_claim",
+      "member_count": 1,
+      "ordered_row_id_manifest_sha256": "sha256:a78f6998dd6dbe864cad00037c266a5a64da9330547c87848395bea7592b5404",
+      "collection_sha256": "sha256:48ba83057b0298adda3678c03242d2a342277889d1d78968c3d94b07e9ccec44"
+    },
+    {
+      "name": "adapter_manifest_set_root",
+      "purpose": "plan_root",
+      "member_count": 17,
+      "ordered_row_id_manifest_sha256": "sha256:dbae30b7d12790e85a92f6abdd56bd7885f11154df4d903e73398b837df2dceb",
+      "collection_sha256": "sha256:f881141d77ed1b7ca3ce561bc5777b8df3df5b3fb9ed52e37cf03519757d397f"
+    },
+    {
+      "name": "endpoint_set_root",
+      "purpose": "plan_root",
+      "member_count": 73,
+      "ordered_row_id_manifest_sha256": "sha256:95f9ceaaabc42ce7f2544f92c4bcf6bd70594451c3ff0432c9342f55b2e1f79a",
+      "collection_sha256": "sha256:d8a51c6e094a2a867d229a907248a97e9388b2caed88cc15fc5d810a8656d947"
+    },
+    {
+      "name": "verifier_policy_set_root",
+      "purpose": "plan_root",
+      "member_count": 3,
+      "ordered_row_id_manifest_sha256": "sha256:a91e72931ee66de861bdd4596b98431bb96f04ee5790be3b9dd8cc120d0c4cf5",
+      "collection_sha256": "sha256:561a3d5ec4f4b4ecfe7aea46e837a792f9a9f53d8238b5e810e9732ea0a71672"
+    },
+    {
+      "name": "field_policy_set_root",
+      "purpose": "plan_root",
+      "member_count": 278,
+      "ordered_row_id_manifest_sha256": "sha256:340be7b0668f902d7cdf2dd444290545f6136f06c88f8de9d21cfaff1f16e9d6",
+      "collection_sha256": "sha256:22faae5cffedfd36bb75a2b8b7b9d567e944fbbc0268d9556e044deade6632bd"
+    }
+  ],
+  "candidate_successor_claims": {
+    "source_owner_count": 1,
+    "source_owner_set_root": "sha256:bb57b8f091888e72eff82aee5ba264927354b4e3824f389af1840542b0cedb36",
+    "source_register_member_count": 1,
+    "source_register_member_set_root": "sha256:42f00a7ebfcb485e23adfd593c30112c4b76563025edfab536dafa6e94757317",
+    "source_register_receipt_hash": "sha256:948dd008e0e8a553eaa26170357fa55ce66e9d7aff302844bc45e2ce89b36eb5",
+    "environment_count": 1,
+    "environment_set_root": "sha256:75e45a2d14b93f86852b2523f71deda92e34dfc1af56bbfe9d76d31af8518d92",
+    "credential_count": 11,
+    "credential_set_root": "sha256:ec51feaaba25341507329ca9e16e28634215db0d85672cfdace9cbe0724115bb",
+    "source_count": 1,
+    "source_set_root": "sha256:48ba83057b0298adda3678c03242d2a342277889d1d78968c3d94b07e9ccec44"
+  },
+  "candidate_authority_frame": {
+    "domain": "provenance-v2-authority-root-frame@1",
+    "fields": [
+      {
+        "name": "contract_version",
+        "tag": "text",
+        "value": "provenance-v2-connected-traversal-candidate@1",
+        "resolution": "synthetic_post_resolution_fixture"
+      },
+      {
+        "name": "semantic_policy_hash",
+        "tag": "digest",
+        "value": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "resolution": "synthetic_post_resolution_fixture"
+      },
+      {
+        "name": "canonical_document_hash",
+        "tag": "digest",
+        "value": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "resolution": "synthetic_post_resolution_fixture"
+      },
+      {
+        "name": "installation_id",
+        "tag": "text",
+        "value": "pvi_33333333-3333-4333-8333-333333333333",
+        "resolution": "synthetic_post_resolution_fixture"
+      },
+      {
+        "name": "environment",
+        "tag": "text",
+        "value": "test",
+        "resolution": "synthetic_post_resolution_fixture"
+      },
+      {
+        "name": "authority_plan_id",
+        "tag": "text",
+        "value": "vpa_11111111-1111-4111-8111-111111111111",
+        "resolution": "synthetic_post_resolution_fixture"
+      },
+      {
+        "name": "run_plan_id",
+        "tag": "text",
+        "value": "rpl_22222222-2222-4222-8222-222222222222",
+        "resolution": "synthetic_post_resolution_fixture"
+      },
+      {
+        "name": "run_plan_hash",
+        "tag": "digest",
+        "value": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "resolution": "synthetic_post_resolution_fixture"
+      },
+      {
+        "name": "effective_from_ms",
+        "tag": "integer",
+        "value": "1786406400000",
+        "resolution": "synthetic_post_resolution_fixture"
+      },
+      {
+        "name": "effective_to_ms",
+        "tag": "integer",
+        "value": "1786492800000",
+        "resolution": "synthetic_post_resolution_fixture"
+      },
+      {
+        "name": "created_at_ms",
+        "tag": "integer",
+        "value": "1786406400000",
+        "resolution": "synthetic_post_resolution_fixture"
+      },
+      {
+        "name": "canonical_document_bytes",
+        "tag": "integer",
+        "value": "1",
+        "resolution": "synthetic_post_resolution_fixture"
+      },
+      {
+        "name": "normalized_row_count",
+        "tag": "integer",
+        "value": "1",
+        "resolution": "synthetic_post_resolution_fixture"
+      },
+      {
+        "name": "closed_at_ms",
+        "tag": "integer",
+        "value": "1786406400000",
+        "resolution": "synthetic_post_resolution_fixture"
+      },
+      {
+        "name": "adapter_manifest_count",
+        "tag": "integer",
+        "value": "1",
+        "resolution": "synthetic_post_resolution_fixture"
+      },
+      {
+        "name": "adapter_manifest_set_root",
+        "tag": "digest",
+        "value": "sha256:f881141d77ed1b7ca3ce561bc5777b8df3df5b3fb9ed52e37cf03519757d397f",
+        "resolution": "computed_collection"
+      },
+      {
+        "name": "endpoint_count",
+        "tag": "integer",
+        "value": "1",
+        "resolution": "synthetic_post_resolution_fixture"
+      },
+      {
+        "name": "endpoint_set_root",
+        "tag": "digest",
+        "value": "sha256:d8a51c6e094a2a867d229a907248a97e9388b2caed88cc15fc5d810a8656d947",
+        "resolution": "computed_collection"
+      },
+      {
+        "name": "verifier_policy_count",
+        "tag": "integer",
+        "value": "1",
+        "resolution": "synthetic_post_resolution_fixture"
+      },
+      {
+        "name": "verifier_policy_set_root",
+        "tag": "digest",
+        "value": "sha256:561a3d5ec4f4b4ecfe7aea46e837a792f9a9f53d8238b5e810e9732ea0a71672",
+        "resolution": "computed_collection"
+      },
+      {
+        "name": "field_policy_count",
+        "tag": "integer",
+        "value": "4",
+        "resolution": "synthetic_post_resolution_fixture"
+      },
+      {
+        "name": "field_policy_set_root",
+        "tag": "digest",
+        "value": "sha256:22faae5cffedfd36bb75a2b8b7b9d567e944fbbc0268d9556e044deade6632bd",
+        "resolution": "computed_collection"
+      }
+    ],
+    "frame_hex": "514350563201002470726f76656e616e63652d76322d617574686f726974792d726f6f742d6672616d6540310000001601000000000000002d70726f76656e616e63652d76322d636f6e6e65637465642d74726176657273616c2d63616e6469646174654031040000000000000020000000000000000000000000000000000000000000000000000000000000000004000000000000002000000000000000000000000000000000000000000000000000000000000000000100000000000000287076695f33333333333333332d333333332d343333332d383333332d333333333333333333333333010000000000000004746573740100000000000000287670615f31313131313131312d313131312d343131312d383131312d31313131313131313131313101000000000000002872706c5f32323232323232322d323232322d343232322d383232322d323232323232323232323232040000000000000020000000000000000000000000000000000000000000000000000000000000000002000000000000000d3137383634303634303030303002000000000000000d3137383634393238303030303002000000000000000d31373836343036343030303030020000000000000001310200000000000000013102000000000000000d3137383634303634303030303002000000000000000131040000000000000020f881141d77ed1b7ca3ce561bc5777b8df3df5b3fb9ed52e37cf03519757d397f02000000000000000131040000000000000020d8a51c6e094a2a867d229a907248a97e9388b2caed88cc15fc5d810a8656d94702000000000000000131040000000000000020561a3d5ec4f4b4ecfe7aea46e837a792f9a9f53d8238b5e810e9732ea0a716720200000000000000013404000000000000002022faae5cffedfd36bb75a2b8b7b9d567e944fbbc0268d9556e044deade6632bd",
+    "sha256": "sha256:130c1461a15fbc2f433e32a418baabec8940a3d1d1ba66985a0741f8783cf557"
+  },
+  "candidate_refused_receipt_frame": {
+    "domain": "provenance-v2-oracle-receipt@1",
+    "fields": [
+      {
+        "name": "authority_plan_id",
+        "tag": "text",
+        "value": "vpa_11111111-1111-4111-8111-111111111111",
+        "resolution": "synthetic_post_resolution_fixture"
+      },
+      {
+        "name": "oracle_contract_version",
+        "tag": "text",
+        "value": "provenance-v2-connected-traversal-candidate@1",
+        "resolution": "synthetic_post_resolution_fixture"
+      },
+      {
+        "name": "oracle_implementation_hash",
+        "tag": "digest",
+        "value": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "resolution": "synthetic_post_resolution_fixture"
+      },
+      {
+        "name": "semantic_policy_hash",
+        "tag": "digest",
+        "value": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "resolution": "synthetic_post_resolution_fixture"
+      },
+      {
+        "name": "authority_root",
+        "tag": "digest",
+        "value": "sha256:130c1461a15fbc2f433e32a418baabec8940a3d1d1ba66985a0741f8783cf557",
+        "resolution": "computed_frame"
+      },
+      {
+        "name": "verified_at_ms",
+        "tag": "integer",
+        "value": "1786406400000",
+        "resolution": "synthetic_post_resolution_fixture"
+      }
+    ],
+    "frame_hex": "514350563201001e70726f76656e616e63652d76322d6f7261636c652d726563656970744031000000060100000000000000287670615f31313131313131312d313131312d343131312d383131312d31313131313131313131313101000000000000002d70726f76656e616e63652d76322d636f6e6e65637465642d74726176657273616c2d63616e646964617465403104000000000000002000000000000000000000000000000000000000000000000000000000000000000400000000000000200000000000000000000000000000000000000000000000000000000000000000040000000000000020130c1461a15fbc2f433e32a418baabec8940a3d1d1ba66985a0741f8783cf55702000000000000000d31373836343036343030303030",
+    "sha256": "sha256:e01fa76b50d26e653a6dd68a74d2c1b8f8657966086a0c5849624b0dc2aedae4"
+  }
+}
