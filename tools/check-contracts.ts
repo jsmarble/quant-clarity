@@ -14,6 +14,7 @@ import {
   PROVENANCE_V2_CONNECTED_REGISTRATION_GRAPH,
   PROVENANCE_V2_CONNECTED_SUCCESSOR_MANIFEST_VECTORS,
   PROVENANCE_V2_CONNECTED_TRAVERSAL_VECTORS,
+  PROVENANCE_V2_DOCUMENT_RESOLVER_CONTRACT,
   PROVENANCE_V2_FIELD_CORPUS,
   PROVENANCE_V2_FRAME_CONTRACT,
   PROVENANCE_V2_RAW_FIELD_MAPPING_CONTRACT,
@@ -25,6 +26,7 @@ import {
   validateProvenanceV2ConnectedRegistrationGraph,
   validateProvenanceV2ConnectedSuccessorManifestVectors,
   validateProvenanceV2ConnectedTraversalVectors,
+  validateProvenanceV2DocumentResolverContract,
   validateProvenanceV2RootBindingPlan,
 } from "@quant-clarity/contracts";
 
@@ -69,6 +71,10 @@ const provenanceArtifacts = [
     "connected-traversal-vectors.v1.json",
     PROVENANCE_V2_CONNECTED_TRAVERSAL_VECTORS,
   ],
+  [
+    "registration-document-resolver-contract.v1.json",
+    PROVENANCE_V2_DOCUMENT_RESOLVER_CONTRACT,
+  ],
 ] as const;
 
 const compositeRootErrors = validateProvenanceV2CompositeRootVectors(
@@ -110,6 +116,11 @@ const rootBindingErrors = validateProvenanceV2RootBindingPlan(
 if (rootBindingErrors.length > 0)
   throw new Error(
     `Invalid provenance-v2 root binding plan: ${rootBindingErrors.join("; ")}`,
+  );
+const documentResolverErrors = validateProvenanceV2DocumentResolverContract();
+if (documentResolverErrors.length > 0)
+  throw new Error(
+    `Invalid provenance-v2 document resolver contract: ${documentResolverErrors.join("; ")}`,
   );
 for (const [filename, expected] of provenanceArtifacts) {
   const generated = JSON.parse(
