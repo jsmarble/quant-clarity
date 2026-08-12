@@ -34,6 +34,7 @@ export * from "./provenance-v2-composite-root-vectors.js";
 export * from "./provenance-v2-connected-registration-graph.js";
 export * from "./provenance-v2-connected-successor-manifest-vectors.js";
 export * from "./provenance-v2-connected-traversal-vectors.js";
+export * from "./provenance-v2-canonical-document.js";
 export * from "./provenance-v2-registration.js";
 export * from "./provenance-v2-root-binding-plan.js";
 export { AdapterManifestSchema } from "./adapter-manifest.js";

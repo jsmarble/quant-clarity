@@ -1,0 +1,30 @@
+{
+  "contract_version": "provenance-v2-registration-document-resolver@1",
+  "status": "review_candidate",
+  "coverage": "strict_canonical_byte_and_compiled_selector_engine",
+  "outcome": "authority_refused",
+  "authority_eligible": false,
+  "persisted": false,
+  "document_resolver_executed": true,
+  "retained_resolver_executed": false,
+  "semantic_oracle_executed": false,
+  "trusted_input_byte_ceiling": 1048576,
+  "trusted_input_depth_ceiling": 64,
+  "trusted_input_node_ceiling": 100000,
+  "document_value_binding_count": 18,
+  "document_count_binding_count": 27,
+  "exact_binding_inventory_sha256": "sha256:e4ef1d3dcf0864fff347ca997b9a0320d8a7aecb8b40b737e2bcad37276b3025",
+  "pending": {
+    "schema_valid_registration_plan_fixture": "pending_h2d_b",
+    "aggregate_declared_count_parity": "pending_h2d_b",
+    "normalized_inventory_parity": "pending_h2d_b",
+    "retained_chunk_planning_and_reassembly": "pending_h2d_b",
+    "safe_preimage_occurrence_parity": "pending_h2d_b",
+    "external_and_repository_anchors": "pending",
+    "reviewed_repository_build_manifest": "pending",
+    "semantic_oracle": "pending",
+    "migration_schema_parity": "pending",
+    "frozen_d1_enumeration": "pending",
+    "accepted_aggregate_limits": "pending"
+  }
+}
