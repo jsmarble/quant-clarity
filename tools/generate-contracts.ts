@@ -9,6 +9,7 @@ import {
   PROVENANCE_V2_CANONICAL_JSON_CONTRACT,
   PROVENANCE_V2_COMPOSITE_ROOT_VECTORS,
   PROVENANCE_V2_CONNECTED_REGISTRATION_GRAPH,
+  PROVENANCE_V2_CONNECTED_REGISTRATION_DOCUMENT_VECTORS,
   PROVENANCE_V2_CONNECTED_SUCCESSOR_MANIFEST_VECTORS,
   PROVENANCE_V2_CONNECTED_TRAVERSAL_VECTORS,
   PROVENANCE_V2_DOCUMENT_RESOLVER_CONTRACT,
@@ -1558,6 +1559,10 @@ const files = new Map<string, string>([
   [
     "provenance-v2/connected-registration-graph.v1.json",
     `${JSON.stringify(PROVENANCE_V2_CONNECTED_REGISTRATION_GRAPH, null, 2)}\n`,
+  ],
+  [
+    "provenance-v2/connected-registration-document-vectors.v1.json",
+    `${JSON.stringify(PROVENANCE_V2_CONNECTED_REGISTRATION_DOCUMENT_VECTORS, null, 2)}\n`,
   ],
   [
     "provenance-v2/connected-successor-manifest-vectors.v1.json",

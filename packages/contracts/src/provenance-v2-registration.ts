@@ -1,7 +1,36 @@
-import { Type, type Static, type TSchema } from "@sinclair/typebox";
+import {
+  FormatRegistry,
+  Type,
+  type Static,
+  type TSchema,
+} from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 
 import { AdapterManifestSchema } from "./adapter-manifest.js";
+
+const isCanonicalRegistrationTimestamp = (candidate: string): boolean => {
+  if (
+    !/^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\.[0-9]{3}Z$/u.test(
+      candidate,
+    )
+  )
+    return false;
+  const parsed = Date.parse(candidate);
+  return (
+    Number.isFinite(parsed) && new Date(parsed).toISOString() === candidate
+  );
+};
+
+const checkRegistrationSchema = (value: unknown): boolean => {
+  const previous = FormatRegistry.Get("date-time");
+  FormatRegistry.Set("date-time", isCanonicalRegistrationTimestamp);
+  try {
+    return Value.Check(ProvenanceV2RegistrationPlanSchema, value);
+  } finally {
+    if (previous === undefined) FormatRegistry.Delete("date-time");
+    else FormatRegistry.Set("date-time", previous);
+  }
+};
 
 const UUID_V4 =
   "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
@@ -3375,9 +3404,9 @@ export const inspectProvenanceV2RegistrationPlanCandidate = (
 ): string[] => {
   if (!isPlainData(value))
     return ["registration plan must be acyclic plain data"];
-  if (!Value.Check(ProvenanceV2RegistrationPlanSchema, value))
+  if (!checkRegistrationSchema(value))
     return ["registration plan does not match the closed schema"];
-  const plan = value;
+  const plan = value as ProvenanceV2RegistrationPlan;
   const errors = validateProvenanceV2RegistrationLimits(
     plan.declared_limits,
     true,
