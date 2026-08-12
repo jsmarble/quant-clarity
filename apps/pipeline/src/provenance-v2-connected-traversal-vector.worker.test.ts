@@ -1,6 +1,7 @@
 import {
   PROVENANCE_V2_AUTHORITY_ROOT_REGISTRY,
   PROVENANCE_V2_CONNECTED_REGISTRATION_GRAPH,
+  PROVENANCE_V2_CONNECTED_SUCCESSOR_MANIFEST_VECTORS,
   PROVENANCE_V2_CONNECTED_TRAVERSAL_VECTORS,
   PROVENANCE_V2_ROOT_BINDING_PLAN,
 } from "@quant-clarity/contracts";
@@ -33,6 +34,116 @@ interface RowDigestBinding {
     readonly remote_column: string;
   }[];
 }
+interface SuccessorProjectionMapping {
+  readonly target: string;
+  readonly table: string;
+  readonly column: string;
+  readonly conversion: "identity" | "safe_integer";
+  readonly cardinality: "exactly_one";
+}
+const independentProjection = {
+  scope_columns: ["authority_plan_id", "provider_id"],
+  literals: ["contract_version", "canonical_json_version"],
+  normalized_row_fields: [
+    [
+      "authority_plan_id",
+      "authority_plan_id",
+      "provenance_v2_adapter_manifest_receipt",
+    ],
+    ["run_plan_id", "run_plan_id", "provenance_v2_adapter_manifest_receipt"],
+    [
+      "installation_id",
+      "installation_id",
+      "provenance_v2_adapter_manifest_receipt",
+    ],
+    [
+      "provider_ordinal",
+      "provider_ordinal",
+      "provenance_v2_adapter_manifest_receipt",
+      "safe_integer",
+    ],
+    ["provider_id", "provider_id", "provenance_v2_adapter_manifest_receipt"],
+    [
+      "provider_organization_id",
+      "provider_organization_id",
+      "provenance_v2_source_owner_receipt",
+    ],
+    [
+      "legacy_adapter_contract_version",
+      "adapter_contract_version",
+      "provenance_v2_adapter_manifest_receipt",
+    ],
+    [
+      "legacy_adapter_version",
+      "adapter_version",
+      "provenance_v2_adapter_manifest_receipt",
+    ],
+    [
+      "adapter_manifest_hash",
+      "adapter_manifest_hash",
+      "provenance_v2_adapter_manifest_receipt",
+    ],
+    [
+      "roster_version",
+      "roster_version",
+      "provenance_v2_adapter_manifest_receipt",
+    ],
+    [
+      "roster_content_hash",
+      "roster_content_hash",
+      "provenance_v2_adapter_manifest_receipt",
+    ],
+    [
+      "source_register_version",
+      "source_register_version",
+      "provenance_v2_adapter_manifest_receipt",
+    ],
+    [
+      "source_register_artifact_hash",
+      "source_artifact_hash",
+      "provenance_v2_adapter_manifest_receipt",
+    ],
+    [
+      "source_policy_version",
+      "source_policy_version",
+      "provenance_v2_adapter_manifest_receipt",
+    ],
+    [
+      "parser_version",
+      "parser_version",
+      "provenance_v2_adapter_manifest_receipt",
+    ],
+    [
+      "extraction_policy_version",
+      "extraction_policy_version",
+      "provenance_v2_adapter_manifest_receipt",
+    ],
+  ].map(([target, column, table, conversion = "identity"]) => ({
+    target: target!,
+    table: table!,
+    column: column!,
+    conversion: conversion as "identity" | "safe_integer",
+    cardinality: "exactly_one" as const,
+  })),
+  ceiling_fields: [
+    "request_ceiling",
+    "byte_ceiling",
+    "ai_token_ceiling",
+    "browser_millisecond_ceiling",
+    "elapsed_millisecond_ceiling",
+    "cost_microusd_ceiling",
+  ].map((target) => ({
+    target,
+    table: "provenance_v2_adapter_manifest_receipt",
+    column: target,
+    conversion: "safe_integer" as const,
+    cardinality: "exactly_one" as const,
+  })),
+  successor_claim_fields:
+    PROVENANCE_V2_ROOT_BINDING_PLAN.successor_claim_bindings.map(
+      (binding) => binding.field,
+    ),
+};
 const digestBinding = (
   value: unknown,
 ): CollectionDigestBinding | RowDigestBinding =>
@@ -119,6 +230,74 @@ const compareBytes = (left: string, right: string): number => {
   }
   return leftBytes.length - rightBytes.length;
 };
+
+const canonicalJson = (value: unknown): string => {
+  if (value === null || typeof value === "boolean")
+    return JSON.stringify(value);
+  if (typeof value === "number") {
+    if (!Number.isSafeInteger(value) || Object.is(value, -0))
+      throw new Error("invalid canonical integer");
+    return JSON.stringify(value);
+  }
+  if (typeof value === "string") {
+    if (value !== value.normalize("NFC") || /[\ud800-\udfff]/u.test(value))
+      throw new Error("invalid canonical text");
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value))
+    return `[${value.map((item) => canonicalJson(item)).join(",")}]`;
+  if (typeof value !== "object") throw new Error("invalid canonical value");
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`)
+    .join(",")}}`;
+};
+
+const buildSuccessorManifest = (
+  input: readonly Row[],
+  successorClaims: Readonly<Record<string, unknown>>,
+): Record<string, unknown> => {
+  const projection = independentProjection;
+  const output: Record<string, unknown> = {
+    contract_version: "provenance-v2-successor-manifest@1",
+    canonical_json_version: "quantclarity-canonical-json@1",
+  };
+  const resolve = (mapping: SuccessorProjectionMapping) => {
+    const matches = input.filter(
+      (row) =>
+        row.table === mapping.table &&
+        field(row, "authority_plan_id").value === scope.authority_plan_id &&
+        field(row, "provider_id").value === scope.provider_id,
+    );
+    if (matches.length !== 1)
+      throw new Error("successor projection cardinality");
+    const selected = field(matches[0]!, mapping.column);
+    if (mapping.conversion === "safe_integer") {
+      if (
+        selected.tag !== "integer" ||
+        typeof selected.value !== "string" ||
+        !/^(0|[1-9][0-9]*)$/u.test(selected.value) ||
+        BigInt(selected.value) > BigInt(Number.MAX_SAFE_INTEGER)
+      )
+        throw new Error("invalid successor integer projection");
+      return Number(selected.value);
+    }
+    return selected.value;
+  };
+  for (const mapping of projection.normalized_row_fields)
+    output[mapping.target] = resolve(mapping);
+  const ceilings: Record<string, unknown> = {};
+  for (const mapping of projection.ceiling_fields)
+    ceilings[mapping.target] = resolve(mapping);
+  output.admitted_run_plan_ceilings = ceilings;
+  for (const name of projection.successor_claim_fields) {
+    if (!Object.hasOwn(successorClaims, name))
+      throw new Error("missing successor claim");
+    output[name] = successorClaims[name];
+  }
+  return output;
+};
 const registry = new Map(
   PROVENANCE_V2_AUTHORITY_ROOT_REGISTRY.entries.map((entry) => [
     entry.table,
@@ -137,6 +316,38 @@ const leaf = async (row: Row): Promise<string> => {
     fields.some((item, index) => item.name !== row.fields[index]?.name)
   )
     throw new Error("leaf field closure mismatch");
+  for (const [index, actual] of row.fields.entries()) {
+    const expected = fields[index]!;
+    if (actual.tag === "null") {
+      if (!expected.nullable || actual.value !== null)
+        throw new Error("invalid nullable leaf field");
+      continue;
+    }
+    if (actual.tag !== expected.frame_type)
+      throw new Error("leaf field tag mismatch");
+    if (actual.tag === "text") {
+      if (
+        typeof actual.value !== "string" ||
+        actual.value !== actual.value.normalize("NFC") ||
+        /[\ud800-\udfff]/u.test(actual.value)
+      )
+        throw new Error("invalid canonical text field");
+    } else if (actual.tag === "integer") {
+      if (
+        typeof actual.value !== "string" ||
+        !/^(0|[1-9][0-9]*)$/u.test(actual.value) ||
+        BigInt(actual.value) > BigInt(Number.MAX_SAFE_INTEGER)
+      )
+        throw new Error("invalid canonical integer field");
+    } else if (actual.tag === "boolean") {
+      if (typeof actual.value !== "boolean")
+        throw new Error("invalid boolean field");
+    } else if (
+      typeof actual.value !== "string" ||
+      !/^sha256:[0-9a-f]{64}$/u.test(actual.value)
+    )
+      throw new Error("invalid digest field");
+  }
   return sha256(frame(entry.leaf_domain, row.fields));
 };
 type Traversal = (typeof PROVENANCE_V2_ROOT_BINDING_PLAN.traversals)[number];
@@ -280,7 +491,8 @@ const execute = async (input: readonly Row[]) => {
   for (const row of input)
     if (
       row.row_id !== "row-source_register_receipt-receipt" &&
-      row.row_id !== "row-source_endpoint_registration-registration"
+      row.row_id !== "row-source_endpoint_registration-registration" &&
+      row.row_id !== "row-adapter_manifest_receipt-receipt"
     )
       digests.set(row.row_id, await leaf(row));
   const memberBinding = PROVENANCE_V2_ROOT_BINDING_PLAN.digest_bindings.find(
@@ -381,6 +593,81 @@ const execute = async (input: readonly Row[]) => {
     sourceDigest,
   );
   digests.set(registration.row_id, await leaf(registration));
+  const childTraversals = new Map<string, TraversalResult>();
+  for (const binding of PROVENANCE_V2_ROOT_BINDING_PLAN.successor_claim_bindings)
+    if (
+      binding.kind !== "row_digest" &&
+      !childTraversals.has(binding.traversal)
+    ) {
+      const traversal = PROVENANCE_V2_ROOT_BINDING_PLAN.traversals.find(
+        (item) => item.name === binding.traversal,
+      );
+      if (traversal === undefined)
+        throw new Error("missing successor traversal");
+      childTraversals.set(
+        binding.traversal,
+        binding.traversal === memberTraversal.name
+          ? member
+          : await traverse(traversal, digests, input),
+      );
+    }
+  const successorClaims = Object.fromEntries(
+    PROVENANCE_V2_ROOT_BINDING_PLAN.successor_claim_bindings.map((binding) => {
+      if (binding.kind === "row_digest") {
+        const matches = input.filter(
+          (row) =>
+            row.table === binding.table &&
+            binding.scope_joins.every(
+              (join) =>
+                field(row, join.row_column).value ===
+                scope[join.scope_column as keyof typeof scope],
+            ),
+        );
+        if (matches.length !== 1)
+          throw new Error("successor row digest binding mismatch");
+        const digest = digests.get(matches[0]!.row_id);
+        if (digest === undefined)
+          throw new Error("missing successor row digest output");
+        return [binding.field, digest];
+      }
+      const traversal = childTraversals.get(binding.traversal);
+      if (traversal === undefined)
+        throw new Error("missing successor traversal output");
+      return [
+        binding.field,
+        binding.kind === "count" ? traversal.count : traversal.digest,
+      ];
+    }),
+  );
+  const successorManifest = buildSuccessorManifest(input, successorClaims);
+  const successorCanonicalJson = canonicalJson(successorManifest);
+  const successorManifestHash = await sha256(
+    utf8.encode(successorCanonicalJson),
+  );
+  const adapterReceiptInput = input.find(
+    (row) => row.row_id === "row-adapter_manifest_receipt-receipt",
+  )!;
+  const storedSuccessorManifestHash = field(
+    adapterReceiptInput,
+    "successor_manifest_hash",
+  );
+  if (
+    storedSuccessorManifestHash.tag !== "digest" ||
+    typeof storedSuccessorManifestHash.value !== "string" ||
+    !/^sha256:[0-9a-f]{64}$/u.test(storedSuccessorManifestHash.value)
+  )
+    throw new Error("invalid stored successor manifest field");
+  const storedSuccessorManifestDigest = storedSuccessorManifestHash.value;
+  if (storedSuccessorManifestDigest !== successorManifestHash)
+    throw new Error("stored successor manifest digest mismatch");
+  const recomputedAdapterReceiptDigest = await leaf(
+    replaceDigest(
+      adapterReceiptInput,
+      "successor_manifest_hash",
+      successorManifestHash,
+    ),
+  );
+  digests.set(adapterReceiptInput.row_id, recomputedAdapterReceiptDigest);
   const traversals = new Map<string, TraversalResult>();
   for (const traversal of PROVENANCE_V2_ROOT_BINDING_PLAN.traversals)
     traversals.set(
@@ -398,6 +685,15 @@ const execute = async (input: readonly Row[]) => {
     input.some((row) => !consumed.includes(row.row_id))
   )
     throw new Error("plan row accounting mismatch");
+  const leafManifest = frame("provenance-v2-connected-leaf-manifest@1", [
+    { tag: "integer", value: String(digests.size) },
+    ...[...digests.entries()]
+      .sort(([left], [right]) => compareBytes(left, right))
+      .flatMap(([rowId, digest]) => [
+        { tag: "text" as const, value: rowId },
+        { tag: "digest" as const, value: digest },
+      ]),
+  ]);
   const authorityContract = PROVENANCE_V2_ROOT_BINDING_PLAN.record_frames.find(
     (item) => item.name === "authority_root",
   )!;
@@ -483,34 +779,6 @@ const execute = async (input: readonly Row[]) => {
       };
     }),
   );
-  const successorClaims = Object.fromEntries(
-    PROVENANCE_V2_ROOT_BINDING_PLAN.successor_claim_bindings.map((binding) => {
-      if (binding.kind === "row_digest") {
-        const matches = input.filter(
-          (row) =>
-            row.table === binding.table &&
-            binding.scope_joins.every(
-              (join) =>
-                field(row, join.row_column).value ===
-                scope[join.scope_column as keyof typeof scope],
-            ),
-        );
-        if (matches.length !== 1)
-          throw new Error("successor row digest binding mismatch");
-        const digest = digests.get(matches[0]!.row_id);
-        if (digest === undefined)
-          throw new Error("missing successor row digest output");
-        return [binding.field, digest];
-      }
-      const traversal = traversals.get(binding.traversal);
-      if (traversal === undefined)
-        throw new Error("missing successor traversal output");
-      return [
-        binding.field,
-        binding.kind === "count" ? traversal.count : traversal.digest,
-      ];
-    }),
-  );
   return {
     digests,
     traversals,
@@ -522,12 +790,21 @@ const execute = async (input: readonly Row[]) => {
     refusedReceiptHex: bytesHex(refusedReceipt),
     refusedReceiptDigest: await sha256(refusedReceipt),
     successorClaims,
+    successorManifest,
+    successorCanonicalJson,
+    successorManifestHash,
+    storedSuccessorManifestHash: storedSuccessorManifestDigest,
+    recomputedAdapterReceiptDigest,
+    leafManifestDigest: await sha256(leafManifest),
   };
 };
 
 describe("independent workerd connected provenance-v2 traversal vectors", () => {
   it("recomputes every connected leaf and typed traversal in reverse caller order", async () => {
     const result = await execute([...rows].reverse());
+    expect(
+      PROVENANCE_V2_CONNECTED_SUCCESSOR_MANIFEST_VECTORS.projection_plan,
+    ).toEqual(independentProjection);
     expect(result.digests.size).toBe(371);
     expect([
       result.traversals.get("source_register_member_set_root")?.digest,
@@ -577,6 +854,25 @@ describe("independent workerd connected provenance-v2 traversal vectors", () => 
     expect(result.successorClaims).toEqual(
       PROVENANCE_V2_CONNECTED_TRAVERSAL_VECTORS.candidate_successor_claims,
     );
+    expect(result.successorManifest).toEqual(
+      PROVENANCE_V2_CONNECTED_SUCCESSOR_MANIFEST_VECTORS.successor_manifest,
+    );
+    expect(result.successorCanonicalJson).toBe(
+      PROVENANCE_V2_CONNECTED_SUCCESSOR_MANIFEST_VECTORS.canonical_preimage
+        .canonical_json,
+    );
+    expect(utf8.encode(result.successorCanonicalJson).length).toBe(
+      PROVENANCE_V2_CONNECTED_SUCCESSOR_MANIFEST_VECTORS.canonical_preimage
+        .utf8_byte_length,
+    );
+    expect(bytesHex(utf8.encode(result.successorCanonicalJson))).toBe(
+      PROVENANCE_V2_CONNECTED_SUCCESSOR_MANIFEST_VECTORS.canonical_preimage
+        .canonical_utf8_hex,
+    );
+    expect(result.successorManifestHash).toBe(
+      PROVENANCE_V2_CONNECTED_SUCCESSOR_MANIFEST_VECTORS.canonical_preimage
+        .sha256,
+    );
     for (const expected of PROVENANCE_V2_CONNECTED_TRAVERSAL_VECTORS.traversals) {
       const actual = result.traversals.get(expected.name);
       expect(actual?.count, expected.name).toBe(expected.member_count);
@@ -601,6 +897,35 @@ describe("independent workerd connected provenance-v2 traversal vectors", () => 
       PROVENANCE_V2_CONNECTED_TRAVERSAL_VECTORS.candidate_refused_receipt_frame
         .sha256,
     );
+    expect(
+      PROVENANCE_V2_CONNECTED_SUCCESSOR_MANIFEST_VECTORS.adapter_receipt_fixture_parity,
+    ).toEqual({
+      row_id: "row-adapter_manifest_receipt-receipt",
+      target_field: "successor_manifest_hash",
+      stored_digest: result.storedSuccessorManifestHash,
+      computed_digest: result.successorManifestHash,
+      fixture_digest_equal: true,
+      leaf_domain: "provenance-v2-adapter-receipt-leaf@1",
+      recomputed_manifest_content_hash: result.recomputedAdapterReceiptDigest,
+    });
+    expect(
+      PROVENANCE_V2_CONNECTED_SUCCESSOR_MANIFEST_VECTORS.downstream_cascade,
+    ).toEqual({
+      leaf_manifest_sha256: result.leafManifestDigest,
+      adapter_manifest_set_root: result.traversals.get(
+        "adapter_manifest_set_root",
+      )?.digest,
+      endpoint_set_root_unchanged:
+        result.traversals.get("endpoint_set_root")?.digest,
+      verifier_policy_set_root_unchanged: result.traversals.get(
+        "verifier_policy_set_root",
+      )?.digest,
+      field_policy_set_root_unchanged: result.traversals.get(
+        "field_policy_set_root",
+      )?.digest,
+      candidate_authority_root: result.authorityDigest,
+      candidate_refused_receipt_hash: result.refusedReceiptDigest,
+    });
     expect(PROVENANCE_V2_CONNECTED_TRAVERSAL_VECTORS.authority_eligible).toBe(
       false,
     );
@@ -632,5 +957,63 @@ describe("independent workerd connected provenance-v2 traversal vectors", () => 
         ),
       ),
     ).rejects.toThrow("canonical row inventory mismatch");
+  });
+
+  it("implements strict successor JCS integer and Unicode boundaries", () => {
+    expect(() => canonicalJson(-0)).toThrow("invalid canonical integer");
+    expect(() => canonicalJson(Number.MAX_SAFE_INTEGER + 1)).toThrow(
+      "invalid canonical integer",
+    );
+    expect(() => canonicalJson("e\u0301")).toThrow("invalid canonical text");
+    expect(() => canonicalJson("\ud800")).toThrow("invalid canonical text");
+    expect(canonicalJson({ z: 1, a: 2 })).toBe('{"a":2,"z":1}');
+  });
+
+  it.each(["01", "1.0", "9007199254740992"])(
+    "rejects noncanonical successor integer row value %s",
+    async (value) => {
+      const mutated = structuredClone(rows) as unknown as {
+        row_id: string;
+        table: string;
+        fields: { name: string; tag: Field["tag"]; value: Field["value"] }[];
+      }[];
+      const receipt = mutated.find(
+        (row) => row.row_id === "row-adapter_manifest_receipt-receipt",
+      )!;
+      receipt.fields.find((item) => item.name === "request_ceiling")!.value =
+        value;
+      await expect(execute(mutated)).rejects.toThrow(
+        "invalid successor integer projection",
+      );
+    },
+  );
+
+  it("rejects the wrong frame tag on a successor integer source", async () => {
+    const mutated = structuredClone(rows) as unknown as {
+      row_id: string;
+      table: string;
+      fields: { name: string; tag: Field["tag"]; value: Field["value"] }[];
+    }[];
+    const receipt = mutated.find(
+      (row) => row.row_id === "row-adapter_manifest_receipt-receipt",
+    )!;
+    receipt.fields.find((item) => item.name === "request_ceiling")!.tag =
+      "text";
+    await expect(execute(mutated)).rejects.toThrow(
+      "invalid successor integer projection",
+    );
+  });
+
+  it("rejects laundering the stored successor digest through a text tag", async () => {
+    const mutated = structuredClone(rows) as unknown as {
+      row_id: string;
+      table: string;
+      fields: { name: string; tag: Field["tag"]; value: Field["value"] }[];
+    }[];
+    mutated
+      .find((row) => row.row_id === "row-adapter_manifest_receipt-receipt")!
+      .fields.find((item) => item.name === "successor_manifest_hash")!.tag =
+      "text";
+    await expect(execute(mutated)).rejects.toThrow();
   });
 });
