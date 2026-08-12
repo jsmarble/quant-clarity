@@ -33,7 +33,7 @@ The final document's document-visible digest-output fields are still synthetic c
 
 Before any authority-capable implementation, the project still needs:
 
-- exact external approved-row and repository-artifact resolvers plus a reviewed build manifest;
+- persisted external approved-row lookup and repository-artifact resolvers plus a reviewed build manifest; [Phase 5Y-H2e-a](phase-5y-h2e-a-external-row-resolvers.md) closes only the seven external-row programs over synthetic predecessor witnesses;
 - a complete document-to-normalized-output projection and independent semantic oracle covering endpoint, owner, credential, tuple, policy, verifier and interval closure;
 - normative normalized-row and root-input-byte accounting;
 - migration 0010 schema/guard parity, frozen fresh-primary D1 enumeration and retained-row execution;

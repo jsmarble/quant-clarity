@@ -1,0 +1,666 @@
+{
+  "contract_version": "provenance-v2-external-row-resolver-vectors@1",
+  "status": "review_candidate",
+  "coverage": "synthetic_external_row_join_predicate_cardinality_and_digest_parity",
+  "authority_eligible": false,
+  "outcome": "authority_refused",
+  "persisted": false,
+  "d1_read_executed": false,
+  "synthetic_external_row_resolver_executed": true,
+  "repository_artifact_resolver_executed": false,
+  "semantic_oracle_executed": false,
+  "source_contracts": {
+    "root_binding_plan": "provenance-v2-root-binding-plan@1",
+    "connected_graph": "provenance-v2-connected-registration-graph@1",
+    "document_cascade": "provenance-v2-connected-document-cascade-vectors@1"
+  },
+  "predecessor_schema_sources": {
+    "source_compliance_record": "migrations/canonical/0002_provenance_facts_and_control.sql",
+    "run_plan_provider_and_seal": "migrations/canonical/0005_publication_run_plan_authority.sql"
+  },
+  "evidence_counts": {
+    "binding_definitions": 7,
+    "graph_occurrences": 6,
+    "synthetic_authority_frame_occurrences": 1,
+    "total_resolutions": 7,
+    "witness_rows": 3,
+    "predicate_columns": 4,
+    "predicate_evaluations": 20
+  },
+  "binding_inventory": [
+    {
+      "source_table": "provenance_v2_source_register_receipt",
+      "source_field": "artifact_hash",
+      "target_table": "source_compliance_record",
+      "target_digest_column": "artifact_hash",
+      "joins": [
+        {
+          "local_column": "provider_id",
+          "remote_column": "provider_id"
+        },
+        {
+          "local_column": "register_version",
+          "remote_column": "register_version"
+        }
+      ],
+      "required_predicates": [
+        {
+          "column": "approval_state",
+          "value": "approved"
+        },
+        {
+          "column": "access_permitted",
+          "value": 1
+        },
+        {
+          "column": "retention_permitted",
+          "value": 1
+        },
+        {
+          "column": "publication_permitted",
+          "value": 1
+        }
+      ],
+      "cardinality": "exactly_one"
+    },
+    {
+      "source_table": "provenance_v2_source_register_member",
+      "source_field": "artifact_hash",
+      "target_table": "source_compliance_record",
+      "target_digest_column": "artifact_hash",
+      "joins": [
+        {
+          "local_column": "provider_id",
+          "remote_column": "provider_id"
+        },
+        {
+          "local_column": "register_version",
+          "remote_column": "register_version"
+        }
+      ],
+      "required_predicates": [
+        {
+          "column": "approval_state",
+          "value": "approved"
+        },
+        {
+          "column": "access_permitted",
+          "value": 1
+        },
+        {
+          "column": "retention_permitted",
+          "value": 1
+        },
+        {
+          "column": "publication_permitted",
+          "value": 1
+        }
+      ],
+      "cardinality": "exactly_one"
+    },
+    {
+      "source_table": "provenance_v2_adapter_manifest_receipt",
+      "source_field": "roster_content_hash",
+      "target_table": "publication_run_plan_provider",
+      "target_digest_column": "roster_content_hash",
+      "joins": [
+        {
+          "local_column": "run_plan_id",
+          "remote_column": "run_plan_id"
+        },
+        {
+          "local_column": "provider_id",
+          "remote_column": "provider_id"
+        }
+      ],
+      "required_predicates": [],
+      "cardinality": "exactly_one"
+    },
+    {
+      "source_table": "provenance_v2_adapter_manifest_receipt",
+      "source_field": "source_artifact_hash",
+      "target_table": "source_compliance_record",
+      "target_digest_column": "artifact_hash",
+      "joins": [
+        {
+          "local_column": "provider_id",
+          "remote_column": "provider_id"
+        },
+        {
+          "local_column": "source_register_version",
+          "remote_column": "register_version"
+        }
+      ],
+      "required_predicates": [
+        {
+          "column": "approval_state",
+          "value": "approved"
+        },
+        {
+          "column": "access_permitted",
+          "value": 1
+        },
+        {
+          "column": "retention_permitted",
+          "value": 1
+        },
+        {
+          "column": "publication_permitted",
+          "value": 1
+        }
+      ],
+      "cardinality": "exactly_one"
+    },
+    {
+      "source_table": "provenance_v2_source_endpoint",
+      "source_field": "source_register_artifact_hash",
+      "target_table": "source_compliance_record",
+      "target_digest_column": "artifact_hash",
+      "joins": [
+        {
+          "local_column": "provider_id",
+          "remote_column": "provider_id"
+        },
+        {
+          "local_column": "source_register_version",
+          "remote_column": "register_version"
+        }
+      ],
+      "required_predicates": [
+        {
+          "column": "approval_state",
+          "value": "approved"
+        },
+        {
+          "column": "access_permitted",
+          "value": 1
+        },
+        {
+          "column": "retention_permitted",
+          "value": 1
+        },
+        {
+          "column": "publication_permitted",
+          "value": 1
+        }
+      ],
+      "cardinality": "exactly_one"
+    },
+    {
+      "source_table": "provenance_v2_source_endpoint_registration",
+      "source_field": "source_register_artifact_hash",
+      "target_table": "source_compliance_record",
+      "target_digest_column": "artifact_hash",
+      "joins": [
+        {
+          "local_column": "provider_id",
+          "remote_column": "provider_id"
+        },
+        {
+          "local_column": "source_register_version",
+          "remote_column": "register_version"
+        }
+      ],
+      "required_predicates": [
+        {
+          "column": "approval_state",
+          "value": "approved"
+        },
+        {
+          "column": "access_permitted",
+          "value": 1
+        },
+        {
+          "column": "retention_permitted",
+          "value": 1
+        },
+        {
+          "column": "publication_permitted",
+          "value": 1
+        }
+      ],
+      "cardinality": "exactly_one"
+    },
+    {
+      "source_table": "provenance_v2_authority_plan",
+      "source_field": "run_plan_hash",
+      "target_table": "publication_run_plan_seal",
+      "target_digest_column": "plan_hash",
+      "joins": [
+        {
+          "local_column": "run_plan_id",
+          "remote_column": "run_plan_id"
+        }
+      ],
+      "required_predicates": [],
+      "cardinality": "exactly_one"
+    }
+  ],
+  "witness_rows": [
+    {
+      "witness_id": "witness-source-compliance-record",
+      "table": "source_compliance_record",
+      "fields": [
+        {
+          "name": "provider_id",
+          "tag": "text",
+          "value": "prv_44444444-4444-4444-8444-444444444444"
+        },
+        {
+          "name": "register_version",
+          "tag": "text",
+          "value": "register-connected@1"
+        },
+        {
+          "name": "artifact_hash",
+          "tag": "digest",
+          "value": "sha256:00000000000000000000000000000000000000000000000000000000000dbba1"
+        },
+        {
+          "name": "approval_state",
+          "tag": "text",
+          "value": "approved"
+        },
+        {
+          "name": "access_permitted",
+          "tag": "integer",
+          "value": 1
+        },
+        {
+          "name": "retention_permitted",
+          "tag": "integer",
+          "value": 1
+        },
+        {
+          "name": "publication_permitted",
+          "tag": "integer",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "witness_id": "witness-publication-run-plan-provider",
+      "table": "publication_run_plan_provider",
+      "fields": [
+        {
+          "name": "run_plan_id",
+          "tag": "text",
+          "value": "rpl_22222222-2222-4222-8222-222222222222"
+        },
+        {
+          "name": "provider_id",
+          "tag": "text",
+          "value": "prv_44444444-4444-4444-8444-444444444444"
+        },
+        {
+          "name": "roster_content_hash",
+          "tag": "digest",
+          "value": "sha256:00000000000000000000000000000000000000000000000000000000000000cf"
+        }
+      ]
+    },
+    {
+      "witness_id": "witness-publication-run-plan-seal",
+      "table": "publication_run_plan_seal",
+      "fields": [
+        {
+          "name": "run_plan_id",
+          "tag": "text",
+          "value": "rpl_22222222-2222-4222-8222-222222222222"
+        },
+        {
+          "name": "plan_hash",
+          "tag": "digest",
+          "value": "sha256:0000000000000000000000000000000000000000000000000000000000007531"
+        }
+      ]
+    }
+  ],
+  "resolutions": [
+    {
+      "source_row_id": "row-source_register_receipt-receipt",
+      "source_table": "provenance_v2_source_register_receipt",
+      "source_field": "artifact_hash",
+      "witness_id": "witness-source-compliance-record",
+      "target_table": "source_compliance_record",
+      "target_digest_column": "artifact_hash",
+      "join_evidence": [
+        {
+          "local_column": "provider_id",
+          "remote_column": "provider_id",
+          "local_value": "prv_44444444-4444-4444-8444-444444444444",
+          "remote_value": "prv_44444444-4444-4444-8444-444444444444",
+          "equal": true
+        },
+        {
+          "local_column": "register_version",
+          "remote_column": "register_version",
+          "local_value": "register-connected@1",
+          "remote_value": "register-connected@1",
+          "equal": true
+        }
+      ],
+      "predicate_evidence": [
+        {
+          "column": "approval_state",
+          "required_value": "approved",
+          "witness_value": "approved",
+          "equal": true
+        },
+        {
+          "column": "access_permitted",
+          "required_value": 1,
+          "witness_value": 1,
+          "equal": true
+        },
+        {
+          "column": "retention_permitted",
+          "required_value": 1,
+          "witness_value": 1,
+          "equal": true
+        },
+        {
+          "column": "publication_permitted",
+          "required_value": 1,
+          "witness_value": 1,
+          "equal": true
+        }
+      ],
+      "cardinality": "exactly_one",
+      "match_count": 1,
+      "resolved_digest": "sha256:00000000000000000000000000000000000000000000000000000000000dbba1",
+      "stored_digest": "sha256:00000000000000000000000000000000000000000000000000000000000dbba1",
+      "digest_equal": true
+    },
+    {
+      "source_row_id": "row-source_register_member-member",
+      "source_table": "provenance_v2_source_register_member",
+      "source_field": "artifact_hash",
+      "witness_id": "witness-source-compliance-record",
+      "target_table": "source_compliance_record",
+      "target_digest_column": "artifact_hash",
+      "join_evidence": [
+        {
+          "local_column": "provider_id",
+          "remote_column": "provider_id",
+          "local_value": "prv_44444444-4444-4444-8444-444444444444",
+          "remote_value": "prv_44444444-4444-4444-8444-444444444444",
+          "equal": true
+        },
+        {
+          "local_column": "register_version",
+          "remote_column": "register_version",
+          "local_value": "register-connected@1",
+          "remote_value": "register-connected@1",
+          "equal": true
+        }
+      ],
+      "predicate_evidence": [
+        {
+          "column": "approval_state",
+          "required_value": "approved",
+          "witness_value": "approved",
+          "equal": true
+        },
+        {
+          "column": "access_permitted",
+          "required_value": 1,
+          "witness_value": 1,
+          "equal": true
+        },
+        {
+          "column": "retention_permitted",
+          "required_value": 1,
+          "witness_value": 1,
+          "equal": true
+        },
+        {
+          "column": "publication_permitted",
+          "required_value": 1,
+          "witness_value": 1,
+          "equal": true
+        }
+      ],
+      "cardinality": "exactly_one",
+      "match_count": 1,
+      "resolved_digest": "sha256:00000000000000000000000000000000000000000000000000000000000dbba1",
+      "stored_digest": "sha256:00000000000000000000000000000000000000000000000000000000000dbba1",
+      "digest_equal": true
+    },
+    {
+      "source_row_id": "row-adapter_manifest_receipt-receipt",
+      "source_table": "provenance_v2_adapter_manifest_receipt",
+      "source_field": "roster_content_hash",
+      "witness_id": "witness-publication-run-plan-provider",
+      "target_table": "publication_run_plan_provider",
+      "target_digest_column": "roster_content_hash",
+      "join_evidence": [
+        {
+          "local_column": "run_plan_id",
+          "remote_column": "run_plan_id",
+          "local_value": "rpl_22222222-2222-4222-8222-222222222222",
+          "remote_value": "rpl_22222222-2222-4222-8222-222222222222",
+          "equal": true
+        },
+        {
+          "local_column": "provider_id",
+          "remote_column": "provider_id",
+          "local_value": "prv_44444444-4444-4444-8444-444444444444",
+          "remote_value": "prv_44444444-4444-4444-8444-444444444444",
+          "equal": true
+        }
+      ],
+      "predicate_evidence": [],
+      "cardinality": "exactly_one",
+      "match_count": 1,
+      "resolved_digest": "sha256:00000000000000000000000000000000000000000000000000000000000000cf",
+      "stored_digest": "sha256:00000000000000000000000000000000000000000000000000000000000000cf",
+      "digest_equal": true
+    },
+    {
+      "source_row_id": "row-adapter_manifest_receipt-receipt",
+      "source_table": "provenance_v2_adapter_manifest_receipt",
+      "source_field": "source_artifact_hash",
+      "witness_id": "witness-source-compliance-record",
+      "target_table": "source_compliance_record",
+      "target_digest_column": "artifact_hash",
+      "join_evidence": [
+        {
+          "local_column": "provider_id",
+          "remote_column": "provider_id",
+          "local_value": "prv_44444444-4444-4444-8444-444444444444",
+          "remote_value": "prv_44444444-4444-4444-8444-444444444444",
+          "equal": true
+        },
+        {
+          "local_column": "source_register_version",
+          "remote_column": "register_version",
+          "local_value": "register-connected@1",
+          "remote_value": "register-connected@1",
+          "equal": true
+        }
+      ],
+      "predicate_evidence": [
+        {
+          "column": "approval_state",
+          "required_value": "approved",
+          "witness_value": "approved",
+          "equal": true
+        },
+        {
+          "column": "access_permitted",
+          "required_value": 1,
+          "witness_value": 1,
+          "equal": true
+        },
+        {
+          "column": "retention_permitted",
+          "required_value": 1,
+          "witness_value": 1,
+          "equal": true
+        },
+        {
+          "column": "publication_permitted",
+          "required_value": 1,
+          "witness_value": 1,
+          "equal": true
+        }
+      ],
+      "cardinality": "exactly_one",
+      "match_count": 1,
+      "resolved_digest": "sha256:00000000000000000000000000000000000000000000000000000000000dbba1",
+      "stored_digest": "sha256:00000000000000000000000000000000000000000000000000000000000dbba1",
+      "digest_equal": true
+    },
+    {
+      "source_row_id": "row-source_endpoint-endpoint",
+      "source_table": "provenance_v2_source_endpoint",
+      "source_field": "source_register_artifact_hash",
+      "witness_id": "witness-source-compliance-record",
+      "target_table": "source_compliance_record",
+      "target_digest_column": "artifact_hash",
+      "join_evidence": [
+        {
+          "local_column": "provider_id",
+          "remote_column": "provider_id",
+          "local_value": "prv_44444444-4444-4444-8444-444444444444",
+          "remote_value": "prv_44444444-4444-4444-8444-444444444444",
+          "equal": true
+        },
+        {
+          "local_column": "source_register_version",
+          "remote_column": "register_version",
+          "local_value": "register-connected@1",
+          "remote_value": "register-connected@1",
+          "equal": true
+        }
+      ],
+      "predicate_evidence": [
+        {
+          "column": "approval_state",
+          "required_value": "approved",
+          "witness_value": "approved",
+          "equal": true
+        },
+        {
+          "column": "access_permitted",
+          "required_value": 1,
+          "witness_value": 1,
+          "equal": true
+        },
+        {
+          "column": "retention_permitted",
+          "required_value": 1,
+          "witness_value": 1,
+          "equal": true
+        },
+        {
+          "column": "publication_permitted",
+          "required_value": 1,
+          "witness_value": 1,
+          "equal": true
+        }
+      ],
+      "cardinality": "exactly_one",
+      "match_count": 1,
+      "resolved_digest": "sha256:00000000000000000000000000000000000000000000000000000000000dbba1",
+      "stored_digest": "sha256:00000000000000000000000000000000000000000000000000000000000dbba1",
+      "digest_equal": true
+    },
+    {
+      "source_row_id": "row-source_endpoint_registration-registration",
+      "source_table": "provenance_v2_source_endpoint_registration",
+      "source_field": "source_register_artifact_hash",
+      "witness_id": "witness-source-compliance-record",
+      "target_table": "source_compliance_record",
+      "target_digest_column": "artifact_hash",
+      "join_evidence": [
+        {
+          "local_column": "provider_id",
+          "remote_column": "provider_id",
+          "local_value": "prv_44444444-4444-4444-8444-444444444444",
+          "remote_value": "prv_44444444-4444-4444-8444-444444444444",
+          "equal": true
+        },
+        {
+          "local_column": "source_register_version",
+          "remote_column": "register_version",
+          "local_value": "register-connected@1",
+          "remote_value": "register-connected@1",
+          "equal": true
+        }
+      ],
+      "predicate_evidence": [
+        {
+          "column": "approval_state",
+          "required_value": "approved",
+          "witness_value": "approved",
+          "equal": true
+        },
+        {
+          "column": "access_permitted",
+          "required_value": 1,
+          "witness_value": 1,
+          "equal": true
+        },
+        {
+          "column": "retention_permitted",
+          "required_value": 1,
+          "witness_value": 1,
+          "equal": true
+        },
+        {
+          "column": "publication_permitted",
+          "required_value": 1,
+          "witness_value": 1,
+          "equal": true
+        }
+      ],
+      "cardinality": "exactly_one",
+      "match_count": 1,
+      "resolved_digest": "sha256:00000000000000000000000000000000000000000000000000000000000dbba1",
+      "stored_digest": "sha256:00000000000000000000000000000000000000000000000000000000000dbba1",
+      "digest_equal": true
+    },
+    {
+      "source_row_id": "candidate-authority-plan-frame-source",
+      "source_table": "provenance_v2_authority_plan",
+      "source_field": "run_plan_hash",
+      "witness_id": "witness-publication-run-plan-seal",
+      "target_table": "publication_run_plan_seal",
+      "target_digest_column": "plan_hash",
+      "join_evidence": [
+        {
+          "local_column": "run_plan_id",
+          "remote_column": "run_plan_id",
+          "local_value": "rpl_22222222-2222-4222-8222-222222222222",
+          "remote_value": "rpl_22222222-2222-4222-8222-222222222222",
+          "equal": true
+        }
+      ],
+      "predicate_evidence": [],
+      "cardinality": "exactly_one",
+      "match_count": 1,
+      "resolved_digest": "sha256:0000000000000000000000000000000000000000000000000000000000007531",
+      "stored_digest": "sha256:0000000000000000000000000000000000000000000000000000000000007531",
+      "digest_equal": true
+    }
+  ],
+  "authority_boundary": {
+    "predecessor_witness_authority": "synthetic_fixture_only_not_approved_d1_state",
+    "stored_digest_role": "comparison_claim_only",
+    "resolver_result_role": "review_evidence_only"
+  },
+  "pending": {
+    "repository_artifact_resolvers": "pending",
+    "reviewed_repository_build_manifest": "pending",
+    "remote_or_persisted_predecessor_rows": "pending",
+    "predecessor_approval_and_revocation_semantics": "pending",
+    "document_output_projection_and_semantic_parity": "pending",
+    "semantic_oracle": "pending",
+    "migration_schema_parity": "pending",
+    "frozen_d1_enumeration": "pending",
+    "accepted_aggregate_limits": "pending",
+    "protected_writers_and_activation": "pending"
+  }
+}
