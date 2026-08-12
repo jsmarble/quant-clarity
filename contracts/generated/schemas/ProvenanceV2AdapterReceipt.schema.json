@@ -12,6 +12,7 @@
     "provider_id",
     "provider_organization_id",
     "legacy_manifest",
+    "successor_manifest",
     "source_owner_receipts",
     "source_register_receipt",
     "normalized_environments",
@@ -624,6 +625,225 @@
               "type": "string"
             }
           }
+        }
+      }
+    },
+    "successor_manifest": {
+      "additionalProperties": false,
+      "x-quantclarity-contract-status": "review_candidate",
+      "type": "object",
+      "required": [
+        "contract_version",
+        "canonical_json_version",
+        "authority_plan_id",
+        "run_plan_id",
+        "installation_id",
+        "provider_ordinal",
+        "provider_id",
+        "provider_organization_id",
+        "legacy_adapter_contract_version",
+        "legacy_adapter_version",
+        "adapter_manifest_hash",
+        "roster_version",
+        "roster_content_hash",
+        "source_owner_count",
+        "source_owner_set_root",
+        "source_register_version",
+        "source_register_artifact_hash",
+        "source_register_member_count",
+        "source_register_member_set_root",
+        "source_register_receipt_hash",
+        "environment_count",
+        "environment_set_root",
+        "credential_count",
+        "credential_set_root",
+        "source_count",
+        "source_set_root",
+        "admitted_run_plan_ceilings",
+        "source_policy_version",
+        "parser_version",
+        "extraction_policy_version"
+      ],
+      "properties": {
+        "contract_version": {
+          "const": "provenance-v2-successor-manifest@1",
+          "type": "string"
+        },
+        "canonical_json_version": {
+          "const": "quantclarity-canonical-json@1",
+          "type": "string"
+        },
+        "authority_plan_id": {
+          "pattern": "^vpa_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "type": "string"
+        },
+        "run_plan_id": {
+          "pattern": "^rpl_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "type": "string"
+        },
+        "installation_id": {
+          "pattern": "^pvi_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "type": "string"
+        },
+        "provider_ordinal": {
+          "minimum": 0,
+          "maximum": 15,
+          "type": "integer"
+        },
+        "provider_id": {
+          "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "type": "string"
+        },
+        "provider_organization_id": {
+          "pattern": "^org_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "type": "string"
+        },
+        "legacy_adapter_contract_version": {
+          "minLength": 1,
+          "maxLength": 32,
+          "type": "string"
+        },
+        "legacy_adapter_version": {
+          "minLength": 1,
+          "maxLength": 128,
+          "type": "string"
+        },
+        "adapter_manifest_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "roster_version": {
+          "minLength": 1,
+          "maxLength": 128,
+          "type": "string"
+        },
+        "roster_content_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "source_owner_count": {
+          "minimum": 1,
+          "maximum": 32,
+          "type": "integer"
+        },
+        "source_owner_set_root": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "source_register_version": {
+          "minLength": 1,
+          "maxLength": 128,
+          "type": "string"
+        },
+        "source_register_artifact_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "source_register_member_count": {
+          "minimum": 1,
+          "maximum": 32,
+          "type": "integer"
+        },
+        "source_register_member_set_root": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "source_register_receipt_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "environment_count": {
+          "minimum": 1,
+          "maximum": 4,
+          "type": "integer"
+        },
+        "environment_set_root": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "credential_count": {
+          "minimum": 0,
+          "maximum": 16,
+          "type": "integer"
+        },
+        "credential_set_root": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "source_count": {
+          "minimum": 1,
+          "maximum": 32,
+          "type": "integer"
+        },
+        "source_set_root": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "admitted_run_plan_ceilings": {
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "request_ceiling",
+            "byte_ceiling",
+            "ai_token_ceiling",
+            "browser_millisecond_ceiling",
+            "elapsed_millisecond_ceiling",
+            "cost_microusd_ceiling"
+          ],
+          "properties": {
+            "request_ceiling": {
+              "minimum": 1,
+              "maximum": 10000,
+              "type": "integer"
+            },
+            "byte_ceiling": {
+              "minimum": 1,
+              "maximum": 1000000000,
+              "type": "integer"
+            },
+            "ai_token_ceiling": {
+              "minimum": 0,
+              "maximum": 10000000,
+              "type": "integer"
+            },
+            "browser_millisecond_ceiling": {
+              "minimum": 0,
+              "maximum": 43200000,
+              "type": "integer"
+            },
+            "elapsed_millisecond_ceiling": {
+              "minimum": 1,
+              "maximum": 43200000,
+              "type": "integer"
+            },
+            "cost_microusd_ceiling": {
+              "minimum": 0,
+              "maximum": 9007199254740991,
+              "type": "integer"
+            }
+          }
+        },
+        "source_policy_version": {
+          "minLength": 1,
+          "maxLength": 128,
+          "type": "string"
+        },
+        "parser_version": {
+          "minLength": 1,
+          "maxLength": 128,
+          "type": "string"
+        },
+        "extraction_policy_version": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "maxLength": 128,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       }
     },

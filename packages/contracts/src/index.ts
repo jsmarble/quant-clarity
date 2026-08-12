@@ -21,6 +21,7 @@ import {
   ProvenanceV2RawFieldMappingSchema,
   ProvenanceV2RegistrationLimitsSchema,
   ProvenanceV2RegistrationPlanSchema,
+  ProvenanceV2SuccessorManifestSchema,
 } from "./provenance-v2-registration.js";
 
 export * from "./provenance-v2-authority-root-vectors.js";
@@ -3477,6 +3478,7 @@ export const GENERATED_SCHEMAS = {
   ProvenanceV2RawFieldMapping: ProvenanceV2RawFieldMappingSchema,
   ProvenanceV2RegistrationLimits: ProvenanceV2RegistrationLimitsSchema,
   ProvenanceV2RegistrationPlan: ProvenanceV2RegistrationPlanSchema,
+  ProvenanceV2SuccessorManifest: ProvenanceV2SuccessorManifestSchema,
   Provider: ProviderSchema,
   ProviderCollection: ProviderCollectionSchema,
   ProviderDetail: ProviderDetailSchema,

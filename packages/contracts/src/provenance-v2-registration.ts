@@ -8,6 +8,8 @@ const UUID_V4 =
 const SHA256 = "^sha256:[0-9a-f]{64}$";
 const MACHINE_KEY = "^[a-z][a-z0-9_-]{0,63}$";
 const FIELD_PATH = "^[a-z][a-z0-9_.]{0,127}$";
+const DNS_HOST =
+  "^(?=.{1,253}$)(?:(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)\\.)+(?:[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?)$";
 const REVIEW_CANDIDATE_SCHEMA = {
   "x-quantclarity-contract-status": "review_candidate",
 } as const;
@@ -199,6 +201,46 @@ const AdmittedRunPlanCeilingsSchema = Type.Object(
   { additionalProperties: false },
 );
 
+export const ProvenanceV2SuccessorManifestSchema = Type.Object(
+  {
+    contract_version: Type.Literal("provenance-v2-successor-manifest@1"),
+    canonical_json_version: Type.Literal("quantclarity-canonical-json@1"),
+    authority_plan_id: id("vpa"),
+    run_plan_id: id("rpl"),
+    installation_id: id("pvi"),
+    provider_ordinal: ordinal(15),
+    provider_id: id("prv"),
+    provider_organization_id: id("org"),
+    legacy_adapter_contract_version: boundedText(32),
+    legacy_adapter_version: boundedText(128),
+    adapter_manifest_hash: hash(),
+    roster_version: boundedText(128),
+    roster_content_hash: hash(),
+    source_owner_count: Type.Integer({ minimum: 1, maximum: 32 }),
+    source_owner_set_root: hash(),
+    source_register_version: boundedText(128),
+    source_register_artifact_hash: hash(),
+    source_register_member_count: Type.Integer({ minimum: 1, maximum: 32 }),
+    source_register_member_set_root: hash(),
+    source_register_receipt_hash: hash(),
+    environment_count: Type.Integer({ minimum: 1, maximum: 4 }),
+    environment_set_root: hash(),
+    credential_count: Type.Integer({ minimum: 0, maximum: 16 }),
+    credential_set_root: hash(),
+    source_count: Type.Integer({ minimum: 1, maximum: 32 }),
+    source_set_root: hash(),
+    admitted_run_plan_ceilings: AdmittedRunPlanCeilingsSchema,
+    source_policy_version: boundedText(128),
+    parser_version: boundedText(128),
+    extraction_policy_version: nullable(boundedText(128)),
+  },
+  {
+    $id: "ProvenanceV2SuccessorManifest",
+    additionalProperties: false,
+    ...REVIEW_CANDIDATE_SCHEMA,
+  },
+);
+
 export const ProvenanceV2AdapterReceiptSchema = Type.Object(
   {
     contract_version: Type.Literal("provenance-v2-adapter-receipt@1"),
@@ -209,6 +251,7 @@ export const ProvenanceV2AdapterReceiptSchema = Type.Object(
     provider_id: id("prv"),
     provider_organization_id: id("org"),
     legacy_manifest: AdapterManifestSchema,
+    successor_manifest: ProvenanceV2SuccessorManifestSchema,
     source_owner_receipts: Type.Array(SourceOwnerReceiptSchema, {
       minItems: 1,
       maxItems: 32,
@@ -364,7 +407,9 @@ const EndpointSchema = Type.Object(
         Type.Literal("header"),
       ]),
     ),
-    credential_header: nullable(Type.String({ minLength: 1, maxLength: 64 })),
+    credential_header: nullable(
+      Type.String({ pattern: "^[A-Za-z0-9-]{1,64}$" }),
+    ),
     compressed_byte_limit: Type.Integer({ minimum: 1, maximum: 1_000_000_000 }),
     uncompressed_byte_limit: Type.Integer({
       minimum: 1,
@@ -380,10 +425,10 @@ const EndpointSchema = Type.Object(
     retention_permitted: Type.Literal(true),
     publication_permitted: Type.Literal(true),
     parameters: Type.Array(EndpointParameterSchema, { maxItems: 64 }),
-    allowed_headers: Type.Array(Type.String({ minLength: 1, maxLength: 64 }), {
-      maxItems: 16,
-      uniqueItems: true,
-    }),
+    allowed_headers: Type.Array(
+      Type.String({ pattern: "^[A-Za-z0-9-]{1,64}$" }),
+      { maxItems: 16, uniqueItems: true },
+    ),
     redirect_hosts: Type.Array(Type.String({ minLength: 1, maxLength: 253 }), {
       maxItems: 8,
       uniqueItems: true,
@@ -510,7 +555,7 @@ const FieldPolicySchema = Type.Object(
     policy_version: boundedText(128),
     field_paths: Type.Array(fieldPath(), {
       minItems: 1,
-      maxItems: 28,
+      maxItems: 32,
       uniqueItems: true,
     }),
     effective_from_ms: Type.Integer({
@@ -686,6 +731,9 @@ export type ProvenanceV2RegistrationLimits = Static<
 export type ProvenanceV2AdapterReceipt = Static<
   typeof ProvenanceV2AdapterReceiptSchema
 >;
+export type ProvenanceV2SuccessorManifest = Static<
+  typeof ProvenanceV2SuccessorManifestSchema
+>;
 export type ProvenanceV2RawFieldMapping = Static<
   typeof ProvenanceV2RawFieldMappingSchema
 >;
@@ -747,6 +795,19 @@ export const PROVENANCE_V2_RAW_FIELD_MAPPING_CONTRACT = Object.freeze({
   admission_and_exclusion_root_owner: "field_policy_set",
 } as const);
 
+export const PROVENANCE_V2_SUCCESSOR_MANIFEST_CONTRACT = Object.freeze({
+  contract_version: "provenance-v2-successor-manifest-preimage@1",
+  status: "review_candidate",
+  schema: "ProvenanceV2SuccessorManifest",
+  preimage: "exact RFC8785/JCS canonical JSON bytes of successor_manifest",
+  canonical_json_version: "quantclarity-canonical-json@1",
+  digest: "SHA-256 encoded as lowercase sha256:<hex>",
+  caller_roots_authoritative: false,
+  oracle_requirement:
+    "recompute every declared child root and count before successor_manifest_hash",
+  field_inclusion: "every schema property exactly once; no exclusions",
+} as const);
+
 export const PROVENANCE_V2_SEMANTIC_POLICY = Object.freeze({
   contract_version: "provenance-v2-registration-semantics@1",
   status: "review_candidate",
@@ -794,6 +855,12 @@ export const PROVENANCE_V2_FIELD_CORPUS = Object.freeze({
       ordinal: 0,
       record_group: "offering_applicability@1",
       equality_rule: "exact_applicability_tuple",
+      context_bindings: Object.freeze([
+        "endpoint",
+        "policy",
+        "observation",
+        "evidence",
+      ]),
       field_paths: Object.freeze([
         "offering.applicability.provider_id",
         "offering.applicability.provider_model_id",
@@ -807,6 +874,13 @@ export const PROVENANCE_V2_FIELD_CORPUS = Object.freeze({
       ordinal: 1,
       record_group: "price_tuple@1",
       equality_rule: "exact_price_tuple",
+      context_bindings: Object.freeze([
+        "offering_applicability",
+        "endpoint",
+        "policy",
+        "observation",
+        "evidence",
+      ]),
       field_paths: Object.freeze([
         "price.role",
         "price.price_class",
@@ -825,6 +899,13 @@ export const PROVENANCE_V2_FIELD_CORPUS = Object.freeze({
       ordinal: 2,
       record_group: "precision_summary_tuple@1",
       equality_rule: "precision_value_and_scope",
+      context_bindings: Object.freeze([
+        "offering_applicability",
+        "endpoint",
+        "policy",
+        "observation",
+        "evidence",
+      ]),
       field_paths: Object.freeze([
         "precision.summary.normalized_format",
         "precision.summary.summary_format",
@@ -839,10 +920,22 @@ export const PROVENANCE_V2_FIELD_CORPUS = Object.freeze({
       ordinal: 3,
       record_group: "precision_component_tuple@1",
       equality_rule: "precision_value_and_scope",
+      context_bindings: Object.freeze([
+        "offering_applicability",
+        "precision_summary",
+        "endpoint",
+        "policy",
+        "observation",
+        "evidence",
+      ]),
       field_paths: Object.freeze([
-        "precision.component.component",
+        "precision.component.component_kind",
+        "precision.component.component_label",
         "precision.component.normalized_format",
+        "precision.component.raw_field_name",
         "precision.component.raw_precision",
+        "precision.component.provider_definition",
+        "precision.component.format_variant",
         "precision.component.observed_at",
       ]),
     }),
@@ -850,6 +943,17 @@ export const PROVENANCE_V2_FIELD_CORPUS = Object.freeze({
   enum_domains: Object.freeze({
     component_scope: Object.freeze([
       "offering",
+      "stored_weights",
+      "weight_computation",
+      "activations",
+      "accumulation",
+      "kv_cache",
+      "attention",
+      "experts",
+      "shared_layers",
+      "other",
+    ]),
+    precision_component_kind: Object.freeze([
       "stored_weights",
       "weight_computation",
       "activations",
@@ -1185,13 +1289,25 @@ export const PROVENANCE_V2_FIELD_CORPUS = Object.freeze({
         ["primary", "corroborating", "conflict_detection_only"],
       ],
       [
-        "precision.component.component",
+        "precision.component.component_kind",
+        "precision_component",
+        "precision_component_tuple@1",
+        "enum",
+        "one",
+        "non_null",
+        "required",
+        "precision_component_kind",
+        "field_identity_literal",
+        ["primary", "corroborating", "conflict_detection_only"],
+      ],
+      [
+        "precision.component.component_label",
         "precision_component",
         "precision_component_tuple@1",
         "text",
         "one",
-        "non_null",
-        "required",
+        "nullable",
+        "conditional",
         null,
         "field_identity_literal",
         ["primary", "corroborating", "conflict_detection_only"],
@@ -1209,6 +1325,18 @@ export const PROVENANCE_V2_FIELD_CORPUS = Object.freeze({
         ["deterministic_system"],
       ],
       [
+        "precision.component.raw_field_name",
+        "precision_component",
+        "precision_component_tuple@1",
+        "text",
+        "one",
+        "non_null",
+        "required",
+        null,
+        "field_identity_literal",
+        ["primary", "corroborating", "conflict_detection_only"],
+      ],
+      [
         "precision.component.raw_precision",
         "precision_component",
         "precision_component_tuple@1",
@@ -1216,6 +1344,30 @@ export const PROVENANCE_V2_FIELD_CORPUS = Object.freeze({
         "one",
         "non_null",
         "required",
+        null,
+        "observed",
+        ["primary", "corroborating", "conflict_detection_only"],
+      ],
+      [
+        "precision.component.provider_definition",
+        "precision_component",
+        "precision_component_tuple@1",
+        "text",
+        "one",
+        "nullable",
+        "conditional",
+        null,
+        "observed",
+        ["primary", "corroborating", "conflict_detection_only"],
+      ],
+      [
+        "precision.component.format_variant",
+        "precision_component",
+        "precision_component_tuple@1",
+        "text",
+        "one",
+        "nullable",
+        "conditional",
         null,
         "observed",
         ["primary", "corroborating", "conflict_detection_only"],
@@ -1244,6 +1396,10 @@ export const PROVENANCE_V2_FIELD_CORPUS = Object.freeze({
         requirement_state: field[6],
         enum_domain: field[7],
         source_mappability: field[8],
+        condition:
+          field[0] === "precision.component.component_label"
+            ? "required_iff_component_kind_other"
+            : null,
         allowed_authority_roles: Object.freeze(field[9] as readonly string[]),
       }),
     ),
@@ -1264,9 +1420,20 @@ export const ProvenanceV2FieldCorpusSchema = Type.Object(
             Type.Literal("exact_price_tuple"),
             Type.Literal("precision_value_and_scope"),
           ]),
+          context_bindings: Type.Array(
+            Type.Union([
+              Type.Literal("offering_applicability"),
+              Type.Literal("precision_summary"),
+              Type.Literal("endpoint"),
+              Type.Literal("policy"),
+              Type.Literal("observation"),
+              Type.Literal("evidence"),
+            ]),
+            { minItems: 4, maxItems: 6, uniqueItems: true },
+          ),
           field_paths: Type.Array(fieldPath(), {
             minItems: 1,
-            maxItems: 28,
+            maxItems: 32,
             uniqueItems: true,
           }),
         },
@@ -1284,7 +1451,7 @@ export const ProvenanceV2FieldCorpusSchema = Type.Object(
     fields: Type.Array(
       Type.Object(
         {
-          ordinal: ordinal(27),
+          ordinal: ordinal(31),
           field_path: fieldPath(),
           field_group: Type.Union([
             Type.Literal("offering_applicability"),
@@ -1321,6 +1488,9 @@ export const ProvenanceV2FieldCorpusSchema = Type.Object(
             Type.Literal("deterministic"),
             Type.Literal("observation_timestamp"),
           ]),
+          condition: nullable(
+            Type.Literal("required_iff_component_kind_other"),
+          ),
           allowed_authority_roles: Type.Array(AuthorityRoleSchema, {
             minItems: 1,
             maxItems: 4,
@@ -1329,7 +1499,7 @@ export const ProvenanceV2FieldCorpusSchema = Type.Object(
         },
         { additionalProperties: false },
       ),
-      { minItems: 28, maxItems: 28 },
+      { minItems: 32, maxItems: 32 },
     ),
   },
   {
@@ -1820,7 +1990,7 @@ export const PROVENANCE_V2_AUTHORITY_ROOT_REGISTRY = Object.freeze({
         ),
         safeDigest(
           "successor_manifest_hash",
-          "registration_document.adapter_receipts[] successor-manifest frame",
+          "registration_document.adapter_receipts[].successor_manifest exact provenance-v2-successor-manifest-preimage@1 canonical JSON bytes",
         ),
         textField("source_policy_version"),
         textField("parser_version"),
@@ -3091,6 +3261,113 @@ const graphIsTotalOrder = (
         return false;
     }
   return true;
+};
+
+const arraysEqual = <T>(left: readonly T[], right: readonly T[]): boolean =>
+  left.length === right.length &&
+  left.every((entry, index) => entry === right[index]);
+
+const hasAsciiControl = (value: string): boolean => {
+  for (const character of value) {
+    const codePoint = character.codePointAt(0);
+    if (codePoint !== undefined && (codePoint <= 0x1f || codePoint === 0x7f))
+      return true;
+  }
+  return false;
+};
+
+export const isProvenanceV2RegistrationHostCandidate = (
+  host: string,
+): boolean => {
+  if (!new RegExp(DNS_HOST, "u").test(host)) return false;
+  if (host.split(".").some((label) => label.startsWith("xn--"))) return false;
+  const forbiddenExact = new Set(["example.com", "example.net", "example.org"]);
+  if (forbiddenExact.has(host)) return false;
+  return ![
+    ".example",
+    ".invalid",
+    ".internal",
+    ".local",
+    ".localhost",
+    ".localdomain",
+    ".onion",
+    ".arpa",
+    ".test",
+  ].some((suffix) => host === suffix.slice(1) || host.endsWith(suffix));
+};
+
+export const isProvenanceV2PathTemplateCandidate = (
+  pathTemplate: string,
+  parameters: readonly {
+    readonly parameter_name: string;
+    readonly location: string;
+    readonly required?: boolean;
+  }[],
+): boolean => {
+  if (
+    !pathTemplate.startsWith("/") ||
+    pathTemplate.startsWith("//") ||
+    /[\\\\?#@]/u.test(pathTemplate) ||
+    hasAsciiControl(pathTemplate) ||
+    /(?:^|\/)\.{1,2}(?:\/|$)/u.test(pathTemplate) ||
+    /%(?:2f|5c|2e)/iu.test(pathTemplate) ||
+    pathTemplate
+      .split("/")
+      .slice(1)
+      .some((segment) => segment.length === 0)
+  )
+    return false;
+  const placeholders = [
+    ...pathTemplate.matchAll(/\{([a-z][a-z0-9_]*)\}/gu),
+  ].map((match) => match[1]);
+  if (/[{}]/u.test(pathTemplate.replace(/\{[a-z][a-z0-9_]*\}/gu, "")))
+    return false;
+  const pathParameters = parameters
+    .filter((parameter) => parameter.location === "path")
+    .map((parameter) => parameter.parameter_name);
+  return (
+    new Set(placeholders).size === placeholders.length &&
+    arraysEqual(placeholders, pathParameters) &&
+    parameters
+      .filter((parameter) => parameter.location === "path")
+      .every((parameter) => parameter.required)
+  );
+};
+
+export const isProvenanceV2SafeLocatorCandidate = (
+  safeLocator: string,
+): boolean =>
+  safeLocator.startsWith("/") &&
+  !safeLocator.startsWith("//") &&
+  !/[{}\\\\?#@]/u.test(safeLocator) &&
+  !hasAsciiControl(safeLocator) &&
+  !/%(?:2e|2f|5c)/iu.test(safeLocator) &&
+  !/(?:^|\/)\.{1,2}(?:\/|$)/u.test(safeLocator) &&
+  !safeLocator
+    .split("/")
+    .slice(1)
+    .some((segment) => segment.length === 0);
+
+export const isProvenanceV2RawLocatorCandidate = (
+  kind: string,
+  locator: string,
+): boolean => {
+  if (kind !== "json_pointer_pattern@1") return true;
+  if (locator !== "" && !locator.startsWith("/")) return false;
+  const tokens = locator === "" ? [] : locator.slice(1).split("/");
+  let wildcardCount = 0;
+  for (const token of tokens) {
+    for (let index = 0; index < token.length; index += 1)
+      if (token[index] === "~") {
+        const escape = token[index + 1];
+        if (escape === "0" || escape === "1") index += 1;
+        else if (escape === "*") {
+          wildcardCount += 1;
+          index += 1;
+        } else return false;
+      }
+  }
+  return wildcardCount <= 1;
 };
 
 export const inspectProvenanceV2RegistrationPlanCandidate = (

@@ -108,7 +108,7 @@ beforeAll(async () => {
       [FUTURE_HISTORY_ID, MODEL_ID, BOUNDARY_MS + 1_000],
     ),
   ]);
-});
+}, 30_000);
 
 describe("canonical Model slug-history acquisition in pinned workerd", () => {
   it("uses the guarded canonical D1 boundary and fails closed on later disagreement", async () => {

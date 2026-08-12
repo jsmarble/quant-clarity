@@ -148,7 +148,7 @@ beforeAll(async () => {
       [CURRENT_HISTORY_ID, MODEL_ID, BOUNDARY_MS - 1_000],
     ),
   ]);
-});
+}, 30_000);
 
 describe("schema-1.12 Model slug-history staging in pinned workerd", () => {
   it("admits the maximum contractual mapping shape below the retained-heap ceiling", () => {

@@ -11,6 +11,7 @@ import {
   PROVENANCE_V2_FRAME_CONTRACT,
   PROVENANCE_V2_RAW_FIELD_MAPPING_CONTRACT,
   PROVENANCE_V2_SEMANTIC_POLICY,
+  PROVENANCE_V2_SUCCESSOR_MANIFEST_CONTRACT,
 } from "@quant-clarity/contracts";
 
 type JsonObject = Record<string, unknown>;
@@ -1527,6 +1528,10 @@ const files = new Map<string, string>([
   [
     "provenance-v2/registration-semantics.v1.json",
     `${JSON.stringify(PROVENANCE_V2_SEMANTIC_POLICY, null, 2)}\n`,
+  ],
+  [
+    "provenance-v2/successor-manifest-preimage.v1.json",
+    `${JSON.stringify(PROVENANCE_V2_SUCCESSOR_MANIFEST_CONTRACT, null, 2)}\n`,
   ],
   [
     "provenance-v2/root-registry.v1.json",

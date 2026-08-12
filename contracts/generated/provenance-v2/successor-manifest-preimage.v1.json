@@ -1,0 +1,11 @@
+{
+  "contract_version": "provenance-v2-successor-manifest-preimage@1",
+  "status": "review_candidate",
+  "schema": "ProvenanceV2SuccessorManifest",
+  "preimage": "exact RFC8785/JCS canonical JSON bytes of successor_manifest",
+  "canonical_json_version": "quantclarity-canonical-json@1",
+  "digest": "SHA-256 encoded as lowercase sha256:<hex>",
+  "caller_roots_authoritative": false,
+  "oracle_requirement": "recompute every declared child root and count before successor_manifest_hash",
+  "field_inclusion": "every schema property exactly once; no exclusions"
+}
