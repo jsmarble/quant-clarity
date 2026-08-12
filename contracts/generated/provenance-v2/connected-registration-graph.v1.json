@@ -389,7 +389,7 @@
         {
           "name": "successor_manifest_hash",
           "tag": "digest",
-          "value": "sha256:00000000000000000000000000000000000000000000000000000000000000ca"
+          "value": "sha256:036882a68140745f9d1ba07983b6d810c951515e21aa5a96dd504a605040814b"
         },
         {
           "name": "source_policy_version",

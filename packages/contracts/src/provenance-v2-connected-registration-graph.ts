@@ -213,6 +213,8 @@ const fixtureDigest = (ordinal: number): string =>
 const SOURCE_REGISTER_ARTIFACT_HASH = fixtureDigest(900_001);
 const ADAPTER_MANIFEST_HASH = fixtureDigest(900_002);
 const PATH_TEMPLATE_HASH = fixtureDigest(900_003);
+const SUCCESSOR_MANIFEST_HASH =
+  "sha256:036882a68140745f9d1ba07983b6d810c951515e21aa5a96dd504a605040814b";
 let rowSequence = 0;
 
 const defaultValue = (name: string): Scalar => {
@@ -424,6 +426,7 @@ const adapterRows = (): GraphRow[] => [
     credential_count: 11,
     extraction_policy_version: null,
     adapter_manifest_hash: ADAPTER_MANIFEST_HASH,
+    successor_manifest_hash: SUCCESSOR_MANIFEST_HASH,
     source_artifact_hash: SOURCE_REGISTER_ARTIFACT_HASH,
   }),
   makeRow("provenance_v2_adapter_manifest_environment", "environment", {

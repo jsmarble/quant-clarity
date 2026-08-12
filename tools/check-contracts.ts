@@ -12,6 +12,7 @@ import {
   PROVENANCE_V2_CANONICAL_JSON_CONTRACT,
   PROVENANCE_V2_COMPOSITE_ROOT_VECTORS,
   PROVENANCE_V2_CONNECTED_REGISTRATION_GRAPH,
+  PROVENANCE_V2_CONNECTED_SUCCESSOR_MANIFEST_VECTORS,
   PROVENANCE_V2_CONNECTED_TRAVERSAL_VECTORS,
   PROVENANCE_V2_FIELD_CORPUS,
   PROVENANCE_V2_FRAME_CONTRACT,
@@ -22,6 +23,7 @@ import {
   validateProvenanceV2ContractArtifacts,
   validateProvenanceV2CompositeRootVectors,
   validateProvenanceV2ConnectedRegistrationGraph,
+  validateProvenanceV2ConnectedSuccessorManifestVectors,
   validateProvenanceV2ConnectedTraversalVectors,
   validateProvenanceV2RootBindingPlan,
 } from "@quant-clarity/contracts";
@@ -60,6 +62,10 @@ const provenanceArtifacts = [
     PROVENANCE_V2_CONNECTED_REGISTRATION_GRAPH,
   ],
   [
+    "connected-successor-manifest-vectors.v1.json",
+    PROVENANCE_V2_CONNECTED_SUCCESSOR_MANIFEST_VECTORS,
+  ],
+  [
     "connected-traversal-vectors.v1.json",
     PROVENANCE_V2_CONNECTED_TRAVERSAL_VECTORS,
   ],
@@ -89,6 +95,15 @@ if (connectedTraversalErrors.length > 0)
     `Invalid provenance-v2 connected traversal vectors: ${connectedTraversalErrors.join("; ")}`,
   );
 
+const connectedSuccessorErrors =
+  validateProvenanceV2ConnectedSuccessorManifestVectors(
+    PROVENANCE_V2_CONNECTED_SUCCESSOR_MANIFEST_VECTORS,
+  );
+if (connectedSuccessorErrors.length > 0)
+  throw new Error(
+    `Invalid provenance-v2 connected successor manifest vectors: ${connectedSuccessorErrors.join("; ")}`,
+  );
+
 const rootBindingErrors = validateProvenanceV2RootBindingPlan(
   PROVENANCE_V2_ROOT_BINDING_PLAN,
 );
@@ -116,6 +131,7 @@ for (const schemaName of [
   "ProvenanceV2AuthorityRootVectors",
   "ProvenanceV2CompositeRootVectors",
   "ProvenanceV2ConnectedRegistrationGraph",
+  "ProvenanceV2ConnectedSuccessorManifestVectors",
   "ProvenanceV2ConnectedTraversalVectors",
   "ProvenanceV2FieldCorpus",
   "ProvenanceV2RawFieldMapping",

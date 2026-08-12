@@ -1,0 +1,696 @@
+{
+  "$id": "ProvenanceV2ConnectedSuccessorManifestVectors",
+  "additionalProperties": false,
+  "x-quantclarity-contract-status": "review_candidate",
+  "type": "object",
+  "required": [
+    "contract_version",
+    "status",
+    "coverage",
+    "authority_eligible",
+    "outcome",
+    "persisted",
+    "document_resolver_executed",
+    "semantic_oracle_executed",
+    "source_graph_contract_version",
+    "source_traversal_contract_version",
+    "successor_preimage_contract_version",
+    "registry_contract_version",
+    "binding_plan_contract_version",
+    "selected_scope",
+    "projection_counts",
+    "projection_plan",
+    "successor_manifest",
+    "canonical_preimage",
+    "adapter_receipt_fixture_parity",
+    "downstream_cascade",
+    "pending"
+  ],
+  "properties": {
+    "contract_version": {
+      "const": "provenance-v2-connected-successor-manifest-vectors@1",
+      "type": "string"
+    },
+    "status": {
+      "const": "review_candidate",
+      "type": "string"
+    },
+    "coverage": {
+      "const": "synthetic_successor_manifest_preimage_and_adapter_leaf_parity",
+      "type": "string"
+    },
+    "authority_eligible": {
+      "const": false,
+      "type": "boolean"
+    },
+    "outcome": {
+      "const": "authority_refused",
+      "type": "string"
+    },
+    "persisted": {
+      "const": false,
+      "type": "boolean"
+    },
+    "document_resolver_executed": {
+      "const": false,
+      "type": "boolean"
+    },
+    "semantic_oracle_executed": {
+      "const": false,
+      "type": "boolean"
+    },
+    "source_graph_contract_version": {
+      "const": "provenance-v2-connected-registration-graph@1",
+      "type": "string"
+    },
+    "source_traversal_contract_version": {
+      "const": "provenance-v2-connected-traversal-vectors@1",
+      "type": "string"
+    },
+    "successor_preimage_contract_version": {
+      "const": "provenance-v2-successor-manifest-preimage@1",
+      "type": "string"
+    },
+    "registry_contract_version": {
+      "const": "provenance-v2-root-registry@1",
+      "type": "string"
+    },
+    "binding_plan_contract_version": {
+      "const": "provenance-v2-root-binding-plan@1",
+      "type": "string"
+    },
+    "selected_scope": {
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "authority_plan_id",
+        "provider_id"
+      ],
+      "properties": {
+        "authority_plan_id": {
+          "pattern": "^vpa_[0-9a-f-]{36}$",
+          "type": "string"
+        },
+        "provider_id": {
+          "pattern": "^prv_[0-9a-f-]{36}$",
+          "type": "string"
+        }
+      }
+    },
+    "projection_counts": {
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "top_level_properties",
+        "literal_properties",
+        "normalized_row_properties",
+        "nested_ceiling_properties",
+        "successor_claim_properties",
+        "resolved_safe_preimage_occurrences",
+        "opaque_safe_preimage_occurrences",
+        "opaque_external_anchor_occurrences"
+      ],
+      "properties": {
+        "top_level_properties": {
+          "const": 30,
+          "type": "number"
+        },
+        "literal_properties": {
+          "const": 2,
+          "type": "number"
+        },
+        "normalized_row_properties": {
+          "const": 16,
+          "type": "number"
+        },
+        "nested_ceiling_properties": {
+          "const": 6,
+          "type": "number"
+        },
+        "successor_claim_properties": {
+          "const": 11,
+          "type": "number"
+        },
+        "resolved_safe_preimage_occurrences": {
+          "const": 1,
+          "type": "number"
+        },
+        "opaque_safe_preimage_occurrences": {
+          "const": 29,
+          "type": "number"
+        },
+        "opaque_external_anchor_occurrences": {
+          "const": 10,
+          "type": "number"
+        }
+      }
+    },
+    "projection_plan": {
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "scope_columns",
+        "literals",
+        "normalized_row_fields",
+        "ceiling_fields",
+        "successor_claim_fields"
+      ],
+      "properties": {
+        "scope_columns": {
+          "minItems": 2,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "const": "authority_plan_id",
+                "type": "string"
+              },
+              {
+                "const": "provider_id",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "literals": {
+          "minItems": 2,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "const": "contract_version",
+                "type": "string"
+              },
+              {
+                "const": "canonical_json_version",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "normalized_row_fields": {
+          "minItems": 16,
+          "maxItems": 16,
+          "type": "array",
+          "items": {
+            "additionalProperties": false,
+            "type": "object",
+            "required": [
+              "target",
+              "table",
+              "column",
+              "conversion",
+              "cardinality"
+            ],
+            "properties": {
+              "target": {
+                "minLength": 1,
+                "maxLength": 96,
+                "type": "string"
+              },
+              "table": {
+                "pattern": "^provenance_v2_[a-z0-9_]+$",
+                "maxLength": 96,
+                "type": "string"
+              },
+              "column": {
+                "minLength": 1,
+                "maxLength": 96,
+                "type": "string"
+              },
+              "conversion": {
+                "anyOf": [
+                  {
+                    "const": "identity",
+                    "type": "string"
+                  },
+                  {
+                    "const": "safe_integer",
+                    "type": "string"
+                  }
+                ]
+              },
+              "cardinality": {
+                "const": "exactly_one",
+                "type": "string"
+              }
+            }
+          }
+        },
+        "ceiling_fields": {
+          "minItems": 6,
+          "maxItems": 6,
+          "type": "array",
+          "items": {
+            "additionalProperties": false,
+            "type": "object",
+            "required": [
+              "target",
+              "table",
+              "column",
+              "conversion",
+              "cardinality"
+            ],
+            "properties": {
+              "target": {
+                "minLength": 1,
+                "maxLength": 96,
+                "type": "string"
+              },
+              "table": {
+                "pattern": "^provenance_v2_[a-z0-9_]+$",
+                "maxLength": 96,
+                "type": "string"
+              },
+              "column": {
+                "minLength": 1,
+                "maxLength": 96,
+                "type": "string"
+              },
+              "conversion": {
+                "anyOf": [
+                  {
+                    "const": "identity",
+                    "type": "string"
+                  },
+                  {
+                    "const": "safe_integer",
+                    "type": "string"
+                  }
+                ]
+              },
+              "cardinality": {
+                "const": "exactly_one",
+                "type": "string"
+              }
+            }
+          }
+        },
+        "successor_claim_fields": {
+          "minItems": 11,
+          "maxItems": 11,
+          "uniqueItems": true,
+          "type": "array",
+          "items": {
+            "minLength": 1,
+            "maxLength": 96,
+            "type": "string"
+          }
+        }
+      }
+    },
+    "successor_manifest": {
+      "additionalProperties": false,
+      "x-quantclarity-contract-status": "review_candidate",
+      "type": "object",
+      "required": [
+        "contract_version",
+        "canonical_json_version",
+        "authority_plan_id",
+        "run_plan_id",
+        "installation_id",
+        "provider_ordinal",
+        "provider_id",
+        "provider_organization_id",
+        "legacy_adapter_contract_version",
+        "legacy_adapter_version",
+        "adapter_manifest_hash",
+        "roster_version",
+        "roster_content_hash",
+        "source_owner_count",
+        "source_owner_set_root",
+        "source_register_version",
+        "source_register_artifact_hash",
+        "source_register_member_count",
+        "source_register_member_set_root",
+        "source_register_receipt_hash",
+        "environment_count",
+        "environment_set_root",
+        "credential_count",
+        "credential_set_root",
+        "source_count",
+        "source_set_root",
+        "admitted_run_plan_ceilings",
+        "source_policy_version",
+        "parser_version",
+        "extraction_policy_version"
+      ],
+      "properties": {
+        "contract_version": {
+          "const": "provenance-v2-successor-manifest@1",
+          "type": "string"
+        },
+        "canonical_json_version": {
+          "const": "quantclarity-canonical-json@1",
+          "type": "string"
+        },
+        "authority_plan_id": {
+          "pattern": "^vpa_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "type": "string"
+        },
+        "run_plan_id": {
+          "pattern": "^rpl_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "type": "string"
+        },
+        "installation_id": {
+          "pattern": "^pvi_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "type": "string"
+        },
+        "provider_ordinal": {
+          "minimum": 0,
+          "maximum": 15,
+          "type": "integer"
+        },
+        "provider_id": {
+          "pattern": "^prv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "type": "string"
+        },
+        "provider_organization_id": {
+          "pattern": "^org_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "type": "string"
+        },
+        "legacy_adapter_contract_version": {
+          "minLength": 1,
+          "maxLength": 32,
+          "type": "string"
+        },
+        "legacy_adapter_version": {
+          "minLength": 1,
+          "maxLength": 128,
+          "type": "string"
+        },
+        "adapter_manifest_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "roster_version": {
+          "minLength": 1,
+          "maxLength": 128,
+          "type": "string"
+        },
+        "roster_content_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "source_owner_count": {
+          "minimum": 1,
+          "maximum": 32,
+          "type": "integer"
+        },
+        "source_owner_set_root": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "source_register_version": {
+          "minLength": 1,
+          "maxLength": 128,
+          "type": "string"
+        },
+        "source_register_artifact_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "source_register_member_count": {
+          "minimum": 1,
+          "maximum": 32,
+          "type": "integer"
+        },
+        "source_register_member_set_root": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "source_register_receipt_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "environment_count": {
+          "minimum": 1,
+          "maximum": 4,
+          "type": "integer"
+        },
+        "environment_set_root": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "credential_count": {
+          "minimum": 0,
+          "maximum": 16,
+          "type": "integer"
+        },
+        "credential_set_root": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "source_count": {
+          "minimum": 1,
+          "maximum": 32,
+          "type": "integer"
+        },
+        "source_set_root": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "admitted_run_plan_ceilings": {
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "request_ceiling",
+            "byte_ceiling",
+            "ai_token_ceiling",
+            "browser_millisecond_ceiling",
+            "elapsed_millisecond_ceiling",
+            "cost_microusd_ceiling"
+          ],
+          "properties": {
+            "request_ceiling": {
+              "minimum": 1,
+              "maximum": 10000,
+              "type": "integer"
+            },
+            "byte_ceiling": {
+              "minimum": 1,
+              "maximum": 1000000000,
+              "type": "integer"
+            },
+            "ai_token_ceiling": {
+              "minimum": 0,
+              "maximum": 10000000,
+              "type": "integer"
+            },
+            "browser_millisecond_ceiling": {
+              "minimum": 0,
+              "maximum": 43200000,
+              "type": "integer"
+            },
+            "elapsed_millisecond_ceiling": {
+              "minimum": 1,
+              "maximum": 43200000,
+              "type": "integer"
+            },
+            "cost_microusd_ceiling": {
+              "minimum": 0,
+              "maximum": 9007199254740991,
+              "type": "integer"
+            }
+          }
+        },
+        "source_policy_version": {
+          "minLength": 1,
+          "maxLength": 128,
+          "type": "string"
+        },
+        "parser_version": {
+          "minLength": 1,
+          "maxLength": 128,
+          "type": "string"
+        },
+        "extraction_policy_version": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "maxLength": 128,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "canonical_preimage": {
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "canonical_json_version",
+        "utf8_byte_length",
+        "canonical_json",
+        "canonical_utf8_hex",
+        "sha256"
+      ],
+      "properties": {
+        "canonical_json_version": {
+          "const": "quantclarity-canonical-json@1",
+          "type": "string"
+        },
+        "utf8_byte_length": {
+          "const": 2008,
+          "type": "number"
+        },
+        "canonical_json": {
+          "minLength": 2008,
+          "maxLength": 2008,
+          "type": "string"
+        },
+        "canonical_utf8_hex": {
+          "pattern": "^[0-9a-f]+$",
+          "minLength": 4016,
+          "maxLength": 4016,
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        }
+      }
+    },
+    "adapter_receipt_fixture_parity": {
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "row_id",
+        "target_field",
+        "stored_digest",
+        "computed_digest",
+        "fixture_digest_equal",
+        "leaf_domain",
+        "recomputed_manifest_content_hash"
+      ],
+      "properties": {
+        "row_id": {
+          "const": "row-adapter_manifest_receipt-receipt",
+          "type": "string"
+        },
+        "target_field": {
+          "const": "successor_manifest_hash",
+          "type": "string"
+        },
+        "stored_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "computed_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "fixture_digest_equal": {
+          "const": true,
+          "type": "boolean"
+        },
+        "leaf_domain": {
+          "const": "provenance-v2-adapter-receipt-leaf@1",
+          "type": "string"
+        },
+        "recomputed_manifest_content_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        }
+      }
+    },
+    "downstream_cascade": {
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "leaf_manifest_sha256",
+        "adapter_manifest_set_root",
+        "endpoint_set_root_unchanged",
+        "verifier_policy_set_root_unchanged",
+        "field_policy_set_root_unchanged",
+        "candidate_authority_root",
+        "candidate_refused_receipt_hash"
+      ],
+      "properties": {
+        "leaf_manifest_sha256": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "adapter_manifest_set_root": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "endpoint_set_root_unchanged": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "verifier_policy_set_root_unchanged": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "field_policy_set_root_unchanged": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "candidate_authority_root": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "candidate_refused_receipt_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        }
+      }
+    },
+    "pending": {
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "registration_document_selector_and_strict_byte_ingestion",
+        "retained_document_and_remaining_safe_preimage_resolvers",
+        "external_and_repository_anchor_resolvers",
+        "repository_build_manifest",
+        "semantic_oracle",
+        "migration_schema_parity",
+        "frozen_d1_enumeration_and_row_lookup_closure",
+        "accepted_aggregate_limits"
+      ],
+      "properties": {
+        "registration_document_selector_and_strict_byte_ingestion": {
+          "const": "pending",
+          "type": "string"
+        },
+        "retained_document_and_remaining_safe_preimage_resolvers": {
+          "const": "pending",
+          "type": "string"
+        },
+        "external_and_repository_anchor_resolvers": {
+          "const": "pending",
+          "type": "string"
+        },
+        "repository_build_manifest": {
+          "const": "pending",
+          "type": "string"
+        },
+        "semantic_oracle": {
+          "const": "pending",
+          "type": "string"
+        },
+        "migration_schema_parity": {
+          "const": "pending",
+          "type": "string"
+        },
+        "frozen_d1_enumeration_and_row_lookup_closure": {
+          "const": "pending",
+          "type": "string"
+        },
+        "accepted_aggregate_limits": {
+          "const": "pending",
+          "type": "string"
+        }
+      }
+    }
+  }
+}
