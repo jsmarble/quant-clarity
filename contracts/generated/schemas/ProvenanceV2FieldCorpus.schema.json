@@ -1,0 +1,316 @@
+{
+  "$id": "ProvenanceV2FieldCorpus",
+  "additionalProperties": false,
+  "x-quantclarity-contract-status": "review_candidate",
+  "type": "object",
+  "required": [
+    "contract_version",
+    "status",
+    "record_groups",
+    "enum_domains",
+    "fields"
+  ],
+  "properties": {
+    "contract_version": {
+      "const": "provenance-v2-field-path@1",
+      "type": "string"
+    },
+    "status": {
+      "const": "review_candidate",
+      "type": "string"
+    },
+    "record_groups": {
+      "minItems": 4,
+      "maxItems": 4,
+      "type": "array",
+      "items": {
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "ordinal",
+          "record_group",
+          "equality_rule",
+          "field_paths"
+        ],
+        "properties": {
+          "ordinal": {
+            "minimum": 0,
+            "maximum": 3,
+            "type": "integer"
+          },
+          "record_group": {
+            "anyOf": [
+              {
+                "const": "offering_applicability@1",
+                "type": "string"
+              },
+              {
+                "const": "price_tuple@1",
+                "type": "string"
+              },
+              {
+                "const": "precision_summary_tuple@1",
+                "type": "string"
+              },
+              {
+                "const": "precision_component_tuple@1",
+                "type": "string"
+              }
+            ]
+          },
+          "equality_rule": {
+            "anyOf": [
+              {
+                "const": "exact_applicability_tuple",
+                "type": "string"
+              },
+              {
+                "const": "exact_price_tuple",
+                "type": "string"
+              },
+              {
+                "const": "precision_value_and_scope",
+                "type": "string"
+              }
+            ]
+          },
+          "field_paths": {
+            "minItems": 1,
+            "maxItems": 28,
+            "uniqueItems": true,
+            "type": "array",
+            "items": {
+              "pattern": "^[a-z][a-z0-9_.]{0,127}$",
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "enum_domains": {
+      "type": "object",
+      "patternProperties": {
+        "^[a-z][a-z0-9_-]{0,63}$": {
+          "minItems": 1,
+          "uniqueItems": true,
+          "type": "array",
+          "items": {
+            "minLength": 1,
+            "maxLength": 128,
+            "type": "string"
+          }
+        }
+      }
+    },
+    "fields": {
+      "minItems": 28,
+      "maxItems": 28,
+      "type": "array",
+      "items": {
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "ordinal",
+          "field_path",
+          "field_group",
+          "record_group",
+          "value_kind",
+          "cardinality",
+          "nullability",
+          "requirement_state",
+          "enum_domain",
+          "source_mappability",
+          "allowed_authority_roles"
+        ],
+        "properties": {
+          "ordinal": {
+            "minimum": 0,
+            "maximum": 27,
+            "type": "integer"
+          },
+          "field_path": {
+            "pattern": "^[a-z][a-z0-9_.]{0,127}$",
+            "type": "string"
+          },
+          "field_group": {
+            "anyOf": [
+              {
+                "const": "offering_applicability",
+                "type": "string"
+              },
+              {
+                "const": "price",
+                "type": "string"
+              },
+              {
+                "const": "precision_summary",
+                "type": "string"
+              },
+              {
+                "const": "precision_component",
+                "type": "string"
+              }
+            ]
+          },
+          "record_group": {
+            "anyOf": [
+              {
+                "const": "offering_applicability@1",
+                "type": "string"
+              },
+              {
+                "const": "price_tuple@1",
+                "type": "string"
+              },
+              {
+                "const": "precision_summary_tuple@1",
+                "type": "string"
+              },
+              {
+                "const": "precision_component_tuple@1",
+                "type": "string"
+              }
+            ]
+          },
+          "value_kind": {
+            "anyOf": [
+              {
+                "const": "text",
+                "type": "string"
+              },
+              {
+                "const": "decimal",
+                "type": "string"
+              },
+              {
+                "const": "currency",
+                "type": "string"
+              },
+              {
+                "const": "timestamp_ms",
+                "type": "string"
+              },
+              {
+                "const": "boolean",
+                "type": "string"
+              },
+              {
+                "const": "enum",
+                "type": "string"
+              },
+              {
+                "const": "string_set",
+                "type": "string"
+              }
+            ]
+          },
+          "cardinality": {
+            "anyOf": [
+              {
+                "const": "one",
+                "type": "string"
+              },
+              {
+                "const": "many",
+                "type": "string"
+              }
+            ]
+          },
+          "nullability": {
+            "anyOf": [
+              {
+                "const": "non_null",
+                "type": "string"
+              },
+              {
+                "const": "nullable",
+                "type": "string"
+              }
+            ]
+          },
+          "requirement_state": {
+            "anyOf": [
+              {
+                "const": "required",
+                "type": "string"
+              },
+              {
+                "const": "conditional",
+                "type": "string"
+              }
+            ]
+          },
+          "enum_domain": {
+            "anyOf": [
+              {
+                "pattern": "^[a-z][a-z0-9_-]{0,63}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source_mappability": {
+            "anyOf": [
+              {
+                "const": "registered_literal",
+                "type": "string"
+              },
+              {
+                "const": "observed_or_registered",
+                "type": "string"
+              },
+              {
+                "const": "field_identity_literal",
+                "type": "string"
+              },
+              {
+                "const": "observed",
+                "type": "string"
+              },
+              {
+                "const": "observed_or_deterministic",
+                "type": "string"
+              },
+              {
+                "const": "deterministic",
+                "type": "string"
+              },
+              {
+                "const": "observation_timestamp",
+                "type": "string"
+              }
+            ]
+          },
+          "allowed_authority_roles": {
+            "minItems": 1,
+            "maxItems": 4,
+            "uniqueItems": true,
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "const": "primary",
+                  "type": "string"
+                },
+                {
+                  "const": "corroborating",
+                  "type": "string"
+                },
+                {
+                  "const": "conflict_detection_only",
+                  "type": "string"
+                },
+                {
+                  "const": "deterministic_system",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}

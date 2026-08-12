@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Proposed; normative registration/root/field contracts, implementation and activation evidence pending |
+| Status | Proposed; review-candidate registration/root/field artifacts and independent codec vectors locally implemented; normative contract, accepted limits, migration and activation evidence pending |
 | Decision | [ADR 0067](../decisions/0067-protected-provenance-registration-activation.md) |
 | Planned migration | `migrations/canonical/0010_activate_provenance_v2_registration.sql` |
 | Requirements | `DATA-030`–`DATA-046`, `DATA-048`–`DATA-051`, `DATA-055`–`DATA-064`, `PIPE-010`–`PIPE-022`, `PIPE-030`–`PIPE-045`, `PIPE-050`–`PIPE-056`, `BE-005`, `SEC-003`–`SEC-006`, `SEC-011`, `SEC-012`, `PRIV-006`, `PRIV-007`, `PRIV-011`, `LEG-001`, `LEG-002`, `QA-002`, `QA-006`, `QA-007`, `QA-010`–`QA-012` |
@@ -33,7 +33,7 @@ There is no update, delete, reopen, repair or replacement transition. An interru
 | Component | Responsibility | Authority boundary |
 |---|---|---|
 | Migration 0010 | Exact-match migration 0009; atomically rebuild the empty vocabulary/precedence portion; install active/freeze/closure guards before replacing only registration/approval/bundle blockers | No authority rows or approval |
-| Root contract registry | Fix every leaf/set domain, column/type/order, child relation and digest slot; check registry/schema closure | Specification only |
+| Root contract registry | Fix every leaf/set domain, column/type/order, child relation, digest-output slot and safe-preimage/external-anchor classification; check registry/schema closure | Specification only |
 | Registration document | Retain bounded canonical safe preimages in private immutable D1 chunks with exact whole/chunk commitments | Non-authoritative witness only |
 | Runtime-neutral registrar | Strict canonical-plan validation, DNS/SSRF/path/header/credential checks, independent content digests, bounded deterministic row plan | No D1 or source access |
 | Private D1 registration adapter | Fixed prepared statements, dependency-ordered bounded pages, exact readback and same-operation reconciliation | Staging only |
@@ -52,13 +52,13 @@ The design relies only on current documented D1 guarantees: a batch is a sequent
 
 Migration 0010 must also atomically install and permanently close the initial global field vocabulary and rebuild the still-empty precedence/admission portion so one precedence class can contain multiple source classes. Migration 0009's missing edge means incomparability, not equality; therefore Provider API and authenticated catalog are both members of one structured-Provider class with identical primary/conflict semantics, while edges order that class against other actual classes. Publisher and independent sources cannot become primary Price, serving-Precision or applicability authority in the initial corpus.
 
-The exact machine-readable field corpus and raw-provider-field mapping remain prerequisite deliverables. They must preserve complete record groups: one Offering applicability tuple, one atomic Price tuple, and one atomic summary/component Precision tuple. Scalar policies cannot splice amount/currency/conditions, raw/normalized/component precision, applicability, observation or evidence across unrelated claims.
+The exact machine-readable field corpus and raw-provider-field mapping remain prerequisite deliverables. They must preserve complete record groups: one Offering applicability tuple, one atomic Price tuple, and one atomic summary/component Precision tuple. Every group has one committed identity and ordered membership; all members share one policy version, endpoint admission/exclusion, precedence graph and effective interval. Scalar policies cannot splice amount/currency/conditions, raw/normalized/component precision, applicability, observation or evidence across unrelated claims. Initial primary policies use a total class order; incomparability cannot select or fall back to a source.
 
 ## Security and data-integrity boundary
 
 Endpoint registration accepts exact `https`/`GET` templates and credential binding names, never request values, secrets or full URLs. It rejects IP literals and obfuscated IP forms, local/special/private/reserved names, malformed A-labels, unsafe redirects/paths/headers, manifest drift, owner inference, permission drift, ceiling expansion and unapproved field roles. Acquisition must later repeat DNS-answer and redirect validation to prevent rebinding.
 
-The oracle recomputes every leaf digest from all registry-declared authority columns using versioned, domain-separated, typed uint64-length-prefixed bytes and verifies a stored digest only where the registry designates an output. It rejects any designated digest mismatch, unexpected member or order discrepancy. Provider structured sources remain an equal-authority class; publisher and independent sources cannot be promoted through labels; equal-authority disagreement remains unresolved.
+The oracle recomputes every leaf digest from all registry-declared authority columns using versioned, domain-separated, typed uint64-length-prefixed bytes and verifies a stored digest only where the registry designates an output. Every other hash column is registry-classified as a recomputed safe-preimage digest or a named external approved anchor; an unclassified hash fails. The oracle independently repeats endpoint, manifest/register/owner, precedence, record-group, verifier, interval and aggregate-ceiling semantics and rejects any digest mismatch, unexpected member or order discrepancy. Provider structured sources remain an equal-authority class; publisher and independent sources cannot be promoted through labels; equal-authority disagreement remains unresolved.
 
 ## Verification and exit criteria
 
@@ -74,3 +74,9 @@ Implementation status may advance only when:
 8. independent architecture, data-neutrality and security/privacy reviews have no unresolved P0–P2 finding.
 
 Passing this phase will prove only private registration approval and guarded bundle opening. It will not prove source execution, canonical facts, public data, remote migration, release readiness or deployment.
+
+## Local contract evidence
+
+The first contract-review candidate is locally implemented without changing any Worker, route, binding, migration, resource or blocker. Generated artifacts under `contracts/generated/provenance-v2/` draft strict canonical JSON, binary frame tags/lengths, the field/record-group corpus, raw-field mapping grammar, semantic-oracle obligations, table/root ownership and hash provenance, plus frame bytes/digests for each proposed leaf and collection domain. Closed TypeBox schemas cover `ProvenanceV2RegistrationPlan@1`, `ProvenanceV2AdapterReceipt@1`, raw mappings and pending aggregate limits. Separate Node and WebCrypto tests reconstruct every vector without importing a shared encoder or hash helper. These artifacts are review evidence, not yet a normative registration contract: successor-manifest preimages, machine-resolvable digest anchors, nested/cross-table collection traversal, registry-bound vector checks, complete semantic closure and hostile mutation vectors remain prerequisites.
+
+Aggregate values deliberately remain `benchmark_pending`, the schema admits no caller-declared accepted status or evidence digest, and the candidate inspector always refuses authority. These contracts cannot activate migration 0009 or authorize a source. The next slice must close the recorded contract-review gaps and add a pinned workerd/D1 accepted-scale harness that fixes evidenced aggregate row/document/hash/page/call/CPU limits. Only then may migration 0010 be authored against a normative registry and reviewed for blocker replacement.

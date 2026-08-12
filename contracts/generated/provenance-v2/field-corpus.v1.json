@@ -1,0 +1,582 @@
+{
+  "contract_version": "provenance-v2-field-path@1",
+  "status": "review_candidate",
+  "record_groups": [
+    {
+      "ordinal": 0,
+      "record_group": "offering_applicability@1",
+      "equality_rule": "exact_applicability_tuple",
+      "field_paths": [
+        "offering.applicability.provider_id",
+        "offering.applicability.provider_model_id",
+        "offering.applicability.tier_key",
+        "offering.applicability.endpoint_class",
+        "offering.applicability.material_region_key",
+        "offering.applicability.component_scope"
+      ]
+    },
+    {
+      "ordinal": 1,
+      "record_group": "price_tuple@1",
+      "equality_rule": "exact_price_tuple",
+      "field_paths": [
+        "price.role",
+        "price.price_class",
+        "price.amount_decimal",
+        "price.currency",
+        "price.currency_provenance",
+        "price.unit",
+        "price.conditions",
+        "price.is_standard_comparable",
+        "price.effective_from",
+        "price.effective_to",
+        "price.observed_at"
+      ]
+    },
+    {
+      "ordinal": 2,
+      "record_group": "precision_summary_tuple@1",
+      "equality_rule": "precision_value_and_scope",
+      "field_paths": [
+        "precision.summary.normalized_format",
+        "precision.summary.summary_format",
+        "precision.summary.raw_field_name",
+        "precision.summary.raw_precision",
+        "precision.summary.provider_definition",
+        "precision.summary.format_variant",
+        "precision.summary.observed_at"
+      ]
+    },
+    {
+      "ordinal": 3,
+      "record_group": "precision_component_tuple@1",
+      "equality_rule": "precision_value_and_scope",
+      "field_paths": [
+        "precision.component.component",
+        "precision.component.normalized_format",
+        "precision.component.raw_precision",
+        "precision.component.observed_at"
+      ]
+    }
+  ],
+  "enum_domains": {
+    "component_scope": [
+      "offering",
+      "stored_weights",
+      "weight_computation",
+      "activations",
+      "accumulation",
+      "kv_cache",
+      "attention",
+      "experts",
+      "shared_layers",
+      "other"
+    ],
+    "currency_provenance": [
+      "provider_stated",
+      "system_default"
+    ],
+    "precision_format": [
+      "BF16",
+      "FP16",
+      "FP8",
+      "FP6",
+      "FP4",
+      "NVFP4",
+      "MXFP4",
+      "INT8",
+      "INT4",
+      "mixed",
+      "other"
+    ],
+    "price_class": [
+      "standard",
+      "promotional",
+      "batch",
+      "subscription",
+      "committed",
+      "volume",
+      "dedicated",
+      "region_tiered",
+      "context_tiered",
+      "other_conditional"
+    ],
+    "price_role": [
+      "input",
+      "output",
+      "cached_input"
+    ],
+    "price_unit": [
+      "per_million_tokens"
+    ]
+  },
+  "fields": [
+    {
+      "ordinal": 0,
+      "field_path": "offering.applicability.provider_id",
+      "field_group": "offering_applicability",
+      "record_group": "offering_applicability@1",
+      "value_kind": "text",
+      "cardinality": "one",
+      "nullability": "non_null",
+      "requirement_state": "required",
+      "enum_domain": null,
+      "source_mappability": "registered_literal",
+      "allowed_authority_roles": [
+        "primary",
+        "corroborating",
+        "conflict_detection_only"
+      ]
+    },
+    {
+      "ordinal": 1,
+      "field_path": "offering.applicability.provider_model_id",
+      "field_group": "offering_applicability",
+      "record_group": "offering_applicability@1",
+      "value_kind": "text",
+      "cardinality": "one",
+      "nullability": "non_null",
+      "requirement_state": "required",
+      "enum_domain": null,
+      "source_mappability": "observed_or_registered",
+      "allowed_authority_roles": [
+        "primary",
+        "corroborating",
+        "conflict_detection_only"
+      ]
+    },
+    {
+      "ordinal": 2,
+      "field_path": "offering.applicability.tier_key",
+      "field_group": "offering_applicability",
+      "record_group": "offering_applicability@1",
+      "value_kind": "text",
+      "cardinality": "one",
+      "nullability": "non_null",
+      "requirement_state": "required",
+      "enum_domain": null,
+      "source_mappability": "observed_or_registered",
+      "allowed_authority_roles": [
+        "primary",
+        "corroborating",
+        "conflict_detection_only"
+      ]
+    },
+    {
+      "ordinal": 3,
+      "field_path": "offering.applicability.endpoint_class",
+      "field_group": "offering_applicability",
+      "record_group": "offering_applicability@1",
+      "value_kind": "text",
+      "cardinality": "one",
+      "nullability": "non_null",
+      "requirement_state": "required",
+      "enum_domain": null,
+      "source_mappability": "observed_or_registered",
+      "allowed_authority_roles": [
+        "primary",
+        "corroborating",
+        "conflict_detection_only"
+      ]
+    },
+    {
+      "ordinal": 4,
+      "field_path": "offering.applicability.material_region_key",
+      "field_group": "offering_applicability",
+      "record_group": "offering_applicability@1",
+      "value_kind": "text",
+      "cardinality": "one",
+      "nullability": "non_null",
+      "requirement_state": "required",
+      "enum_domain": null,
+      "source_mappability": "observed_or_registered",
+      "allowed_authority_roles": [
+        "primary",
+        "corroborating",
+        "conflict_detection_only"
+      ]
+    },
+    {
+      "ordinal": 5,
+      "field_path": "offering.applicability.component_scope",
+      "field_group": "offering_applicability",
+      "record_group": "offering_applicability@1",
+      "value_kind": "enum",
+      "cardinality": "one",
+      "nullability": "non_null",
+      "requirement_state": "required",
+      "enum_domain": "component_scope",
+      "source_mappability": "registered_literal",
+      "allowed_authority_roles": [
+        "primary",
+        "corroborating",
+        "conflict_detection_only"
+      ]
+    },
+    {
+      "ordinal": 6,
+      "field_path": "price.role",
+      "field_group": "price",
+      "record_group": "price_tuple@1",
+      "value_kind": "enum",
+      "cardinality": "one",
+      "nullability": "non_null",
+      "requirement_state": "required",
+      "enum_domain": "price_role",
+      "source_mappability": "field_identity_literal",
+      "allowed_authority_roles": [
+        "primary",
+        "corroborating",
+        "conflict_detection_only"
+      ]
+    },
+    {
+      "ordinal": 7,
+      "field_path": "price.price_class",
+      "field_group": "price",
+      "record_group": "price_tuple@1",
+      "value_kind": "enum",
+      "cardinality": "one",
+      "nullability": "non_null",
+      "requirement_state": "required",
+      "enum_domain": "price_class",
+      "source_mappability": "observed_or_registered",
+      "allowed_authority_roles": [
+        "primary",
+        "corroborating",
+        "conflict_detection_only"
+      ]
+    },
+    {
+      "ordinal": 8,
+      "field_path": "price.amount_decimal",
+      "field_group": "price",
+      "record_group": "price_tuple@1",
+      "value_kind": "decimal",
+      "cardinality": "one",
+      "nullability": "non_null",
+      "requirement_state": "required",
+      "enum_domain": null,
+      "source_mappability": "observed",
+      "allowed_authority_roles": [
+        "primary",
+        "corroborating",
+        "conflict_detection_only"
+      ]
+    },
+    {
+      "ordinal": 9,
+      "field_path": "price.currency",
+      "field_group": "price",
+      "record_group": "price_tuple@1",
+      "value_kind": "currency",
+      "cardinality": "one",
+      "nullability": "non_null",
+      "requirement_state": "required",
+      "enum_domain": null,
+      "source_mappability": "observed_or_deterministic",
+      "allowed_authority_roles": [
+        "primary",
+        "corroborating",
+        "conflict_detection_only",
+        "deterministic_system"
+      ]
+    },
+    {
+      "ordinal": 10,
+      "field_path": "price.currency_provenance",
+      "field_group": "price",
+      "record_group": "price_tuple@1",
+      "value_kind": "enum",
+      "cardinality": "one",
+      "nullability": "non_null",
+      "requirement_state": "required",
+      "enum_domain": "currency_provenance",
+      "source_mappability": "deterministic",
+      "allowed_authority_roles": [
+        "deterministic_system"
+      ]
+    },
+    {
+      "ordinal": 11,
+      "field_path": "price.unit",
+      "field_group": "price",
+      "record_group": "price_tuple@1",
+      "value_kind": "enum",
+      "cardinality": "one",
+      "nullability": "non_null",
+      "requirement_state": "required",
+      "enum_domain": "price_unit",
+      "source_mappability": "observed_or_registered",
+      "allowed_authority_roles": [
+        "primary",
+        "corroborating",
+        "conflict_detection_only"
+      ]
+    },
+    {
+      "ordinal": 12,
+      "field_path": "price.conditions",
+      "field_group": "price",
+      "record_group": "price_tuple@1",
+      "value_kind": "string_set",
+      "cardinality": "many",
+      "nullability": "non_null",
+      "requirement_state": "required",
+      "enum_domain": null,
+      "source_mappability": "observed",
+      "allowed_authority_roles": [
+        "primary",
+        "corroborating",
+        "conflict_detection_only"
+      ]
+    },
+    {
+      "ordinal": 13,
+      "field_path": "price.is_standard_comparable",
+      "field_group": "price",
+      "record_group": "price_tuple@1",
+      "value_kind": "boolean",
+      "cardinality": "one",
+      "nullability": "non_null",
+      "requirement_state": "required",
+      "enum_domain": null,
+      "source_mappability": "deterministic",
+      "allowed_authority_roles": [
+        "deterministic_system"
+      ]
+    },
+    {
+      "ordinal": 14,
+      "field_path": "price.effective_from",
+      "field_group": "price",
+      "record_group": "price_tuple@1",
+      "value_kind": "timestamp_ms",
+      "cardinality": "one",
+      "nullability": "nullable",
+      "requirement_state": "conditional",
+      "enum_domain": null,
+      "source_mappability": "observed",
+      "allowed_authority_roles": [
+        "primary",
+        "corroborating",
+        "conflict_detection_only"
+      ]
+    },
+    {
+      "ordinal": 15,
+      "field_path": "price.effective_to",
+      "field_group": "price",
+      "record_group": "price_tuple@1",
+      "value_kind": "timestamp_ms",
+      "cardinality": "one",
+      "nullability": "nullable",
+      "requirement_state": "conditional",
+      "enum_domain": null,
+      "source_mappability": "observed",
+      "allowed_authority_roles": [
+        "primary",
+        "corroborating",
+        "conflict_detection_only"
+      ]
+    },
+    {
+      "ordinal": 16,
+      "field_path": "price.observed_at",
+      "field_group": "price",
+      "record_group": "price_tuple@1",
+      "value_kind": "timestamp_ms",
+      "cardinality": "one",
+      "nullability": "non_null",
+      "requirement_state": "required",
+      "enum_domain": null,
+      "source_mappability": "observation_timestamp",
+      "allowed_authority_roles": [
+        "primary",
+        "corroborating",
+        "conflict_detection_only"
+      ]
+    },
+    {
+      "ordinal": 17,
+      "field_path": "precision.summary.normalized_format",
+      "field_group": "precision_summary",
+      "record_group": "precision_summary_tuple@1",
+      "value_kind": "enum",
+      "cardinality": "one",
+      "nullability": "non_null",
+      "requirement_state": "required",
+      "enum_domain": "precision_format",
+      "source_mappability": "deterministic",
+      "allowed_authority_roles": [
+        "deterministic_system"
+      ]
+    },
+    {
+      "ordinal": 18,
+      "field_path": "precision.summary.summary_format",
+      "field_group": "precision_summary",
+      "record_group": "precision_summary_tuple@1",
+      "value_kind": "enum",
+      "cardinality": "one",
+      "nullability": "non_null",
+      "requirement_state": "required",
+      "enum_domain": "precision_format",
+      "source_mappability": "deterministic",
+      "allowed_authority_roles": [
+        "deterministic_system"
+      ]
+    },
+    {
+      "ordinal": 19,
+      "field_path": "precision.summary.raw_field_name",
+      "field_group": "precision_summary",
+      "record_group": "precision_summary_tuple@1",
+      "value_kind": "text",
+      "cardinality": "one",
+      "nullability": "non_null",
+      "requirement_state": "required",
+      "enum_domain": null,
+      "source_mappability": "field_identity_literal",
+      "allowed_authority_roles": [
+        "primary",
+        "corroborating",
+        "conflict_detection_only"
+      ]
+    },
+    {
+      "ordinal": 20,
+      "field_path": "precision.summary.raw_precision",
+      "field_group": "precision_summary",
+      "record_group": "precision_summary_tuple@1",
+      "value_kind": "text",
+      "cardinality": "one",
+      "nullability": "non_null",
+      "requirement_state": "required",
+      "enum_domain": null,
+      "source_mappability": "observed",
+      "allowed_authority_roles": [
+        "primary",
+        "corroborating",
+        "conflict_detection_only"
+      ]
+    },
+    {
+      "ordinal": 21,
+      "field_path": "precision.summary.provider_definition",
+      "field_group": "precision_summary",
+      "record_group": "precision_summary_tuple@1",
+      "value_kind": "text",
+      "cardinality": "one",
+      "nullability": "nullable",
+      "requirement_state": "conditional",
+      "enum_domain": null,
+      "source_mappability": "observed",
+      "allowed_authority_roles": [
+        "primary",
+        "corroborating",
+        "conflict_detection_only"
+      ]
+    },
+    {
+      "ordinal": 22,
+      "field_path": "precision.summary.format_variant",
+      "field_group": "precision_summary",
+      "record_group": "precision_summary_tuple@1",
+      "value_kind": "text",
+      "cardinality": "one",
+      "nullability": "nullable",
+      "requirement_state": "conditional",
+      "enum_domain": null,
+      "source_mappability": "observed",
+      "allowed_authority_roles": [
+        "primary",
+        "corroborating",
+        "conflict_detection_only"
+      ]
+    },
+    {
+      "ordinal": 23,
+      "field_path": "precision.summary.observed_at",
+      "field_group": "precision_summary",
+      "record_group": "precision_summary_tuple@1",
+      "value_kind": "timestamp_ms",
+      "cardinality": "one",
+      "nullability": "non_null",
+      "requirement_state": "required",
+      "enum_domain": null,
+      "source_mappability": "observation_timestamp",
+      "allowed_authority_roles": [
+        "primary",
+        "corroborating",
+        "conflict_detection_only"
+      ]
+    },
+    {
+      "ordinal": 24,
+      "field_path": "precision.component.component",
+      "field_group": "precision_component",
+      "record_group": "precision_component_tuple@1",
+      "value_kind": "text",
+      "cardinality": "one",
+      "nullability": "non_null",
+      "requirement_state": "required",
+      "enum_domain": null,
+      "source_mappability": "field_identity_literal",
+      "allowed_authority_roles": [
+        "primary",
+        "corroborating",
+        "conflict_detection_only"
+      ]
+    },
+    {
+      "ordinal": 25,
+      "field_path": "precision.component.normalized_format",
+      "field_group": "precision_component",
+      "record_group": "precision_component_tuple@1",
+      "value_kind": "enum",
+      "cardinality": "one",
+      "nullability": "non_null",
+      "requirement_state": "required",
+      "enum_domain": "precision_format",
+      "source_mappability": "deterministic",
+      "allowed_authority_roles": [
+        "deterministic_system"
+      ]
+    },
+    {
+      "ordinal": 26,
+      "field_path": "precision.component.raw_precision",
+      "field_group": "precision_component",
+      "record_group": "precision_component_tuple@1",
+      "value_kind": "text",
+      "cardinality": "one",
+      "nullability": "non_null",
+      "requirement_state": "required",
+      "enum_domain": null,
+      "source_mappability": "observed",
+      "allowed_authority_roles": [
+        "primary",
+        "corroborating",
+        "conflict_detection_only"
+      ]
+    },
+    {
+      "ordinal": 27,
+      "field_path": "precision.component.observed_at",
+      "field_group": "precision_component",
+      "record_group": "precision_component_tuple@1",
+      "value_kind": "timestamp_ms",
+      "cardinality": "one",
+      "nullability": "non_null",
+      "requirement_state": "required",
+      "enum_domain": null,
+      "source_mappability": "observation_timestamp",
+      "allowed_authority_roles": [
+        "primary",
+        "corroborating",
+        "conflict_detection_only"
+      ]
+    }
+  ]
+}

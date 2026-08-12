@@ -1,0 +1,138 @@
+{
+  "$id": "ProvenanceV2AuthorityRootVectors",
+  "additionalProperties": false,
+  "x-quantclarity-contract-status": "review_candidate",
+  "type": "object",
+  "required": [
+    "contract_version",
+    "frame_contract_version",
+    "status",
+    "vectors"
+  ],
+  "properties": {
+    "contract_version": {
+      "const": "provenance-v2-authority-root-vectors@1",
+      "type": "string"
+    },
+    "frame_contract_version": {
+      "const": "provenance-v2-authority-root@1",
+      "type": "string"
+    },
+    "status": {
+      "const": "review_candidate",
+      "type": "string"
+    },
+    "vectors": {
+      "minItems": 10,
+      "type": "array",
+      "items": {
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "registry_table",
+          "collection_name",
+          "domain",
+          "fields",
+          "frame_hex",
+          "sha256"
+        ],
+        "properties": {
+          "name": {
+            "pattern": "^[a-z][a-z0-9_-]*$",
+            "type": "string"
+          },
+          "registry_table": {
+            "anyOf": [
+              {
+                "pattern": "^provenance_v2_[a-z0-9_]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "collection_name": {
+            "anyOf": [
+              {
+                "pattern": "^[a-z][a-z0-9_]*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "domain": {
+            "pattern": "^provenance-v2-[a-z0-9-]+@1$",
+            "type": "string"
+          },
+          "fields": {
+            "maxItems": 1024,
+            "type": "array",
+            "items": {
+              "additionalProperties": false,
+              "type": "object",
+              "required": [
+                "tag",
+                "value"
+              ],
+              "properties": {
+                "tag": {
+                  "anyOf": [
+                    {
+                      "const": "null",
+                      "type": "string"
+                    },
+                    {
+                      "const": "text",
+                      "type": "string"
+                    },
+                    {
+                      "const": "integer",
+                      "type": "string"
+                    },
+                    {
+                      "const": "boolean",
+                      "type": "string"
+                    },
+                    {
+                      "const": "bytes",
+                      "type": "string"
+                    },
+                    {
+                      "const": "digest",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "value": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "frame_hex": {
+            "pattern": "^[0-9a-f]+$",
+            "type": "string"
+          },
+          "sha256": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

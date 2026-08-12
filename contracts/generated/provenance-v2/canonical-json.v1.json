@@ -1,0 +1,11 @@
+{
+  "contract_version": "quantclarity-canonical-json@1",
+  "status": "review_candidate",
+  "parser": "duplicate-detecting-strict-json",
+  "serialization": "RFC8785-JCS",
+  "unicode": "NFC",
+  "number_domain": "safe-integer-only",
+  "encoding": "UTF-8-without-BOM-or-trailing-bytes",
+  "object_key_order": "UTF-16-code-unit-order-per-RFC8785",
+  "null_absence_equivalent": false
+}
