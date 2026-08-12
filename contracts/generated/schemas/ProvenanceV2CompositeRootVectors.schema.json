@@ -1,0 +1,549 @@
+{
+  "$id": "ProvenanceV2CompositeRootVectors",
+  "additionalProperties": false,
+  "x-quantclarity-contract-status": "review_candidate",
+  "type": "object",
+  "required": [
+    "contract_version",
+    "status",
+    "coverage",
+    "authority_eligible",
+    "outcome",
+    "registry_contract_version",
+    "binding_plan_contract_version",
+    "leaf_vector_contract_version",
+    "pending",
+    "leaf_vector_names",
+    "traversals",
+    "candidate_successor_claim_shape",
+    "authority_root",
+    "candidate_receipt",
+    "ordering_cases"
+  ],
+  "properties": {
+    "contract_version": {
+      "const": "provenance-v2-composite-root-vectors@1",
+      "type": "string"
+    },
+    "status": {
+      "const": "review_candidate",
+      "type": "string"
+    },
+    "coverage": {
+      "const": "isolated_family_projection_and_frame_composition",
+      "type": "string"
+    },
+    "authority_eligible": {
+      "const": false,
+      "type": "boolean"
+    },
+    "outcome": {
+      "const": "authority_refused",
+      "type": "string"
+    },
+    "registry_contract_version": {
+      "const": "provenance-v2-root-registry@1",
+      "type": "string"
+    },
+    "binding_plan_contract_version": {
+      "const": "provenance-v2-root-binding-plan@1",
+      "type": "string"
+    },
+    "leaf_vector_contract_version": {
+      "const": "provenance-v2-authority-root-vectors@1",
+      "type": "string"
+    },
+    "pending": {
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "resolver_closure",
+        "semantic_oracle",
+        "repository_build_manifest",
+        "migration_schema_parity",
+        "accepted_aggregate_limits"
+      ],
+      "properties": {
+        "resolver_closure": {
+          "const": "pending",
+          "type": "string"
+        },
+        "semantic_oracle": {
+          "const": "pending",
+          "type": "string"
+        },
+        "repository_build_manifest": {
+          "const": "pending",
+          "type": "string"
+        },
+        "migration_schema_parity": {
+          "const": "pending",
+          "type": "string"
+        },
+        "accepted_aggregate_limits": {
+          "const": "pending",
+          "type": "string"
+        }
+      }
+    },
+    "leaf_vector_names": {
+      "minItems": 33,
+      "maxItems": 33,
+      "uniqueItems": true,
+      "type": "array",
+      "items": {
+        "pattern": "^leaf-[a-z0-9_-]+$",
+        "type": "string"
+      }
+    },
+    "traversals": {
+      "minItems": 9,
+      "maxItems": 9,
+      "type": "array",
+      "items": {
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "domain",
+          "scope_fields",
+          "member_count",
+          "ordered_members",
+          "frame_hex",
+          "sha256"
+        ],
+        "properties": {
+          "name": {
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "type": "string"
+          },
+          "domain": {
+            "pattern": "^provenance-v2-[a-z0-9-]+@1$",
+            "type": "string"
+          },
+          "scope_fields": {
+            "minItems": 1,
+            "maxItems": 2,
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "tag",
+                    "value"
+                  ],
+                  "properties": {
+                    "tag": {
+                      "const": "text",
+                      "type": "string"
+                    },
+                    "value": {
+                      "maxLength": 256,
+                      "type": "string"
+                    }
+                  }
+                },
+                {
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "tag",
+                    "value"
+                  ],
+                  "properties": {
+                    "tag": {
+                      "const": "integer",
+                      "type": "string"
+                    },
+                    "value": {
+                      "pattern": "^(?:0|[1-9][0-9]{0,15})$",
+                      "type": "string"
+                    }
+                  }
+                },
+                {
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "tag",
+                    "value"
+                  ],
+                  "properties": {
+                    "tag": {
+                      "const": "digest",
+                      "type": "string"
+                    },
+                    "value": {
+                      "pattern": "^sha256:[0-9a-f]{64}$",
+                      "type": "string"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "member_count": {
+            "minimum": 1,
+            "maximum": 64,
+            "type": "integer"
+          },
+          "ordered_members": {
+            "minItems": 1,
+            "maxItems": 32,
+            "type": "array",
+            "items": {
+              "additionalProperties": false,
+              "type": "object",
+              "required": [
+                "registry_table",
+                "leaf_vector_name",
+                "source_ordinal",
+                "family_tag",
+                "leaf_digest",
+                "projection_digest"
+              ],
+              "properties": {
+                "registry_table": {
+                  "pattern": "^provenance_v2_[a-z0-9_]+$",
+                  "type": "string"
+                },
+                "leaf_vector_name": {
+                  "pattern": "^leaf-[a-z0-9_-]+$",
+                  "type": "string"
+                },
+                "source_ordinal": {
+                  "minimum": 0,
+                  "maximum": 31,
+                  "type": "integer"
+                },
+                "family_tag": {
+                  "pattern": "^[a-z][a-z0-9_]*$",
+                  "type": "string"
+                },
+                "leaf_digest": {
+                  "pattern": "^sha256:[0-9a-f]{64}$",
+                  "type": "string"
+                },
+                "projection_digest": {
+                  "pattern": "^sha256:[0-9a-f]{64}$",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "frame_hex": {
+            "pattern": "^(?:[0-9a-f]{2})+$",
+            "maxLength": 32768,
+            "type": "string"
+          },
+          "sha256": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
+          }
+        }
+      }
+    },
+    "candidate_successor_claim_shape": {
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "source_owner_count",
+        "source_owner_set_root",
+        "source_register_member_count",
+        "source_register_member_set_root",
+        "source_register_receipt_hash",
+        "environment_count",
+        "environment_set_root",
+        "credential_count",
+        "credential_set_root",
+        "source_count",
+        "source_set_root"
+      ],
+      "properties": {
+        "source_owner_count": {
+          "const": 1,
+          "type": "number"
+        },
+        "source_owner_set_root": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "source_register_member_count": {
+          "const": 1,
+          "type": "number"
+        },
+        "source_register_member_set_root": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "source_register_receipt_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "environment_count": {
+          "const": 1,
+          "type": "number"
+        },
+        "environment_set_root": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "credential_count": {
+          "const": 1,
+          "type": "number"
+        },
+        "credential_set_root": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "source_count": {
+          "const": 1,
+          "type": "number"
+        },
+        "source_set_root": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        }
+      }
+    },
+    "authority_root": {
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "name",
+        "domain",
+        "fields",
+        "frame_hex",
+        "sha256"
+      ],
+      "properties": {
+        "name": {
+          "const": "authority_root",
+          "type": "string"
+        },
+        "domain": {
+          "const": "provenance-v2-authority-root-frame@1",
+          "type": "string"
+        },
+        "fields": {
+          "minItems": 22,
+          "maxItems": 22,
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "tag",
+                  "value"
+                ],
+                "properties": {
+                  "tag": {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  "value": {
+                    "maxLength": 256,
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "tag",
+                  "value"
+                ],
+                "properties": {
+                  "tag": {
+                    "const": "integer",
+                    "type": "string"
+                  },
+                  "value": {
+                    "pattern": "^(?:0|[1-9][0-9]{0,15})$",
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "tag",
+                  "value"
+                ],
+                "properties": {
+                  "tag": {
+                    "const": "digest",
+                    "type": "string"
+                  },
+                  "value": {
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "frame_hex": {
+          "pattern": "^(?:[0-9a-f]{2})+$",
+          "maxLength": 32768,
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        }
+      }
+    },
+    "candidate_receipt": {
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "name",
+        "domain",
+        "fields",
+        "frame_hex",
+        "sha256",
+        "authority_eligible"
+      ],
+      "properties": {
+        "name": {
+          "const": "oracle_receipt_hash",
+          "type": "string"
+        },
+        "domain": {
+          "const": "provenance-v2-oracle-receipt@1",
+          "type": "string"
+        },
+        "fields": {
+          "minItems": 6,
+          "maxItems": 6,
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "tag",
+                  "value"
+                ],
+                "properties": {
+                  "tag": {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  "value": {
+                    "maxLength": 256,
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "tag",
+                  "value"
+                ],
+                "properties": {
+                  "tag": {
+                    "const": "integer",
+                    "type": "string"
+                  },
+                  "value": {
+                    "pattern": "^(?:0|[1-9][0-9]{0,15})$",
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "tag",
+                  "value"
+                ],
+                "properties": {
+                  "tag": {
+                    "const": "digest",
+                    "type": "string"
+                  },
+                  "value": {
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "frame_hex": {
+          "pattern": "^(?:[0-9a-f]{2})+$",
+          "maxLength": 32768,
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "authority_eligible": {
+          "const": false,
+          "type": "boolean"
+        }
+      }
+    },
+    "ordering_cases": {
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "integer_numeric",
+        "utf8_binary"
+      ],
+      "properties": {
+        "integer_numeric": {
+          "minItems": 2,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "const": "2",
+                "type": "string"
+              },
+              {
+                "const": "10",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "utf8_binary": {
+          "minItems": 2,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "const": "z",
+                "type": "string"
+              },
+              {
+                "const": "é",
+                "type": "string"
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}

@@ -7,6 +7,7 @@ import {
   PROVENANCE_V2_AUTHORITY_ROOT_REGISTRY,
   PROVENANCE_V2_AUTHORITY_ROOT_VECTORS,
   PROVENANCE_V2_CANONICAL_JSON_CONTRACT,
+  PROVENANCE_V2_COMPOSITE_ROOT_VECTORS,
   PROVENANCE_V2_FIELD_CORPUS,
   PROVENANCE_V2_FRAME_CONTRACT,
   PROVENANCE_V2_RAW_FIELD_MAPPING_CONTRACT,
@@ -1545,6 +1546,10 @@ const files = new Map<string, string>([
   [
     "provenance-v2/golden-vectors.v1.json",
     `${JSON.stringify(PROVENANCE_V2_AUTHORITY_ROOT_VECTORS, null, 2)}\n`,
+  ],
+  [
+    "provenance-v2/composite-root-vectors.v1.json",
+    `${JSON.stringify(PROVENANCE_V2_COMPOSITE_ROOT_VECTORS, null, 2)}\n`,
   ],
 ]);
 

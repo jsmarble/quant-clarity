@@ -1,0 +1,665 @@
+{
+  "contract_version": "provenance-v2-composite-root-vectors@1",
+  "status": "review_candidate",
+  "coverage": "isolated_family_projection_and_frame_composition",
+  "authority_eligible": false,
+  "outcome": "authority_refused",
+  "registry_contract_version": "provenance-v2-root-registry@1",
+  "binding_plan_contract_version": "provenance-v2-root-binding-plan@1",
+  "leaf_vector_contract_version": "provenance-v2-authority-root-vectors@1",
+  "pending": {
+    "resolver_closure": "pending",
+    "semantic_oracle": "pending",
+    "repository_build_manifest": "pending",
+    "migration_schema_parity": "pending",
+    "accepted_aggregate_limits": "pending"
+  },
+  "leaf_vector_names": [
+    "leaf-source_owner_receipt",
+    "leaf-source_register_receipt",
+    "leaf-source_register_member",
+    "leaf-adapter_manifest_receipt",
+    "leaf-adapter_manifest_environment",
+    "leaf-adapter_manifest_credential",
+    "leaf-adapter_manifest_source",
+    "leaf-source_endpoint",
+    "leaf-source_endpoint_registration",
+    "leaf-source_endpoint_request",
+    "leaf-source_endpoint_parameter",
+    "leaf-source_endpoint_parameter_enum",
+    "leaf-source_endpoint_allowed_header",
+    "leaf-source_endpoint_redirect_host",
+    "leaf-source_endpoint_content_type",
+    "leaf-source_endpoint_expected_field",
+    "leaf-source_endpoint_raw_field_mapping",
+    "leaf-source_endpoint_approval",
+    "leaf-verifier_implementation",
+    "leaf-verifier_policy",
+    "leaf-verifier_policy_member",
+    "leaf-field_path_vocabulary",
+    "leaf-field_path_authority_role",
+    "leaf-field_path_enum_value",
+    "leaf-field_record_group",
+    "leaf-field_record_group_member",
+    "leaf-field_policy",
+    "leaf-field_policy_member",
+    "leaf-field_policy_precedence_class",
+    "leaf-field_policy_precedence_class_source",
+    "leaf-field_policy_precedence_edge",
+    "leaf-field_policy_endpoint_admission",
+    "leaf-field_policy_endpoint_exclusion"
+  ],
+  "traversals": [
+    {
+      "name": "source_owner_set_root",
+      "domain": "provenance-v2-source-owner-set@1",
+      "scope_fields": [
+        {
+          "tag": "text",
+          "value": "field-0"
+        },
+        {
+          "tag": "text",
+          "value": "é🧪"
+        }
+      ],
+      "member_count": 1,
+      "ordered_members": [
+        {
+          "registry_table": "provenance_v2_source_owner_receipt",
+          "leaf_vector_name": "leaf-source_owner_receipt",
+          "source_ordinal": 0,
+          "family_tag": "source_owner_receipt",
+          "leaf_digest": "sha256:3cf1227d3a9ae938ebe6d87714e73f4a7e6b84d59b818823d3754273042eaedc",
+          "projection_digest": "sha256:e19d46e26f9bd40691b876b46696cb20669c92626b99afdde2c7a867b1419b0a"
+        }
+      ],
+      "frame_hex": "514350563201002070726f76656e616e63652d76322d736f757263652d6f776e65722d7365744031000000040100000000000000076669656c642d30010000000000000006c3a9f09fa7aa02000000000000000131040000000000000020e19d46e26f9bd40691b876b46696cb20669c92626b99afdde2c7a867b1419b0a",
+      "sha256": "sha256:735f4e640a64111edf7ab3fb3e117c679b202fb1ed594b057253aed3a6749d3e"
+    },
+    {
+      "name": "source_register_member_set_root",
+      "domain": "provenance-v2-source-register-member-set@1",
+      "scope_fields": [
+        {
+          "tag": "text",
+          "value": "field-0"
+        },
+        {
+          "tag": "text",
+          "value": "é🧪"
+        }
+      ],
+      "member_count": 1,
+      "ordered_members": [
+        {
+          "registry_table": "provenance_v2_source_register_member",
+          "leaf_vector_name": "leaf-source_register_member",
+          "source_ordinal": 0,
+          "family_tag": "source_register_member",
+          "leaf_digest": "sha256:3b15f8982f4885c9b9745dadd3f3ea6efcb93ef8232d1728224a957d3563a1cd",
+          "projection_digest": "sha256:1c854b3b3daadbdaeda2cbcde814a44aefbef0f77a851017a2be9f94d1e187e8"
+        }
+      ],
+      "frame_hex": "514350563201002a70726f76656e616e63652d76322d736f757263652d72656769737465722d6d656d6265722d7365744031000000040100000000000000076669656c642d30010000000000000006c3a9f09fa7aa020000000000000001310400000000000000201c854b3b3daadbdaeda2cbcde814a44aefbef0f77a851017a2be9f94d1e187e8",
+      "sha256": "sha256:f576ae59e7336c8d1c1e4b506b875996cd8749ebb3dda8e59019e0222c06eb10"
+    },
+    {
+      "name": "environment_set_root",
+      "domain": "provenance-v2-adapter-environment-set@1",
+      "scope_fields": [
+        {
+          "tag": "text",
+          "value": "field-0"
+        },
+        {
+          "tag": "text",
+          "value": "é🧪"
+        }
+      ],
+      "member_count": 1,
+      "ordered_members": [
+        {
+          "registry_table": "provenance_v2_adapter_manifest_environment",
+          "leaf_vector_name": "leaf-adapter_manifest_environment",
+          "source_ordinal": 0,
+          "family_tag": "environment",
+          "leaf_digest": "sha256:b95ce32414ccbf7c0b75722441ba4feb2313169686f9d1dbefe5a2f5c5a4f471",
+          "projection_digest": "sha256:1c3bc26213693472b142c7d8306c5eebfa5b76868ed19584d590424106c7fd07"
+        }
+      ],
+      "frame_hex": "514350563201002770726f76656e616e63652d76322d616461707465722d656e7669726f6e6d656e742d7365744031000000040100000000000000076669656c642d30010000000000000006c3a9f09fa7aa020000000000000001310400000000000000201c3bc26213693472b142c7d8306c5eebfa5b76868ed19584d590424106c7fd07",
+      "sha256": "sha256:869ff1aa5cb97c141d4e0cb3997f83c8f5bd79bee2f43bf4281e5c98e2c6f8ab"
+    },
+    {
+      "name": "credential_set_root",
+      "domain": "provenance-v2-adapter-credential-set@1",
+      "scope_fields": [
+        {
+          "tag": "text",
+          "value": "field-0"
+        },
+        {
+          "tag": "text",
+          "value": "é🧪"
+        }
+      ],
+      "member_count": 1,
+      "ordered_members": [
+        {
+          "registry_table": "provenance_v2_adapter_manifest_credential",
+          "leaf_vector_name": "leaf-adapter_manifest_credential",
+          "source_ordinal": 0,
+          "family_tag": "credential",
+          "leaf_digest": "sha256:79a13de8c9124783edaae508abbda38d8e58aecb4bcb9459178c4341178b5b9d",
+          "projection_digest": "sha256:735485e084269d4329bfd27764c74b1f8a2cbf76424d8a476d244340c163064e"
+        }
+      ],
+      "frame_hex": "514350563201002670726f76656e616e63652d76322d616461707465722d63726564656e7469616c2d7365744031000000040100000000000000076669656c642d30010000000000000006c3a9f09fa7aa02000000000000000131040000000000000020735485e084269d4329bfd27764c74b1f8a2cbf76424d8a476d244340c163064e",
+      "sha256": "sha256:8b4e7e41d3abcd8a2020db1fec856df59ab960f35c8ea0a6c7ec1dee0e25ffb0"
+    },
+    {
+      "name": "source_set_root",
+      "domain": "provenance-v2-adapter-source-set@1",
+      "scope_fields": [
+        {
+          "tag": "text",
+          "value": "field-0"
+        },
+        {
+          "tag": "text",
+          "value": "é🧪"
+        }
+      ],
+      "member_count": 1,
+      "ordered_members": [
+        {
+          "registry_table": "provenance_v2_adapter_manifest_source",
+          "leaf_vector_name": "leaf-adapter_manifest_source",
+          "source_ordinal": 0,
+          "family_tag": "source",
+          "leaf_digest": "sha256:f9ae74c690b08498d1aff69790c552d91a5b62d776eb48dafd887515b8df3def",
+          "projection_digest": "sha256:d2858715e4ee7a3156a8819ac1aa8bbe7ae9e920a2158f330de24e6c01c0cbec"
+        }
+      ],
+      "frame_hex": "514350563201002270726f76656e616e63652d76322d616461707465722d736f757263652d7365744031000000040100000000000000076669656c642d30010000000000000006c3a9f09fa7aa02000000000000000131040000000000000020d2858715e4ee7a3156a8819ac1aa8bbe7ae9e920a2158f330de24e6c01c0cbec",
+      "sha256": "sha256:2cc40526c9dd6f1ebb6c67bcec56b89d895c6cc265e1b4bba24bd895047e2c80"
+    },
+    {
+      "name": "adapter_manifest_set_root",
+      "domain": "provenance-v2-adapter-manifest-set@1",
+      "scope_fields": [
+        {
+          "tag": "text",
+          "value": "field-0"
+        }
+      ],
+      "member_count": 7,
+      "ordered_members": [
+        {
+          "registry_table": "provenance_v2_source_owner_receipt",
+          "leaf_vector_name": "leaf-source_owner_receipt",
+          "source_ordinal": 0,
+          "family_tag": "source_owner_receipt",
+          "leaf_digest": "sha256:3cf1227d3a9ae938ebe6d87714e73f4a7e6b84d59b818823d3754273042eaedc",
+          "projection_digest": "sha256:e19d46e26f9bd40691b876b46696cb20669c92626b99afdde2c7a867b1419b0a"
+        },
+        {
+          "registry_table": "provenance_v2_source_register_receipt",
+          "leaf_vector_name": "leaf-source_register_receipt",
+          "source_ordinal": 1,
+          "family_tag": "source_register_receipt",
+          "leaf_digest": "sha256:46bfc0e4e4c01439161bc7985f333afd8e85f976c5c7fea30bb90829a3e5766f",
+          "projection_digest": "sha256:459e96513d3ef2dbfd6d1293968bc5b54d9ce3887bab8507aa63d7bdf0f7c491"
+        },
+        {
+          "registry_table": "provenance_v2_source_register_member",
+          "leaf_vector_name": "leaf-source_register_member",
+          "source_ordinal": 2,
+          "family_tag": "source_register_member",
+          "leaf_digest": "sha256:3b15f8982f4885c9b9745dadd3f3ea6efcb93ef8232d1728224a957d3563a1cd",
+          "projection_digest": "sha256:39a8ff0ee50eb6fd2b3b38f9f7f1bbbc6703520dcdd80c4f2a446465d7b8b741"
+        },
+        {
+          "registry_table": "provenance_v2_adapter_manifest_receipt",
+          "leaf_vector_name": "leaf-adapter_manifest_receipt",
+          "source_ordinal": 3,
+          "family_tag": "adapter_manifest_receipt",
+          "leaf_digest": "sha256:bbfdf20314efaa9b9183901782988ec7f562b21656cc1bd3394f407b2f539d49",
+          "projection_digest": "sha256:02f493c483ebe1a45dd5eee45b441a75853cfd98754fef227c28dafcfb240e4e"
+        },
+        {
+          "registry_table": "provenance_v2_adapter_manifest_environment",
+          "leaf_vector_name": "leaf-adapter_manifest_environment",
+          "source_ordinal": 4,
+          "family_tag": "adapter_manifest_environment",
+          "leaf_digest": "sha256:b95ce32414ccbf7c0b75722441ba4feb2313169686f9d1dbefe5a2f5c5a4f471",
+          "projection_digest": "sha256:5207e15bb84870c377f611fdc047f259cc9cb1f553d923841d6869bfaa321662"
+        },
+        {
+          "registry_table": "provenance_v2_adapter_manifest_credential",
+          "leaf_vector_name": "leaf-adapter_manifest_credential",
+          "source_ordinal": 5,
+          "family_tag": "adapter_manifest_credential",
+          "leaf_digest": "sha256:79a13de8c9124783edaae508abbda38d8e58aecb4bcb9459178c4341178b5b9d",
+          "projection_digest": "sha256:d23f8b89c7fd463d11d61bfa953be1cc37d9c4e8afb739f8254b44065977123a"
+        },
+        {
+          "registry_table": "provenance_v2_adapter_manifest_source",
+          "leaf_vector_name": "leaf-adapter_manifest_source",
+          "source_ordinal": 6,
+          "family_tag": "adapter_manifest_source",
+          "leaf_digest": "sha256:f9ae74c690b08498d1aff69790c552d91a5b62d776eb48dafd887515b8df3def",
+          "projection_digest": "sha256:8ea5c634bb3f2c57c1825fa0d950af3d39e865fae5384022272e605b1a845436"
+        }
+      ],
+      "frame_hex": "514350563201002470726f76656e616e63652d76322d616461707465722d6d616e69666573742d7365744031000000090100000000000000076669656c642d3002000000000000000137040000000000000020e19d46e26f9bd40691b876b46696cb20669c92626b99afdde2c7a867b1419b0a040000000000000020459e96513d3ef2dbfd6d1293968bc5b54d9ce3887bab8507aa63d7bdf0f7c49104000000000000002039a8ff0ee50eb6fd2b3b38f9f7f1bbbc6703520dcdd80c4f2a446465d7b8b74104000000000000002002f493c483ebe1a45dd5eee45b441a75853cfd98754fef227c28dafcfb240e4e0400000000000000205207e15bb84870c377f611fdc047f259cc9cb1f553d923841d6869bfaa321662040000000000000020d23f8b89c7fd463d11d61bfa953be1cc37d9c4e8afb739f8254b44065977123a0400000000000000208ea5c634bb3f2c57c1825fa0d950af3d39e865fae5384022272e605b1a845436",
+      "sha256": "sha256:f4cf9d6455b4a60f39ba4aacc71e2856569c69a65c96ce146109081307759cb2"
+    },
+    {
+      "name": "endpoint_set_root",
+      "domain": "provenance-v2-endpoint-set@1",
+      "scope_fields": [
+        {
+          "tag": "text",
+          "value": "field-0"
+        }
+      ],
+      "member_count": 11,
+      "ordered_members": [
+        {
+          "registry_table": "provenance_v2_source_endpoint",
+          "leaf_vector_name": "leaf-source_endpoint",
+          "source_ordinal": 0,
+          "family_tag": "source_endpoint",
+          "leaf_digest": "sha256:cdfda10543b1eadbe9ec26180b493c29cf1ab268b2262f0ae685cd4f38d2ccfe",
+          "projection_digest": "sha256:9e51ec54d61de6689a8ae4303b517994bd6aad7d9b5d8f91110e2b9e0c7627c3"
+        },
+        {
+          "registry_table": "provenance_v2_source_endpoint_registration",
+          "leaf_vector_name": "leaf-source_endpoint_registration",
+          "source_ordinal": 1,
+          "family_tag": "source_endpoint_registration",
+          "leaf_digest": "sha256:c6c43e55b34cfc3e43c4bab0ff9b80291f621629c99c0c6d77f9a41b04a7707b",
+          "projection_digest": "sha256:284203af4f0d38bd0433d753bb1124a8c904a1e42356224ab8babca06078155c"
+        },
+        {
+          "registry_table": "provenance_v2_source_endpoint_request",
+          "leaf_vector_name": "leaf-source_endpoint_request",
+          "source_ordinal": 2,
+          "family_tag": "source_endpoint_request",
+          "leaf_digest": "sha256:be58a31d692011dacf906c9b283249ce70251b71a4b20954e6c3ccad0863188c",
+          "projection_digest": "sha256:987d534af5367cfc8644c9f2c2136a7829c3336c9e2aa3e6b4e722e4cef2859d"
+        },
+        {
+          "registry_table": "provenance_v2_source_endpoint_parameter",
+          "leaf_vector_name": "leaf-source_endpoint_parameter",
+          "source_ordinal": 3,
+          "family_tag": "source_endpoint_parameter",
+          "leaf_digest": "sha256:e98190943ade61e59ff350bdde97743c9dc5e80d03f6abafbf04629ecb43d211",
+          "projection_digest": "sha256:5b50e284ca421afd54ff721f120b0af29b7893804a10e6c33a558a62ad095386"
+        },
+        {
+          "registry_table": "provenance_v2_source_endpoint_parameter_enum",
+          "leaf_vector_name": "leaf-source_endpoint_parameter_enum",
+          "source_ordinal": 4,
+          "family_tag": "source_endpoint_parameter_enum",
+          "leaf_digest": "sha256:6f795b43b6362e91670905e5803be399b8fec016bba27f80d401c1a5db04a4e7",
+          "projection_digest": "sha256:9d5d6458086b42f6c8d6f9476ba04d779668370ea0de266ca7e784b19b7d2fd5"
+        },
+        {
+          "registry_table": "provenance_v2_source_endpoint_allowed_header",
+          "leaf_vector_name": "leaf-source_endpoint_allowed_header",
+          "source_ordinal": 5,
+          "family_tag": "source_endpoint_allowed_header",
+          "leaf_digest": "sha256:addeb0dce5f58b2f0c3469018f4c91e51af7e796b6ecca3ade7abb0a9ffe3f28",
+          "projection_digest": "sha256:23cbf25d9d0492cc3c7dd796d68edebf6fb3bb7912faa3c3ae181277947b95a3"
+        },
+        {
+          "registry_table": "provenance_v2_source_endpoint_redirect_host",
+          "leaf_vector_name": "leaf-source_endpoint_redirect_host",
+          "source_ordinal": 6,
+          "family_tag": "source_endpoint_redirect_host",
+          "leaf_digest": "sha256:a673aa9e0ea21e409fd642a4c0fe09b2317cca896b0708e8bc7cb035a20c2a4a",
+          "projection_digest": "sha256:0fbc70ab4e9035b4d5f2c02004827e990becc97bce28c5d745ae5a1d6b7e2cda"
+        },
+        {
+          "registry_table": "provenance_v2_source_endpoint_content_type",
+          "leaf_vector_name": "leaf-source_endpoint_content_type",
+          "source_ordinal": 7,
+          "family_tag": "source_endpoint_content_type",
+          "leaf_digest": "sha256:b535192bc1997aea94d59414a28dd07a10a699ba1195059b73208fe0db24b230",
+          "projection_digest": "sha256:d214be21973aa7334163943d4c49ab2e772a493b3d1e41b6d433e0abeeeb0f54"
+        },
+        {
+          "registry_table": "provenance_v2_source_endpoint_expected_field",
+          "leaf_vector_name": "leaf-source_endpoint_expected_field",
+          "source_ordinal": 8,
+          "family_tag": "source_endpoint_expected_field",
+          "leaf_digest": "sha256:4d6c0fc29843ffa19b942f625997bde2bfa8d137ada1179b1e9ab6aa4ae4c98b",
+          "projection_digest": "sha256:67f722c1075d9274c58f363c43afdfc27dd284351b59beae3e45fc0f23713850"
+        },
+        {
+          "registry_table": "provenance_v2_source_endpoint_raw_field_mapping",
+          "leaf_vector_name": "leaf-source_endpoint_raw_field_mapping",
+          "source_ordinal": 9,
+          "family_tag": "source_endpoint_raw_field_mapping",
+          "leaf_digest": "sha256:f0c96c7177f5d1fc00ddcb2e2562c154c2cf75b9942e8e2692c712f82ffeaa73",
+          "projection_digest": "sha256:0c2b117ebfc7c34a49dd92f8a000c6e72183d1c0f505885ebefe6b141a3a37cd"
+        },
+        {
+          "registry_table": "provenance_v2_source_endpoint_approval",
+          "leaf_vector_name": "leaf-source_endpoint_approval",
+          "source_ordinal": 10,
+          "family_tag": "source_endpoint_approval",
+          "leaf_digest": "sha256:f8a7a254a2a3cdcfe54d5768fce6f2334df5828f236dcea6af179c2925cac653",
+          "projection_digest": "sha256:6df21d3ebd7920a16f7051547b944f1faae2e88897bf2806565ed027bf2c1a5a"
+        }
+      ],
+      "frame_hex": "514350563201001c70726f76656e616e63652d76322d656e64706f696e742d73657440310000000d0100000000000000076669656c642d3002000000000000000231310400000000000000209e51ec54d61de6689a8ae4303b517994bd6aad7d9b5d8f91110e2b9e0c7627c3040000000000000020284203af4f0d38bd0433d753bb1124a8c904a1e42356224ab8babca06078155c040000000000000020987d534af5367cfc8644c9f2c2136a7829c3336c9e2aa3e6b4e722e4cef2859d0400000000000000205b50e284ca421afd54ff721f120b0af29b7893804a10e6c33a558a62ad0953860400000000000000209d5d6458086b42f6c8d6f9476ba04d779668370ea0de266ca7e784b19b7d2fd504000000000000002023cbf25d9d0492cc3c7dd796d68edebf6fb3bb7912faa3c3ae181277947b95a30400000000000000200fbc70ab4e9035b4d5f2c02004827e990becc97bce28c5d745ae5a1d6b7e2cda040000000000000020d214be21973aa7334163943d4c49ab2e772a493b3d1e41b6d433e0abeeeb0f5404000000000000002067f722c1075d9274c58f363c43afdfc27dd284351b59beae3e45fc0f237138500400000000000000200c2b117ebfc7c34a49dd92f8a000c6e72183d1c0f505885ebefe6b141a3a37cd0400000000000000206df21d3ebd7920a16f7051547b944f1faae2e88897bf2806565ed027bf2c1a5a",
+      "sha256": "sha256:a6ae8382bfbf4660d2b3e81acaf47793bc3a84b618d8f650c5e0009043c54bda"
+    },
+    {
+      "name": "verifier_policy_set_root",
+      "domain": "provenance-v2-verifier-policy-set@1",
+      "scope_fields": [
+        {
+          "tag": "text",
+          "value": "field-0"
+        }
+      ],
+      "member_count": 3,
+      "ordered_members": [
+        {
+          "registry_table": "provenance_v2_verifier_implementation",
+          "leaf_vector_name": "leaf-verifier_implementation",
+          "source_ordinal": 0,
+          "family_tag": "verifier_implementation",
+          "leaf_digest": "sha256:e1b431db04c54d53c2fc796f1207d614e539b54c6afb280df3b03f4926e7dde7",
+          "projection_digest": "sha256:a01c291086c46c8617db0bc7539bcfe181e0822c40fc284c0b65fc4e86758311"
+        },
+        {
+          "registry_table": "provenance_v2_verifier_policy",
+          "leaf_vector_name": "leaf-verifier_policy",
+          "source_ordinal": 1,
+          "family_tag": "verifier_policy",
+          "leaf_digest": "sha256:10ac573ffd971356a3a7df8f1949bcf9ba83cac6daf8c8369b347e8a76ba4860",
+          "projection_digest": "sha256:418b87ba6681de6556d654376ec409971fcfae58ab2391210f223638b77d8c1f"
+        },
+        {
+          "registry_table": "provenance_v2_verifier_policy_member",
+          "leaf_vector_name": "leaf-verifier_policy_member",
+          "source_ordinal": 2,
+          "family_tag": "verifier_policy_member",
+          "leaf_digest": "sha256:4fabd656ad7e05a2fb67092da2f14d6fe8d5b01a2b4df1d8920e6b17e77eafff",
+          "projection_digest": "sha256:29888bd6ea6b768d0fee869a549ff423500c8d0dcc0db85ea3f8d8b037d0f262"
+        }
+      ],
+      "frame_hex": "514350563201002370726f76656e616e63652d76322d76657269666965722d706f6c6963792d7365744031000000050100000000000000076669656c642d3002000000000000000133040000000000000020a01c291086c46c8617db0bc7539bcfe181e0822c40fc284c0b65fc4e86758311040000000000000020418b87ba6681de6556d654376ec409971fcfae58ab2391210f223638b77d8c1f04000000000000002029888bd6ea6b768d0fee869a549ff423500c8d0dcc0db85ea3f8d8b037d0f262",
+      "sha256": "sha256:0cd857acfe0b9e4adad0b0280fe48d52f86777f4f0ad915934c68909ffe3ddd2"
+    },
+    {
+      "name": "field_policy_set_root",
+      "domain": "provenance-v2-field-policy-set@1",
+      "scope_fields": [
+        {
+          "tag": "text",
+          "value": "field-0"
+        }
+      ],
+      "member_count": 12,
+      "ordered_members": [
+        {
+          "registry_table": "provenance_v2_field_path_vocabulary",
+          "leaf_vector_name": "leaf-field_path_vocabulary",
+          "source_ordinal": 0,
+          "family_tag": "field_path_vocabulary",
+          "leaf_digest": "sha256:331f6d8640e0b49fb2ce60f2768b5bc06308c61d438405e2910bfc22514f86f0",
+          "projection_digest": "sha256:9c70db784f7ff9b50d042ef9960a73bc11f692c30c41412784a1c653e0aa5fae"
+        },
+        {
+          "registry_table": "provenance_v2_field_path_authority_role",
+          "leaf_vector_name": "leaf-field_path_authority_role",
+          "source_ordinal": 1,
+          "family_tag": "field_path_authority_role",
+          "leaf_digest": "sha256:6b17bb8f3a0a5e7fa84fb334ad351c4983c849c9064d78d029c4b60de2f33268",
+          "projection_digest": "sha256:5a253ce88b46adf3ec9abfd0e6072c45579adeed13edf5f3e671bfd68fae4b8f"
+        },
+        {
+          "registry_table": "provenance_v2_field_path_enum_value",
+          "leaf_vector_name": "leaf-field_path_enum_value",
+          "source_ordinal": 2,
+          "family_tag": "field_path_enum_value",
+          "leaf_digest": "sha256:6f15ddc7c021f95fab52fc1b8e8f0898bf08cf646cf9a7166442ba9e3c036c5f",
+          "projection_digest": "sha256:508b14239f6dfb1444a66c96682b0414277f09fd889e24de3361b40b748a6e92"
+        },
+        {
+          "registry_table": "provenance_v2_field_record_group",
+          "leaf_vector_name": "leaf-field_record_group",
+          "source_ordinal": 3,
+          "family_tag": "field_record_group",
+          "leaf_digest": "sha256:7e7316f8127307bcb6b2b0301a90de0b3c7710deb7aba1170da41d26d5228288",
+          "projection_digest": "sha256:b5923d0331092f80a9a2480f52e7baf7cfbc771c7465c51af848343857eaeeca"
+        },
+        {
+          "registry_table": "provenance_v2_field_record_group_member",
+          "leaf_vector_name": "leaf-field_record_group_member",
+          "source_ordinal": 4,
+          "family_tag": "field_record_group_member",
+          "leaf_digest": "sha256:844c4b4be7d52349d6b9a2d1242dd6bd7dceb0ee9b5a447d1c8b94fd6baac152",
+          "projection_digest": "sha256:a71c54f7e0d10edafe479a0cb517ae85939def6cf12285af4075ee12c3e0c322"
+        },
+        {
+          "registry_table": "provenance_v2_field_policy",
+          "leaf_vector_name": "leaf-field_policy",
+          "source_ordinal": 5,
+          "family_tag": "field_policy",
+          "leaf_digest": "sha256:aa31453522e0476bb3ea5e10c19831035e6715502aa3af337b0c71980a5f4e30",
+          "projection_digest": "sha256:7c445f21fe6568cd6edb91ba5844f1631c3f4e7565ce66e4876da5b069b00ba8"
+        },
+        {
+          "registry_table": "provenance_v2_field_policy_member",
+          "leaf_vector_name": "leaf-field_policy_member",
+          "source_ordinal": 6,
+          "family_tag": "field_policy_member",
+          "leaf_digest": "sha256:a62cbabf1e09f504438fee40e9bbe010012b5b3ad3ff6ede0b159579f2f04fe3",
+          "projection_digest": "sha256:64c2f733c4814470c8919cfc24eca43f730450782efb3b0700ef982e4cd4ab59"
+        },
+        {
+          "registry_table": "provenance_v2_field_policy_precedence_class",
+          "leaf_vector_name": "leaf-field_policy_precedence_class",
+          "source_ordinal": 7,
+          "family_tag": "field_policy_precedence_class",
+          "leaf_digest": "sha256:03a13c35e08a3a35d805435c595ce20dc6be86f6730e18fd91114ee50b574f3e",
+          "projection_digest": "sha256:4a3f6a0b8e74d88c29420c8a369c92991b7cb27ed185b5cb7e19225e588c605f"
+        },
+        {
+          "registry_table": "provenance_v2_field_policy_precedence_class_source",
+          "leaf_vector_name": "leaf-field_policy_precedence_class_source",
+          "source_ordinal": 8,
+          "family_tag": "field_policy_precedence_class_source",
+          "leaf_digest": "sha256:c5edc85ec10bc82861b00115104f2a686edee24b673263ac2f89c4943cf50d7b",
+          "projection_digest": "sha256:4e9906d1215712087c5e0132616e8ff51a2192a511af4379dac1a585a897c2da"
+        },
+        {
+          "registry_table": "provenance_v2_field_policy_precedence_edge",
+          "leaf_vector_name": "leaf-field_policy_precedence_edge",
+          "source_ordinal": 9,
+          "family_tag": "field_policy_precedence_edge",
+          "leaf_digest": "sha256:3f99323b42766a544d0b359b7445bf04a2017c08ab3a059def63126d1e4bd816",
+          "projection_digest": "sha256:8786ed7c90b6a8aba99db0e792b8b2e2ac2a131c712773dbd9d7c6019bd89fcd"
+        },
+        {
+          "registry_table": "provenance_v2_field_policy_endpoint_admission",
+          "leaf_vector_name": "leaf-field_policy_endpoint_admission",
+          "source_ordinal": 10,
+          "family_tag": "field_policy_endpoint_admission",
+          "leaf_digest": "sha256:2d80399b426dd84c9cf94f0b464fe4bf784ac3a5622c36bb5c123eefcabdd0a6",
+          "projection_digest": "sha256:389e5fd21e56ad2d866cf36556f8b06a450fa3a5de75839dece21e66539400bb"
+        },
+        {
+          "registry_table": "provenance_v2_field_policy_endpoint_exclusion",
+          "leaf_vector_name": "leaf-field_policy_endpoint_exclusion",
+          "source_ordinal": 11,
+          "family_tag": "field_policy_endpoint_exclusion",
+          "leaf_digest": "sha256:f8f5539df7ffcaf95e3f6f044d246c8738fec4048d2734158805613190a8bed9",
+          "projection_digest": "sha256:ca313f74ea1e7ff91161e48ec2835689153f0814ad8b846ad1aafcc30c21cfa1"
+        }
+      ],
+      "frame_hex": "514350563201002070726f76656e616e63652d76322d6669656c642d706f6c6963792d73657440310000000e0100000000000000076669656c642d3002000000000000000231320400000000000000209c70db784f7ff9b50d042ef9960a73bc11f692c30c41412784a1c653e0aa5fae0400000000000000205a253ce88b46adf3ec9abfd0e6072c45579adeed13edf5f3e671bfd68fae4b8f040000000000000020508b14239f6dfb1444a66c96682b0414277f09fd889e24de3361b40b748a6e92040000000000000020b5923d0331092f80a9a2480f52e7baf7cfbc771c7465c51af848343857eaeeca040000000000000020a71c54f7e0d10edafe479a0cb517ae85939def6cf12285af4075ee12c3e0c3220400000000000000207c445f21fe6568cd6edb91ba5844f1631c3f4e7565ce66e4876da5b069b00ba804000000000000002064c2f733c4814470c8919cfc24eca43f730450782efb3b0700ef982e4cd4ab590400000000000000204a3f6a0b8e74d88c29420c8a369c92991b7cb27ed185b5cb7e19225e588c605f0400000000000000204e9906d1215712087c5e0132616e8ff51a2192a511af4379dac1a585a897c2da0400000000000000208786ed7c90b6a8aba99db0e792b8b2e2ac2a131c712773dbd9d7c6019bd89fcd040000000000000020389e5fd21e56ad2d866cf36556f8b06a450fa3a5de75839dece21e66539400bb040000000000000020ca313f74ea1e7ff91161e48ec2835689153f0814ad8b846ad1aafcc30c21cfa1",
+      "sha256": "sha256:dabcaa24cf4f13d259e45dd35a1c831576421653f71734c48a8806e91a2e53f9"
+    }
+  ],
+  "candidate_successor_claim_shape": {
+    "source_owner_count": 1,
+    "source_owner_set_root": "sha256:735f4e640a64111edf7ab3fb3e117c679b202fb1ed594b057253aed3a6749d3e",
+    "source_register_member_count": 1,
+    "source_register_member_set_root": "sha256:f576ae59e7336c8d1c1e4b506b875996cd8749ebb3dda8e59019e0222c06eb10",
+    "source_register_receipt_hash": "sha256:46bfc0e4e4c01439161bc7985f333afd8e85f976c5c7fea30bb90829a3e5766f",
+    "environment_count": 1,
+    "environment_set_root": "sha256:869ff1aa5cb97c141d4e0cb3997f83c8f5bd79bee2f43bf4281e5c98e2c6f8ab",
+    "credential_count": 1,
+    "credential_set_root": "sha256:8b4e7e41d3abcd8a2020db1fec856df59ab960f35c8ea0a6c7ec1dee0e25ffb0",
+    "source_count": 1,
+    "source_set_root": "sha256:2cc40526c9dd6f1ebb6c67bcec56b89d895c6cc265e1b4bba24bd895047e2c80"
+  },
+  "authority_root": {
+    "name": "authority_root",
+    "domain": "provenance-v2-authority-root-frame@1",
+    "fields": [
+      {
+        "tag": "text",
+        "value": "provenance-v2-registration-plan@1"
+      },
+      {
+        "tag": "digest",
+        "value": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      {
+        "tag": "digest",
+        "value": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+      },
+      {
+        "tag": "text",
+        "value": "installation-vector"
+      },
+      {
+        "tag": "text",
+        "value": "production"
+      },
+      {
+        "tag": "text",
+        "value": "field-0"
+      },
+      {
+        "tag": "text",
+        "value": "run-vector"
+      },
+      {
+        "tag": "digest",
+        "value": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+      },
+      {
+        "tag": "integer",
+        "value": "1786406400000"
+      },
+      {
+        "tag": "integer",
+        "value": "1786492800000"
+      },
+      {
+        "tag": "integer",
+        "value": "1786406300000"
+      },
+      {
+        "tag": "integer",
+        "value": "4096"
+      },
+      {
+        "tag": "integer",
+        "value": "33"
+      },
+      {
+        "tag": "integer",
+        "value": "1786406350000"
+      },
+      {
+        "tag": "integer",
+        "value": "1"
+      },
+      {
+        "tag": "digest",
+        "value": "sha256:f4cf9d6455b4a60f39ba4aacc71e2856569c69a65c96ce146109081307759cb2"
+      },
+      {
+        "tag": "integer",
+        "value": "1"
+      },
+      {
+        "tag": "digest",
+        "value": "sha256:a6ae8382bfbf4660d2b3e81acaf47793bc3a84b618d8f650c5e0009043c54bda"
+      },
+      {
+        "tag": "integer",
+        "value": "1"
+      },
+      {
+        "tag": "digest",
+        "value": "sha256:0cd857acfe0b9e4adad0b0280fe48d52f86777f4f0ad915934c68909ffe3ddd2"
+      },
+      {
+        "tag": "integer",
+        "value": "1"
+      },
+      {
+        "tag": "digest",
+        "value": "sha256:dabcaa24cf4f13d259e45dd35a1c831576421653f71734c48a8806e91a2e53f9"
+      }
+    ],
+    "frame_hex": "514350563201002470726f76656e616e63652d76322d617574686f726974792d726f6f742d6672616d6540310000001601000000000000002170726f76656e616e63652d76322d726567697374726174696f6e2d706c616e403104000000000000002011111111111111111111111111111111111111111111111111111111111111110400000000000000202222222222222222222222222222222222222222222222222222222222222222010000000000000013696e7374616c6c6174696f6e2d766563746f7201000000000000000a70726f64756374696f6e0100000000000000076669656c642d3001000000000000000a72756e2d766563746f72040000000000000020333333333333333333333333333333333333333333333333333333333333333302000000000000000d3137383634303634303030303002000000000000000d3137383634393238303030303002000000000000000d3137383634303633303030303002000000000000000434303936020000000000000002333302000000000000000d3137383634303633353030303002000000000000000131040000000000000020f4cf9d6455b4a60f39ba4aacc71e2856569c69a65c96ce146109081307759cb202000000000000000131040000000000000020a6ae8382bfbf4660d2b3e81acaf47793bc3a84b618d8f650c5e0009043c54bda020000000000000001310400000000000000200cd857acfe0b9e4adad0b0280fe48d52f86777f4f0ad915934c68909ffe3ddd202000000000000000131040000000000000020dabcaa24cf4f13d259e45dd35a1c831576421653f71734c48a8806e91a2e53f9",
+    "sha256": "sha256:9cfcffbfd524dab07c5d11b6542d15a6f8aa15b6236ca41e5fa77b8626656611"
+  },
+  "candidate_receipt": {
+    "name": "oracle_receipt_hash",
+    "domain": "provenance-v2-oracle-receipt@1",
+    "fields": [
+      {
+        "tag": "text",
+        "value": "field-0"
+      },
+      {
+        "tag": "text",
+        "value": "provenance-v2-structural-candidate@1"
+      },
+      {
+        "tag": "digest",
+        "value": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      {
+        "tag": "digest",
+        "value": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      {
+        "tag": "digest",
+        "value": "sha256:9cfcffbfd524dab07c5d11b6542d15a6f8aa15b6236ca41e5fa77b8626656611"
+      },
+      {
+        "tag": "integer",
+        "value": "1786406360000"
+      }
+    ],
+    "frame_hex": "514350563201001e70726f76656e616e63652d76322d6f7261636c652d726563656970744031000000060100000000000000076669656c642d3001000000000000002470726f76656e616e63652d76322d7374727563747572616c2d63616e6469646174654031040000000000000020444444444444444444444444444444444444444444444444444444444444444404000000000000002011111111111111111111111111111111111111111111111111111111111111110400000000000000209cfcffbfd524dab07c5d11b6542d15a6f8aa15b6236ca41e5fa77b862665661102000000000000000d31373836343036333630303030",
+    "sha256": "sha256:6ce96aa13c7eda309de786518dc2cd5674564681325bdddde7109b6567077cce",
+    "authority_eligible": false
+  },
+  "ordering_cases": {
+    "integer_numeric": [
+      "2",
+      "10"
+    ],
+    "utf8_binary": [
+      "z",
+      "é"
+    ]
+  }
+}
