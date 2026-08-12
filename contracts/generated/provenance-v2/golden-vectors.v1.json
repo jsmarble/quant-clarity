@@ -1,0 +1,1857 @@
+{
+  "contract_version": "provenance-v2-authority-root-vectors@1",
+  "frame_contract_version": "provenance-v2-authority-root@1",
+  "status": "review_candidate",
+  "vectors": [
+    {
+      "name": "codec-null-empty-zero-false",
+      "registry_table": null,
+      "collection_name": null,
+      "domain": "provenance-v2-codec-types@1",
+      "fields": [
+        {
+          "tag": "null",
+          "value": null
+        },
+        {
+          "tag": "text",
+          "value": ""
+        },
+        {
+          "tag": "integer",
+          "value": "0"
+        },
+        {
+          "tag": "boolean",
+          "value": false
+        }
+      ],
+      "frame_hex": "514350563201001b70726f76656e616e63652d76322d636f6465632d74797065734031000000040000000000000000000100000000000000000200000000000000013003000000000000000100",
+      "sha256": "sha256:43542ae700be9933ff5902ad12eaf96c1d7cb1e31f37e92824063c9b44aefd4c"
+    },
+    {
+      "name": "codec-nfc-multibyte",
+      "registry_table": null,
+      "collection_name": null,
+      "domain": "provenance-v2-codec-text@1",
+      "fields": [
+        {
+          "tag": "text",
+          "value": "é🧪"
+        }
+      ],
+      "frame_hex": "514350563201001a70726f76656e616e63652d76322d636f6465632d74657874403100000001010000000000000006c3a9f09fa7aa",
+      "sha256": "sha256:6e105ac128e5182f1299fa9e1b3be4b72376c27baed6d19ec6e7ecd6de2d4f60"
+    },
+    {
+      "name": "codec-max-safe-integer-true",
+      "registry_table": null,
+      "collection_name": null,
+      "domain": "provenance-v2-codec-integer@1",
+      "fields": [
+        {
+          "tag": "integer",
+          "value": "9007199254740991"
+        },
+        {
+          "tag": "boolean",
+          "value": true
+        }
+      ],
+      "frame_hex": "514350563201001d70726f76656e616e63652d76322d636f6465632d696e74656765724031000000020200000000000000103930303731393932353437343039393103000000000000000101",
+      "sha256": "sha256:cc39949a45597c818baa97a53dd0f6299e59cff49a0dbb7d77218409cc890bb8"
+    },
+    {
+      "name": "codec-digest-and-bytes",
+      "registry_table": null,
+      "collection_name": null,
+      "domain": "provenance-v2-codec-bytes@1",
+      "fields": [
+        {
+          "tag": "digest",
+          "value": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        {
+          "tag": "bytes",
+          "value": "00ff"
+        }
+      ],
+      "frame_hex": "514350563201001b70726f76656e616e63652d76322d636f6465632d6279746573403100000002040000000000000020000000000000000000000000000000000000000000000000000000000000000004000000000000000200ff",
+      "sha256": "sha256:e2ada2794cbac5c3d7d576e8d5aa7fdc2ea815539258876d524c310101a27e4f"
+    },
+    {
+      "name": "leaf-source_owner_receipt",
+      "registry_table": "provenance_v2_source_owner_receipt",
+      "collection_name": null,
+      "domain": "provenance-v2-source-owner-receipt@1",
+      "fields": [
+        {
+          "tag": "text",
+          "value": "field-0"
+        },
+        {
+          "tag": "text",
+          "value": "é🧪"
+        },
+        {
+          "tag": "integer",
+          "value": "2"
+        },
+        {
+          "tag": "text",
+          "value": "field-3"
+        },
+        {
+          "tag": "text",
+          "value": "field-4"
+        },
+        {
+          "tag": "text",
+          "value": "field-5"
+        },
+        {
+          "tag": "text",
+          "value": "field-6"
+        },
+        {
+          "tag": "text",
+          "value": "field-7"
+        },
+        {
+          "tag": "digest",
+          "value": "sha256:0909090909090909090909090909090909090909090909090909090909090909"
+        },
+        {
+          "tag": "digest",
+          "value": "sha256:0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a"
+        },
+        {
+          "tag": "integer",
+          "value": "10"
+        }
+      ],
+      "frame_hex": "514350563201002470726f76656e616e63652d76322d736f757263652d6f776e65722d7265636569707440310000000b0100000000000000076669656c642d30010000000000000006c3a9f09fa7aa020000000000000001320100000000000000076669656c642d330100000000000000076669656c642d340100000000000000076669656c642d350100000000000000076669656c642d360100000000000000076669656c642d3704000000000000002009090909090909090909090909090909090909090909090909090909090909090400000000000000200a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0200000000000000023130",
+      "sha256": "sha256:3cf1227d3a9ae938ebe6d87714e73f4a7e6b84d59b818823d3754273042eaedc"
+    },
+    {
+      "name": "leaf-source_register_receipt",
+      "registry_table": "provenance_v2_source_register_receipt",
+      "collection_name": null,
+      "domain": "provenance-v2-source-register-receipt@1",
+      "fields": [
+        {
+          "tag": "text",
+          "value": "field-0"
+        },
+        {
+          "tag": "text",
+          "value": "é🧪"
+        },
+        {
+          "tag": "text",
+          "value": "field-2"
+        },
+        {
+          "tag": "digest",
+          "value": "sha256:0404040404040404040404040404040404040404040404040404040404040404"
+        },
+        {
+          "tag": "integer",
+          "value": "4"
+        },
+        {
+          "tag": "digest",
+          "value": "sha256:0606060606060606060606060606060606060606060606060606060606060606"
+        },
+        {
+          "tag": "text",
+          "value": "field-6"
+        },
+        {
+          "tag": "integer",
+          "value": "7"
+        },
+        {
+          "tag": "integer",
+          "value": "8"
+        },
+        {
+          "tag": "boolean",
+          "value": true
+        },
+        {
+          "tag": "boolean",
+          "value": false
+        },
+        {
+          "tag": "boolean",
+          "value": true
+        },
+        {
+          "tag": "boolean",
+          "value": false
+        }
+      ],
+      "frame_hex": "514350563201002770726f76656e616e63652d76322d736f757263652d72656769737465722d7265636569707440310000000d0100000000000000076669656c642d30010000000000000006c3a9f09fa7aa0100000000000000076669656c642d3204000000000000002004040404040404040404040404040404040404040404040404040404040404040200000000000000013404000000000000002006060606060606060606060606060606060606060606060606060606060606060100000000000000076669656c642d36020000000000000001370200000000000000013803000000000000000101030000000000000001000300000000000000010103000000000000000100",
+      "sha256": "sha256:46bfc0e4e4c01439161bc7985f333afd8e85f976c5c7fea30bb90829a3e5766f"
+    },
+    {
+      "name": "leaf-source_register_member",
+      "registry_table": "provenance_v2_source_register_member",
+      "collection_name": null,
+      "domain": "provenance-v2-source-register-member@1",
+      "fields": [
+        {
+          "tag": "text",
+          "value": "field-0"
+        },
+        {
+          "tag": "text",
+          "value": "é🧪"
+        },
+        {
+          "tag": "text",
+          "value": "field-2"
+        },
+        {
+          "tag": "digest",
+          "value": "sha256:0404040404040404040404040404040404040404040404040404040404040404"
+        },
+        {
+          "tag": "integer",
+          "value": "4"
+        },
+        {
+          "tag": "text",
+          "value": "field-5"
+        }
+      ],
+      "frame_hex": "514350563201002670726f76656e616e63652d76322d736f757263652d72656769737465722d6d656d6265724031000000060100000000000000076669656c642d30010000000000000006c3a9f09fa7aa0100000000000000076669656c642d320400000000000000200404040404040404040404040404040404040404040404040404040404040404020000000000000001340100000000000000076669656c642d35",
+      "sha256": "sha256:3b15f8982f4885c9b9745dadd3f3ea6efcb93ef8232d1728224a957d3563a1cd"
+    },
+    {
+      "name": "leaf-adapter_manifest_receipt",
+      "registry_table": "provenance_v2_adapter_manifest_receipt",
+      "collection_name": null,
+      "domain": "provenance-v2-adapter-receipt-leaf@1",
+      "fields": [
+        {
+          "tag": "text",
+          "value": "field-0"
+        },
+        {
+          "tag": "text",
+          "value": "é🧪"
+        },
+        {
+          "tag": "text",
+          "value": "field-2"
+        },
+        {
+          "tag": "integer",
+          "value": "3"
+        },
+        {
+          "tag": "text",
+          "value": "field-4"
+        },
+        {
+          "tag": "text",
+          "value": "field-5"
+        },
+        {
+          "tag": "text",
+          "value": "field-6"
+        },
+        {
+          "tag": "text",
+          "value": "field-7"
+        },
+        {
+          "tag": "digest",
+          "value": "sha256:0909090909090909090909090909090909090909090909090909090909090909"
+        },
+        {
+          "tag": "digest",
+          "value": "sha256:0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a"
+        },
+        {
+          "tag": "text",
+          "value": "field-10"
+        },
+        {
+          "tag": "text",
+          "value": "field-11"
+        },
+        {
+          "tag": "text",
+          "value": "field-12"
+        },
+        {
+          "tag": "text",
+          "value": "field-13"
+        },
+        {
+          "tag": "digest",
+          "value": "sha256:0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f"
+        },
+        {
+          "tag": "text",
+          "value": "field-15"
+        },
+        {
+          "tag": "digest",
+          "value": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+        },
+        {
+          "tag": "integer",
+          "value": "17"
+        },
+        {
+          "tag": "integer",
+          "value": "18"
+        },
+        {
+          "tag": "integer",
+          "value": "19"
+        },
+        {
+          "tag": "integer",
+          "value": "20"
+        },
+        {
+          "tag": "integer",
+          "value": "21"
+        },
+        {
+          "tag": "integer",
+          "value": "22"
+        },
+        {
+          "tag": "integer",
+          "value": "23"
+        },
+        {
+          "tag": "integer",
+          "value": "24"
+        },
+        {
+          "tag": "integer",
+          "value": "25"
+        },
+        {
+          "tag": "integer",
+          "value": "26"
+        },
+        {
+          "tag": "integer",
+          "value": "27"
+        },
+        {
+          "tag": "integer",
+          "value": "28"
+        },
+        {
+          "tag": "integer",
+          "value": "29"
+        },
+        {
+          "tag": "integer",
+          "value": "30"
+        },
+        {
+          "tag": "integer",
+          "value": "31"
+        },
+        {
+          "tag": "integer",
+          "value": "32"
+        },
+        {
+          "tag": "integer",
+          "value": "33"
+        },
+        {
+          "tag": "integer",
+          "value": "34"
+        }
+      ],
+      "frame_hex": "514350563201002470726f76656e616e63652d76322d616461707465722d726563656970742d6c6561664031000000230100000000000000076669656c642d30010000000000000006c3a9f09fa7aa0100000000000000076669656c642d32020000000000000001330100000000000000076669656c642d340100000000000000076669656c642d350100000000000000076669656c642d360100000000000000076669656c642d3704000000000000002009090909090909090909090909090909090909090909090909090909090909090400000000000000200a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0100000000000000086669656c642d31300100000000000000086669656c642d31310100000000000000086669656c642d31320100000000000000086669656c642d31330400000000000000200f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0100000000000000086669656c642d31350400000000000000201111111111111111111111111111111111111111111111111111111111111111020000000000000002313702000000000000000231380200000000000000023139020000000000000002323002000000000000000232310200000000000000023232020000000000000002323302000000000000000232340200000000000000023235020000000000000002323602000000000000000232370200000000000000023238020000000000000002323902000000000000000233300200000000000000023331020000000000000002333202000000000000000233330200000000000000023334",
+      "sha256": "sha256:bbfdf20314efaa9b9183901782988ec7f562b21656cc1bd3394f407b2f539d49"
+    },
+    {
+      "name": "leaf-adapter_manifest_environment",
+      "registry_table": "provenance_v2_adapter_manifest_environment",
+      "collection_name": null,
+      "domain": "provenance-v2-adapter-environment@1",
+      "fields": [
+        {
+          "tag": "text",
+          "value": "field-0"
+        },
+        {
+          "tag": "text",
+          "value": "é🧪"
+        },
+        {
+          "tag": "integer",
+          "value": "2"
+        },
+        {
+          "tag": "text",
+          "value": "field-3"
+        }
+      ],
+      "frame_hex": "514350563201002370726f76656e616e63652d76322d616461707465722d656e7669726f6e6d656e744031000000040100000000000000076669656c642d30010000000000000006c3a9f09fa7aa020000000000000001320100000000000000076669656c642d33",
+      "sha256": "sha256:b95ce32414ccbf7c0b75722441ba4feb2313169686f9d1dbefe5a2f5c5a4f471"
+    },
+    {
+      "name": "leaf-adapter_manifest_credential",
+      "registry_table": "provenance_v2_adapter_manifest_credential",
+      "collection_name": null,
+      "domain": "provenance-v2-adapter-credential@1",
+      "fields": [
+        {
+          "tag": "text",
+          "value": "field-0"
+        },
+        {
+          "tag": "text",
+          "value": "é🧪"
+        },
+        {
+          "tag": "integer",
+          "value": "2"
+        },
+        {
+          "tag": "text",
+          "value": "field-3"
+        },
+        {
+          "tag": "digest",
+          "value": "sha256:0505050505050505050505050505050505050505050505050505050505050505"
+        }
+      ],
+      "frame_hex": "514350563201002270726f76656e616e63652d76322d616461707465722d63726564656e7469616c4031000000050100000000000000076669656c642d30010000000000000006c3a9f09fa7aa020000000000000001320100000000000000076669656c642d330400000000000000200505050505050505050505050505050505050505050505050505050505050505",
+      "sha256": "sha256:79a13de8c9124783edaae508abbda38d8e58aecb4bcb9459178c4341178b5b9d"
+    },
+    {
+      "name": "leaf-adapter_manifest_source",
+      "registry_table": "provenance_v2_adapter_manifest_source",
+      "collection_name": null,
+      "domain": "provenance-v2-adapter-source@1",
+      "fields": [
+        {
+          "tag": "text",
+          "value": "field-0"
+        },
+        {
+          "tag": "text",
+          "value": "é🧪"
+        },
+        {
+          "tag": "integer",
+          "value": "2"
+        },
+        {
+          "tag": "text",
+          "value": "field-3"
+        },
+        {
+          "tag": "text",
+          "value": "field-4"
+        },
+        {
+          "tag": "text",
+          "value": "field-5"
+        },
+        {
+          "tag": "text",
+          "value": "field-6"
+        },
+        {
+          "tag": "text",
+          "value": "field-7"
+        },
+        {
+          "tag": "text",
+          "value": "field-8"
+        },
+        {
+          "tag": "text",
+          "value": "field-9"
+        },
+        {
+          "tag": "text",
+          "value": "field-10"
+        },
+        {
+          "tag": "digest",
+          "value": "sha256:0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
+        }
+      ],
+      "frame_hex": "514350563201001e70726f76656e616e63652d76322d616461707465722d736f7572636540310000000c0100000000000000076669656c642d30010000000000000006c3a9f09fa7aa020000000000000001320100000000000000076669656c642d330100000000000000076669656c642d340100000000000000076669656c642d350100000000000000076669656c642d360100000000000000076669656c642d370100000000000000076669656c642d380100000000000000076669656c642d390100000000000000086669656c642d31300400000000000000200c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+      "sha256": "sha256:f9ae74c690b08498d1aff69790c552d91a5b62d776eb48dafd887515b8df3def"
+    },
+    {
+      "name": "leaf-source_endpoint",
+      "registry_table": "provenance_v2_source_endpoint",
+      "collection_name": null,
+      "domain": "provenance-v2-source-endpoint@1",
+      "fields": [
+        {
+          "tag": "text",
+          "value": "field-0"
+        },
+        {
+          "tag": "text",
+          "value": "é🧪"
+        },
+        {
+          "tag": "integer",
+          "value": "2"
+        },
+        {
+          "tag": "text",
+          "value": "field-3"
+        },
+        {
+          "tag": "text",
+          "value": "field-4"
+        },
+        {
+          "tag": "digest",
+          "value": "sha256:0606060606060606060606060606060606060606060606060606060606060606"
+        },
+        {
+          "tag": "text",
+          "value": "field-6"
+        },
+        {
+          "tag": "text",
+          "value": "field-7"
+        },
+        {
+          "tag": "text",
+          "value": "field-8"
+        },
+        {
+          "tag": "text",
+          "value": "field-9"
+        },
+        {
+          "tag": "text",
+          "value": "field-10"
+        },
+        {
+          "tag": "digest",
+          "value": "sha256:0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
+        },
+        {
+          "tag": "digest",
+          "value": "sha256:0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d"
+        },
+        {
+          "tag": "integer",
+          "value": "13"
+        }
+      ],
+      "frame_hex": "514350563201001f70726f76656e616e63652d76322d736f757263652d656e64706f696e7440310000000e0100000000000000076669656c642d30010000000000000006c3a9f09fa7aa020000000000000001320100000000000000076669656c642d330100000000000000076669656c642d3404000000000000002006060606060606060606060606060606060606060606060606060606060606060100000000000000076669656c642d360100000000000000076669656c642d370100000000000000076669656c642d380100000000000000076669656c642d390100000000000000086669656c642d31300400000000000000200c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0400000000000000200d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0200000000000000023133",
+      "sha256": "sha256:cdfda10543b1eadbe9ec26180b493c29cf1ab268b2262f0ae685cd4f38d2ccfe"
+    },
+    {
+      "name": "leaf-source_endpoint_registration",
+      "registry_table": "provenance_v2_source_endpoint_registration",
+      "collection_name": null,
+      "domain": "provenance-v2-source-endpoint-registration@1",
+      "fields": [
+        {
+          "tag": "text",
+          "value": "field-0"
+        },
+        {
+          "tag": "text",
+          "value": "é🧪"
+        },
+        {
+          "tag": "text",
+          "value": "field-2"
+        },
+        {
+          "tag": "text",
+          "value": "field-3"
+        },
+        {
+          "tag": "digest",
+          "value": "sha256:0505050505050505050505050505050505050505050505050505050505050505"
+        },
+        {
+          "tag": "text",
+          "value": "field-5"
+        },
+        {
+          "tag": "text",
+          "value": "field-6"
+        },
+        {
+          "tag": "text",
+          "value": "field-7"
+        },
+        {
+          "tag": "text",
+          "value": "field-8"
+        },
+        {
+          "tag": "text",
+          "value": "field-9"
+        },
+        {
+          "tag": "text",
+          "value": "field-10"
+        },
+        {
+          "tag": "text",
+          "value": "field-11"
+        },
+        {
+          "tag": "digest",
+          "value": "sha256:0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d"
+        },
+        {
+          "tag": "digest",
+          "value": "sha256:0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
+        },
+        {
+          "tag": "digest",
+          "value": "sha256:0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f"
+        },
+        {
+          "tag": "text",
+          "value": "field-15"
+        },
+        {
+          "tag": "digest",
+          "value": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+        }
+      ],
+      "frame_hex": "514350563201002c70726f76656e616e63652d76322d736f757263652d656e64706f696e742d726567697374726174696f6e4031000000110100000000000000076669656c642d30010000000000000006c3a9f09fa7aa0100000000000000076669656c642d320100000000000000076669656c642d3304000000000000002005050505050505050505050505050505050505050505050505050505050505050100000000000000076669656c642d350100000000000000076669656c642d360100000000000000076669656c642d370100000000000000076669656c642d380100000000000000076669656c642d390100000000000000086669656c642d31300100000000000000086669656c642d31310400000000000000200d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0400000000000000200e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0400000000000000200f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0100000000000000086669656c642d31350400000000000000201111111111111111111111111111111111111111111111111111111111111111",
+      "sha256": "sha256:c6c43e55b34cfc3e43c4bab0ff9b80291f621629c99c0c6d77f9a41b04a7707b"
+    },
+    {
+      "name": "leaf-source_endpoint_request",
+      "registry_table": "provenance_v2_source_endpoint_request",
+      "collection_name": null,
+      "domain": "provenance-v2-source-endpoint-request@1",
+      "fields": [
+        {
+          "tag": "text",
+          "value": "field-0"
+        },
+        {
+          "tag": "text",
+          "value": "é🧪"
+        },
+        {
+          "tag": "text",
+          "value": "field-2"
+        },
+        {
+          "tag": "text",
+          "value": "field-3"
+        },
+        {
+          "tag": "text",
+          "value": "field-4"
+        },
+        {
+          "tag": "digest",
+          "value": "sha256:0606060606060606060606060606060606060606060606060606060606060606"
+        },
+        {
+          "tag": "digest",
+          "value": "sha256:0707070707070707070707070707070707070707070707070707070707070707"
+        },
+        {
+          "tag": "text",
+          "value": "field-7"
+        },
+        {
+          "tag": "text",
+          "value": "field-8"
+        },
+        {
+          "tag": "text",
+          "value": "field-9"
+        },
+        {
+          "tag": "text",
+          "value": "field-10"
+        },
+        {
+          "tag": "integer",
+          "value": "11"
+        },
+        {
+          "tag": "integer",
+          "value": "12"
+        },
+        {
+          "tag": "integer",
+          "value": "13"
+        },
+        {
+          "tag": "integer",
+          "value": "14"
+        },
+        {
+          "tag": "digest",
+          "value": "sha256:1010101010101010101010101010101010101010101010101010101010101010"
+        },
+        {
+          "tag": "digest",
+          "value": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+        },
+        {
+          "tag": "digest",
+          "value": "sha256:1212121212121212121212121212121212121212121212121212121212121212"
+        },
+        {
+          "tag": "digest",
+          "value": "sha256:1313131313131313131313131313131313131313131313131313131313131313"
+        },
+        {
+          "tag": "boolean",
+          "value": true
+        },
+        {
+          "tag": "boolean",
+          "value": false
+        },
+        {
+          "tag": "boolean",
+          "value": true
+        },
+        {
+          "tag": "integer",
+          "value": "22"
+        },
+        {
+          "tag": "integer",
+          "value": "23"
+        },
+        {
+          "tag": "integer",
+          "value": "24"
+        },
+        {
+          "tag": "integer",
+          "value": "25"
+        },
+        {
+          "tag": "integer",
+          "value": "26"
+        },
+        {
+          "tag": "integer",
+          "value": "27"
+        }
+      ],
+      "frame_hex": "514350563201002770726f76656e616e63652d76322d736f757263652d656e64706f696e742d7265717565737440310000001c0100000000000000076669656c642d30010000000000000006c3a9f09fa7aa0100000000000000076669656c642d320100000000000000076669656c642d330100000000000000076669656c642d34040000000000000020060606060606060606060606060606060606060606060606060606060606060604000000000000002007070707070707070707070707070707070707070707070707070707070707070100000000000000076669656c642d370100000000000000076669656c642d380100000000000000076669656c642d390100000000000000086669656c642d313002000000000000000231310200000000000000023132020000000000000002313302000000000000000231340400000000000000201010101010101010101010101010101010101010101010101010101010101010040000000000000020111111111111111111111111111111111111111111111111111111111111111104000000000000002012121212121212121212121212121212121212121212121212121212121212120400000000000000201313131313131313131313131313131313131313131313131313131313131313030000000000000001010300000000000000010003000000000000000101020000000000000002323202000000000000000232330200000000000000023234020000000000000002323502000000000000000232360200000000000000023237",
+      "sha256": "sha256:be58a31d692011dacf906c9b283249ce70251b71a4b20954e6c3ccad0863188c"
+    },
+    {
+      "name": "leaf-source_endpoint_parameter",
+      "registry_table": "provenance_v2_source_endpoint_parameter",
+      "collection_name": null,
+      "domain": "provenance-v2-endpoint-parameter@1",
+      "fields": [
+        {
+          "tag": "text",
+          "value": "field-0"
+        },
+        {
+          "tag": "text",
+          "value": "é🧪"
+        },
+        {
+          "tag": "integer",
+          "value": "2"
+        },
+        {
+          "tag": "text",
+          "value": "field-3"
+        },
+        {
+          "tag": "text",
+          "value": "field-4"
+        },
+        {
+          "tag": "text",
+          "value": "field-5"
+        },
+        {
+          "tag": "boolean",
+          "value": false
+        },
+        {
+          "tag": "null",
+          "value": null
+        },
+        {
+          "tag": "integer",
+          "value": "8"
+        },
+        {
+          "tag": "integer",
+          "value": "9"
+        }
+      ],
+      "frame_hex": "514350563201002270726f76656e616e63652d76322d656e64706f696e742d706172616d6574657240310000000a0100000000000000076669656c642d30010000000000000006c3a9f09fa7aa020000000000000001320100000000000000076669656c642d330100000000000000076669656c642d340100000000000000076669656c642d35030000000000000001000000000000000000000200000000000000013802000000000000000139",
+      "sha256": "sha256:e98190943ade61e59ff350bdde97743c9dc5e80d03f6abafbf04629ecb43d211"
+    },
+    {
+      "name": "leaf-source_endpoint_parameter_enum",
+      "registry_table": "provenance_v2_source_endpoint_parameter_enum",
+      "collection_name": null,
+      "domain": "provenance-v2-endpoint-parameter-enum@1",
+      "fields": [
+        {
+          "tag": "text",
+          "value": "field-0"
+        },
+        {
+          "tag": "text",
+          "value": "é🧪"
+        },
+        {
+          "tag": "integer",
+          "value": "2"
+        },
+        {
+          "tag": "text",
+          "value": "field-3"
+        },
+        {
+          "tag": "integer",
+          "value": "4"
+        },
+        {
+          "tag": "digest",
+          "value": "sha256:0606060606060606060606060606060606060606060606060606060606060606"
+        }
+      ],
+      "frame_hex": "514350563201002770726f76656e616e63652d76322d656e64706f696e742d706172616d657465722d656e756d4031000000060100000000000000076669656c642d30010000000000000006c3a9f09fa7aa020000000000000001320100000000000000076669656c642d33020000000000000001340400000000000000200606060606060606060606060606060606060606060606060606060606060606",
+      "sha256": "sha256:6f795b43b6362e91670905e5803be399b8fec016bba27f80d401c1a5db04a4e7"
+    },
+    {
+      "name": "leaf-source_endpoint_allowed_header",
+      "registry_table": "provenance_v2_source_endpoint_allowed_header",
+      "collection_name": null,
+      "domain": "provenance-v2-endpoint-allowed-header@1",
+      "fields": [
+        {
+          "tag": "text",
+          "value": "field-0"
+        },
+        {
+          "tag": "text",
+          "value": "é🧪"
+        },
+        {
+          "tag": "integer",
+          "value": "2"
+        },
+        {
+          "tag": "text",
+          "value": "field-3"
+        }
+      ],
+      "frame_hex": "514350563201002770726f76656e616e63652d76322d656e64706f696e742d616c6c6f7765642d6865616465724031000000040100000000000000076669656c642d30010000000000000006c3a9f09fa7aa020000000000000001320100000000000000076669656c642d33",
+      "sha256": "sha256:addeb0dce5f58b2f0c3469018f4c91e51af7e796b6ecca3ade7abb0a9ffe3f28"
+    },
+    {
+      "name": "leaf-source_endpoint_redirect_host",
+      "registry_table": "provenance_v2_source_endpoint_redirect_host",
+      "collection_name": null,
+      "domain": "provenance-v2-endpoint-redirect-host@1",
+      "fields": [
+        {
+          "tag": "text",
+          "value": "field-0"
+        },
+        {
+          "tag": "text",
+          "value": "é🧪"
+        },
+        {
+          "tag": "integer",
+          "value": "2"
+        },
+        {
+          "tag": "text",
+          "value": "field-3"
+        }
+      ],
+      "frame_hex": "514350563201002670726f76656e616e63652d76322d656e64706f696e742d72656469726563742d686f73744031000000040100000000000000076669656c642d30010000000000000006c3a9f09fa7aa020000000000000001320100000000000000076669656c642d33",
+      "sha256": "sha256:a673aa9e0ea21e409fd642a4c0fe09b2317cca896b0708e8bc7cb035a20c2a4a"
+    },
+    {
+      "name": "leaf-source_endpoint_content_type",
+      "registry_table": "provenance_v2_source_endpoint_content_type",
+      "collection_name": null,
+      "domain": "provenance-v2-endpoint-content-type@1",
+      "fields": [
+        {
+          "tag": "text",
+          "value": "field-0"
+        },
+        {
+          "tag": "text",
+          "value": "é🧪"
+        },
+        {
+          "tag": "integer",
+          "value": "2"
+        },
+        {
+          "tag": "text",
+          "value": "field-3"
+        }
+      ],
+      "frame_hex": "514350563201002570726f76656e616e63652d76322d656e64706f696e742d636f6e74656e742d747970654031000000040100000000000000076669656c642d30010000000000000006c3a9f09fa7aa020000000000000001320100000000000000076669656c642d33",
+      "sha256": "sha256:b535192bc1997aea94d59414a28dd07a10a699ba1195059b73208fe0db24b230"
+    },
+    {
+      "name": "leaf-source_endpoint_expected_field",
+      "registry_table": "provenance_v2_source_endpoint_expected_field",
+      "collection_name": null,
+      "domain": "provenance-v2-endpoint-expected-field@1",
+      "fields": [
+        {
+          "tag": "text",
+          "value": "field-0"
+        },
+        {
+          "tag": "text",
+          "value": "é🧪"
+        },
+        {
+          "tag": "integer",
+          "value": "2"
+        },
+        {
+          "tag": "text",
+          "value": "field-3"
+        },
+        {
+          "tag": "text",
+          "value": "field-4"
+        },
+        {
+          "tag": "text",
+          "value": "field-5"
+        },
+        {
+          "tag": "text",
+          "value": "field-6"
+        },
+        {
+          "tag": "text",
+          "value": "field-7"
+        },
+        {
+          "tag": "text",
+          "value": "field-8"
+        }
+      ],
+      "frame_hex": "514350563201002770726f76656e616e63652d76322d656e64706f696e742d65787065637465642d6669656c644031000000090100000000000000076669656c642d30010000000000000006c3a9f09fa7aa020000000000000001320100000000000000076669656c642d330100000000000000076669656c642d340100000000000000076669656c642d350100000000000000076669656c642d360100000000000000076669656c642d370100000000000000076669656c642d38",
+      "sha256": "sha256:4d6c0fc29843ffa19b942f625997bde2bfa8d137ada1179b1e9ab6aa4ae4c98b"
+    },
+    {
+      "name": "leaf-source_endpoint_raw_field_mapping",
+      "registry_table": "provenance_v2_source_endpoint_raw_field_mapping",
+      "collection_name": null,
+      "domain": "provenance-v2-raw-field-mapping@1",
+      "fields": [
+        {
+          "tag": "text",
+          "value": "field-0"
+        },
+        {
+          "tag": "text",
+          "value": "é🧪"
+        },
+        {
+          "tag": "integer",
+          "value": "2"
+        },
+        {
+          "tag": "text",
+          "value": "field-3"
+        },
+        {
+          "tag": "text",
+          "value": "field-4"
+        },
+        {
+          "tag": "text",
+          "value": "field-5"
+        },
+        {
+          "tag": "text",
+          "value": "field-6"
+        },
+        {
+          "tag": "text",
+          "value": "field-7"
+        },
+        {
+          "tag": "text",
+          "value": "field-8"
+        },
+        {
+          "tag": "text",
+          "value": "field-9"
+        },
+        {
+          "tag": "text",
+          "value": "field-10"
+        },
+        {
+          "tag": "text",
+          "value": "field-11"
+        }
+      ],
+      "frame_hex": "514350563201002170726f76656e616e63652d76322d7261772d6669656c642d6d617070696e6740310000000c0100000000000000076669656c642d30010000000000000006c3a9f09fa7aa020000000000000001320100000000000000076669656c642d330100000000000000076669656c642d340100000000000000076669656c642d350100000000000000076669656c642d360100000000000000076669656c642d370100000000000000076669656c642d380100000000000000076669656c642d390100000000000000086669656c642d31300100000000000000086669656c642d3131",
+      "sha256": "sha256:f0c96c7177f5d1fc00ddcb2e2562c154c2cf75b9942e8e2692c712f82ffeaa73"
+    },
+    {
+      "name": "leaf-source_endpoint_approval",
+      "registry_table": "provenance_v2_source_endpoint_approval",
+      "collection_name": null,
+      "domain": "provenance-v2-endpoint-approval@1",
+      "fields": [
+        {
+          "tag": "text",
+          "value": "field-0"
+        },
+        {
+          "tag": "text",
+          "value": "é🧪"
+        },
+        {
+          "tag": "integer",
+          "value": "2"
+        },
+        {
+          "tag": "integer",
+          "value": "3"
+        },
+        {
+          "tag": "digest",
+          "value": "sha256:0505050505050505050505050505050505050505050505050505050505050505"
+        },
+        {
+          "tag": "integer",
+          "value": "5"
+        }
+      ],
+      "frame_hex": "514350563201002170726f76656e616e63652d76322d656e64706f696e742d617070726f76616c4031000000060100000000000000076669656c642d30010000000000000006c3a9f09fa7aa0200000000000000013202000000000000000133040000000000000020050505050505050505050505050505050505050505050505050505050505050502000000000000000135",
+      "sha256": "sha256:f8a7a254a2a3cdcfe54d5768fce6f2334df5828f236dcea6af179c2925cac653"
+    },
+    {
+      "name": "leaf-verifier_implementation",
+      "registry_table": "provenance_v2_verifier_implementation",
+      "collection_name": null,
+      "domain": "provenance-v2-verifier-implementation@1",
+      "fields": [
+        {
+          "tag": "text",
+          "value": "field-0"
+        },
+        {
+          "tag": "text",
+          "value": "é🧪"
+        },
+        {
+          "tag": "integer",
+          "value": "2"
+        },
+        {
+          "tag": "text",
+          "value": "field-3"
+        },
+        {
+          "tag": "text",
+          "value": "field-4"
+        },
+        {
+          "tag": "text",
+          "value": "field-5"
+        },
+        {
+          "tag": "digest",
+          "value": "sha256:0707070707070707070707070707070707070707070707070707070707070707"
+        },
+        {
+          "tag": "null",
+          "value": null
+        },
+        {
+          "tag": "digest",
+          "value": "sha256:0909090909090909090909090909090909090909090909090909090909090909"
+        }
+      ],
+      "frame_hex": "514350563201002770726f76656e616e63652d76322d76657269666965722d696d706c656d656e746174696f6e4031000000090100000000000000076669656c642d30010000000000000006c3a9f09fa7aa020000000000000001320100000000000000076669656c642d330100000000000000076669656c642d340100000000000000076669656c642d3504000000000000002007070707070707070707070707070707070707070707070707070707070707070000000000000000000400000000000000200909090909090909090909090909090909090909090909090909090909090909",
+      "sha256": "sha256:e1b431db04c54d53c2fc796f1207d614e539b54c6afb280df3b03f4926e7dde7"
+    },
+    {
+      "name": "leaf-verifier_policy",
+      "registry_table": "provenance_v2_verifier_policy",
+      "collection_name": null,
+      "domain": "provenance-v2-verifier-policy@1",
+      "fields": [
+        {
+          "tag": "text",
+          "value": "field-0"
+        },
+        {
+          "tag": "integer",
+          "value": "1"
+        },
+        {
+          "tag": "text",
+          "value": "field-2"
+        },
+        {
+          "tag": "text",
+          "value": "field-3"
+        },
+        {
+          "tag": "integer",
+          "value": "4"
+        },
+        {
+          "tag": "integer",
+          "value": "5"
+        },
+        {
+          "tag": "text",
+          "value": "field-6"
+        },
+        {
+          "tag": "integer",
+          "value": "7"
+        },
+        {
+          "tag": "integer",
+          "value": "8"
+        },
+        {
+          "tag": "boolean",
+          "value": true
+        },
+        {
+          "tag": "boolean",
+          "value": false
+        },
+        {
+          "tag": "text",
+          "value": "field-11"
+        },
+        {
+          "tag": "integer",
+          "value": "12"
+        },
+        {
+          "tag": "text",
+          "value": "field-13"
+        },
+        {
+          "tag": "integer",
+          "value": "14"
+        }
+      ],
+      "frame_hex": "514350563201001f70726f76656e616e63652d76322d76657269666965722d706f6c69637940310000000f0100000000000000076669656c642d30020000000000000001310100000000000000076669656c642d320100000000000000076669656c642d3302000000000000000134020000000000000001350100000000000000076669656c642d36020000000000000001370200000000000000013803000000000000000101030000000000000001000100000000000000086669656c642d313102000000000000000231320100000000000000086669656c642d31330200000000000000023134",
+      "sha256": "sha256:10ac573ffd971356a3a7df8f1949bcf9ba83cac6daf8c8369b347e8a76ba4860"
+    },
+    {
+      "name": "leaf-verifier_policy_member",
+      "registry_table": "provenance_v2_verifier_policy_member",
+      "collection_name": null,
+      "domain": "provenance-v2-verifier-policy-member@1",
+      "fields": [
+        {
+          "tag": "text",
+          "value": "field-0"
+        },
+        {
+          "tag": "text",
+          "value": "é🧪"
+        },
+        {
+          "tag": "integer",
+          "value": "2"
+        },
+        {
+          "tag": "text",
+          "value": "field-3"
+        },
+        {
+          "tag": "text",
+          "value": "field-4"
+        }
+      ],
+      "frame_hex": "514350563201002670726f76656e616e63652d76322d76657269666965722d706f6c6963792d6d656d6265724031000000050100000000000000076669656c642d30010000000000000006c3a9f09fa7aa020000000000000001320100000000000000076669656c642d330100000000000000076669656c642d34",
+      "sha256": "sha256:4fabd656ad7e05a2fb67092da2f14d6fe8d5b01a2b4df1d8920e6b17e77eafff"
+    },
+    {
+      "name": "leaf-field_path_vocabulary",
+      "registry_table": "provenance_v2_field_path_vocabulary",
+      "collection_name": null,
+      "domain": "provenance-v2-field-vocabulary-member@1",
+      "fields": [
+        {
+          "tag": "text",
+          "value": "field-0"
+        },
+        {
+          "tag": "integer",
+          "value": "1"
+        },
+        {
+          "tag": "text",
+          "value": "field-2"
+        },
+        {
+          "tag": "text",
+          "value": "field-3"
+        },
+        {
+          "tag": "text",
+          "value": "field-4"
+        },
+        {
+          "tag": "text",
+          "value": "field-5"
+        },
+        {
+          "tag": "text",
+          "value": "field-6"
+        },
+        {
+          "tag": "text",
+          "value": "field-7"
+        },
+        {
+          "tag": "text",
+          "value": "field-8"
+        },
+        {
+          "tag": "text",
+          "value": "field-9"
+        },
+        {
+          "tag": "text",
+          "value": "field-10"
+        }
+      ],
+      "frame_hex": "514350563201002770726f76656e616e63652d76322d6669656c642d766f636162756c6172792d6d656d62657240310000000b0100000000000000076669656c642d30020000000000000001310100000000000000076669656c642d320100000000000000076669656c642d330100000000000000076669656c642d340100000000000000076669656c642d350100000000000000076669656c642d360100000000000000076669656c642d370100000000000000076669656c642d380100000000000000076669656c642d390100000000000000086669656c642d3130",
+      "sha256": "sha256:331f6d8640e0b49fb2ce60f2768b5bc06308c61d438405e2910bfc22514f86f0"
+    },
+    {
+      "name": "leaf-field_path_authority_role",
+      "registry_table": "provenance_v2_field_path_authority_role",
+      "collection_name": null,
+      "domain": "provenance-v2-field-authority-role@1",
+      "fields": [
+        {
+          "tag": "text",
+          "value": "field-0"
+        },
+        {
+          "tag": "integer",
+          "value": "1"
+        },
+        {
+          "tag": "text",
+          "value": "field-2"
+        }
+      ],
+      "frame_hex": "514350563201002470726f76656e616e63652d76322d6669656c642d617574686f726974792d726f6c654031000000030100000000000000076669656c642d30020000000000000001310100000000000000076669656c642d32",
+      "sha256": "sha256:6b17bb8f3a0a5e7fa84fb334ad351c4983c849c9064d78d029c4b60de2f33268"
+    },
+    {
+      "name": "leaf-field_path_enum_value",
+      "registry_table": "provenance_v2_field_path_enum_value",
+      "collection_name": null,
+      "domain": "provenance-v2-field-enum-value@1",
+      "fields": [
+        {
+          "tag": "text",
+          "value": "field-0"
+        },
+        {
+          "tag": "integer",
+          "value": "1"
+        },
+        {
+          "tag": "text",
+          "value": "field-2"
+        }
+      ],
+      "frame_hex": "514350563201002070726f76656e616e63652d76322d6669656c642d656e756d2d76616c75654031000000030100000000000000076669656c642d30020000000000000001310100000000000000076669656c642d32",
+      "sha256": "sha256:6f15ddc7c021f95fab52fc1b8e8f0898bf08cf646cf9a7166442ba9e3c036c5f"
+    },
+    {
+      "name": "leaf-field_record_group",
+      "registry_table": "provenance_v2_field_record_group",
+      "collection_name": null,
+      "domain": "provenance-v2-field-record-group@1",
+      "fields": [
+        {
+          "tag": "integer",
+          "value": "0"
+        },
+        {
+          "tag": "text",
+          "value": "é🧪"
+        },
+        {
+          "tag": "text",
+          "value": "field-2"
+        },
+        {
+          "tag": "integer",
+          "value": "3"
+        }
+      ],
+      "frame_hex": "514350563201002270726f76656e616e63652d76322d6669656c642d7265636f72642d67726f757040310000000402000000000000000130010000000000000006c3a9f09fa7aa0100000000000000076669656c642d3202000000000000000133",
+      "sha256": "sha256:7e7316f8127307bcb6b2b0301a90de0b3c7710deb7aba1170da41d26d5228288"
+    },
+    {
+      "name": "leaf-field_record_group_member",
+      "registry_table": "provenance_v2_field_record_group_member",
+      "collection_name": null,
+      "domain": "provenance-v2-field-record-group-member@1",
+      "fields": [
+        {
+          "tag": "text",
+          "value": "field-0"
+        },
+        {
+          "tag": "integer",
+          "value": "1"
+        },
+        {
+          "tag": "text",
+          "value": "field-2"
+        }
+      ],
+      "frame_hex": "514350563201002970726f76656e616e63652d76322d6669656c642d7265636f72642d67726f75702d6d656d6265724031000000030100000000000000076669656c642d30020000000000000001310100000000000000076669656c642d32",
+      "sha256": "sha256:844c4b4be7d52349d6b9a2d1242dd6bd7dceb0ee9b5a447d1c8b94fd6baac152"
+    },
+    {
+      "name": "leaf-field_policy",
+      "registry_table": "provenance_v2_field_policy",
+      "collection_name": null,
+      "domain": "provenance-v2-field-policy@1",
+      "fields": [
+        {
+          "tag": "text",
+          "value": "field-0"
+        },
+        {
+          "tag": "integer",
+          "value": "1"
+        },
+        {
+          "tag": "text",
+          "value": "field-2"
+        },
+        {
+          "tag": "text",
+          "value": "field-3"
+        },
+        {
+          "tag": "integer",
+          "value": "4"
+        },
+        {
+          "tag": "integer",
+          "value": "5"
+        },
+        {
+          "tag": "text",
+          "value": "field-6"
+        },
+        {
+          "tag": "text",
+          "value": "field-7"
+        },
+        {
+          "tag": "text",
+          "value": "field-8"
+        },
+        {
+          "tag": "integer",
+          "value": "9"
+        },
+        {
+          "tag": "text",
+          "value": "field-10"
+        },
+        {
+          "tag": "text",
+          "value": "field-11"
+        },
+        {
+          "tag": "text",
+          "value": "field-12"
+        },
+        {
+          "tag": "integer",
+          "value": "13"
+        },
+        {
+          "tag": "integer",
+          "value": "14"
+        },
+        {
+          "tag": "integer",
+          "value": "15"
+        },
+        {
+          "tag": "integer",
+          "value": "16"
+        },
+        {
+          "tag": "digest",
+          "value": "sha256:1212121212121212121212121212121212121212121212121212121212121212"
+        }
+      ],
+      "frame_hex": "514350563201001c70726f76656e616e63652d76322d6669656c642d706f6c6963794031000000120100000000000000076669656c642d30020000000000000001310100000000000000076669656c642d320100000000000000076669656c642d3302000000000000000134020000000000000001350100000000000000076669656c642d360100000000000000076669656c642d370100000000000000076669656c642d38020000000000000001390100000000000000086669656c642d31300100000000000000086669656c642d31310100000000000000086669656c642d313202000000000000000231330200000000000000023134020000000000000002313502000000000000000231360400000000000000201212121212121212121212121212121212121212121212121212121212121212",
+      "sha256": "sha256:aa31453522e0476bb3ea5e10c19831035e6715502aa3af337b0c71980a5f4e30"
+    },
+    {
+      "name": "leaf-field_policy_member",
+      "registry_table": "provenance_v2_field_policy_member",
+      "collection_name": null,
+      "domain": "provenance-v2-field-policy-member@1",
+      "fields": [
+        {
+          "tag": "text",
+          "value": "field-0"
+        },
+        {
+          "tag": "text",
+          "value": "é🧪"
+        },
+        {
+          "tag": "integer",
+          "value": "2"
+        },
+        {
+          "tag": "text",
+          "value": "field-3"
+        }
+      ],
+      "frame_hex": "514350563201002370726f76656e616e63652d76322d6669656c642d706f6c6963792d6d656d6265724031000000040100000000000000076669656c642d30010000000000000006c3a9f09fa7aa020000000000000001320100000000000000076669656c642d33",
+      "sha256": "sha256:a62cbabf1e09f504438fee40e9bbe010012b5b3ad3ff6ede0b159579f2f04fe3"
+    },
+    {
+      "name": "leaf-field_policy_precedence_class",
+      "registry_table": "provenance_v2_field_policy_precedence_class",
+      "collection_name": null,
+      "domain": "provenance-v2-precedence-class@1",
+      "fields": [
+        {
+          "tag": "text",
+          "value": "field-0"
+        },
+        {
+          "tag": "text",
+          "value": "é🧪"
+        },
+        {
+          "tag": "text",
+          "value": "field-2"
+        },
+        {
+          "tag": "integer",
+          "value": "3"
+        },
+        {
+          "tag": "integer",
+          "value": "4"
+        }
+      ],
+      "frame_hex": "514350563201002070726f76656e616e63652d76322d707265636564656e63652d636c6173734031000000050100000000000000076669656c642d30010000000000000006c3a9f09fa7aa0100000000000000076669656c642d320200000000000000013302000000000000000134",
+      "sha256": "sha256:03a13c35e08a3a35d805435c595ce20dc6be86f6730e18fd91114ee50b574f3e"
+    },
+    {
+      "name": "leaf-field_policy_precedence_class_source",
+      "registry_table": "provenance_v2_field_policy_precedence_class_source",
+      "collection_name": null,
+      "domain": "provenance-v2-precedence-class-source@1",
+      "fields": [
+        {
+          "tag": "text",
+          "value": "field-0"
+        },
+        {
+          "tag": "text",
+          "value": "é🧪"
+        },
+        {
+          "tag": "text",
+          "value": "field-2"
+        },
+        {
+          "tag": "integer",
+          "value": "3"
+        },
+        {
+          "tag": "text",
+          "value": "field-4"
+        }
+      ],
+      "frame_hex": "514350563201002770726f76656e616e63652d76322d707265636564656e63652d636c6173732d736f757263654031000000050100000000000000076669656c642d30010000000000000006c3a9f09fa7aa0100000000000000076669656c642d32020000000000000001330100000000000000076669656c642d34",
+      "sha256": "sha256:c5edc85ec10bc82861b00115104f2a686edee24b673263ac2f89c4943cf50d7b"
+    },
+    {
+      "name": "leaf-field_policy_precedence_edge",
+      "registry_table": "provenance_v2_field_policy_precedence_edge",
+      "collection_name": null,
+      "domain": "provenance-v2-precedence-edge@1",
+      "fields": [
+        {
+          "tag": "text",
+          "value": "field-0"
+        },
+        {
+          "tag": "text",
+          "value": "é🧪"
+        },
+        {
+          "tag": "integer",
+          "value": "2"
+        },
+        {
+          "tag": "text",
+          "value": "field-3"
+        },
+        {
+          "tag": "text",
+          "value": "field-4"
+        }
+      ],
+      "frame_hex": "514350563201001f70726f76656e616e63652d76322d707265636564656e63652d656467654031000000050100000000000000076669656c642d30010000000000000006c3a9f09fa7aa020000000000000001320100000000000000076669656c642d330100000000000000076669656c642d34",
+      "sha256": "sha256:3f99323b42766a544d0b359b7445bf04a2017c08ab3a059def63126d1e4bd816"
+    },
+    {
+      "name": "leaf-field_policy_endpoint_admission",
+      "registry_table": "provenance_v2_field_policy_endpoint_admission",
+      "collection_name": null,
+      "domain": "provenance-v2-endpoint-admission@1",
+      "fields": [
+        {
+          "tag": "text",
+          "value": "field-0"
+        },
+        {
+          "tag": "text",
+          "value": "é🧪"
+        },
+        {
+          "tag": "integer",
+          "value": "2"
+        },
+        {
+          "tag": "text",
+          "value": "field-3"
+        },
+        {
+          "tag": "text",
+          "value": "field-4"
+        },
+        {
+          "tag": "text",
+          "value": "field-5"
+        },
+        {
+          "tag": "text",
+          "value": "field-6"
+        }
+      ],
+      "frame_hex": "514350563201002270726f76656e616e63652d76322d656e64706f696e742d61646d697373696f6e4031000000070100000000000000076669656c642d30010000000000000006c3a9f09fa7aa020000000000000001320100000000000000076669656c642d330100000000000000076669656c642d340100000000000000076669656c642d350100000000000000076669656c642d36",
+      "sha256": "sha256:2d80399b426dd84c9cf94f0b464fe4bf784ac3a5622c36bb5c123eefcabdd0a6"
+    },
+    {
+      "name": "leaf-field_policy_endpoint_exclusion",
+      "registry_table": "provenance_v2_field_policy_endpoint_exclusion",
+      "collection_name": null,
+      "domain": "provenance-v2-endpoint-exclusion@1",
+      "fields": [
+        {
+          "tag": "text",
+          "value": "field-0"
+        },
+        {
+          "tag": "text",
+          "value": "é🧪"
+        },
+        {
+          "tag": "integer",
+          "value": "2"
+        },
+        {
+          "tag": "text",
+          "value": "field-3"
+        },
+        {
+          "tag": "text",
+          "value": "field-4"
+        }
+      ],
+      "frame_hex": "514350563201002270726f76656e616e63652d76322d656e64706f696e742d6578636c7573696f6e4031000000050100000000000000076669656c642d30010000000000000006c3a9f09fa7aa020000000000000001320100000000000000076669656c642d330100000000000000076669656c642d34",
+      "sha256": "sha256:f8f5539df7ffcaf95e3f6f044d246c8738fec4048d2734158805613190a8bed9"
+    },
+    {
+      "name": "collection-adapter_manifest_set_root",
+      "registry_table": null,
+      "collection_name": "adapter_manifest_set_root",
+      "domain": "provenance-v2-adapter-manifest-set@1",
+      "fields": [
+        {
+          "tag": "text",
+          "value": "field-0"
+        },
+        {
+          "tag": "integer",
+          "value": "2"
+        },
+        {
+          "tag": "digest",
+          "value": "sha256:0303030303030303030303030303030303030303030303030303030303030303"
+        },
+        {
+          "tag": "digest",
+          "value": "sha256:0404040404040404040404040404040404040404040404040404040404040404"
+        }
+      ],
+      "frame_hex": "514350563201002470726f76656e616e63652d76322d616461707465722d6d616e69666573742d7365744031000000040100000000000000076669656c642d300200000000000000013204000000000000002003030303030303030303030303030303030303030303030303030303030303030400000000000000200404040404040404040404040404040404040404040404040404040404040404",
+      "sha256": "sha256:d3bbcb23425f272c3ccfb7fa9bc008fd02e78a64ca1ab2976b4f78a908011183"
+    },
+    {
+      "name": "collection-endpoint_set_root",
+      "registry_table": null,
+      "collection_name": "endpoint_set_root",
+      "domain": "provenance-v2-endpoint-set@1",
+      "fields": [
+        {
+          "tag": "text",
+          "value": "field-0"
+        },
+        {
+          "tag": "integer",
+          "value": "2"
+        },
+        {
+          "tag": "digest",
+          "value": "sha256:0303030303030303030303030303030303030303030303030303030303030303"
+        },
+        {
+          "tag": "digest",
+          "value": "sha256:0404040404040404040404040404040404040404040404040404040404040404"
+        }
+      ],
+      "frame_hex": "514350563201001c70726f76656e616e63652d76322d656e64706f696e742d7365744031000000040100000000000000076669656c642d300200000000000000013204000000000000002003030303030303030303030303030303030303030303030303030303030303030400000000000000200404040404040404040404040404040404040404040404040404040404040404",
+      "sha256": "sha256:5a0a2ca070584826263fb69f186faa0f3eb379e20126b1489d84017805219465"
+    },
+    {
+      "name": "collection-verifier_policy_set_root",
+      "registry_table": null,
+      "collection_name": "verifier_policy_set_root",
+      "domain": "provenance-v2-verifier-policy-set@1",
+      "fields": [
+        {
+          "tag": "text",
+          "value": "field-0"
+        },
+        {
+          "tag": "integer",
+          "value": "2"
+        },
+        {
+          "tag": "digest",
+          "value": "sha256:0303030303030303030303030303030303030303030303030303030303030303"
+        },
+        {
+          "tag": "digest",
+          "value": "sha256:0404040404040404040404040404040404040404040404040404040404040404"
+        }
+      ],
+      "frame_hex": "514350563201002370726f76656e616e63652d76322d76657269666965722d706f6c6963792d7365744031000000040100000000000000076669656c642d300200000000000000013204000000000000002003030303030303030303030303030303030303030303030303030303030303030400000000000000200404040404040404040404040404040404040404040404040404040404040404",
+      "sha256": "sha256:0ec70a609b8a90ae9c39b5cdcb16311e0df0bcc824951a30be5e6a03aab43e65"
+    },
+    {
+      "name": "collection-field_policy_set_root",
+      "registry_table": null,
+      "collection_name": "field_policy_set_root",
+      "domain": "provenance-v2-field-policy-set@1",
+      "fields": [
+        {
+          "tag": "text",
+          "value": "field-0"
+        },
+        {
+          "tag": "integer",
+          "value": "2"
+        },
+        {
+          "tag": "digest",
+          "value": "sha256:0303030303030303030303030303030303030303030303030303030303030303"
+        },
+        {
+          "tag": "digest",
+          "value": "sha256:0404040404040404040404040404040404040404040404040404040404040404"
+        }
+      ],
+      "frame_hex": "514350563201002070726f76656e616e63652d76322d6669656c642d706f6c6963792d7365744031000000040100000000000000076669656c642d300200000000000000013204000000000000002003030303030303030303030303030303030303030303030303030303030303030400000000000000200404040404040404040404040404040404040404040404040404040404040404",
+      "sha256": "sha256:5515908f0b1e9f00602d206d27b43cff4c27482eaffda2cb563be9fa70442636"
+    },
+    {
+      "name": "collection-authority_root",
+      "registry_table": null,
+      "collection_name": "authority_root",
+      "domain": "provenance-v2-authority-root-frame@1",
+      "fields": [
+        {
+          "tag": "text",
+          "value": "field-0"
+        },
+        {
+          "tag": "digest",
+          "value": "sha256:0202020202020202020202020202020202020202020202020202020202020202"
+        },
+        {
+          "tag": "digest",
+          "value": "sha256:0303030303030303030303030303030303030303030303030303030303030303"
+        },
+        {
+          "tag": "text",
+          "value": "field-3"
+        },
+        {
+          "tag": "text",
+          "value": "field-4"
+        },
+        {
+          "tag": "text",
+          "value": "field-5"
+        },
+        {
+          "tag": "text",
+          "value": "field-6"
+        },
+        {
+          "tag": "digest",
+          "value": "sha256:0808080808080808080808080808080808080808080808080808080808080808"
+        },
+        {
+          "tag": "integer",
+          "value": "8"
+        },
+        {
+          "tag": "integer",
+          "value": "9"
+        },
+        {
+          "tag": "integer",
+          "value": "10"
+        },
+        {
+          "tag": "integer",
+          "value": "11"
+        },
+        {
+          "tag": "integer",
+          "value": "12"
+        },
+        {
+          "tag": "integer",
+          "value": "13"
+        },
+        {
+          "tag": "integer",
+          "value": "14"
+        },
+        {
+          "tag": "digest",
+          "value": "sha256:1010101010101010101010101010101010101010101010101010101010101010"
+        },
+        {
+          "tag": "integer",
+          "value": "16"
+        },
+        {
+          "tag": "digest",
+          "value": "sha256:1212121212121212121212121212121212121212121212121212121212121212"
+        },
+        {
+          "tag": "integer",
+          "value": "18"
+        },
+        {
+          "tag": "digest",
+          "value": "sha256:1414141414141414141414141414141414141414141414141414141414141414"
+        },
+        {
+          "tag": "integer",
+          "value": "20"
+        },
+        {
+          "tag": "digest",
+          "value": "sha256:1616161616161616161616161616161616161616161616161616161616161616"
+        }
+      ],
+      "frame_hex": "514350563201002470726f76656e616e63652d76322d617574686f726974792d726f6f742d6672616d654031000000160100000000000000076669656c642d30040000000000000020020202020202020202020202020202020202020202020202020202020202020204000000000000002003030303030303030303030303030303030303030303030303030303030303030100000000000000076669656c642d330100000000000000076669656c642d340100000000000000076669656c642d350100000000000000076669656c642d3604000000000000002008080808080808080808080808080808080808080808080808080808080808080200000000000000013802000000000000000139020000000000000002313002000000000000000231310200000000000000023132020000000000000002313302000000000000000231340400000000000000201010101010101010101010101010101010101010101010101010101010101010020000000000000002313604000000000000002012121212121212121212121212121212121212121212121212121212121212120200000000000000023138040000000000000020141414141414141414141414141414141414141414141414141414141414141402000000000000000232300400000000000000201616161616161616161616161616161616161616161616161616161616161616",
+      "sha256": "sha256:23f45203b8f43920e33adabcc2be0847cf1d2a6bcc2e0d72a62d67e4b2595417"
+    },
+    {
+      "name": "collection-oracle_receipt_hash",
+      "registry_table": null,
+      "collection_name": "oracle_receipt_hash",
+      "domain": "provenance-v2-oracle-receipt@1",
+      "fields": [
+        {
+          "tag": "text",
+          "value": "field-0"
+        },
+        {
+          "tag": "text",
+          "value": "é🧪"
+        },
+        {
+          "tag": "digest",
+          "value": "sha256:0303030303030303030303030303030303030303030303030303030303030303"
+        },
+        {
+          "tag": "digest",
+          "value": "sha256:0404040404040404040404040404040404040404040404040404040404040404"
+        },
+        {
+          "tag": "digest",
+          "value": "sha256:0505050505050505050505050505050505050505050505050505050505050505"
+        },
+        {
+          "tag": "integer",
+          "value": "5"
+        }
+      ],
+      "frame_hex": "514350563201001e70726f76656e616e63652d76322d6f7261636c652d726563656970744031000000060100000000000000076669656c642d30010000000000000006c3a9f09fa7aa04000000000000002003030303030303030303030303030303030303030303030303030303030303030400000000000000200404040404040404040404040404040404040404040404040404040404040404040000000000000020050505050505050505050505050505050505050505050505050505050505050502000000000000000135",
+      "sha256": "sha256:79bfdd51872f0b561742ea3493d06abb60cdd6186e63dd773cd055047559b827"
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "contract_version": "provenance-v2-registration-semantics@1",
+  "status": "review_candidate",
+  "oracle_revalidates_all_semantics": true,
+  "initial_primary_order_kind": "total",
+  "incomparability_can_select_or_fallback": false,
+  "provider_structured_class": [
+    "provider_exact_api",
+    "provider_exact_authenticated_catalog"
+  ],
+  "provider_structured_admission_role": "primary",
+  "equal_authority_disagreement": "unknown_or_quarantine_per_group_policy",
+  "forbidden_primary_source_classes": [
+    "publisher_checkpoint",
+    "independent_structured_catalog"
+  ],
+  "tuple_policy_unit": "record_group",
+  "tuple_shared_authority": [
+    "policy_version",
+    "endpoint_disposition",
+    "precedence_graph",
+    "effective_interval",
+    "claim",
+    "observation",
+    "evidence",
+    "applicability"
+  ],
+  "hash_classes": [
+    "digest_output",
+    "safe_preimage",
+    "external_anchor",
+    "top_level_root",
+    "lifecycle_metadata"
+  ],
+  "unclassified_hash_result": "reject",
+  "null_absence_zero_unknown_not_applicable_distinct": true,
+  "visitor_or_credential_values_allowed": false
+}

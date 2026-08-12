@@ -1,0 +1,374 @@
+{
+  "$id": "ProvenanceV2AuthorityRootRegistry",
+  "additionalProperties": false,
+  "x-quantclarity-contract-status": "review_candidate",
+  "type": "object",
+  "required": [
+    "contract_version",
+    "target_migration",
+    "status",
+    "root_owners",
+    "collections",
+    "entries"
+  ],
+  "properties": {
+    "contract_version": {
+      "const": "provenance-v2-root-registry@1",
+      "type": "string"
+    },
+    "target_migration": {
+      "const": "0010_activate_provenance_v2_registration.sql",
+      "type": "string"
+    },
+    "status": {
+      "const": "review_candidate",
+      "type": "string"
+    },
+    "root_owners": {
+      "minItems": 7,
+      "maxItems": 7,
+      "uniqueItems": true,
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "const": "adapter_manifest_set",
+            "type": "string"
+          },
+          {
+            "const": "endpoint_set",
+            "type": "string"
+          },
+          {
+            "const": "verifier_policy_set",
+            "type": "string"
+          },
+          {
+            "const": "field_policy_set",
+            "type": "string"
+          },
+          {
+            "const": "top_level_authority_root",
+            "type": "string"
+          },
+          {
+            "const": "lifecycle_overlay",
+            "type": "string"
+          },
+          {
+            "const": "prohibited",
+            "type": "string"
+          }
+        ]
+      }
+    },
+    "collections": {
+      "minItems": 6,
+      "uniqueItems": true,
+      "type": "array",
+      "items": {
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "domain",
+          "member_root_owner",
+          "fields"
+        ],
+        "properties": {
+          "name": {
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "type": "string"
+          },
+          "domain": {
+            "pattern": "^provenance-v2-[a-z0-9-]+@1$",
+            "type": "string"
+          },
+          "member_root_owner": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "const": "adapter_manifest_set",
+                    "type": "string"
+                  },
+                  {
+                    "const": "endpoint_set",
+                    "type": "string"
+                  },
+                  {
+                    "const": "verifier_policy_set",
+                    "type": "string"
+                  },
+                  {
+                    "const": "field_policy_set",
+                    "type": "string"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fields": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "additionalProperties": false,
+              "type": "object",
+              "required": [
+                "name",
+                "frame_type",
+                "repeated"
+              ],
+              "properties": {
+                "name": {
+                  "pattern": "^[a-z][a-z0-9_]*$",
+                  "type": "string"
+                },
+                "frame_type": {
+                  "anyOf": [
+                    {
+                      "const": "text",
+                      "type": "string"
+                    },
+                    {
+                      "const": "integer",
+                      "type": "string"
+                    },
+                    {
+                      "const": "boolean",
+                      "type": "string"
+                    },
+                    {
+                      "const": "digest",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "repeated": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "entries": {
+      "minItems": 1,
+      "uniqueItems": true,
+      "type": "array",
+      "items": {
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "table",
+          "disposition",
+          "root_owner",
+          "leaf_domain",
+          "order_by",
+          "count_source",
+          "digest_output",
+          "fields",
+          "child_tables"
+        ],
+        "properties": {
+          "table": {
+            "pattern": "^provenance_v2_[a-z0-9_]+$",
+            "type": "string"
+          },
+          "disposition": {
+            "anyOf": [
+              {
+                "const": "root_member",
+                "type": "string"
+              },
+              {
+                "const": "top_level",
+                "type": "string"
+              },
+              {
+                "const": "lifecycle_overlay",
+                "type": "string"
+              },
+              {
+                "const": "prohibited",
+                "type": "string"
+              }
+            ]
+          },
+          "root_owner": {
+            "anyOf": [
+              {
+                "const": "adapter_manifest_set",
+                "type": "string"
+              },
+              {
+                "const": "endpoint_set",
+                "type": "string"
+              },
+              {
+                "const": "verifier_policy_set",
+                "type": "string"
+              },
+              {
+                "const": "field_policy_set",
+                "type": "string"
+              },
+              {
+                "const": "top_level_authority_root",
+                "type": "string"
+              },
+              {
+                "const": "lifecycle_overlay",
+                "type": "string"
+              },
+              {
+                "const": "prohibited",
+                "type": "string"
+              }
+            ]
+          },
+          "leaf_domain": {
+            "anyOf": [
+              {
+                "pattern": "^provenance-v2-[a-z0-9-]+@1$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "order_by": {
+            "uniqueItems": true,
+            "type": "array",
+            "items": {
+              "pattern": "^[a-z][a-z0-9_]*$",
+              "type": "string"
+            }
+          },
+          "count_source": {
+            "anyOf": [
+              {
+                "pattern": "^[a-z][a-z0-9_.]*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "digest_output": {
+            "anyOf": [
+              {
+                "pattern": "^[a-z][a-z0-9_]*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fields": {
+            "uniqueItems": true,
+            "type": "array",
+            "items": {
+              "additionalProperties": false,
+              "type": "object",
+              "required": [
+                "name",
+                "frame_type",
+                "nullable",
+                "hash_class",
+                "anchor"
+              ],
+              "properties": {
+                "name": {
+                  "pattern": "^[a-z][a-z0-9_]*$",
+                  "type": "string"
+                },
+                "frame_type": {
+                  "anyOf": [
+                    {
+                      "const": "text",
+                      "type": "string"
+                    },
+                    {
+                      "const": "integer",
+                      "type": "string"
+                    },
+                    {
+                      "const": "boolean",
+                      "type": "string"
+                    },
+                    {
+                      "const": "digest",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "nullable": {
+                  "type": "boolean"
+                },
+                "hash_class": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "const": "digest_output",
+                          "type": "string"
+                        },
+                        {
+                          "const": "safe_preimage",
+                          "type": "string"
+                        },
+                        {
+                          "const": "external_anchor",
+                          "type": "string"
+                        },
+                        {
+                          "const": "top_level_root",
+                          "type": "string"
+                        },
+                        {
+                          "const": "lifecycle_metadata",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "anchor": {
+                  "anyOf": [
+                    {
+                      "minLength": 1,
+                      "maxLength": 256,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "child_tables": {
+            "uniqueItems": true,
+            "type": "array",
+            "items": {
+              "pattern": "^provenance_v2_[a-z0-9_]+$",
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  }
+}

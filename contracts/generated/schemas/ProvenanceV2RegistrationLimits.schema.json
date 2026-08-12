@@ -1,0 +1,108 @@
+{
+  "$id": "ProvenanceV2RegistrationLimits",
+  "additionalProperties": false,
+  "x-quantclarity-contract-status": "review_candidate",
+  "type": "object",
+  "required": [
+    "contract_version",
+    "acceptance_status",
+    "evidence_artifact_hash",
+    "provider_count",
+    "endpoint_count",
+    "normalized_row_count",
+    "canonical_document_bytes",
+    "root_input_bytes",
+    "parameter_enum_rows",
+    "precedence_edges",
+    "verifier_members",
+    "raw_field_mappings",
+    "document_chunks",
+    "document_chunk_bytes",
+    "oracle_result_pages",
+    "oracle_d1_calls",
+    "oracle_cpu_milliseconds"
+  ],
+  "properties": {
+    "contract_version": {
+      "const": "provenance-v2-registration-limits@1",
+      "type": "string"
+    },
+    "acceptance_status": {
+      "const": "benchmark_pending",
+      "type": "string"
+    },
+    "evidence_artifact_hash": {
+      "type": "null"
+    },
+    "provider_count": {
+      "minimum": 1,
+      "maximum": 16,
+      "type": "integer"
+    },
+    "endpoint_count": {
+      "minimum": 1,
+      "maximum": 512,
+      "type": "integer"
+    },
+    "normalized_row_count": {
+      "minimum": 1,
+      "maximum": 5000000,
+      "type": "integer"
+    },
+    "canonical_document_bytes": {
+      "minimum": 1,
+      "maximum": 1000000000,
+      "type": "integer"
+    },
+    "root_input_bytes": {
+      "minimum": 1,
+      "maximum": 1000000000,
+      "type": "integer"
+    },
+    "parameter_enum_rows": {
+      "minimum": 0,
+      "maximum": 4194304,
+      "type": "integer"
+    },
+    "precedence_edges": {
+      "minimum": 0,
+      "maximum": 524288,
+      "type": "integer"
+    },
+    "verifier_members": {
+      "minimum": 1,
+      "maximum": 32768,
+      "type": "integer"
+    },
+    "raw_field_mappings": {
+      "minimum": 1,
+      "maximum": 65536,
+      "type": "integer"
+    },
+    "document_chunks": {
+      "minimum": 1,
+      "maximum": 16384,
+      "type": "integer"
+    },
+    "document_chunk_bytes": {
+      "minimum": 1,
+      "maximum": 1000000,
+      "type": "integer"
+    },
+    "oracle_result_pages": {
+      "minimum": 1,
+      "maximum": 65536,
+      "type": "integer"
+    },
+    "oracle_d1_calls": {
+      "minimum": 1,
+      "maximum": 65536,
+      "type": "integer"
+    },
+    "oracle_cpu_milliseconds": {
+      "minimum": 1,
+      "maximum": 300000,
+      "type": "integer"
+    }
+  }
+}

@@ -1,9 +1,16 @@
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 
 import {
   API_ROUTE_POLICIES,
   GENERATED_SCHEMAS,
+  PROVENANCE_V2_AUTHORITY_ROOT_REGISTRY,
+  PROVENANCE_V2_AUTHORITY_ROOT_VECTORS,
+  PROVENANCE_V2_CANONICAL_JSON_CONTRACT,
+  PROVENANCE_V2_FIELD_CORPUS,
+  PROVENANCE_V2_FRAME_CONTRACT,
+  PROVENANCE_V2_RAW_FIELD_MAPPING_CONTRACT,
+  PROVENANCE_V2_SEMANTIC_POLICY,
 } from "@quant-clarity/contracts";
 
 type JsonObject = Record<string, unknown>;
@@ -1501,6 +1508,34 @@ const files = new Map<string, string>([
         `${JSON.stringify(schema, null, 2)}\n`,
       ] as const,
   ),
+  [
+    "provenance-v2/canonical-json.v1.json",
+    `${JSON.stringify(PROVENANCE_V2_CANONICAL_JSON_CONTRACT, null, 2)}\n`,
+  ],
+  [
+    "provenance-v2/frame-contract.v1.json",
+    `${JSON.stringify(PROVENANCE_V2_FRAME_CONTRACT, null, 2)}\n`,
+  ],
+  [
+    "provenance-v2/field-corpus.v1.json",
+    `${JSON.stringify(PROVENANCE_V2_FIELD_CORPUS, null, 2)}\n`,
+  ],
+  [
+    "provenance-v2/raw-field-mapping-contract.v1.json",
+    `${JSON.stringify(PROVENANCE_V2_RAW_FIELD_MAPPING_CONTRACT, null, 2)}\n`,
+  ],
+  [
+    "provenance-v2/registration-semantics.v1.json",
+    `${JSON.stringify(PROVENANCE_V2_SEMANTIC_POLICY, null, 2)}\n`,
+  ],
+  [
+    "provenance-v2/root-registry.v1.json",
+    `${JSON.stringify(PROVENANCE_V2_AUTHORITY_ROOT_REGISTRY, null, 2)}\n`,
+  ],
+  [
+    "provenance-v2/golden-vectors.v1.json",
+    `${JSON.stringify(PROVENANCE_V2_AUTHORITY_ROOT_VECTORS, null, 2)}\n`,
+  ],
 ]);
 
 const check = process.argv.includes("--check");
@@ -1528,15 +1563,13 @@ for (const relativePath of await generatedFiles(generatedDirectory)) {
   else await rm(resolve(generatedDirectory, relativePath));
 }
 
-if (!check)
-  await mkdir(resolve(generatedDirectory, "schemas"), { recursive: true });
-
 for (const [relativePath, contents] of files) {
   const path = resolve(generatedDirectory, relativePath);
   if (check) {
     const existing = await readFile(path, "utf8").catch(() => null);
     if (existing !== contents) mismatches.push(relativePath);
   } else {
+    await mkdir(dirname(path), { recursive: true });
     await writeFile(path, contents, { encoding: "utf8" });
   }
 }

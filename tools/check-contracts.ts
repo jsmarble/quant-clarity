@@ -5,7 +5,17 @@ import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 import type { AnySchema } from "ajv";
 
-import { API_ROUTE_POLICIES } from "@quant-clarity/contracts";
+import {
+  API_ROUTE_POLICIES,
+  PROVENANCE_V2_AUTHORITY_ROOT_REGISTRY,
+  PROVENANCE_V2_AUTHORITY_ROOT_VECTORS,
+  PROVENANCE_V2_CANONICAL_JSON_CONTRACT,
+  PROVENANCE_V2_FIELD_CORPUS,
+  PROVENANCE_V2_FRAME_CONTRACT,
+  PROVENANCE_V2_RAW_FIELD_MAPPING_CONTRACT,
+  PROVENANCE_V2_SEMANTIC_POLICY,
+  validateProvenanceV2ContractArtifacts,
+} from "@quant-clarity/contracts";
 
 type JsonObject = Record<string, unknown>;
 
@@ -19,12 +29,66 @@ const openapi = JSON.parse(
 const openapiYaml = JSON.parse(
   await readFile(resolve("contracts/generated/openapi.yaml"), "utf8"),
 ) as JsonObject;
+const provenanceArtifacts = [
+  ["canonical-json.v1.json", PROVENANCE_V2_CANONICAL_JSON_CONTRACT],
+  ["frame-contract.v1.json", PROVENANCE_V2_FRAME_CONTRACT],
+  ["field-corpus.v1.json", PROVENANCE_V2_FIELD_CORPUS],
+  [
+    "raw-field-mapping-contract.v1.json",
+    PROVENANCE_V2_RAW_FIELD_MAPPING_CONTRACT,
+  ],
+  ["registration-semantics.v1.json", PROVENANCE_V2_SEMANTIC_POLICY],
+  ["root-registry.v1.json", PROVENANCE_V2_AUTHORITY_ROOT_REGISTRY],
+  ["golden-vectors.v1.json", PROVENANCE_V2_AUTHORITY_ROOT_VECTORS],
+] as const;
+for (const [filename, expected] of provenanceArtifacts) {
+  const generated = JSON.parse(
+    await readFile(
+      resolve("contracts/generated/provenance-v2", filename),
+      "utf8",
+    ),
+  ) as unknown;
+  if (JSON.stringify(generated) !== JSON.stringify(expected))
+    throw new Error(`Generated provenance-v2 artifact drifted: ${filename}`);
+  if (!isObject(generated) || generated.status !== "review_candidate")
+    throw new Error(
+      `Generated provenance-v2 artifact lacks review-candidate status: ${filename}`,
+    );
+}
+for (const schemaName of [
+  "ProvenanceV2AdapterReceipt",
+  "ProvenanceV2AuthorityRootRegistry",
+  "ProvenanceV2AuthorityRootVectors",
+  "ProvenanceV2FieldCorpus",
+  "ProvenanceV2RawFieldMapping",
+  "ProvenanceV2RegistrationLimits",
+  "ProvenanceV2RegistrationPlan",
+]) {
+  const schema = JSON.parse(
+    await readFile(
+      resolve("contracts/generated/schemas", `${schemaName}.schema.json`),
+      "utf8",
+    ),
+  ) as unknown;
+  if (
+    !isObject(schema) ||
+    schema["x-quantclarity-contract-status"] !== "review_candidate"
+  )
+    throw new Error(
+      `Generated provenance-v2 schema lacks review-candidate status: ${schemaName}`,
+    );
+}
 if (JSON.stringify(openapiYaml) !== JSON.stringify(openapi))
   throw new Error("OpenAPI JSON and YAML representations differ.");
 const components = openapi.components;
 if (!isObject(components) || !isObject(components.schemas))
   throw new Error("OpenAPI components.schemas is missing.");
 const errors: string[] = [];
+errors.push(
+  ...validateProvenanceV2ContractArtifacts(
+    PROVENANCE_V2_AUTHORITY_ROOT_VECTORS,
+  ),
+);
 if (!Array.isArray(openapi.security) || openapi.security.length !== 0)
   errors.push("public API must remain anonymous with an empty security array");
 if (
@@ -39,6 +103,11 @@ addFormats(ajv);
 ajv.addKeyword({
   keyword: "x-extensible-enum",
   schemaType: "array",
+  valid: true,
+});
+ajv.addKeyword({
+  keyword: "x-quantclarity-contract-status",
+  schemaType: "string",
   valid: true,
 });
 const validators = new Map<string, ReturnType<typeof ajv.compile>>();
@@ -1541,6 +1610,11 @@ for (const filename of await readdir(schemaDirectory)) {
   schemaAjv.addKeyword({
     keyword: "x-extensible-enum",
     schemaType: "array",
+    valid: true,
+  });
+  schemaAjv.addKeyword({
+    keyword: "x-quantclarity-contract-status",
+    schemaType: "string",
     valid: true,
   });
   try {

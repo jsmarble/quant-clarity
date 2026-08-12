@@ -1,0 +1,15 @@
+{
+  "contract_version": "provenance-v2-raw-field-mapping@1",
+  "status": "review_candidate",
+  "json_pointer_contract": "RFC6901",
+  "array_member_wildcard_token": "~*",
+  "wildcard_limit_per_locator": 1,
+  "general_json_path_allowed": false,
+  "provider_label_comparison": "exact-NFC-UTF8",
+  "fuzzy_or_generative_equivalence_allowed": false,
+  "registered_literal_scope": "corpus-valid non-secret applicability or record discriminator",
+  "every_expected_field_requires_mapping": true,
+  "every_expected_field_requires_admission_or_exclusion": true,
+  "mapping_root_owner": "endpoint_set",
+  "admission_and_exclusion_root_owner": "field_policy_set"
+}

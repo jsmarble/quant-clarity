@@ -1,0 +1,24 @@
+{
+  "contract_version": "provenance-v2-authority-root@1",
+  "status": "review_candidate",
+  "magic_hex": "514350563201",
+  "domain_length": "uint16-big-endian",
+  "domain_encoding": "printable-ascii",
+  "field_count": "uint32-big-endian",
+  "field_header": "one-byte-tag + uint64-big-endian-payload-length",
+  "tags": {
+    "null": 0,
+    "text": 1,
+    "integer": 2,
+    "boolean": 3,
+    "bytes": 4,
+    "digest": 4
+  },
+  "digest_payload": "raw-32-byte-sha256",
+  "integer_payload": "minimal-base10-safe-integer-ascii",
+  "text_payload": "exact-NFC-UTF8",
+  "boolean_payload": "single-byte-00-or-01",
+  "null_payload": "empty",
+  "field_names_encoded": false,
+  "collection_member_encoding": "ordered-repeated-raw-child-digests"
+}

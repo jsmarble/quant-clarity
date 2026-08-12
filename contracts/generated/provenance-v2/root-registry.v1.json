@@ -1,0 +1,3832 @@
+{
+  "contract_version": "provenance-v2-root-registry@1",
+  "target_migration": "0010_activate_provenance_v2_registration.sql",
+  "status": "review_candidate",
+  "root_owners": [
+    "adapter_manifest_set",
+    "endpoint_set",
+    "verifier_policy_set",
+    "field_policy_set",
+    "top_level_authority_root",
+    "lifecycle_overlay",
+    "prohibited"
+  ],
+  "collections": [
+    {
+      "name": "adapter_manifest_set_root",
+      "domain": "provenance-v2-adapter-manifest-set@1",
+      "member_root_owner": "adapter_manifest_set",
+      "fields": [
+        {
+          "name": "authority_plan_id",
+          "frame_type": "text",
+          "repeated": false
+        },
+        {
+          "name": "member_count",
+          "frame_type": "integer",
+          "repeated": false
+        },
+        {
+          "name": "member_digest",
+          "frame_type": "digest",
+          "repeated": true
+        }
+      ]
+    },
+    {
+      "name": "endpoint_set_root",
+      "domain": "provenance-v2-endpoint-set@1",
+      "member_root_owner": "endpoint_set",
+      "fields": [
+        {
+          "name": "authority_plan_id",
+          "frame_type": "text",
+          "repeated": false
+        },
+        {
+          "name": "member_count",
+          "frame_type": "integer",
+          "repeated": false
+        },
+        {
+          "name": "member_digest",
+          "frame_type": "digest",
+          "repeated": true
+        }
+      ]
+    },
+    {
+      "name": "verifier_policy_set_root",
+      "domain": "provenance-v2-verifier-policy-set@1",
+      "member_root_owner": "verifier_policy_set",
+      "fields": [
+        {
+          "name": "authority_plan_id",
+          "frame_type": "text",
+          "repeated": false
+        },
+        {
+          "name": "member_count",
+          "frame_type": "integer",
+          "repeated": false
+        },
+        {
+          "name": "member_digest",
+          "frame_type": "digest",
+          "repeated": true
+        }
+      ]
+    },
+    {
+      "name": "field_policy_set_root",
+      "domain": "provenance-v2-field-policy-set@1",
+      "member_root_owner": "field_policy_set",
+      "fields": [
+        {
+          "name": "authority_plan_id",
+          "frame_type": "text",
+          "repeated": false
+        },
+        {
+          "name": "member_count",
+          "frame_type": "integer",
+          "repeated": false
+        },
+        {
+          "name": "member_digest",
+          "frame_type": "digest",
+          "repeated": true
+        }
+      ]
+    },
+    {
+      "name": "authority_root",
+      "domain": "provenance-v2-authority-root-frame@1",
+      "member_root_owner": null,
+      "fields": [
+        {
+          "name": "contract_version",
+          "frame_type": "text",
+          "repeated": false
+        },
+        {
+          "name": "semantic_policy_hash",
+          "frame_type": "digest",
+          "repeated": false
+        },
+        {
+          "name": "canonical_document_hash",
+          "frame_type": "digest",
+          "repeated": false
+        },
+        {
+          "name": "installation_id",
+          "frame_type": "text",
+          "repeated": false
+        },
+        {
+          "name": "environment",
+          "frame_type": "text",
+          "repeated": false
+        },
+        {
+          "name": "authority_plan_id",
+          "frame_type": "text",
+          "repeated": false
+        },
+        {
+          "name": "run_plan_id",
+          "frame_type": "text",
+          "repeated": false
+        },
+        {
+          "name": "run_plan_hash",
+          "frame_type": "digest",
+          "repeated": false
+        },
+        {
+          "name": "effective_from_ms",
+          "frame_type": "integer",
+          "repeated": false
+        },
+        {
+          "name": "effective_to_ms",
+          "frame_type": "integer",
+          "repeated": false
+        },
+        {
+          "name": "created_at_ms",
+          "frame_type": "integer",
+          "repeated": false
+        },
+        {
+          "name": "canonical_document_bytes",
+          "frame_type": "integer",
+          "repeated": false
+        },
+        {
+          "name": "normalized_row_count",
+          "frame_type": "integer",
+          "repeated": false
+        },
+        {
+          "name": "closed_at_ms",
+          "frame_type": "integer",
+          "repeated": false
+        },
+        {
+          "name": "adapter_manifest_count",
+          "frame_type": "integer",
+          "repeated": false
+        },
+        {
+          "name": "adapter_manifest_set_root",
+          "frame_type": "digest",
+          "repeated": false
+        },
+        {
+          "name": "endpoint_count",
+          "frame_type": "integer",
+          "repeated": false
+        },
+        {
+          "name": "endpoint_set_root",
+          "frame_type": "digest",
+          "repeated": false
+        },
+        {
+          "name": "verifier_policy_count",
+          "frame_type": "integer",
+          "repeated": false
+        },
+        {
+          "name": "verifier_policy_set_root",
+          "frame_type": "digest",
+          "repeated": false
+        },
+        {
+          "name": "field_policy_count",
+          "frame_type": "integer",
+          "repeated": false
+        },
+        {
+          "name": "field_policy_set_root",
+          "frame_type": "digest",
+          "repeated": false
+        }
+      ]
+    },
+    {
+      "name": "oracle_receipt_hash",
+      "domain": "provenance-v2-oracle-receipt@1",
+      "member_root_owner": null,
+      "fields": [
+        {
+          "name": "authority_plan_id",
+          "frame_type": "text",
+          "repeated": false
+        },
+        {
+          "name": "oracle_contract_version",
+          "frame_type": "text",
+          "repeated": false
+        },
+        {
+          "name": "oracle_implementation_hash",
+          "frame_type": "digest",
+          "repeated": false
+        },
+        {
+          "name": "semantic_policy_hash",
+          "frame_type": "digest",
+          "repeated": false
+        },
+        {
+          "name": "authority_root",
+          "frame_type": "digest",
+          "repeated": false
+        },
+        {
+          "name": "verified_at_ms",
+          "frame_type": "integer",
+          "repeated": false
+        }
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "table": "provenance_v2_source_owner_receipt",
+      "disposition": "root_member",
+      "root_owner": "adapter_manifest_set",
+      "leaf_domain": "provenance-v2-source-owner-receipt@1",
+      "order_by": [
+        "authority_plan_id",
+        "provider_id",
+        "ordinal",
+        "owner_organization_id"
+      ],
+      "count_source": "adapter_receipt.source_owner_receipts.length",
+      "digest_output": null,
+      "fields": [
+        {
+          "name": "authority_plan_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "provider_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "ordinal",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "provider_organization_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "owner_organization_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "owner_kind",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "provider_owner_relationship",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "identity_contract_version",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "identity_content_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "safe_preimage",
+          "anchor": "registration_document.source_owner_receipts[].identity_preimage"
+        },
+        {
+          "name": "relationship_approval_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "external_anchor",
+          "anchor": "repository relationship approval artifact"
+        },
+        {
+          "name": "created_at_ms",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        }
+      ],
+      "child_tables": []
+    },
+    {
+      "table": "provenance_v2_source_register_receipt",
+      "disposition": "root_member",
+      "root_owner": "adapter_manifest_set",
+      "leaf_domain": "provenance-v2-source-register-receipt@1",
+      "order_by": [
+        "authority_plan_id",
+        "provider_id"
+      ],
+      "count_source": "adapter_receipts.length",
+      "digest_output": "receipt_content_hash",
+      "fields": [
+        {
+          "name": "authority_plan_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "provider_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "register_version",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "artifact_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "external_anchor",
+          "anchor": "source_compliance_record exact approved artifact"
+        },
+        {
+          "name": "member_count",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "member_set_root",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "top_level_root",
+          "anchor": "recomputed set/root frame"
+        },
+        {
+          "name": "approval_state",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "reviewed_at_ms",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "next_review_at_ms",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "access_permitted",
+          "frame_type": "boolean",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "retention_permitted",
+          "frame_type": "boolean",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "excerpt_permitted",
+          "frame_type": "boolean",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "publication_permitted",
+          "frame_type": "boolean",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "receipt_content_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "digest_output",
+          "anchor": "recomputed leaf frame"
+        }
+      ],
+      "child_tables": [
+        "provenance_v2_source_register_member"
+      ]
+    },
+    {
+      "table": "provenance_v2_source_register_member",
+      "disposition": "root_member",
+      "root_owner": "adapter_manifest_set",
+      "leaf_domain": "provenance-v2-source-register-member@1",
+      "order_by": [
+        "authority_plan_id",
+        "provider_id",
+        "ordinal",
+        "source_id"
+      ],
+      "count_source": "source_register_receipt.member_count",
+      "digest_output": "member_hash",
+      "fields": [
+        {
+          "name": "authority_plan_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "provider_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "register_version",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "artifact_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "external_anchor",
+          "anchor": "source_compliance_record exact approved artifact"
+        },
+        {
+          "name": "ordinal",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "source_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "member_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "digest_output",
+          "anchor": "recomputed leaf frame"
+        }
+      ],
+      "child_tables": []
+    },
+    {
+      "table": "provenance_v2_adapter_manifest_receipt",
+      "disposition": "root_member",
+      "root_owner": "adapter_manifest_set",
+      "leaf_domain": "provenance-v2-adapter-receipt-leaf@1",
+      "order_by": [
+        "authority_plan_id",
+        "provider_ordinal",
+        "provider_id"
+      ],
+      "count_source": "registration_plan.declared_counts.adapter_receipts",
+      "digest_output": "manifest_content_hash",
+      "fields": [
+        {
+          "name": "authority_plan_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "run_plan_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "installation_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "provider_ordinal",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "provider_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "receipt_contract_version",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "adapter_contract_version",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "adapter_version",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "adapter_manifest_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "safe_preimage",
+          "anchor": "registration_document.adapter_receipts[].legacy_manifest canonical JSON bytes"
+        },
+        {
+          "name": "successor_manifest_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "safe_preimage",
+          "anchor": "registration_document.adapter_receipts[] successor-manifest frame"
+        },
+        {
+          "name": "source_policy_version",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "parser_version",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "extraction_policy_version",
+          "frame_type": "text",
+          "nullable": true,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "roster_version",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "roster_content_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "external_anchor",
+          "anchor": "publication_run_plan_provider approved roster"
+        },
+        {
+          "name": "source_register_version",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "source_artifact_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "external_anchor",
+          "anchor": "source_compliance_record exact approved artifact"
+        },
+        {
+          "name": "source_count",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "environment_count",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "credential_count",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "request_ceiling",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "byte_ceiling",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "ai_token_ceiling",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "browser_millisecond_ceiling",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "elapsed_millisecond_ceiling",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "cost_microusd_ceiling",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "manifest_requests_per_run",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "pages_per_source",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "manifest_bytes_per_run",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "manifest_duration_ms",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "retry_attempts",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "manifest_browser_sessions",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "manifest_ai_tokens",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "items_per_run",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "manifest_content_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "digest_output",
+          "anchor": "recomputed leaf frame"
+        },
+        {
+          "name": "created_at_ms",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        }
+      ],
+      "child_tables": [
+        "provenance_v2_adapter_manifest_environment",
+        "provenance_v2_adapter_manifest_credential",
+        "provenance_v2_adapter_manifest_source"
+      ]
+    },
+    {
+      "table": "provenance_v2_adapter_manifest_environment",
+      "disposition": "root_member",
+      "root_owner": "adapter_manifest_set",
+      "leaf_domain": "provenance-v2-adapter-environment@1",
+      "order_by": [
+        "authority_plan_id",
+        "provider_id",
+        "ordinal",
+        "environment"
+      ],
+      "count_source": "adapter_receipt.normalized_environments.length",
+      "digest_output": "member_hash",
+      "fields": [
+        {
+          "name": "authority_plan_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "provider_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "ordinal",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "environment",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "member_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "digest_output",
+          "anchor": "recomputed leaf frame"
+        }
+      ],
+      "child_tables": []
+    },
+    {
+      "table": "provenance_v2_adapter_manifest_credential",
+      "disposition": "root_member",
+      "root_owner": "adapter_manifest_set",
+      "leaf_domain": "provenance-v2-adapter-credential@1",
+      "order_by": [
+        "authority_plan_id",
+        "provider_id",
+        "ordinal",
+        "binding_name"
+      ],
+      "count_source": "adapter_receipt.normalized_credentials.length",
+      "digest_output": "member_hash",
+      "fields": [
+        {
+          "name": "authority_plan_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "provider_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "ordinal",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "binding_name",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "purpose_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "safe_preimage",
+          "anchor": "registration_document.normalized_credentials[].purpose"
+        },
+        {
+          "name": "member_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "digest_output",
+          "anchor": "recomputed leaf frame"
+        }
+      ],
+      "child_tables": []
+    },
+    {
+      "table": "provenance_v2_adapter_manifest_source",
+      "disposition": "root_member",
+      "root_owner": "adapter_manifest_set",
+      "leaf_domain": "provenance-v2-adapter-source@1",
+      "order_by": [
+        "authority_plan_id",
+        "provider_id",
+        "source_ordinal",
+        "source_id"
+      ],
+      "count_source": "adapter_receipt.normalized_sources.length",
+      "digest_output": "manifest_source_hash",
+      "fields": [
+        {
+          "name": "authority_plan_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "provider_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "source_ordinal",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "source_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "adapter_source_type",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "provider_organization_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "owner_organization_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "owner_kind",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "provider_owner_relationship",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "authority_source_class",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "host_ascii",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "path_template_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "safe_preimage",
+          "anchor": "registration_document.normalized_sources[].path_template"
+        },
+        {
+          "name": "manifest_source_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "digest_output",
+          "anchor": "recomputed leaf frame"
+        }
+      ],
+      "child_tables": []
+    },
+    {
+      "table": "provenance_v2_source_endpoint",
+      "disposition": "root_member",
+      "root_owner": "endpoint_set",
+      "leaf_domain": "provenance-v2-source-endpoint@1",
+      "order_by": [
+        "authority_plan_id",
+        "provider_id",
+        "endpoint_ordinal",
+        "endpoint_id"
+      ],
+      "count_source": "registration_plan.declared_counts.endpoints",
+      "digest_output": "endpoint_content_hash",
+      "fields": [
+        {
+          "name": "endpoint_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "authority_plan_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "endpoint_ordinal",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "provider_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "source_register_version",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "source_register_artifact_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "external_anchor",
+          "anchor": "source_compliance_record exact approved artifact"
+        },
+        {
+          "name": "source_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "adapter_source_type",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "source_owner_organization_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "provider_owner_relationship",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "host_ascii",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "path_template_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "safe_preimage",
+          "anchor": "registration_document.endpoints[].path_template"
+        },
+        {
+          "name": "adapter_manifest_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "safe_preimage",
+          "anchor": "registration_document matching legacy_manifest canonical JSON bytes"
+        },
+        {
+          "name": "endpoint_content_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "digest_output",
+          "anchor": "recomputed leaf frame"
+        },
+        {
+          "name": "created_at_ms",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        }
+      ],
+      "child_tables": [
+        "provenance_v2_source_endpoint_registration",
+        "provenance_v2_source_endpoint_request",
+        "provenance_v2_source_endpoint_approval"
+      ]
+    },
+    {
+      "table": "provenance_v2_source_endpoint_registration",
+      "disposition": "root_member",
+      "root_owner": "endpoint_set",
+      "leaf_domain": "provenance-v2-source-endpoint-registration@1",
+      "order_by": [
+        "authority_plan_id",
+        "endpoint_id"
+      ],
+      "count_source": "registration_plan.declared_counts.endpoints",
+      "digest_output": "registration_hash",
+      "fields": [
+        {
+          "name": "authority_plan_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "endpoint_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "provider_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "source_register_version",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "source_register_artifact_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "external_anchor",
+          "anchor": "source_compliance_record exact approved artifact"
+        },
+        {
+          "name": "source_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "adapter_source_type",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "provider_organization_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "source_owner_organization_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "source_owner_kind",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "provider_owner_relationship",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "host_ascii",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "path_template_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "safe_preimage",
+          "anchor": "registration_document.endpoints[].path_template"
+        },
+        {
+          "name": "adapter_manifest_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "safe_preimage",
+          "anchor": "registration_document matching legacy_manifest canonical JSON bytes"
+        },
+        {
+          "name": "endpoint_content_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "top_level_root",
+          "anchor": "recomputed set/root frame"
+        },
+        {
+          "name": "authority_source_class",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "manifest_source_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "top_level_root",
+          "anchor": "recomputed set/root frame"
+        },
+        {
+          "name": "registration_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "digest_output",
+          "anchor": "recomputed leaf frame"
+        }
+      ],
+      "child_tables": []
+    },
+    {
+      "table": "provenance_v2_source_endpoint_request",
+      "disposition": "root_member",
+      "root_owner": "endpoint_set",
+      "leaf_domain": "provenance-v2-source-endpoint-request@1",
+      "order_by": [
+        "authority_plan_id",
+        "endpoint_id"
+      ],
+      "count_source": "registration_plan.declared_counts.endpoints",
+      "digest_output": "request_content_hash",
+      "fields": [
+        {
+          "name": "authority_plan_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "endpoint_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "provider_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "scheme",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "method",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "safe_locator_template_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "safe_preimage",
+          "anchor": "registration_document.endpoints[].safe_locator_template"
+        },
+        {
+          "name": "pagination_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "safe_preimage",
+          "anchor": "registration_document.endpoints[].pagination"
+        },
+        {
+          "name": "authentication_class",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "credential_binding_name",
+          "frame_type": "text",
+          "nullable": true,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "credential_injection",
+          "frame_type": "text",
+          "nullable": true,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "credential_header",
+          "frame_type": "text",
+          "nullable": true,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "compressed_byte_limit",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "uncompressed_byte_limit",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "timeout_ms",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "redirect_limit",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "provider_rate_limit_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "safe_preimage",
+          "anchor": "registration_document.endpoints[].provider_rate_limit"
+        },
+        {
+          "name": "crawl_purpose_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "safe_preimage",
+          "anchor": "registration_document.endpoints[].crawl_purpose"
+        },
+        {
+          "name": "robots_policy_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "safe_preimage",
+          "anchor": "registration_document.endpoints[].robots_policy"
+        },
+        {
+          "name": "content_signals_policy_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "safe_preimage",
+          "anchor": "registration_document.endpoints[].content_signals_policy"
+        },
+        {
+          "name": "browser_session_approved",
+          "frame_type": "boolean",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "retention_permitted",
+          "frame_type": "boolean",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "publication_permitted",
+          "frame_type": "boolean",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "parameter_count",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "allowed_header_count",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "redirect_host_count",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "content_type_count",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "expected_field_count",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "raw_field_mapping_count",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "request_content_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "digest_output",
+          "anchor": "recomputed leaf frame"
+        }
+      ],
+      "child_tables": [
+        "provenance_v2_source_endpoint_parameter",
+        "provenance_v2_source_endpoint_allowed_header",
+        "provenance_v2_source_endpoint_redirect_host",
+        "provenance_v2_source_endpoint_content_type",
+        "provenance_v2_source_endpoint_expected_field",
+        "provenance_v2_source_endpoint_raw_field_mapping"
+      ]
+    },
+    {
+      "table": "provenance_v2_source_endpoint_parameter",
+      "disposition": "root_member",
+      "root_owner": "endpoint_set",
+      "leaf_domain": "provenance-v2-endpoint-parameter@1",
+      "order_by": [
+        "authority_plan_id",
+        "endpoint_id",
+        "ordinal",
+        "parameter_name"
+      ],
+      "count_source": "endpoint.parameters.length",
+      "digest_output": "parameter_hash",
+      "fields": [
+        {
+          "name": "authority_plan_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "endpoint_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "ordinal",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "parameter_name",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "location",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "value_type",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "required",
+          "frame_type": "boolean",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "pattern_hash",
+          "frame_type": "digest",
+          "nullable": true,
+          "hash_class": "safe_preimage",
+          "anchor": "registration_document.endpoints[].parameters[].pattern"
+        },
+        {
+          "name": "maximum_length",
+          "frame_type": "integer",
+          "nullable": true,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "enum_count",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "parameter_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "digest_output",
+          "anchor": "recomputed leaf frame"
+        }
+      ],
+      "child_tables": [
+        "provenance_v2_source_endpoint_parameter_enum"
+      ]
+    },
+    {
+      "table": "provenance_v2_source_endpoint_parameter_enum",
+      "disposition": "root_member",
+      "root_owner": "endpoint_set",
+      "leaf_domain": "provenance-v2-endpoint-parameter-enum@1",
+      "order_by": [
+        "authority_plan_id",
+        "endpoint_id",
+        "parameter_ordinal",
+        "ordinal"
+      ],
+      "count_source": "endpoint.parameter.enum_values.length",
+      "digest_output": "member_hash",
+      "fields": [
+        {
+          "name": "authority_plan_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "endpoint_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "parameter_ordinal",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "parameter_name",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "ordinal",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "value_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "safe_preimage",
+          "anchor": "registration_document.endpoints[].parameters[].enum_values[]"
+        },
+        {
+          "name": "member_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "digest_output",
+          "anchor": "recomputed leaf frame"
+        }
+      ],
+      "child_tables": []
+    },
+    {
+      "table": "provenance_v2_source_endpoint_allowed_header",
+      "disposition": "root_member",
+      "root_owner": "endpoint_set",
+      "leaf_domain": "provenance-v2-endpoint-allowed-header@1",
+      "order_by": [
+        "authority_plan_id",
+        "endpoint_id",
+        "ordinal",
+        "header_name"
+      ],
+      "count_source": "endpoint.allowed_headers.length",
+      "digest_output": "member_hash",
+      "fields": [
+        {
+          "name": "authority_plan_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "endpoint_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "ordinal",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "header_name",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "member_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "digest_output",
+          "anchor": "recomputed leaf frame"
+        }
+      ],
+      "child_tables": []
+    },
+    {
+      "table": "provenance_v2_source_endpoint_redirect_host",
+      "disposition": "root_member",
+      "root_owner": "endpoint_set",
+      "leaf_domain": "provenance-v2-endpoint-redirect-host@1",
+      "order_by": [
+        "authority_plan_id",
+        "endpoint_id",
+        "ordinal",
+        "host_ascii"
+      ],
+      "count_source": "endpoint.redirect_hosts.length",
+      "digest_output": "member_hash",
+      "fields": [
+        {
+          "name": "authority_plan_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "endpoint_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "ordinal",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "host_ascii",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "member_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "digest_output",
+          "anchor": "recomputed leaf frame"
+        }
+      ],
+      "child_tables": []
+    },
+    {
+      "table": "provenance_v2_source_endpoint_content_type",
+      "disposition": "root_member",
+      "root_owner": "endpoint_set",
+      "leaf_domain": "provenance-v2-endpoint-content-type@1",
+      "order_by": [
+        "authority_plan_id",
+        "endpoint_id",
+        "ordinal",
+        "content_type"
+      ],
+      "count_source": "endpoint.content_types.length",
+      "digest_output": "member_hash",
+      "fields": [
+        {
+          "name": "authority_plan_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "endpoint_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "ordinal",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "content_type",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "member_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "digest_output",
+          "anchor": "recomputed leaf frame"
+        }
+      ],
+      "child_tables": []
+    },
+    {
+      "table": "provenance_v2_source_endpoint_expected_field",
+      "disposition": "root_member",
+      "root_owner": "endpoint_set",
+      "leaf_domain": "provenance-v2-endpoint-expected-field@1",
+      "order_by": [
+        "authority_plan_id",
+        "endpoint_id",
+        "ordinal",
+        "field_path"
+      ],
+      "count_source": "endpoint.expected_fields.length",
+      "digest_output": "member_hash",
+      "fields": [
+        {
+          "name": "authority_plan_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "endpoint_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "ordinal",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "raw_provider_field",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "field_path",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "declaration_kind",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "record_group",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "disposition",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "exclusion_reason",
+          "frame_type": "text",
+          "nullable": true,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "member_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "digest_output",
+          "anchor": "recomputed leaf frame"
+        }
+      ],
+      "child_tables": []
+    },
+    {
+      "table": "provenance_v2_source_endpoint_raw_field_mapping",
+      "disposition": "root_member",
+      "root_owner": "endpoint_set",
+      "leaf_domain": "provenance-v2-raw-field-mapping@1",
+      "order_by": [
+        "authority_plan_id",
+        "endpoint_id",
+        "ordinal",
+        "canonical_field_path"
+      ],
+      "count_source": "endpoint.raw_field_mappings.length",
+      "digest_output": "mapping_content_hash",
+      "fields": [
+        {
+          "name": "authority_plan_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "endpoint_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "ordinal",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "declaration_kind",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "record_group",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "record_selector",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "raw_locator_kind",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "raw_locator",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "raw_label",
+          "frame_type": "text",
+          "nullable": true,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "canonical_field_path",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "value_source",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "registered_value",
+          "frame_type": "text",
+          "nullable": true,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "mapping_content_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "digest_output",
+          "anchor": "recomputed leaf frame"
+        }
+      ],
+      "child_tables": []
+    },
+    {
+      "table": "provenance_v2_source_endpoint_approval",
+      "disposition": "root_member",
+      "root_owner": "endpoint_set",
+      "leaf_domain": "provenance-v2-endpoint-approval@1",
+      "order_by": [
+        "authority_plan_id",
+        "endpoint_id"
+      ],
+      "count_source": "registration_plan.declared_counts.endpoints",
+      "digest_output": null,
+      "fields": [
+        {
+          "name": "authority_plan_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "endpoint_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "effective_from_ms",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "effective_to_ms",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "approval_artifact_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "external_anchor",
+          "anchor": "repository endpoint approval artifact"
+        },
+        {
+          "name": "approved_at_ms",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        }
+      ],
+      "child_tables": []
+    },
+    {
+      "table": "provenance_v2_verifier_implementation",
+      "disposition": "root_member",
+      "root_owner": "verifier_policy_set",
+      "leaf_domain": "provenance-v2-verifier-implementation@1",
+      "order_by": [
+        "authority_plan_id",
+        "ordinal",
+        "implementation_key"
+      ],
+      "count_source": "registration_plan.declared_counts.verifier_implementations",
+      "digest_output": "content_hash",
+      "fields": [
+        {
+          "name": "authority_plan_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "implementation_key",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "ordinal",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "implementation_kind",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "family_key",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "implementation_version",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "implementation_artifact_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "external_anchor",
+          "anchor": "repository implementation artifact"
+        },
+        {
+          "name": "prompt_hash",
+          "frame_type": "digest",
+          "nullable": true,
+          "hash_class": "external_anchor",
+          "anchor": "repository prompt artifact"
+        },
+        {
+          "name": "deterministic_procedure_hash",
+          "frame_type": "digest",
+          "nullable": true,
+          "hash_class": "external_anchor",
+          "anchor": "repository deterministic procedure artifact"
+        },
+        {
+          "name": "content_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "digest_output",
+          "anchor": "recomputed leaf frame"
+        }
+      ],
+      "child_tables": []
+    },
+    {
+      "table": "provenance_v2_verifier_policy",
+      "disposition": "root_member",
+      "root_owner": "verifier_policy_set",
+      "leaf_domain": "provenance-v2-verifier-policy@1",
+      "order_by": [
+        "authority_plan_id",
+        "ordinal",
+        "verifier_policy_key"
+      ],
+      "count_source": "registration_plan.declared_counts.verifier_policies",
+      "digest_output": "content_hash",
+      "fields": [
+        {
+          "name": "authority_plan_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "ordinal",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "verifier_policy_key",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "policy_version",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "effective_from_ms",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "effective_to_ms",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "profile_kind",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "minimum_member_count",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "minimum_distinct_family_count",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "span_entailment_required",
+          "frame_type": "boolean",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "independent_corroboration_required",
+          "frame_type": "boolean",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "confidence_semantics",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "minimum_confidence_ppm",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "disagreement_action",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "member_count",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "content_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "digest_output",
+          "anchor": "recomputed leaf frame"
+        }
+      ],
+      "child_tables": [
+        "provenance_v2_verifier_policy_member"
+      ]
+    },
+    {
+      "table": "provenance_v2_verifier_policy_member",
+      "disposition": "root_member",
+      "root_owner": "verifier_policy_set",
+      "leaf_domain": "provenance-v2-verifier-policy-member@1",
+      "order_by": [
+        "authority_plan_id",
+        "verifier_policy_key",
+        "ordinal",
+        "implementation_key"
+      ],
+      "count_source": "verifier_policy.members.length",
+      "digest_output": "member_hash",
+      "fields": [
+        {
+          "name": "authority_plan_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "verifier_policy_key",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "ordinal",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "implementation_key",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "member_role",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "member_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "digest_output",
+          "anchor": "recomputed leaf frame"
+        }
+      ],
+      "child_tables": []
+    },
+    {
+      "table": "provenance_v2_field_path_vocabulary",
+      "disposition": "root_member",
+      "root_owner": "field_policy_set",
+      "leaf_domain": "provenance-v2-field-vocabulary-member@1",
+      "order_by": [
+        "vocabulary_version",
+        "ordinal",
+        "field_path"
+      ],
+      "count_source": "field_corpus.fields.length",
+      "digest_output": "member_hash",
+      "fields": [
+        {
+          "name": "vocabulary_version",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "ordinal",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "field_path",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "field_group",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "record_group",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "value_kind",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "cardinality",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "nullability",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "requirement_state",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "enum_domain",
+          "frame_type": "text",
+          "nullable": true,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "source_mappability",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "member_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "digest_output",
+          "anchor": "recomputed leaf frame"
+        }
+      ],
+      "child_tables": [
+        "provenance_v2_field_path_authority_role",
+        "provenance_v2_field_path_enum_value"
+      ]
+    },
+    {
+      "table": "provenance_v2_field_path_authority_role",
+      "disposition": "root_member",
+      "root_owner": "field_policy_set",
+      "leaf_domain": "provenance-v2-field-authority-role@1",
+      "order_by": [
+        "field_path",
+        "ordinal",
+        "authority_role"
+      ],
+      "count_source": "field_corpus.field.allowed_authority_roles.length",
+      "digest_output": "member_hash",
+      "fields": [
+        {
+          "name": "field_path",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "ordinal",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "authority_role",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "member_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "digest_output",
+          "anchor": "recomputed leaf frame"
+        }
+      ],
+      "child_tables": []
+    },
+    {
+      "table": "provenance_v2_field_path_enum_value",
+      "disposition": "root_member",
+      "root_owner": "field_policy_set",
+      "leaf_domain": "provenance-v2-field-enum-value@1",
+      "order_by": [
+        "field_path",
+        "ordinal",
+        "enum_value"
+      ],
+      "count_source": "field_corpus.enum_domain.values.length",
+      "digest_output": "member_hash",
+      "fields": [
+        {
+          "name": "field_path",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "ordinal",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "enum_value",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "member_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "digest_output",
+          "anchor": "recomputed leaf frame"
+        }
+      ],
+      "child_tables": []
+    },
+    {
+      "table": "provenance_v2_field_record_group",
+      "disposition": "root_member",
+      "root_owner": "field_policy_set",
+      "leaf_domain": "provenance-v2-field-record-group@1",
+      "order_by": [
+        "ordinal",
+        "record_group"
+      ],
+      "count_source": "field_corpus.record_groups.length",
+      "digest_output": "group_hash",
+      "fields": [
+        {
+          "name": "ordinal",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "record_group",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "equality_rule",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "member_count",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "group_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "digest_output",
+          "anchor": "recomputed leaf frame"
+        }
+      ],
+      "child_tables": [
+        "provenance_v2_field_record_group_member"
+      ]
+    },
+    {
+      "table": "provenance_v2_field_record_group_member",
+      "disposition": "root_member",
+      "root_owner": "field_policy_set",
+      "leaf_domain": "provenance-v2-field-record-group-member@1",
+      "order_by": [
+        "record_group",
+        "ordinal",
+        "field_path"
+      ],
+      "count_source": "field_corpus.record_group.field_paths.length",
+      "digest_output": "member_hash",
+      "fields": [
+        {
+          "name": "record_group",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "ordinal",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "field_path",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "member_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "digest_output",
+          "anchor": "recomputed leaf frame"
+        }
+      ],
+      "child_tables": []
+    },
+    {
+      "table": "provenance_v2_field_policy",
+      "disposition": "root_member",
+      "root_owner": "field_policy_set",
+      "leaf_domain": "provenance-v2-field-policy@1",
+      "order_by": [
+        "authority_plan_id",
+        "ordinal",
+        "record_group"
+      ],
+      "count_source": "registration_plan.declared_counts.field_policies",
+      "digest_output": "content_hash",
+      "fields": [
+        {
+          "name": "authority_plan_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "ordinal",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "record_group",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "policy_version",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "effective_from_ms",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "effective_to_ms",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "order_kind",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "verifier_policy_key",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "confidence_semantics",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "minimum_confidence_ppm",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "equality_rule",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "conflict_rule",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "quarantine_rule",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "field_count",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "precedence_class_count",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "precedence_edge_count",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "endpoint_disposition_count",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "canonical_bytes_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "safe_preimage",
+          "anchor": "registration_document.field_policies[].canonical_policy_preimage"
+        },
+        {
+          "name": "content_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "digest_output",
+          "anchor": "recomputed leaf frame"
+        }
+      ],
+      "child_tables": [
+        "provenance_v2_field_policy_member",
+        "provenance_v2_field_policy_precedence_class",
+        "provenance_v2_field_policy_precedence_edge",
+        "provenance_v2_field_policy_endpoint_admission",
+        "provenance_v2_field_policy_endpoint_exclusion"
+      ]
+    },
+    {
+      "table": "provenance_v2_field_policy_member",
+      "disposition": "root_member",
+      "root_owner": "field_policy_set",
+      "leaf_domain": "provenance-v2-field-policy-member@1",
+      "order_by": [
+        "authority_plan_id",
+        "record_group",
+        "ordinal",
+        "field_path"
+      ],
+      "count_source": "field_policy.field_paths.length",
+      "digest_output": "member_hash",
+      "fields": [
+        {
+          "name": "authority_plan_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "record_group",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "ordinal",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "field_path",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "member_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "digest_output",
+          "anchor": "recomputed leaf frame"
+        }
+      ],
+      "child_tables": []
+    },
+    {
+      "table": "provenance_v2_field_policy_precedence_class",
+      "disposition": "root_member",
+      "root_owner": "field_policy_set",
+      "leaf_domain": "provenance-v2-precedence-class@1",
+      "order_by": [
+        "authority_plan_id",
+        "record_group",
+        "ordinal",
+        "class_key"
+      ],
+      "count_source": "field_policy.precedence_classes.length",
+      "digest_output": "class_hash",
+      "fields": [
+        {
+          "name": "authority_plan_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "record_group",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "class_key",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "ordinal",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "source_class_count",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "class_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "digest_output",
+          "anchor": "recomputed leaf frame"
+        }
+      ],
+      "child_tables": [
+        "provenance_v2_field_policy_precedence_class_source"
+      ]
+    },
+    {
+      "table": "provenance_v2_field_policy_precedence_class_source",
+      "disposition": "root_member",
+      "root_owner": "field_policy_set",
+      "leaf_domain": "provenance-v2-precedence-class-source@1",
+      "order_by": [
+        "authority_plan_id",
+        "record_group",
+        "class_key",
+        "ordinal",
+        "authority_source_class"
+      ],
+      "count_source": "precedence_class.source_classes.length",
+      "digest_output": "member_hash",
+      "fields": [
+        {
+          "name": "authority_plan_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "record_group",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "class_key",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "ordinal",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "authority_source_class",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "member_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "digest_output",
+          "anchor": "recomputed leaf frame"
+        }
+      ],
+      "child_tables": []
+    },
+    {
+      "table": "provenance_v2_field_policy_precedence_edge",
+      "disposition": "root_member",
+      "root_owner": "field_policy_set",
+      "leaf_domain": "provenance-v2-precedence-edge@1",
+      "order_by": [
+        "authority_plan_id",
+        "record_group",
+        "ordinal",
+        "higher_class_key",
+        "lower_class_key"
+      ],
+      "count_source": "field_policy.precedence_edges.length",
+      "digest_output": "edge_hash",
+      "fields": [
+        {
+          "name": "authority_plan_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "record_group",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "ordinal",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "higher_class_key",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "lower_class_key",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "edge_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "digest_output",
+          "anchor": "recomputed leaf frame"
+        }
+      ],
+      "child_tables": []
+    },
+    {
+      "table": "provenance_v2_field_policy_endpoint_admission",
+      "disposition": "root_member",
+      "root_owner": "field_policy_set",
+      "leaf_domain": "provenance-v2-endpoint-admission@1",
+      "order_by": [
+        "authority_plan_id",
+        "record_group",
+        "ordinal",
+        "endpoint_id"
+      ],
+      "count_source": "field_policy.admitted_endpoint_count",
+      "digest_output": "member_hash",
+      "fields": [
+        {
+          "name": "authority_plan_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "record_group",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "ordinal",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "endpoint_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "class_key",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "authority_source_class",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "admission_role",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "member_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "digest_output",
+          "anchor": "recomputed leaf frame"
+        }
+      ],
+      "child_tables": []
+    },
+    {
+      "table": "provenance_v2_field_policy_endpoint_exclusion",
+      "disposition": "root_member",
+      "root_owner": "field_policy_set",
+      "leaf_domain": "provenance-v2-endpoint-exclusion@1",
+      "order_by": [
+        "authority_plan_id",
+        "record_group",
+        "ordinal",
+        "endpoint_id"
+      ],
+      "count_source": "field_policy.excluded_endpoint_count",
+      "digest_output": "member_hash",
+      "fields": [
+        {
+          "name": "authority_plan_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "record_group",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "ordinal",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "endpoint_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "reason_code",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "member_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "digest_output",
+          "anchor": "recomputed leaf frame"
+        }
+      ],
+      "child_tables": []
+    },
+    {
+      "table": "provenance_v2_installation_identity",
+      "disposition": "top_level",
+      "root_owner": "top_level_authority_root",
+      "leaf_domain": null,
+      "order_by": [],
+      "count_source": null,
+      "digest_output": null,
+      "fields": [
+        {
+          "name": "installation_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "environment",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "initialized_at_ms",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        }
+      ],
+      "child_tables": []
+    },
+    {
+      "table": "provenance_v2_authority_plan",
+      "disposition": "top_level",
+      "root_owner": "top_level_authority_root",
+      "leaf_domain": null,
+      "order_by": [],
+      "count_source": null,
+      "digest_output": null,
+      "fields": [
+        {
+          "name": "authority_plan_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "installation_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "run_plan_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "run_plan_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "external_anchor",
+          "anchor": "publication_run_plan_approval exact plan"
+        },
+        {
+          "name": "semantic_policy_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "external_anchor",
+          "anchor": "generated provenance-v2 registration semantic-policy artifact"
+        },
+        {
+          "name": "endpoint_set_root",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "top_level_root",
+          "anchor": "recomputed set/root frame"
+        },
+        {
+          "name": "field_policy_set_root",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "top_level_root",
+          "anchor": "recomputed set/root frame"
+        },
+        {
+          "name": "verifier_policy_set_root",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "top_level_root",
+          "anchor": "recomputed set/root frame"
+        },
+        {
+          "name": "adapter_manifest_set_root",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "top_level_root",
+          "anchor": "recomputed set/root frame"
+        },
+        {
+          "name": "effective_from_ms",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "effective_to_ms",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "created_at_ms",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        }
+      ],
+      "child_tables": []
+    },
+    {
+      "table": "provenance_v2_registration_document",
+      "disposition": "top_level",
+      "root_owner": "top_level_authority_root",
+      "leaf_domain": null,
+      "order_by": [],
+      "count_source": null,
+      "digest_output": null,
+      "fields": [
+        {
+          "name": "authority_plan_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "contract_version",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "canonical_json_version",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "document_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "safe_preimage",
+          "anchor": "exact retained canonical registration document bytes"
+        },
+        {
+          "name": "document_byte_length",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "chunk_count",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        }
+      ],
+      "child_tables": []
+    },
+    {
+      "table": "provenance_v2_registration_document_chunk",
+      "disposition": "top_level",
+      "root_owner": "top_level_authority_root",
+      "leaf_domain": null,
+      "order_by": [],
+      "count_source": null,
+      "digest_output": null,
+      "fields": [
+        {
+          "name": "authority_plan_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "ordinal",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "byte_offset",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "byte_length",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "chunk_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "safe_preimage",
+          "anchor": "exact retained document chunk bytes"
+        }
+      ],
+      "child_tables": []
+    },
+    {
+      "table": "provenance_v2_authority_plan_registration_close",
+      "disposition": "top_level",
+      "root_owner": "top_level_authority_root",
+      "leaf_domain": null,
+      "order_by": [],
+      "count_source": null,
+      "digest_output": null,
+      "fields": [
+        {
+          "name": "authority_plan_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "endpoint_count",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "field_policy_count",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "verifier_policy_count",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "adapter_manifest_count",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "normalized_row_count",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "canonical_document_bytes",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "root_input_bytes",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "claimed_authority_root",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "top_level_root",
+          "anchor": "recomputed set/root frame"
+        },
+        {
+          "name": "closed_at_ms",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        }
+      ],
+      "child_tables": []
+    },
+    {
+      "table": "provenance_v2_authority_plan_oracle_receipt",
+      "disposition": "lifecycle_overlay",
+      "root_owner": "lifecycle_overlay",
+      "leaf_domain": null,
+      "order_by": [],
+      "count_source": null,
+      "digest_output": null,
+      "fields": [
+        {
+          "name": "authority_plan_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "oracle_contract_version",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "oracle_implementation_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "external_anchor",
+          "anchor": "repository oracle implementation artifact"
+        },
+        {
+          "name": "semantic_policy_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "external_anchor",
+          "anchor": "repository semantic policy artifact"
+        },
+        {
+          "name": "endpoint_set_root",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "top_level_root",
+          "anchor": "recomputed set/root frame"
+        },
+        {
+          "name": "field_policy_set_root",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "top_level_root",
+          "anchor": "recomputed set/root frame"
+        },
+        {
+          "name": "verifier_policy_set_root",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "top_level_root",
+          "anchor": "recomputed set/root frame"
+        },
+        {
+          "name": "adapter_manifest_set_root",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "top_level_root",
+          "anchor": "recomputed set/root frame"
+        },
+        {
+          "name": "endpoint_count",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "field_policy_count",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "verifier_policy_count",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "adapter_manifest_count",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "authority_root",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "top_level_root",
+          "anchor": "recomputed set/root frame"
+        },
+        {
+          "name": "verified_at_ms",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "receipt_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "lifecycle_metadata",
+          "anchor": "recomputed oracle receipt frame"
+        }
+      ],
+      "child_tables": []
+    },
+    {
+      "table": "provenance_v2_authority_plan_seal",
+      "disposition": "lifecycle_overlay",
+      "root_owner": "lifecycle_overlay",
+      "leaf_domain": null,
+      "order_by": [],
+      "count_source": null,
+      "digest_output": null,
+      "fields": [
+        {
+          "name": "authority_plan_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "authority_root",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "top_level_root",
+          "anchor": "recomputed set/root frame"
+        },
+        {
+          "name": "sealed_at_ms",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        }
+      ],
+      "child_tables": []
+    },
+    {
+      "table": "provenance_v2_authority_plan_approval_intent",
+      "disposition": "lifecycle_overlay",
+      "root_owner": "lifecycle_overlay",
+      "leaf_domain": null,
+      "order_by": [],
+      "count_source": null,
+      "digest_output": null,
+      "fields": [
+        {
+          "name": "authority_plan_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "artifact_path",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "artifact_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "external_anchor",
+          "anchor": "repository approval artifact"
+        },
+        {
+          "name": "approval_roles_json",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "authority_root",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "top_level_root",
+          "anchor": "recomputed set/root frame"
+        },
+        {
+          "name": "created_at_ms",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        }
+      ],
+      "child_tables": []
+    },
+    {
+      "table": "provenance_v2_authority_plan_approval",
+      "disposition": "lifecycle_overlay",
+      "root_owner": "lifecycle_overlay",
+      "leaf_domain": null,
+      "order_by": [],
+      "count_source": null,
+      "digest_output": null,
+      "fields": [
+        {
+          "name": "authority_plan_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "artifact_hash",
+          "frame_type": "digest",
+          "nullable": false,
+          "hash_class": "external_anchor",
+          "anchor": "repository approval artifact"
+        },
+        {
+          "name": "approval_roles_json",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "approved_at_ms",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        }
+      ],
+      "child_tables": []
+    },
+    {
+      "table": "provenance_v2_source_endpoint_revocation",
+      "disposition": "lifecycle_overlay",
+      "root_owner": "lifecycle_overlay",
+      "leaf_domain": null,
+      "order_by": [],
+      "count_source": null,
+      "digest_output": null,
+      "fields": [
+        {
+          "name": "authority_plan_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "endpoint_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "reason_code",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "effective_at_ms",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        }
+      ],
+      "child_tables": []
+    },
+    {
+      "table": "provenance_v2_authority_plan_revocation",
+      "disposition": "lifecycle_overlay",
+      "root_owner": "lifecycle_overlay",
+      "leaf_domain": null,
+      "order_by": [],
+      "count_source": null,
+      "digest_output": null,
+      "fields": [
+        {
+          "name": "authority_plan_id",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "reason_code",
+          "frame_type": "text",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        },
+        {
+          "name": "effective_at_ms",
+          "frame_type": "integer",
+          "nullable": false,
+          "hash_class": null,
+          "anchor": null
+        }
+      ],
+      "child_tables": []
+    },
+    {
+      "table": "provenance_v2_provider_bundle",
+      "disposition": "prohibited",
+      "root_owner": "prohibited",
+      "leaf_domain": null,
+      "order_by": [],
+      "count_source": null,
+      "digest_output": null,
+      "fields": [],
+      "child_tables": []
+    },
+    {
+      "table": "provenance_v2_acquisition_permit",
+      "disposition": "prohibited",
+      "root_owner": "prohibited",
+      "leaf_domain": null,
+      "order_by": [],
+      "count_source": null,
+      "digest_output": null,
+      "fields": [],
+      "child_tables": []
+    },
+    {
+      "table": "provenance_v2_admitted_response",
+      "disposition": "prohibited",
+      "root_owner": "prohibited",
+      "leaf_domain": null,
+      "order_by": [],
+      "count_source": null,
+      "digest_output": null,
+      "fields": [],
+      "child_tables": []
+    }
+  ]
+}
