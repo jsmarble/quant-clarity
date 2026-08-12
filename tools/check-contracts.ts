@@ -11,6 +11,7 @@ import {
   PROVENANCE_V2_AUTHORITY_ROOT_VECTORS,
   PROVENANCE_V2_CANONICAL_JSON_CONTRACT,
   PROVENANCE_V2_COMPOSITE_ROOT_VECTORS,
+  PROVENANCE_V2_CONNECTED_REGISTRATION_GRAPH,
   PROVENANCE_V2_FIELD_CORPUS,
   PROVENANCE_V2_FRAME_CONTRACT,
   PROVENANCE_V2_RAW_FIELD_MAPPING_CONTRACT,
@@ -19,6 +20,7 @@ import {
   PROVENANCE_V2_SUCCESSOR_MANIFEST_CONTRACT,
   validateProvenanceV2ContractArtifacts,
   validateProvenanceV2CompositeRootVectors,
+  validateProvenanceV2ConnectedRegistrationGraph,
   validateProvenanceV2RootBindingPlan,
 } from "@quant-clarity/contracts";
 
@@ -51,6 +53,10 @@ const provenanceArtifacts = [
   ["root-binding-plan.v1.json", PROVENANCE_V2_ROOT_BINDING_PLAN],
   ["golden-vectors.v1.json", PROVENANCE_V2_AUTHORITY_ROOT_VECTORS],
   ["composite-root-vectors.v1.json", PROVENANCE_V2_COMPOSITE_ROOT_VECTORS],
+  [
+    "connected-registration-graph.v1.json",
+    PROVENANCE_V2_CONNECTED_REGISTRATION_GRAPH,
+  ],
 ] as const;
 
 const compositeRootErrors = validateProvenanceV2CompositeRootVectors(
@@ -59,6 +65,14 @@ const compositeRootErrors = validateProvenanceV2CompositeRootVectors(
 if (compositeRootErrors.length > 0)
   throw new Error(
     `Invalid provenance-v2 composite root vectors: ${compositeRootErrors.join("; ")}`,
+  );
+
+const connectedGraphErrors = validateProvenanceV2ConnectedRegistrationGraph(
+  PROVENANCE_V2_CONNECTED_REGISTRATION_GRAPH,
+);
+if (connectedGraphErrors.length > 0)
+  throw new Error(
+    `Invalid provenance-v2 connected registration graph: ${connectedGraphErrors.join("; ")}`,
   );
 
 const rootBindingErrors = validateProvenanceV2RootBindingPlan(
@@ -87,6 +101,7 @@ for (const schemaName of [
   "ProvenanceV2AuthorityRootRegistry",
   "ProvenanceV2AuthorityRootVectors",
   "ProvenanceV2CompositeRootVectors",
+  "ProvenanceV2ConnectedRegistrationGraph",
   "ProvenanceV2FieldCorpus",
   "ProvenanceV2RawFieldMapping",
   "ProvenanceV2RegistrationLimits",
