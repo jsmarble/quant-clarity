@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Locally implemented strict canonical-byte and checked-selector engine evidence; complete registration document, retained chunks, digest parity and authority remain pending |
+| Status | Locally implemented strict canonical-byte and checked-selector engine evidence; H2d-b now supplies the complete synthetic document and retained occurrence evidence, while cascade and authority remain pending |
 | Decision | [Proposed ADR 0067](../decisions/0067-protected-provenance-registration-activation.md) |
 | Requirements | `DATA-030`–`DATA-046`, `DATA-048`–`DATA-051`, `DATA-055`–`DATA-064`, `PIPE-030`–`PIPE-045`, `SEC-003`–`SEC-006`, `QA-006`, `QA-007`, `QA-010`–`QA-012` |
 
@@ -18,7 +18,7 @@ The generated `provenance-v2-registration-document-resolver@1` contract freezes 
 
 H2d-a proves the byte codec and selector grammar, not a complete registration plan. It does not claim that a synthetic document is schema-valid or semantically eligible, does not replace H2a's remaining opaque safe-preimage hashes, and does not regenerate the H2a–H2c root cascade. Definitions for normalized-row count, root-input bytes, canonical-document fixed-point bytes and retained chunk planning remain pending. Five field-corpus count bindings and one row-derived count binding are outside this document-selector inventory.
 
-The next H2d-b slice must build a schema-valid canonical synthetic document, independently execute every actual H2a safe-preimage occurrence, plan and reconstruct retained chunks, prove whole/chunk hashes and count parity, and regenerate the dependent leaf/root cascade. External approved-row and repository-artifact anchors, a reviewed build manifest, the complete semantic oracle, migration 0010, frozen D1 enumeration, accepted aggregate limits and protected writers remain later gates.
+[Phase 5Y-H2d-b](phase-5y-h2d-b-connected-registration-document.md) now supplies the schema-valid canonical synthetic document, independently executes every actual H2a safe-preimage occurrence, reconstructs retained chunks, and proves whole/chunk hashes and document-count parity. Overlaying those results onto the H2a graph and regenerating the dependent leaf/root cascade remains next. External approved-row and repository-artifact anchors, a reviewed build manifest, the complete semantic oracle, migration 0010, frozen D1 enumeration, accepted aggregate limits and protected writers remain later gates.
 
 ## Authority and privacy firewall
 
