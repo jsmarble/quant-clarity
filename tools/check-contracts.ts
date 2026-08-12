@@ -12,6 +12,7 @@ import {
   PROVENANCE_V2_CANONICAL_JSON_CONTRACT,
   PROVENANCE_V2_COMPOSITE_ROOT_VECTORS,
   PROVENANCE_V2_CONNECTED_DOCUMENT_CASCADE_VECTORS,
+  PROVENANCE_V2_EXTERNAL_ROW_RESOLVER_VECTORS,
   PROVENANCE_V2_CONNECTED_REGISTRATION_GRAPH,
   PROVENANCE_V2_CONNECTED_REGISTRATION_DOCUMENT_VECTORS,
   PROVENANCE_V2_CONNECTED_SUCCESSOR_MANIFEST_VECTORS,
@@ -26,6 +27,7 @@ import {
   validateProvenanceV2ContractArtifacts,
   validateProvenanceV2CompositeRootVectors,
   validateProvenanceV2ConnectedDocumentCascadeVectors,
+  validateProvenanceV2ExternalRowResolverVectors,
   validateProvenanceV2ConnectedRegistrationGraph,
   validateProvenanceV2ConnectedRegistrationDocumentVectors,
   validateProvenanceV2ConnectedSuccessorManifestVectors,
@@ -66,6 +68,10 @@ const provenanceArtifacts = [
   [
     "connected-document-cascade-vectors.v1.json",
     PROVENANCE_V2_CONNECTED_DOCUMENT_CASCADE_VECTORS,
+  ],
+  [
+    "external-row-resolver-vectors.v1.json",
+    PROVENANCE_V2_EXTERNAL_ROW_RESOLVER_VECTORS,
   ],
   [
     "connected-registration-graph.v1.json",
@@ -118,6 +124,52 @@ const connectedCascadeErrors =
   validateProvenanceV2ConnectedDocumentCascadeVectors(
     PROVENANCE_V2_CONNECTED_DOCUMENT_CASCADE_VECTORS,
   );
+
+const externalRowResolverErrors =
+  validateProvenanceV2ExternalRowResolverVectors(
+    PROVENANCE_V2_EXTERNAL_ROW_RESOLVER_VECTORS,
+  );
+if (externalRowResolverErrors.length > 0)
+  throw new Error(
+    `Invalid provenance-v2 external-row resolver vectors: ${externalRowResolverErrors.join("; ")}`,
+  );
+for (const [path, table, columns] of [
+  [
+    PROVENANCE_V2_EXTERNAL_ROW_RESOLVER_VECTORS.predecessor_schema_sources
+      .source_compliance_record,
+    "source_compliance_record",
+    [
+      "provider_id",
+      "register_version",
+      "artifact_hash",
+      "approval_state",
+      "access_permitted",
+      "retention_permitted",
+      "publication_permitted",
+    ],
+  ],
+  [
+    PROVENANCE_V2_EXTERNAL_ROW_RESOLVER_VECTORS.predecessor_schema_sources
+      .run_plan_provider_and_seal,
+    "publication_run_plan_provider",
+    ["run_plan_id", "provider_id", "roster_content_hash"],
+  ],
+  [
+    PROVENANCE_V2_EXTERNAL_ROW_RESOLVER_VECTORS.predecessor_schema_sources
+      .run_plan_provider_and_seal,
+    "publication_run_plan_seal",
+    ["run_plan_id", "plan_hash"],
+  ],
+] as const) {
+  const sql = await readFile(resolve(path), "utf8");
+  if (!sql.includes(`CREATE TABLE ${table} (`))
+    throw new Error(`External-row predecessor table is absent: ${table}`);
+  for (const column of columns)
+    if (!sql.includes(`  ${column} `))
+      throw new Error(
+        `External-row predecessor column is absent: ${table}.${column}`,
+      );
+}
 if (connectedCascadeErrors.length > 0)
   throw new Error(
     `Invalid provenance-v2 connected document cascade vectors: ${connectedCascadeErrors.join("; ")}`,
@@ -172,6 +224,7 @@ for (const schemaName of [
   "ProvenanceV2AuthorityRootVectors",
   "ProvenanceV2CompositeRootVectors",
   "ProvenanceV2ConnectedRegistrationGraph",
+  "ProvenanceV2ExternalRowResolverVectors",
   "ProvenanceV2ConnectedSuccessorManifestVectors",
   "ProvenanceV2ConnectedTraversalVectors",
   "ProvenanceV2FieldCorpus",
@@ -200,6 +253,10 @@ if (JSON.stringify(openapiYaml) !== JSON.stringify(openapi))
 const components = openapi.components;
 if (!isObject(components) || !isObject(components.schemas))
   throw new Error("OpenAPI components.schemas is missing.");
+if (Object.hasOwn(components.schemas, "ProvenanceV2ExternalRowResolverVectors"))
+  throw new Error(
+    "External-row resolver review vectors must remain outside public OpenAPI.",
+  );
 const errors: string[] = [];
 errors.push(
   ...validateProvenanceV2ContractArtifacts(
