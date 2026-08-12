@@ -3267,6 +3267,15 @@ const arraysEqual = <T>(left: readonly T[], right: readonly T[]): boolean =>
   left.length === right.length &&
   left.every((entry, index) => entry === right[index]);
 
+const hasAsciiControl = (value: string): boolean => {
+  for (const character of value) {
+    const codePoint = character.codePointAt(0);
+    if (codePoint !== undefined && (codePoint <= 0x1f || codePoint === 0x7f))
+      return true;
+  }
+  return false;
+};
+
 export const isProvenanceV2RegistrationHostCandidate = (
   host: string,
 ): boolean => {
@@ -3298,7 +3307,8 @@ export const isProvenanceV2PathTemplateCandidate = (
   if (
     !pathTemplate.startsWith("/") ||
     pathTemplate.startsWith("//") ||
-    /[\\\\?#@\u0000-\u001f\u007f]/u.test(pathTemplate) ||
+    /[\\\\?#@]/u.test(pathTemplate) ||
+    hasAsciiControl(pathTemplate) ||
     /(?:^|\/)\.{1,2}(?:\/|$)/u.test(pathTemplate) ||
     /%(?:2f|5c|2e)/iu.test(pathTemplate) ||
     pathTemplate
@@ -3320,9 +3330,7 @@ export const isProvenanceV2PathTemplateCandidate = (
     arraysEqual(placeholders, pathParameters) &&
     parameters
       .filter((parameter) => parameter.location === "path")
-      .every(
-        (parameter) => "required" in parameter && parameter.required === true,
-      )
+      .every((parameter) => parameter.required)
   );
 };
 
@@ -3331,7 +3339,8 @@ export const isProvenanceV2SafeLocatorCandidate = (
 ): boolean =>
   safeLocator.startsWith("/") &&
   !safeLocator.startsWith("//") &&
-  !/[{}\\\\?#@\u0000-\u001f\u007f]/u.test(safeLocator) &&
+  !/[{}\\\\?#@]/u.test(safeLocator) &&
+  !hasAsciiControl(safeLocator) &&
   !/%(?:2e|2f|5c)/iu.test(safeLocator) &&
   !/(?:^|\/)\.{1,2}(?:\/|$)/u.test(safeLocator) &&
   !safeLocator
