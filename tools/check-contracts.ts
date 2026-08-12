@@ -12,6 +12,7 @@ import {
   PROVENANCE_V2_CANONICAL_JSON_CONTRACT,
   PROVENANCE_V2_COMPOSITE_ROOT_VECTORS,
   PROVENANCE_V2_CONNECTED_REGISTRATION_GRAPH,
+  PROVENANCE_V2_CONNECTED_TRAVERSAL_VECTORS,
   PROVENANCE_V2_FIELD_CORPUS,
   PROVENANCE_V2_FRAME_CONTRACT,
   PROVENANCE_V2_RAW_FIELD_MAPPING_CONTRACT,
@@ -21,6 +22,7 @@ import {
   validateProvenanceV2ContractArtifacts,
   validateProvenanceV2CompositeRootVectors,
   validateProvenanceV2ConnectedRegistrationGraph,
+  validateProvenanceV2ConnectedTraversalVectors,
   validateProvenanceV2RootBindingPlan,
 } from "@quant-clarity/contracts";
 
@@ -57,6 +59,10 @@ const provenanceArtifacts = [
     "connected-registration-graph.v1.json",
     PROVENANCE_V2_CONNECTED_REGISTRATION_GRAPH,
   ],
+  [
+    "connected-traversal-vectors.v1.json",
+    PROVENANCE_V2_CONNECTED_TRAVERSAL_VECTORS,
+  ],
 ] as const;
 
 const compositeRootErrors = validateProvenanceV2CompositeRootVectors(
@@ -73,6 +79,14 @@ const connectedGraphErrors = validateProvenanceV2ConnectedRegistrationGraph(
 if (connectedGraphErrors.length > 0)
   throw new Error(
     `Invalid provenance-v2 connected registration graph: ${connectedGraphErrors.join("; ")}`,
+  );
+
+const connectedTraversalErrors = validateProvenanceV2ConnectedTraversalVectors(
+  PROVENANCE_V2_CONNECTED_TRAVERSAL_VECTORS,
+);
+if (connectedTraversalErrors.length > 0)
+  throw new Error(
+    `Invalid provenance-v2 connected traversal vectors: ${connectedTraversalErrors.join("; ")}`,
   );
 
 const rootBindingErrors = validateProvenanceV2RootBindingPlan(
@@ -102,6 +116,7 @@ for (const schemaName of [
   "ProvenanceV2AuthorityRootVectors",
   "ProvenanceV2CompositeRootVectors",
   "ProvenanceV2ConnectedRegistrationGraph",
+  "ProvenanceV2ConnectedTraversalVectors",
   "ProvenanceV2FieldCorpus",
   "ProvenanceV2RawFieldMapping",
   "ProvenanceV2RegistrationLimits",

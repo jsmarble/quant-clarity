@@ -396,13 +396,62 @@ describe("provenance v2 connected registration graph", () => {
     ]);
   });
 
-  it("keeps synthetic unresolved digest inputs globally distinct", () => {
-    const digests = graph.rows.flatMap((row) =>
+  it("shares equal resolver identities and keeps other digest inputs distinct", () => {
+    const occurrences = graph.rows.flatMap((row) =>
       row.fields
         .filter((field) => field.tag === "digest")
-        .map((field) => field.value),
+        .map((field) => ({
+          key: `${row.row_id}.${field.name}`,
+          value: field.value,
+        })),
     );
-    expect(new Set(digests).size).toBe(digests.length);
+    const groupFor = (key: string) => {
+      const value = occurrences.find((item) => item.key === key)?.value;
+      return occurrences
+        .filter((item) => item.value === value)
+        .map((item) => item.key)
+        .sort();
+    };
+    expect(
+      groupFor("row-source_register_receipt-receipt.artifact_hash"),
+    ).toEqual(
+      [
+        "row-adapter_manifest_receipt-receipt.source_artifact_hash",
+        "row-source_endpoint-endpoint.source_register_artifact_hash",
+        "row-source_endpoint_registration-registration.source_register_artifact_hash",
+        "row-source_register_member-member.artifact_hash",
+        "row-source_register_receipt-receipt.artifact_hash",
+      ].sort(),
+    );
+    expect(
+      groupFor("row-adapter_manifest_receipt-receipt.adapter_manifest_hash"),
+    ).toEqual(
+      [
+        "row-adapter_manifest_receipt-receipt.adapter_manifest_hash",
+        "row-source_endpoint-endpoint.adapter_manifest_hash",
+        "row-source_endpoint_registration-registration.adapter_manifest_hash",
+      ].sort(),
+    );
+    expect(
+      groupFor("row-adapter_manifest_source-source.path_template_hash"),
+    ).toEqual(
+      [
+        "row-adapter_manifest_source-source.path_template_hash",
+        "row-source_endpoint-endpoint.path_template_hash",
+        "row-source_endpoint_registration-registration.path_template_hash",
+      ].sort(),
+    );
+    const shared = new Set(
+      occurrences
+        .filter((item) => groupFor(item.key).length > 1)
+        .map((item) => item.value),
+    );
+    expect(shared.size).toBe(3);
+    expect(
+      occurrences
+        .filter((item) => !shared.has(item.value))
+        .every((item) => groupFor(item.key).length === 1),
+    ).toBe(true);
   });
 
   it("fails closed for mutations, accessors, proxies, and oversized arrays", () => {
