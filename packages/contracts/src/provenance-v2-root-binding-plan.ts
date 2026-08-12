@@ -982,7 +982,7 @@ const EXTERNAL_BINDINGS = [
         "/verifier_implementations/*/deterministic_procedure_artifact_path",
       selectors: [selector(0, "implementation_key", "implementation_key")],
     },
-    "packages/",
+    "docs/compliance/provenance-v2/",
     "paired_null",
   ),
   externalRow(

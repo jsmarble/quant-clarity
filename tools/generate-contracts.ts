@@ -10,6 +10,7 @@ import {
   PROVENANCE_V2_COMPOSITE_ROOT_VECTORS,
   PROVENANCE_V2_CONNECTED_DOCUMENT_CASCADE_VECTORS,
   PROVENANCE_V2_EXTERNAL_ROW_RESOLVER_VECTORS,
+  PROVENANCE_V2_REPOSITORY_ARTIFACT_INVENTORY,
   PROVENANCE_V2_CONNECTED_REGISTRATION_GRAPH,
   PROVENANCE_V2_CONNECTED_REGISTRATION_DOCUMENT_VECTORS,
   PROVENANCE_V2_CONNECTED_SUCCESSOR_MANIFEST_VECTORS,
@@ -1565,6 +1566,10 @@ const files = new Map<string, string>([
   [
     "provenance-v2/external-row-resolver-vectors.v1.json",
     `${JSON.stringify(PROVENANCE_V2_EXTERNAL_ROW_RESOLVER_VECTORS, null, 2)}\n`,
+  ],
+  [
+    "provenance-v2/repository-artifact-inventory.v1.json",
+    `${JSON.stringify(PROVENANCE_V2_REPOSITORY_ARTIFACT_INVENTORY, null, 2)}\n`,
   ],
   [
     "provenance-v2/connected-registration-graph.v1.json",
