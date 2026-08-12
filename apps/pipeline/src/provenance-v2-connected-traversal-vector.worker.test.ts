@@ -1,5 +1,6 @@
 import {
   PROVENANCE_V2_AUTHORITY_ROOT_REGISTRY,
+  PROVENANCE_V2_CONNECTED_DOCUMENT_CASCADE_VECTORS,
   PROVENANCE_V2_CONNECTED_REGISTRATION_GRAPH,
   PROVENANCE_V2_CONNECTED_SUCCESSOR_MANIFEST_VECTORS,
   PROVENANCE_V2_CONNECTED_TRAVERSAL_VECTORS,
@@ -40,6 +41,22 @@ interface SuccessorProjectionMapping {
   readonly column: string;
   readonly conversion: "identity" | "safe_integer";
   readonly cardinality: "exactly_one";
+}
+type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
+interface DocumentSelector {
+  readonly wildcard_ordinal: number;
+  readonly kind: "array_object_by_field" | "array_index_by_ordinal";
+  readonly row_column: string;
+  readonly member_field?: string;
+}
+interface DocumentOverlay {
+  readonly row_id: string;
+  readonly table: string;
+  readonly field: string;
+  readonly encoding: "nfc_utf8" | "rfc8785_jcs";
+  readonly preimage_kind: "bytes" | "absent";
+  readonly before: Omit<Field, "name">;
+  readonly after: Omit<Field, "name">;
 }
 const independentProjection = {
   scope_columns: ["authority_plan_id", "provider_id"],
@@ -254,6 +271,142 @@ const canonicalJson = (value: unknown): string => {
     .join(",")}}`;
 };
 
+const isJsonObject = (value: Json): value is Record<string, Json> =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+const decodePointer = (pointer: string): string[] =>
+  pointer
+    .slice(1)
+    .split("/")
+    .map((token) => token.replaceAll("~1", "/").replaceAll("~0", "~"));
+const selectDocumentValue = (
+  document: Json,
+  pointer: string,
+  selectors: readonly DocumentSelector[],
+  row: Readonly<Record<string, Json>>,
+): Json => {
+  let current = document;
+  let wildcardOrdinal = 0;
+  for (const token of decodePointer(pointer)) {
+    if (token !== "*") {
+      if (!isJsonObject(current) || !Object.hasOwn(current, token))
+        throw new Error("document selector missing");
+      current = current[token]!;
+      continue;
+    }
+    const selector = selectors.find(
+      (candidate) => candidate.wildcard_ordinal === wildcardOrdinal,
+    );
+    wildcardOrdinal += 1;
+    if (selector === undefined || !Array.isArray(current))
+      throw new Error("document selector shape");
+    const expected = row[selector.row_column];
+    if (selector.kind === "array_index_by_ordinal") {
+      if (
+        typeof expected !== "number" ||
+        !Number.isSafeInteger(expected) ||
+        Object.is(expected, -0) ||
+        expected < 0 ||
+        expected >= current.length
+      )
+        throw new Error("document selector ordinal");
+      current = current[expected]!;
+      continue;
+    }
+    if (selector.member_field === undefined)
+      throw new Error("document selector member field");
+    const matches = current.filter(
+      (member) =>
+        isJsonObject(member) &&
+        Object.hasOwn(member, selector.member_field!) &&
+        member[selector.member_field!] === expected,
+    );
+    if (matches.length !== 1) throw new Error("document selector cardinality");
+    current = matches[0]!;
+  }
+  if (wildcardOrdinal !== selectors.length)
+    throw new Error("document selector unconsumed");
+  return current;
+};
+
+const resolveDocumentOverlayRows = async (): Promise<readonly Row[]> => {
+  const document = PROVENANCE_V2_CONNECTED_DOCUMENT_CASCADE_VECTORS
+    .final_document.document as unknown as Json;
+  const overlay: DocumentOverlay[] = [];
+  const resolved: Row[] = [];
+  for (const row of rows) {
+    const bindings = PROVENANCE_V2_ROOT_BINDING_PLAN.digest_bindings.filter(
+      (entry) =>
+        entry.table === row.table &&
+        (entry.binding as { readonly kind?: string }).kind === "document_value",
+    );
+    if (bindings.length === 0) {
+      resolved.push(row);
+      continue;
+    }
+    const projection = Object.fromEntries(
+      row.fields.map((item) => [
+        item.name,
+        item.tag === "integer" ? Number(item.value) : item.value,
+      ]),
+    ) as Record<string, Json>;
+    const fields: Field[] = [];
+    for (const item of row.fields) {
+      const entry = bindings.find((binding) => binding.field === item.name);
+      if (entry === undefined) {
+        fields.push(item);
+        continue;
+      }
+      const binding = entry.binding as {
+        readonly pointer_pattern: string;
+        readonly selectors: readonly DocumentSelector[];
+        readonly encoding: "nfc_utf8" | "rfc8785_jcs";
+        readonly null_result: "null" | "reject";
+      };
+      const selected = selectDocumentValue(
+        document,
+        binding.pointer_pattern,
+        binding.selectors,
+        projection,
+      );
+      const absent = selected === null && binding.null_result === "null";
+      if (selected === null && !absent)
+        throw new Error("unexpected document null");
+      const preimage = absent
+        ? null
+        : binding.encoding === "nfc_utf8"
+          ? typeof selected === "string"
+            ? utf8.encode(selected)
+            : (() => {
+                throw new Error("document nfc value type");
+              })()
+          : utf8.encode(canonicalJson(selected));
+      const after =
+        preimage === null
+          ? { tag: "null" as const, value: null }
+          : { tag: "digest" as const, value: await sha256(preimage) };
+      overlay.push({
+        row_id: row.row_id,
+        table: row.table,
+        field: item.name,
+        encoding: binding.encoding,
+        preimage_kind: preimage === null ? "absent" : "bytes",
+        before: { tag: item.tag, value: item.value },
+        after,
+      });
+      if (after.tag === "null") {
+        if (item.tag !== "null" || item.value !== null)
+          throw new Error("document absence target mismatch");
+        fields.push(item);
+      } else fields.push({ ...item, tag: after.tag, value: after.value });
+    }
+    resolved.push({ ...row, fields });
+  }
+  expect(overlay).toEqual(
+    PROVENANCE_V2_CONNECTED_DOCUMENT_CASCADE_VECTORS.graph_overlay,
+  );
+  return resolved;
+};
+
 const buildSuccessorManifest = (
   input: readonly Row[],
   successorClaims: Readonly<Record<string, unknown>>,
@@ -457,7 +610,13 @@ const traverse = async (
   };
 };
 
-const execute = async (input: readonly Row[]) => {
+interface ExecuteOptions {
+  readonly permitStoredSuccessorMismatch?: boolean;
+  readonly authorityScalarOverrides?: ReadonlyMap<string, FrameField>;
+  readonly receiptScalarOverrides?: ReadonlyMap<string, FrameField>;
+}
+
+const execute = async (input: readonly Row[], options: ExecuteOptions = {}) => {
   if (new Set(input.map((row) => row.row_id)).size !== input.length)
     throw new Error("duplicate row identity");
   if (input.length !== rows.length)
@@ -658,7 +817,10 @@ const execute = async (input: readonly Row[]) => {
   )
     throw new Error("invalid stored successor manifest field");
   const storedSuccessorManifestDigest = storedSuccessorManifestHash.value;
-  if (storedSuccessorManifestDigest !== successorManifestHash)
+  if (
+    storedSuccessorManifestDigest !== successorManifestHash &&
+    options.permitStoredSuccessorMismatch !== true
+  )
     throw new Error("stored successor manifest digest mismatch");
   const recomputedAdapterReceiptDigest = await leaf(
     replaceDigest(
@@ -751,12 +913,15 @@ const execute = async (input: readonly Row[]) => {
       const fixture = authorityFixture.get(binding.name);
       if (fixture?.tag !== binding.frame_type)
         throw new Error("authority fixture layout mismatch");
+      const override = options.authorityScalarOverrides?.get(binding.name);
+      if (override !== undefined && override.tag !== binding.frame_type)
+        throw new Error("authority override layout mismatch");
       return {
         tag: binding.frame_type,
         value:
           binding.source.kind === "collection"
             ? (traversals.get(binding.source.traversal)?.digest ?? "")
-            : fixture.value,
+            : (override?.value ?? fixture.value),
       };
     }),
   );
@@ -772,10 +937,15 @@ const execute = async (input: readonly Row[]) => {
       const fixture = receiptFixture.get(binding.name);
       if (fixture?.tag !== binding.frame_type)
         throw new Error("receipt fixture layout mismatch");
+      const override = options.receiptScalarOverrides?.get(binding.name);
+      if (override !== undefined && override.tag !== binding.frame_type)
+        throw new Error("receipt override layout mismatch");
       return {
         tag: binding.frame_type,
         value:
-          binding.name === "authority_root" ? authorityDigest : fixture.value,
+          binding.name === "authority_root"
+            ? authorityDigest
+            : (override?.value ?? fixture.value),
       };
     }),
   );
@@ -800,6 +970,176 @@ const execute = async (input: readonly Row[]) => {
 };
 
 describe("independent workerd connected provenance-v2 traversal vectors", () => {
+  it("overlays document digests before recomputing the refused cascade", async () => {
+    const documentOverlayRows = await resolveDocumentOverlayRows();
+    const first = await execute([...documentOverlayRows].reverse(), {
+      permitStoredSuccessorMismatch: false,
+    });
+    const document = structuredClone(
+      PROVENANCE_V2_CONNECTED_DOCUMENT_CASCADE_VECTORS.final_document.document,
+    ) as unknown as Record<string, unknown>;
+    const receipts = document.adapter_receipts as Record<string, unknown>[];
+    receipts[0]!.successor_manifest = first.successorManifest;
+    document.roots = {
+      adapter_manifest_set_root: first.traversals.get(
+        "adapter_manifest_set_root",
+      )!.digest,
+      endpoint_set_root: first.traversals.get("endpoint_set_root")!.digest,
+      verifier_policy_set_root: first.traversals.get(
+        "verifier_policy_set_root",
+      )!.digest,
+      field_policy_set_root: first.traversals.get("field_policy_set_root")!
+        .digest,
+    };
+    const finalCanonical = canonicalJson(document);
+    const finalBytes = utf8.encode(finalCanonical);
+    const finalHash = await sha256(finalBytes);
+    const second = await execute([...documentOverlayRows].reverse(), {
+      permitStoredSuccessorMismatch: false,
+      authorityScalarOverrides: new Map([
+        [
+          "contract_version",
+          {
+            tag: "text" as const,
+            value: "provenance-v2-connected-document-cascade-candidate@1",
+          },
+        ],
+        [
+          "canonical_document_hash",
+          { tag: "digest" as const, value: finalHash },
+        ],
+        [
+          "semantic_policy_hash",
+          {
+            tag: "digest" as const,
+            value: String(document.semantic_policy_hash),
+          },
+        ],
+        [
+          "run_plan_hash",
+          { tag: "digest" as const, value: String(document.run_plan_hash) },
+        ],
+        ["environment", { tag: "text" as const, value: "production" }],
+        [
+          "canonical_document_bytes",
+          { tag: "integer" as const, value: String(finalBytes.length) },
+        ],
+        [
+          "normalized_row_count",
+          { tag: "integer" as const, value: String(rows.length) },
+        ],
+      ]),
+      receiptScalarOverrides: new Map([
+        [
+          "oracle_contract_version",
+          {
+            tag: "text" as const,
+            value: "provenance-v2-connected-document-cascade-candidate@1",
+          },
+        ],
+        [
+          "semantic_policy_hash",
+          {
+            tag: "digest" as const,
+            value: String(document.semantic_policy_hash),
+          },
+        ],
+      ]),
+    });
+    expect(first.successorManifest).toEqual(
+      PROVENANCE_V2_CONNECTED_DOCUMENT_CASCADE_VECTORS.successor.manifest,
+    );
+    expect(first.successorCanonicalJson).toBe(
+      PROVENANCE_V2_CONNECTED_DOCUMENT_CASCADE_VECTORS.successor.canonical_json,
+    );
+    expect(first.successorManifestHash).toBe(
+      PROVENANCE_V2_CONNECTED_DOCUMENT_CASCADE_VECTORS.successor.sha256,
+    );
+    expect(first.recomputedAdapterReceiptDigest).toBe(
+      PROVENANCE_V2_CONNECTED_DOCUMENT_CASCADE_VECTORS.successor
+        .adapter_receipt_leaf_sha256,
+    );
+    expect(first.leafManifestDigest).toBe(
+      PROVENANCE_V2_CONNECTED_DOCUMENT_CASCADE_VECTORS.graph_outputs
+        .leaf_output_manifest_sha256,
+    );
+    expect(
+      [...first.traversals.entries()].map(([name, result]) => ({
+        name,
+        member_count: result.count,
+        ordered_row_id_manifest_sha256: result.rowManifest,
+        collection_sha256: result.digest,
+      })),
+    ).toEqual(
+      PROVENANCE_V2_CONNECTED_DOCUMENT_CASCADE_VECTORS.graph_outputs.traversals,
+    );
+    expect(finalCanonical).toBe(
+      PROVENANCE_V2_CONNECTED_DOCUMENT_CASCADE_VECTORS.final_document
+        .canonical_json,
+    );
+    expect(finalBytes.length).toBe(
+      PROVENANCE_V2_CONNECTED_DOCUMENT_CASCADE_VECTORS.final_document
+        .utf8_byte_length,
+    );
+    expect(finalHash).toBe(
+      PROVENANCE_V2_CONNECTED_DOCUMENT_CASCADE_VECTORS.final_document.sha256,
+    );
+    expect({
+      frame_hex: second.authorityHex,
+      sha256: second.authorityDigest,
+    }).toEqual({
+      frame_hex:
+        PROVENANCE_V2_CONNECTED_DOCUMENT_CASCADE_VECTORS
+          .candidate_authority_frame.frame_hex,
+      sha256:
+        PROVENANCE_V2_CONNECTED_DOCUMENT_CASCADE_VECTORS
+          .candidate_authority_frame.sha256,
+    });
+    expect({
+      frame_hex: second.refusedReceiptHex,
+      sha256: second.refusedReceiptDigest,
+    }).toEqual({
+      frame_hex:
+        PROVENANCE_V2_CONNECTED_DOCUMENT_CASCADE_VECTORS
+          .candidate_refused_receipt_frame.frame_hex,
+      sha256:
+        PROVENANCE_V2_CONNECTED_DOCUMENT_CASCADE_VECTORS
+          .candidate_refused_receipt_frame.sha256,
+    });
+  });
+
+  it("causally avalanches a document preimage through successor and adapter roots", async () => {
+    const documentOverlayRows = await resolveDocumentOverlayRows();
+    const baseline = await execute(documentOverlayRows, {
+      permitStoredSuccessorMismatch: true,
+    });
+    const mutated = structuredClone(documentOverlayRows) as unknown as {
+      row_id: string;
+      table: string;
+      fields: { name: string; tag: Field["tag"]; value: Field["value"] }[];
+    }[];
+    mutated
+      .find((row) => row.row_id === "row-source_owner_receipt-owner")!
+      .fields.find((item) => item.name === "identity_content_hash")!.value =
+      `sha256:${"f".repeat(64)}`;
+    const changed = await execute(mutated, {
+      permitStoredSuccessorMismatch: true,
+    });
+    expect(changed.successorManifestHash).not.toBe(
+      baseline.successorManifestHash,
+    );
+    expect(changed.recomputedAdapterReceiptDigest).not.toBe(
+      baseline.recomputedAdapterReceiptDigest,
+    );
+    expect(
+      changed.traversals.get("adapter_manifest_set_root")?.digest,
+    ).not.toBe(baseline.traversals.get("adapter_manifest_set_root")?.digest);
+    expect(changed.leafManifestDigest).not.toBe(baseline.leafManifestDigest);
+    expect(changed.traversals.get("verifier_policy_set_root")?.digest).toBe(
+      baseline.traversals.get("verifier_policy_set_root")?.digest,
+    );
+  });
+
   it("recomputes every connected leaf and typed traversal in reverse caller order", async () => {
     const result = await execute([...rows].reverse());
     expect(

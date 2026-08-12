@@ -4,10 +4,13 @@ import { describe, expect, it } from "vitest";
 
 import {
   PROVENANCE_V2_AUTHORITY_ROOT_REGISTRY,
+  parseProvenanceV2CanonicalDocument,
+  PROVENANCE_V2_CONNECTED_DOCUMENT_CASCADE_VECTORS,
   PROVENANCE_V2_CONNECTED_REGISTRATION_GRAPH,
   PROVENANCE_V2_CONNECTED_SUCCESSOR_MANIFEST_VECTORS,
   PROVENANCE_V2_CONNECTED_TRAVERSAL_VECTORS,
   PROVENANCE_V2_ROOT_BINDING_PLAN,
+  resolveProvenanceV2DocumentValueCandidate,
 } from "./index.js";
 
 interface Field {
@@ -43,6 +46,15 @@ interface SuccessorProjectionMapping {
   readonly column: string;
   readonly conversion: "identity" | "safe_integer";
   readonly cardinality: "exactly_one";
+}
+interface DocumentOverlay {
+  readonly row_id: string;
+  readonly table: string;
+  readonly field: string;
+  readonly encoding: "nfc_utf8" | "rfc8785_jcs";
+  readonly preimage_kind: "bytes" | "absent";
+  readonly before: Omit<Field, "name">;
+  readonly after: Omit<Field, "name">;
 }
 const normalizedProjectionMappings = [
   [
@@ -475,7 +487,16 @@ const runTraversal = (
   };
 };
 
-const compute = (inputRows: readonly Row[] = rows) => {
+interface ComputeOptions {
+  readonly permitStoredSuccessorMismatch?: boolean;
+  readonly authorityScalarOverrides?: ReadonlyMap<string, EncodableField>;
+  readonly receiptScalarOverrides?: ReadonlyMap<string, EncodableField>;
+}
+
+const compute = (
+  inputRows: readonly Row[] = rows,
+  options: ComputeOptions = {},
+) => {
   if (new Set(inputRows.map((row) => row.row_id)).size !== inputRows.length)
     throw new Error("duplicate row identity");
   expect(
@@ -672,7 +693,10 @@ const compute = (inputRows: readonly Row[] = rows) => {
   )
     throw new Error("invalid stored successor manifest field");
   const storedSuccessorManifestDigest = storedSuccessorManifestHash.value;
-  if (storedSuccessorManifestDigest !== successorManifestHash)
+  if (
+    storedSuccessorManifestDigest !== successorManifestHash &&
+    options.permitStoredSuccessorMismatch !== true
+  )
     throw new Error("stored successor manifest digest mismatch");
   const recomputedAdapterReceiptDigest = hashLeaf(
     replaceDigest(
@@ -772,12 +796,15 @@ const compute = (inputRows: readonly Row[] = rows) => {
       const fixture = authorityFixture.get(binding.name);
       if (fixture?.tag !== binding.frame_type)
         throw new Error("authority fixture layout mismatch");
+      const override = options.authorityScalarOverrides?.get(binding.name);
+      if (override !== undefined && override.tag !== binding.frame_type)
+        throw new Error("authority override layout mismatch");
       return {
         tag: binding.frame_type,
         value:
           binding.source.kind === "collection"
             ? (traversalResults.get(binding.source.traversal)?.digest ?? "")
-            : fixture.value,
+            : (override?.value ?? fixture.value),
       };
     },
   );
@@ -793,10 +820,15 @@ const compute = (inputRows: readonly Row[] = rows) => {
       const fixture = receiptFixture.get(binding.name);
       if (fixture?.tag !== binding.frame_type)
         throw new Error("receipt fixture layout mismatch");
+      const override = options.receiptScalarOverrides?.get(binding.name);
+      if (override !== undefined && override.tag !== binding.frame_type)
+        throw new Error("receipt override layout mismatch");
       return {
         tag: binding.frame_type,
         value:
-          binding.name === "authority_root" ? authorityDigest : fixture.value,
+          binding.name === "authority_root"
+            ? authorityDigest
+            : (override?.value ?? fixture.value),
       };
     },
   );
@@ -820,7 +852,271 @@ const compute = (inputRows: readonly Row[] = rows) => {
   };
 };
 
+const resolveDocumentOverlayRows = (): readonly Row[] => {
+  const admission = parseProvenanceV2CanonicalDocument(
+    new TextEncoder().encode(
+      PROVENANCE_V2_CONNECTED_DOCUMENT_CASCADE_VECTORS.final_document
+        .canonical_json,
+    ),
+  );
+  const document = admission.document;
+  if (document === null) throw new Error("final document admission failed");
+  const overlay: DocumentOverlay[] = [];
+  const resolved = rows.map((row): Row => {
+    const documentBindings =
+      PROVENANCE_V2_ROOT_BINDING_PLAN.digest_bindings.filter(
+        (entry) =>
+          entry.table === row.table &&
+          (entry.binding as { readonly kind?: string }).kind ===
+            "document_value",
+      );
+    if (documentBindings.length === 0) return row;
+    const projection = Object.fromEntries(
+      row.fields.map((item) => [
+        item.name,
+        item.tag === "integer" ? Number(item.value) : item.value,
+      ]),
+    );
+    return {
+      ...row,
+      fields: row.fields.map((item) => {
+        const binding = documentBindings.find(
+          (entry) => entry.field === item.name,
+        );
+        if (binding === undefined) return item;
+        const result = resolveProvenanceV2DocumentValueCandidate(
+          document,
+          row.table,
+          item.name,
+          projection,
+        );
+        if (result.outcome !== "resolved_review_candidate")
+          throw new Error("final document resolution failed");
+        const after =
+          result.preimage_kind === "absent"
+            ? { tag: "null" as const, value: null }
+            : {
+                tag: "digest" as const,
+                value: sha256(Buffer.from(result.preimage_bytes)),
+              };
+        overlay.push({
+          row_id: row.row_id,
+          table: row.table,
+          field: item.name,
+          encoding: result.encoding,
+          preimage_kind: result.preimage_kind,
+          before: { tag: item.tag, value: item.value },
+          after,
+        });
+        if (after.tag === "null") {
+          if (item.tag !== "null" || item.value !== null)
+            throw new Error("document absence target mismatch");
+          return item;
+        }
+        return { ...item, tag: after.tag, value: after.value };
+      }),
+    };
+  });
+  expect(overlay).toEqual(
+    PROVENANCE_V2_CONNECTED_DOCUMENT_CASCADE_VECTORS.graph_overlay,
+  );
+  return resolved;
+};
+
 describe("independent Node connected provenance-v2 traversal vectors", () => {
+  it("overlays document digests before recomputing the refused cascade", () => {
+    const documentOverlayRows = resolveDocumentOverlayRows();
+    const first = compute(documentOverlayRows, {
+      permitStoredSuccessorMismatch: false,
+    });
+    const document = structuredClone(
+      PROVENANCE_V2_CONNECTED_DOCUMENT_CASCADE_VECTORS.final_document.document,
+    ) as unknown as Record<string, unknown>;
+    const receipts = document.adapter_receipts as Record<string, unknown>[];
+    receipts[0]!.successor_manifest = first.successorManifest;
+    document.roots = {
+      adapter_manifest_set_root: first.traversalResults.get(
+        "adapter_manifest_set_root",
+      )!.digest,
+      endpoint_set_root:
+        first.traversalResults.get("endpoint_set_root")!.digest,
+      verifier_policy_set_root: first.traversalResults.get(
+        "verifier_policy_set_root",
+      )!.digest,
+      field_policy_set_root: first.traversalResults.get(
+        "field_policy_set_root",
+      )!.digest,
+    };
+    const canonicalDocument = canonicalJson(document);
+    const canonicalBytes = Buffer.from(canonicalDocument, "utf8");
+    const canonicalDocumentHash = sha256(canonicalBytes);
+    const second = compute(documentOverlayRows, {
+      permitStoredSuccessorMismatch: false,
+      authorityScalarOverrides: new Map([
+        [
+          "contract_version",
+          {
+            tag: "text" as const,
+            value: "provenance-v2-connected-document-cascade-candidate@1",
+          },
+        ],
+        [
+          "canonical_document_hash",
+          { tag: "digest" as const, value: canonicalDocumentHash },
+        ],
+        [
+          "semantic_policy_hash",
+          {
+            tag: "digest" as const,
+            value: String(document.semantic_policy_hash),
+          },
+        ],
+        [
+          "run_plan_hash",
+          { tag: "digest" as const, value: String(document.run_plan_hash) },
+        ],
+        ["environment", { tag: "text" as const, value: "production" }],
+        [
+          "canonical_document_bytes",
+          { tag: "integer" as const, value: String(canonicalBytes.length) },
+        ],
+        [
+          "normalized_row_count",
+          { tag: "integer" as const, value: String(rows.length) },
+        ],
+      ]),
+      receiptScalarOverrides: new Map([
+        [
+          "oracle_contract_version",
+          {
+            tag: "text" as const,
+            value: "provenance-v2-connected-document-cascade-candidate@1",
+          },
+        ],
+        [
+          "semantic_policy_hash",
+          {
+            tag: "digest" as const,
+            value: String(document.semantic_policy_hash),
+          },
+        ],
+      ]),
+    });
+    expect(first.successorClaims).toEqual(
+      Object.fromEntries(
+        PROVENANCE_V2_ROOT_BINDING_PLAN.successor_claim_bindings.map(
+          (binding) => [
+            binding.field,
+            PROVENANCE_V2_CONNECTED_DOCUMENT_CASCADE_VECTORS.successor.manifest[
+              binding.field as keyof typeof PROVENANCE_V2_CONNECTED_DOCUMENT_CASCADE_VECTORS.successor.manifest
+            ],
+          ],
+        ),
+      ),
+    );
+    expect(first.successorManifest).toEqual(
+      PROVENANCE_V2_CONNECTED_DOCUMENT_CASCADE_VECTORS.successor.manifest,
+    );
+    expect(first.successorCanonicalJson).toBe(
+      PROVENANCE_V2_CONNECTED_DOCUMENT_CASCADE_VECTORS.successor.canonical_json,
+    );
+    expect(first.successorManifestHash).toBe(
+      PROVENANCE_V2_CONNECTED_DOCUMENT_CASCADE_VECTORS.successor.sha256,
+    );
+    expect(first.recomputedAdapterReceiptDigest).toBe(
+      PROVENANCE_V2_CONNECTED_DOCUMENT_CASCADE_VECTORS.successor
+        .adapter_receipt_leaf_sha256,
+    );
+    expect(first.leafManifestDigest).toBe(
+      PROVENANCE_V2_CONNECTED_DOCUMENT_CASCADE_VECTORS.graph_outputs
+        .leaf_output_manifest_sha256,
+    );
+    expect(
+      [...first.traversalResults.entries()].map(([name, result]) => ({
+        name,
+        member_count: result.projections.length,
+        ordered_row_id_manifest_sha256: result.rowManifestDigest,
+        collection_sha256: result.digest,
+      })),
+    ).toEqual(
+      PROVENANCE_V2_CONNECTED_DOCUMENT_CASCADE_VECTORS.graph_outputs.traversals,
+    );
+    expect(canonicalDocument).toBe(
+      PROVENANCE_V2_CONNECTED_DOCUMENT_CASCADE_VECTORS.final_document
+        .canonical_json,
+    );
+    expect(canonicalBytes.length).toBe(
+      PROVENANCE_V2_CONNECTED_DOCUMENT_CASCADE_VECTORS.final_document
+        .utf8_byte_length,
+    );
+    expect(canonicalDocumentHash).toBe(
+      PROVENANCE_V2_CONNECTED_DOCUMENT_CASCADE_VECTORS.final_document.sha256,
+    );
+    expect({
+      fields:
+        PROVENANCE_V2_CONNECTED_DOCUMENT_CASCADE_VECTORS
+          .candidate_authority_frame.fields,
+      frame_hex: second.authorityHex,
+      sha256: second.authorityDigest,
+    }).toEqual(
+      PROVENANCE_V2_CONNECTED_DOCUMENT_CASCADE_VECTORS.candidate_authority_frame,
+    );
+    expect({
+      fields:
+        PROVENANCE_V2_CONNECTED_DOCUMENT_CASCADE_VECTORS
+          .candidate_refused_receipt_frame.fields,
+      frame_hex: second.receiptHex,
+      sha256: second.receiptFrameDigest,
+    }).toEqual(
+      PROVENANCE_V2_CONNECTED_DOCUMENT_CASCADE_VECTORS.candidate_refused_receipt_frame,
+    );
+    expect(first.traversalResults.get("verifier_policy_set_root")?.digest).toBe(
+      PROVENANCE_V2_CONNECTED_TRAVERSAL_VECTORS.traversals.find(
+        (item) => item.name === "verifier_policy_set_root",
+      )?.collection_sha256,
+    );
+    expect(
+      first.traversalResults.get("adapter_manifest_set_root")?.digest,
+    ).not.toBe(
+      PROVENANCE_V2_CONNECTED_TRAVERSAL_VECTORS.traversals.find(
+        (item) => item.name === "adapter_manifest_set_root",
+      )?.collection_sha256,
+    );
+  });
+
+  it("causally avalanches a document preimage through successor and adapter roots", () => {
+    const documentOverlayRows = resolveDocumentOverlayRows();
+    const baseline = compute(documentOverlayRows, {
+      permitStoredSuccessorMismatch: true,
+    });
+    const mutated = structuredClone(documentOverlayRows) as unknown as {
+      row_id: string;
+      table: string;
+      fields: { name: string; tag: Field["tag"]; value: Field["value"] }[];
+    }[];
+    mutated
+      .find((row) => row.row_id === "row-source_owner_receipt-owner")!
+      .fields.find((field) => field.name === "identity_content_hash")!.value =
+      `sha256:${"f".repeat(64)}`;
+    const changed = compute(mutated, {
+      permitStoredSuccessorMismatch: true,
+    });
+    expect(changed.successorManifestHash).not.toBe(
+      baseline.successorManifestHash,
+    );
+    expect(changed.recomputedAdapterReceiptDigest).not.toBe(
+      baseline.recomputedAdapterReceiptDigest,
+    );
+    expect(
+      changed.traversalResults.get("adapter_manifest_set_root")?.digest,
+    ).not.toBe(
+      baseline.traversalResults.get("adapter_manifest_set_root")?.digest,
+    );
+    expect(changed.leafManifestDigest).not.toBe(baseline.leafManifestDigest);
+    expect(
+      changed.traversalResults.get("verifier_policy_set_root")?.digest,
+    ).toBe(baseline.traversalResults.get("verifier_policy_set_root")?.digest);
+  });
   it("recomputes all connected leaves, projections, traversals, and derived links", () => {
     const result = compute();
     expect(

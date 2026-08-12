@@ -11,6 +11,7 @@ import {
   PROVENANCE_V2_AUTHORITY_ROOT_VECTORS,
   PROVENANCE_V2_CANONICAL_JSON_CONTRACT,
   PROVENANCE_V2_COMPOSITE_ROOT_VECTORS,
+  PROVENANCE_V2_CONNECTED_DOCUMENT_CASCADE_VECTORS,
   PROVENANCE_V2_CONNECTED_REGISTRATION_GRAPH,
   PROVENANCE_V2_CONNECTED_REGISTRATION_DOCUMENT_VECTORS,
   PROVENANCE_V2_CONNECTED_SUCCESSOR_MANIFEST_VECTORS,
@@ -24,6 +25,7 @@ import {
   PROVENANCE_V2_SUCCESSOR_MANIFEST_CONTRACT,
   validateProvenanceV2ContractArtifacts,
   validateProvenanceV2CompositeRootVectors,
+  validateProvenanceV2ConnectedDocumentCascadeVectors,
   validateProvenanceV2ConnectedRegistrationGraph,
   validateProvenanceV2ConnectedRegistrationDocumentVectors,
   validateProvenanceV2ConnectedSuccessorManifestVectors,
@@ -61,6 +63,10 @@ const provenanceArtifacts = [
   ["root-binding-plan.v1.json", PROVENANCE_V2_ROOT_BINDING_PLAN],
   ["golden-vectors.v1.json", PROVENANCE_V2_AUTHORITY_ROOT_VECTORS],
   ["composite-root-vectors.v1.json", PROVENANCE_V2_COMPOSITE_ROOT_VECTORS],
+  [
+    "connected-document-cascade-vectors.v1.json",
+    PROVENANCE_V2_CONNECTED_DOCUMENT_CASCADE_VECTORS,
+  ],
   [
     "connected-registration-graph.v1.json",
     PROVENANCE_V2_CONNECTED_REGISTRATION_GRAPH,
@@ -106,6 +112,15 @@ const connectedDocumentErrors =
 if (connectedDocumentErrors.length > 0)
   throw new Error(
     `Invalid provenance-v2 connected registration document vectors: ${connectedDocumentErrors.join("; ")}`,
+  );
+
+const connectedCascadeErrors =
+  validateProvenanceV2ConnectedDocumentCascadeVectors(
+    PROVENANCE_V2_CONNECTED_DOCUMENT_CASCADE_VECTORS,
+  );
+if (connectedCascadeErrors.length > 0)
+  throw new Error(
+    `Invalid provenance-v2 connected document cascade vectors: ${connectedCascadeErrors.join("; ")}`,
   );
 
 const connectedTraversalErrors = validateProvenanceV2ConnectedTraversalVectors(

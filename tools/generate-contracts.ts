@@ -8,6 +8,7 @@ import {
   PROVENANCE_V2_AUTHORITY_ROOT_VECTORS,
   PROVENANCE_V2_CANONICAL_JSON_CONTRACT,
   PROVENANCE_V2_COMPOSITE_ROOT_VECTORS,
+  PROVENANCE_V2_CONNECTED_DOCUMENT_CASCADE_VECTORS,
   PROVENANCE_V2_CONNECTED_REGISTRATION_GRAPH,
   PROVENANCE_V2_CONNECTED_REGISTRATION_DOCUMENT_VECTORS,
   PROVENANCE_V2_CONNECTED_SUCCESSOR_MANIFEST_VECTORS,
@@ -1555,6 +1556,10 @@ const files = new Map<string, string>([
   [
     "provenance-v2/composite-root-vectors.v1.json",
     `${JSON.stringify(PROVENANCE_V2_COMPOSITE_ROOT_VECTORS, null, 2)}\n`,
+  ],
+  [
+    "provenance-v2/connected-document-cascade-vectors.v1.json",
+    `${JSON.stringify(PROVENANCE_V2_CONNECTED_DOCUMENT_CASCADE_VECTORS, null, 2)}\n`,
   ],
   [
     "provenance-v2/connected-registration-graph.v1.json",
