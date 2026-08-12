@@ -612,7 +612,7 @@
           "frame_type": "digest",
           "nullable": false,
           "hash_class": "safe_preimage",
-          "anchor": "registration_document.adapter_receipts[] successor-manifest frame"
+          "anchor": "registration_document.adapter_receipts[].successor_manifest exact provenance-v2-successor-manifest-preimage@1 canonical JSON bytes"
         },
         {
           "name": "source_policy_version",

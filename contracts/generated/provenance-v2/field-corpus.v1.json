@@ -6,6 +6,12 @@
       "ordinal": 0,
       "record_group": "offering_applicability@1",
       "equality_rule": "exact_applicability_tuple",
+      "context_bindings": [
+        "endpoint",
+        "policy",
+        "observation",
+        "evidence"
+      ],
       "field_paths": [
         "offering.applicability.provider_id",
         "offering.applicability.provider_model_id",
@@ -19,6 +25,13 @@
       "ordinal": 1,
       "record_group": "price_tuple@1",
       "equality_rule": "exact_price_tuple",
+      "context_bindings": [
+        "offering_applicability",
+        "endpoint",
+        "policy",
+        "observation",
+        "evidence"
+      ],
       "field_paths": [
         "price.role",
         "price.price_class",
@@ -37,6 +50,13 @@
       "ordinal": 2,
       "record_group": "precision_summary_tuple@1",
       "equality_rule": "precision_value_and_scope",
+      "context_bindings": [
+        "offering_applicability",
+        "endpoint",
+        "policy",
+        "observation",
+        "evidence"
+      ],
       "field_paths": [
         "precision.summary.normalized_format",
         "precision.summary.summary_format",
@@ -51,10 +71,22 @@
       "ordinal": 3,
       "record_group": "precision_component_tuple@1",
       "equality_rule": "precision_value_and_scope",
+      "context_bindings": [
+        "offering_applicability",
+        "precision_summary",
+        "endpoint",
+        "policy",
+        "observation",
+        "evidence"
+      ],
       "field_paths": [
-        "precision.component.component",
+        "precision.component.component_kind",
+        "precision.component.component_label",
         "precision.component.normalized_format",
+        "precision.component.raw_field_name",
         "precision.component.raw_precision",
+        "precision.component.provider_definition",
+        "precision.component.format_variant",
         "precision.component.observed_at"
       ]
     }
@@ -62,6 +94,17 @@
   "enum_domains": {
     "component_scope": [
       "offering",
+      "stored_weights",
+      "weight_computation",
+      "activations",
+      "accumulation",
+      "kv_cache",
+      "attention",
+      "experts",
+      "shared_layers",
+      "other"
+    ],
+    "precision_component_kind": [
       "stored_weights",
       "weight_computation",
       "activations",
@@ -122,6 +165,7 @@
       "requirement_state": "required",
       "enum_domain": null,
       "source_mappability": "registered_literal",
+      "condition": null,
       "allowed_authority_roles": [
         "primary",
         "corroborating",
@@ -139,6 +183,7 @@
       "requirement_state": "required",
       "enum_domain": null,
       "source_mappability": "observed_or_registered",
+      "condition": null,
       "allowed_authority_roles": [
         "primary",
         "corroborating",
@@ -156,6 +201,7 @@
       "requirement_state": "required",
       "enum_domain": null,
       "source_mappability": "observed_or_registered",
+      "condition": null,
       "allowed_authority_roles": [
         "primary",
         "corroborating",
@@ -173,6 +219,7 @@
       "requirement_state": "required",
       "enum_domain": null,
       "source_mappability": "observed_or_registered",
+      "condition": null,
       "allowed_authority_roles": [
         "primary",
         "corroborating",
@@ -190,6 +237,7 @@
       "requirement_state": "required",
       "enum_domain": null,
       "source_mappability": "observed_or_registered",
+      "condition": null,
       "allowed_authority_roles": [
         "primary",
         "corroborating",
@@ -207,6 +255,7 @@
       "requirement_state": "required",
       "enum_domain": "component_scope",
       "source_mappability": "registered_literal",
+      "condition": null,
       "allowed_authority_roles": [
         "primary",
         "corroborating",
@@ -224,6 +273,7 @@
       "requirement_state": "required",
       "enum_domain": "price_role",
       "source_mappability": "field_identity_literal",
+      "condition": null,
       "allowed_authority_roles": [
         "primary",
         "corroborating",
@@ -241,6 +291,7 @@
       "requirement_state": "required",
       "enum_domain": "price_class",
       "source_mappability": "observed_or_registered",
+      "condition": null,
       "allowed_authority_roles": [
         "primary",
         "corroborating",
@@ -258,6 +309,7 @@
       "requirement_state": "required",
       "enum_domain": null,
       "source_mappability": "observed",
+      "condition": null,
       "allowed_authority_roles": [
         "primary",
         "corroborating",
@@ -275,6 +327,7 @@
       "requirement_state": "required",
       "enum_domain": null,
       "source_mappability": "observed_or_deterministic",
+      "condition": null,
       "allowed_authority_roles": [
         "primary",
         "corroborating",
@@ -293,6 +346,7 @@
       "requirement_state": "required",
       "enum_domain": "currency_provenance",
       "source_mappability": "deterministic",
+      "condition": null,
       "allowed_authority_roles": [
         "deterministic_system"
       ]
@@ -308,6 +362,7 @@
       "requirement_state": "required",
       "enum_domain": "price_unit",
       "source_mappability": "observed_or_registered",
+      "condition": null,
       "allowed_authority_roles": [
         "primary",
         "corroborating",
@@ -325,6 +380,7 @@
       "requirement_state": "required",
       "enum_domain": null,
       "source_mappability": "observed",
+      "condition": null,
       "allowed_authority_roles": [
         "primary",
         "corroborating",
@@ -342,6 +398,7 @@
       "requirement_state": "required",
       "enum_domain": null,
       "source_mappability": "deterministic",
+      "condition": null,
       "allowed_authority_roles": [
         "deterministic_system"
       ]
@@ -357,6 +414,7 @@
       "requirement_state": "conditional",
       "enum_domain": null,
       "source_mappability": "observed",
+      "condition": null,
       "allowed_authority_roles": [
         "primary",
         "corroborating",
@@ -374,6 +432,7 @@
       "requirement_state": "conditional",
       "enum_domain": null,
       "source_mappability": "observed",
+      "condition": null,
       "allowed_authority_roles": [
         "primary",
         "corroborating",
@@ -391,6 +450,7 @@
       "requirement_state": "required",
       "enum_domain": null,
       "source_mappability": "observation_timestamp",
+      "condition": null,
       "allowed_authority_roles": [
         "primary",
         "corroborating",
@@ -408,6 +468,7 @@
       "requirement_state": "required",
       "enum_domain": "precision_format",
       "source_mappability": "deterministic",
+      "condition": null,
       "allowed_authority_roles": [
         "deterministic_system"
       ]
@@ -423,6 +484,7 @@
       "requirement_state": "required",
       "enum_domain": "precision_format",
       "source_mappability": "deterministic",
+      "condition": null,
       "allowed_authority_roles": [
         "deterministic_system"
       ]
@@ -438,6 +500,7 @@
       "requirement_state": "required",
       "enum_domain": null,
       "source_mappability": "field_identity_literal",
+      "condition": null,
       "allowed_authority_roles": [
         "primary",
         "corroborating",
@@ -455,6 +518,7 @@
       "requirement_state": "required",
       "enum_domain": null,
       "source_mappability": "observed",
+      "condition": null,
       "allowed_authority_roles": [
         "primary",
         "corroborating",
@@ -472,6 +536,7 @@
       "requirement_state": "conditional",
       "enum_domain": null,
       "source_mappability": "observed",
+      "condition": null,
       "allowed_authority_roles": [
         "primary",
         "corroborating",
@@ -489,6 +554,7 @@
       "requirement_state": "conditional",
       "enum_domain": null,
       "source_mappability": "observed",
+      "condition": null,
       "allowed_authority_roles": [
         "primary",
         "corroborating",
@@ -506,6 +572,7 @@
       "requirement_state": "required",
       "enum_domain": null,
       "source_mappability": "observation_timestamp",
+      "condition": null,
       "allowed_authority_roles": [
         "primary",
         "corroborating",
@@ -514,15 +581,16 @@
     },
     {
       "ordinal": 24,
-      "field_path": "precision.component.component",
+      "field_path": "precision.component.component_kind",
       "field_group": "precision_component",
       "record_group": "precision_component_tuple@1",
-      "value_kind": "text",
+      "value_kind": "enum",
       "cardinality": "one",
       "nullability": "non_null",
       "requirement_state": "required",
-      "enum_domain": null,
+      "enum_domain": "precision_component_kind",
       "source_mappability": "field_identity_literal",
+      "condition": null,
       "allowed_authority_roles": [
         "primary",
         "corroborating",
@@ -531,6 +599,24 @@
     },
     {
       "ordinal": 25,
+      "field_path": "precision.component.component_label",
+      "field_group": "precision_component",
+      "record_group": "precision_component_tuple@1",
+      "value_kind": "text",
+      "cardinality": "one",
+      "nullability": "nullable",
+      "requirement_state": "conditional",
+      "enum_domain": null,
+      "source_mappability": "field_identity_literal",
+      "condition": "required_iff_component_kind_other",
+      "allowed_authority_roles": [
+        "primary",
+        "corroborating",
+        "conflict_detection_only"
+      ]
+    },
+    {
+      "ordinal": 26,
       "field_path": "precision.component.normalized_format",
       "field_group": "precision_component",
       "record_group": "precision_component_tuple@1",
@@ -540,12 +626,31 @@
       "requirement_state": "required",
       "enum_domain": "precision_format",
       "source_mappability": "deterministic",
+      "condition": null,
       "allowed_authority_roles": [
         "deterministic_system"
       ]
     },
     {
-      "ordinal": 26,
+      "ordinal": 27,
+      "field_path": "precision.component.raw_field_name",
+      "field_group": "precision_component",
+      "record_group": "precision_component_tuple@1",
+      "value_kind": "text",
+      "cardinality": "one",
+      "nullability": "non_null",
+      "requirement_state": "required",
+      "enum_domain": null,
+      "source_mappability": "field_identity_literal",
+      "condition": null,
+      "allowed_authority_roles": [
+        "primary",
+        "corroborating",
+        "conflict_detection_only"
+      ]
+    },
+    {
+      "ordinal": 28,
       "field_path": "precision.component.raw_precision",
       "field_group": "precision_component",
       "record_group": "precision_component_tuple@1",
@@ -555,6 +660,7 @@
       "requirement_state": "required",
       "enum_domain": null,
       "source_mappability": "observed",
+      "condition": null,
       "allowed_authority_roles": [
         "primary",
         "corroborating",
@@ -562,7 +668,43 @@
       ]
     },
     {
-      "ordinal": 27,
+      "ordinal": 29,
+      "field_path": "precision.component.provider_definition",
+      "field_group": "precision_component",
+      "record_group": "precision_component_tuple@1",
+      "value_kind": "text",
+      "cardinality": "one",
+      "nullability": "nullable",
+      "requirement_state": "conditional",
+      "enum_domain": null,
+      "source_mappability": "observed",
+      "condition": null,
+      "allowed_authority_roles": [
+        "primary",
+        "corroborating",
+        "conflict_detection_only"
+      ]
+    },
+    {
+      "ordinal": 30,
+      "field_path": "precision.component.format_variant",
+      "field_group": "precision_component",
+      "record_group": "precision_component_tuple@1",
+      "value_kind": "text",
+      "cardinality": "one",
+      "nullability": "nullable",
+      "requirement_state": "conditional",
+      "enum_domain": null,
+      "source_mappability": "observed",
+      "condition": null,
+      "allowed_authority_roles": [
+        "primary",
+        "corroborating",
+        "conflict_detection_only"
+      ]
+    },
+    {
+      "ordinal": 31,
       "field_path": "precision.component.observed_at",
       "field_group": "precision_component",
       "record_group": "precision_component_tuple@1",
@@ -572,6 +714,7 @@
       "requirement_state": "required",
       "enum_domain": null,
       "source_mappability": "observation_timestamp",
+      "condition": null,
       "allowed_authority_roles": [
         "primary",
         "corroborating",

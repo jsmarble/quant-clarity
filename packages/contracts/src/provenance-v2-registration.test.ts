@@ -6,7 +6,12 @@ import {
   PROVENANCE_V2_AUTHORITY_ROOT_VECTORS,
   PROVENANCE_V2_FIELD_CORPUS,
   PROVENANCE_V2_SEMANTIC_POLICY,
+  PROVENANCE_V2_SUCCESSOR_MANIFEST_CONTRACT,
   ProvenanceV2AdapterReceiptSchema,
+  isProvenanceV2PathTemplateCandidate,
+  isProvenanceV2RawLocatorCandidate,
+  isProvenanceV2RegistrationHostCandidate,
+  isProvenanceV2SafeLocatorCandidate,
   validateProvenanceV2ContractArtifacts,
   validateProvenanceV2RegistrationLimits,
 } from "./index.js";
@@ -20,8 +25,62 @@ describe("provenance-v2 registration contracts", () => {
     );
   });
 
-  it("closes the 28 policy paths into four indivisible record groups", () => {
-    expect(PROVENANCE_V2_FIELD_CORPUS.fields).toHaveLength(28);
+  it("defines the successor commitment as exact canonical bytes", () => {
+    expect(PROVENANCE_V2_SUCCESSOR_MANIFEST_CONTRACT).toMatchObject({
+      contract_version: "provenance-v2-successor-manifest-preimage@1",
+      status: "review_candidate",
+      schema: "ProvenanceV2SuccessorManifest",
+      canonical_json_version: "quantclarity-canonical-json@1",
+      caller_roots_authoritative: false,
+      field_inclusion: "every schema property exactly once; no exclusions",
+    });
+  });
+
+  it("fails closed on unsafe registration hosts, paths, and raw locators", () => {
+    expect(isProvenanceV2RegistrationHostCandidate("api.provider.dev")).toBe(
+      true,
+    );
+    for (const host of [
+      "localhost",
+      "127.0.0.1",
+      "api.local",
+      "example.com",
+      "xn--invalid-.dev",
+      "xn--80ak6aa92e.com",
+      "service.onion",
+      "home.arpa",
+      "localhost.localdomain",
+    ])
+      expect(isProvenanceV2RegistrationHostCandidate(host)).toBe(false);
+
+    expect(
+      isProvenanceV2PathTemplateCandidate("/v1/{model}", [
+        { parameter_name: "model", location: "path", required: true },
+      ]),
+    ).toBe(true);
+    expect(isProvenanceV2PathTemplateCandidate("/v1/../admin", [])).toBe(false);
+    expect(isProvenanceV2PathTemplateCandidate("/v1/%2fadmin", [])).toBe(false);
+    expect(isProvenanceV2SafeLocatorCandidate("/v1/models")).toBe(true);
+    expect(isProvenanceV2SafeLocatorCandidate("/v1/{model}")).toBe(false);
+    expect(
+      isProvenanceV2RawLocatorCandidate(
+        "json_pointer_pattern@1",
+        "/data/~*/price",
+      ),
+    ).toBe(true);
+    expect(
+      isProvenanceV2RawLocatorCandidate(
+        "json_pointer_pattern@1",
+        "/~*/~*/price",
+      ),
+    ).toBe(false);
+    expect(
+      isProvenanceV2RawLocatorCandidate("json_pointer_pattern@1", "$.data[*]"),
+    ).toBe(false);
+  });
+
+  it("closes the 32 policy paths into four indivisible record groups", () => {
+    expect(PROVENANCE_V2_FIELD_CORPUS.fields).toHaveLength(32);
     expect(PROVENANCE_V2_FIELD_CORPUS.record_groups).toHaveLength(4);
     expect(
       validateProvenanceV2ContractArtifacts(
@@ -36,6 +95,29 @@ describe("provenance-v2 registration contracts", () => {
           .map((field) => field.field_path),
       ).toEqual(group.field_paths);
     }
+    expect(
+      PROVENANCE_V2_FIELD_CORPUS.fields.find(
+        (field) => field.field_path === "precision.component.component_label",
+      ),
+    ).toMatchObject({
+      nullability: "nullable",
+      requirement_state: "conditional",
+      condition: "required_iff_component_kind_other",
+    });
+    expect(
+      PROVENANCE_V2_FIELD_CORPUS.enum_domains.precision_component_kind,
+    ).not.toContain("offering");
+    expect(
+      PROVENANCE_V2_FIELD_CORPUS.fields.find(
+        (field) =>
+          field.field_path === "offering.applicability.component_scope",
+      )?.enum_domain,
+    ).toBe("component_scope");
+    expect(
+      PROVENANCE_V2_FIELD_CORPUS.fields.find(
+        (field) => field.field_path === "precision.component.component_kind",
+      )?.enum_domain,
+    ).toBe("precision_component_kind");
   });
 
   it("keeps provider API and catalog equal while forbidding unsafe primary classes", () => {

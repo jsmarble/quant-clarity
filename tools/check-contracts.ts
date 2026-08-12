@@ -14,6 +14,7 @@ import {
   PROVENANCE_V2_FRAME_CONTRACT,
   PROVENANCE_V2_RAW_FIELD_MAPPING_CONTRACT,
   PROVENANCE_V2_SEMANTIC_POLICY,
+  PROVENANCE_V2_SUCCESSOR_MANIFEST_CONTRACT,
   validateProvenanceV2ContractArtifacts,
 } from "@quant-clarity/contracts";
 
@@ -38,6 +39,10 @@ const provenanceArtifacts = [
     PROVENANCE_V2_RAW_FIELD_MAPPING_CONTRACT,
   ],
   ["registration-semantics.v1.json", PROVENANCE_V2_SEMANTIC_POLICY],
+  [
+    "successor-manifest-preimage.v1.json",
+    PROVENANCE_V2_SUCCESSOR_MANIFEST_CONTRACT,
+  ],
   ["root-registry.v1.json", PROVENANCE_V2_AUTHORITY_ROOT_REGISTRY],
   ["golden-vectors.v1.json", PROVENANCE_V2_AUTHORITY_ROOT_VECTORS],
 ] as const;
@@ -63,6 +68,7 @@ for (const schemaName of [
   "ProvenanceV2RawFieldMapping",
   "ProvenanceV2RegistrationLimits",
   "ProvenanceV2RegistrationPlan",
+  "ProvenanceV2SuccessorManifest",
 ]) {
   const schema = JSON.parse(
     await readFile(

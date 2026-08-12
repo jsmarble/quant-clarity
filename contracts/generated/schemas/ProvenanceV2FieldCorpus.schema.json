@@ -30,6 +30,7 @@
           "ordinal",
           "record_group",
           "equality_rule",
+          "context_bindings",
           "field_paths"
         ],
         "properties": {
@@ -74,9 +75,43 @@
               }
             ]
           },
+          "context_bindings": {
+            "minItems": 4,
+            "maxItems": 6,
+            "uniqueItems": true,
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "const": "offering_applicability",
+                  "type": "string"
+                },
+                {
+                  "const": "precision_summary",
+                  "type": "string"
+                },
+                {
+                  "const": "endpoint",
+                  "type": "string"
+                },
+                {
+                  "const": "policy",
+                  "type": "string"
+                },
+                {
+                  "const": "observation",
+                  "type": "string"
+                },
+                {
+                  "const": "evidence",
+                  "type": "string"
+                }
+              ]
+            }
+          },
           "field_paths": {
             "minItems": 1,
-            "maxItems": 28,
+            "maxItems": 32,
             "uniqueItems": true,
             "type": "array",
             "items": {
@@ -103,8 +138,8 @@
       }
     },
     "fields": {
-      "minItems": 28,
-      "maxItems": 28,
+      "minItems": 32,
+      "maxItems": 32,
       "type": "array",
       "items": {
         "additionalProperties": false,
@@ -120,12 +155,13 @@
           "requirement_state",
           "enum_domain",
           "source_mappability",
+          "condition",
           "allowed_authority_roles"
         ],
         "properties": {
           "ordinal": {
             "minimum": 0,
-            "maximum": 27,
+            "maximum": 31,
             "type": "integer"
           },
           "field_path": {
@@ -280,6 +316,17 @@
               {
                 "const": "observation_timestamp",
                 "type": "string"
+              }
+            ]
+          },
+          "condition": {
+            "anyOf": [
+              {
+                "const": "required_iff_component_kind_other",
+                "type": "string"
+              },
+              {
+                "type": "null"
               }
             ]
           },
