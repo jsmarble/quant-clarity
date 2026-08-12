@@ -10,6 +10,7 @@ import {
   PROVENANCE_V2_AUTHORITY_ROOT_REGISTRY,
   PROVENANCE_V2_AUTHORITY_ROOT_VECTORS,
   PROVENANCE_V2_CANONICAL_JSON_CONTRACT,
+  PROVENANCE_V2_COMPOSITE_ROOT_VECTORS,
   PROVENANCE_V2_FIELD_CORPUS,
   PROVENANCE_V2_FRAME_CONTRACT,
   PROVENANCE_V2_RAW_FIELD_MAPPING_CONTRACT,
@@ -17,6 +18,7 @@ import {
   PROVENANCE_V2_SEMANTIC_POLICY,
   PROVENANCE_V2_SUCCESSOR_MANIFEST_CONTRACT,
   validateProvenanceV2ContractArtifacts,
+  validateProvenanceV2CompositeRootVectors,
   validateProvenanceV2RootBindingPlan,
 } from "@quant-clarity/contracts";
 
@@ -48,7 +50,16 @@ const provenanceArtifacts = [
   ["root-registry.v1.json", PROVENANCE_V2_AUTHORITY_ROOT_REGISTRY],
   ["root-binding-plan.v1.json", PROVENANCE_V2_ROOT_BINDING_PLAN],
   ["golden-vectors.v1.json", PROVENANCE_V2_AUTHORITY_ROOT_VECTORS],
+  ["composite-root-vectors.v1.json", PROVENANCE_V2_COMPOSITE_ROOT_VECTORS],
 ] as const;
+
+const compositeRootErrors = validateProvenanceV2CompositeRootVectors(
+  PROVENANCE_V2_COMPOSITE_ROOT_VECTORS,
+);
+if (compositeRootErrors.length > 0)
+  throw new Error(
+    `Invalid provenance-v2 composite root vectors: ${compositeRootErrors.join("; ")}`,
+  );
 
 const rootBindingErrors = validateProvenanceV2RootBindingPlan(
   PROVENANCE_V2_ROOT_BINDING_PLAN,
@@ -75,6 +86,7 @@ for (const schemaName of [
   "ProvenanceV2AdapterReceipt",
   "ProvenanceV2AuthorityRootRegistry",
   "ProvenanceV2AuthorityRootVectors",
+  "ProvenanceV2CompositeRootVectors",
   "ProvenanceV2FieldCorpus",
   "ProvenanceV2RawFieldMapping",
   "ProvenanceV2RegistrationLimits",

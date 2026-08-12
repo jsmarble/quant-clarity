@@ -23,9 +23,11 @@ import {
   ProvenanceV2RegistrationPlanSchema,
   ProvenanceV2SuccessorManifestSchema,
 } from "./provenance-v2-registration.js";
+import { ProvenanceV2CompositeRootVectorsSchema } from "./provenance-v2-composite-root-vectors.js";
 import { ProvenanceV2RootBindingPlanSchema } from "./provenance-v2-root-binding-plan.js";
 
 export * from "./provenance-v2-authority-root-vectors.js";
+export * from "./provenance-v2-composite-root-vectors.js";
 export * from "./provenance-v2-registration.js";
 export * from "./provenance-v2-root-binding-plan.js";
 export { AdapterManifestSchema } from "./adapter-manifest.js";
@@ -3476,6 +3478,7 @@ export const GENERATED_SCHEMAS = {
   ProvenanceV2AdapterReceipt: ProvenanceV2AdapterReceiptSchema,
   ProvenanceV2AuthorityRootRegistry: ProvenanceV2AuthorityRootRegistrySchema,
   ProvenanceV2AuthorityRootVectors: ProvenanceV2AuthorityRootVectorsSchema,
+  ProvenanceV2CompositeRootVectors: ProvenanceV2CompositeRootVectorsSchema,
   ProvenanceV2FieldCorpus: ProvenanceV2FieldCorpusSchema,
   ProvenanceV2RawFieldMapping: ProvenanceV2RawFieldMappingSchema,
   ProvenanceV2RegistrationLimits: ProvenanceV2RegistrationLimitsSchema,
