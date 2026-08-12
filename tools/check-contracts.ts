@@ -1,5 +1,7 @@
-import { readdir, readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
+import { lstat, readdir, readFile, realpath } from "node:fs/promises";
+import { sep, resolve } from "node:path";
 
 import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
@@ -13,6 +15,7 @@ import {
   PROVENANCE_V2_COMPOSITE_ROOT_VECTORS,
   PROVENANCE_V2_CONNECTED_DOCUMENT_CASCADE_VECTORS,
   PROVENANCE_V2_EXTERNAL_ROW_RESOLVER_VECTORS,
+  PROVENANCE_V2_REPOSITORY_ARTIFACT_INVENTORY,
   PROVENANCE_V2_CONNECTED_REGISTRATION_GRAPH,
   PROVENANCE_V2_CONNECTED_REGISTRATION_DOCUMENT_VECTORS,
   PROVENANCE_V2_CONNECTED_SUCCESSOR_MANIFEST_VECTORS,
@@ -28,6 +31,7 @@ import {
   validateProvenanceV2CompositeRootVectors,
   validateProvenanceV2ConnectedDocumentCascadeVectors,
   validateProvenanceV2ExternalRowResolverVectors,
+  validateProvenanceV2RepositoryArtifactInventory,
   validateProvenanceV2ConnectedRegistrationGraph,
   validateProvenanceV2ConnectedRegistrationDocumentVectors,
   validateProvenanceV2ConnectedSuccessorManifestVectors,
@@ -72,6 +76,10 @@ const provenanceArtifacts = [
   [
     "external-row-resolver-vectors.v1.json",
     PROVENANCE_V2_EXTERNAL_ROW_RESOLVER_VECTORS,
+  ],
+  [
+    "repository-artifact-inventory.v1.json",
+    PROVENANCE_V2_REPOSITORY_ARTIFACT_INVENTORY,
   ],
   [
     "connected-registration-graph.v1.json",
@@ -133,6 +141,82 @@ if (externalRowResolverErrors.length > 0)
   throw new Error(
     `Invalid provenance-v2 external-row resolver vectors: ${externalRowResolverErrors.join("; ")}`,
   );
+
+const repositoryArtifactInventoryErrors =
+  validateProvenanceV2RepositoryArtifactInventory(
+    PROVENANCE_V2_REPOSITORY_ARTIFACT_INVENTORY,
+  );
+if (repositoryArtifactInventoryErrors.length > 0)
+  throw new Error(
+    `Invalid provenance-v2 repository artifact inventory: ${repositoryArtifactInventoryErrors.join("; ")}`,
+  );
+const repositoryRoot = await realpath(resolve("."));
+const presentWitnessPaths = new Set<string>(
+  PROVENANCE_V2_REPOSITORY_ARTIFACT_INVENTORY.partial_build_witness.entries.map(
+    (entry) => entry.logical_path,
+  ),
+);
+for (const resolution of PROVENANCE_V2_REPOSITORY_ARTIFACT_INVENTORY.resolutions) {
+  if (resolution.resolution_status === "present_tracked_witness") {
+    if (
+      resolution.logical_path === null ||
+      !presentWitnessPaths.has(resolution.logical_path)
+    )
+      throw new Error(
+        "Present repository resolution has no exact tracked-file witness",
+      );
+  }
+  if (resolution.resolution_status === "missing_source_row") {
+    const matchingRows = PROVENANCE_V2_CONNECTED_REGISTRATION_GRAPH.rows.filter(
+      (row) =>
+        row.table === resolution.source_table &&
+        row.fields.some((field) => field.name === resolution.source_field),
+    );
+    if (matchingRows.length !== 0)
+      throw new Error("Declared missing repository source row now exists");
+  }
+}
+for (const entry of PROVENANCE_V2_REPOSITORY_ARTIFACT_INVENTORY
+  .partial_build_witness.entries) {
+  const candidatePath = resolve(entry.logical_path);
+  const resolvedPath = await realpath(candidatePath);
+  if (
+    !resolvedPath.startsWith(`${repositoryRoot}${sep}`) ||
+    resolvedPath !== candidatePath
+  )
+    throw new Error("Repository artifact escapes the repository root");
+  const metadata = await lstat(candidatePath);
+  if (!metadata.isFile() || metadata.isSymbolicLink())
+    throw new Error("Repository artifact is not an exact regular file");
+  const bytes = await readFile(candidatePath);
+  if (
+    bytes.byteLength !== entry.byte_length ||
+    bytes.toString("hex") !== entry.exact_bytes_hex ||
+    `sha256:${createHash("sha256").update(bytes).digest("hex")}` !==
+      entry.sha256
+  )
+    throw new Error("Repository artifact exact-byte witness drifted");
+  const trackedPath = execFileSync(
+    "git",
+    ["ls-files", "--error-unmatch", "--", entry.logical_path],
+    { cwd: repositoryRoot, encoding: "utf8" },
+  ).trim();
+  if (trackedPath !== entry.logical_path)
+    throw new Error("Repository artifact is not tracked at its logical path");
+}
+for (const logicalPath of PROVENANCE_V2_REPOSITORY_ARTIFACT_INVENTORY.missing_required_paths) {
+  const candidatePath = resolve(logicalPath);
+  if (!candidatePath.startsWith(`${repositoryRoot}${sep}`))
+    throw new Error(
+      "Missing repository artifact path escapes the repository root",
+    );
+  try {
+    await lstat(candidatePath);
+    throw new Error("Declared missing repository artifact now exists");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+}
 for (const [path, table, columns] of [
   [
     PROVENANCE_V2_EXTERNAL_ROW_RESOLVER_VECTORS.predecessor_schema_sources
@@ -225,6 +309,7 @@ for (const schemaName of [
   "ProvenanceV2CompositeRootVectors",
   "ProvenanceV2ConnectedRegistrationGraph",
   "ProvenanceV2ExternalRowResolverVectors",
+  "ProvenanceV2RepositoryArtifactInventory",
   "ProvenanceV2ConnectedSuccessorManifestVectors",
   "ProvenanceV2ConnectedTraversalVectors",
   "ProvenanceV2FieldCorpus",
@@ -256,6 +341,12 @@ if (!isObject(components) || !isObject(components.schemas))
 if (Object.hasOwn(components.schemas, "ProvenanceV2ExternalRowResolverVectors"))
   throw new Error(
     "External-row resolver review vectors must remain outside public OpenAPI.",
+  );
+if (
+  Object.hasOwn(components.schemas, "ProvenanceV2RepositoryArtifactInventory")
+)
+  throw new Error(
+    "Repository artifact inventory review evidence must remain outside public OpenAPI.",
   );
 const errors: string[] = [];
 errors.push(

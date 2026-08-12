@@ -1,0 +1,478 @@
+{
+  "$id": "ProvenanceV2RepositoryArtifactInventory",
+  "additionalProperties": false,
+  "x-quantclarity-contract-status": "review_candidate",
+  "type": "object",
+  "required": [
+    "contract_version",
+    "status",
+    "coverage",
+    "authority_eligible",
+    "outcome",
+    "persisted",
+    "available_repository_path_programs_executed",
+    "repository_path_resolver_executed",
+    "repository_artifact_resolver_executed",
+    "reviewed_build_manifest_complete",
+    "source_contracts",
+    "evidence_counts",
+    "binding_inventory_encoding",
+    "binding_inventory_sha256",
+    "resolutions",
+    "partial_build_witness",
+    "missing_required_paths",
+    "authority_boundary",
+    "pending"
+  ],
+  "properties": {
+    "contract_version": {
+      "const": "provenance-v2-repository-artifact-inventory@1",
+      "type": "string"
+    },
+    "status": {
+      "const": "review_candidate",
+      "type": "string"
+    },
+    "coverage": {
+      "const": "complete_repository_binding_path_inventory_and_partial_exact_byte_witness",
+      "type": "string"
+    },
+    "authority_eligible": {
+      "const": false,
+      "type": "boolean"
+    },
+    "outcome": {
+      "const": "authority_refused",
+      "type": "string"
+    },
+    "persisted": {
+      "const": false,
+      "type": "boolean"
+    },
+    "available_repository_path_programs_executed": {
+      "const": true,
+      "type": "boolean"
+    },
+    "repository_path_resolver_executed": {
+      "const": false,
+      "type": "boolean"
+    },
+    "repository_artifact_resolver_executed": {
+      "const": false,
+      "type": "boolean"
+    },
+    "reviewed_build_manifest_complete": {
+      "const": false,
+      "type": "boolean"
+    },
+    "source_contracts": {
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "root_binding_plan",
+        "connected_graph",
+        "document_cascade",
+        "semantic_policy"
+      ],
+      "properties": {
+        "root_binding_plan": {
+          "const": "provenance-v2-root-binding-plan@1",
+          "type": "string"
+        },
+        "connected_graph": {
+          "const": "provenance-v2-connected-registration-graph@1",
+          "type": "string"
+        },
+        "document_cascade": {
+          "const": "provenance-v2-connected-document-cascade-vectors@1",
+          "type": "string"
+        },
+        "semantic_policy": {
+          "const": "provenance-v2-registration-semantics@1",
+          "type": "string"
+        }
+      }
+    },
+    "evidence_counts": {
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "binding_definitions",
+        "document_path_executions",
+        "literal_path_executions",
+        "row_column_sources_pending",
+        "paired_null_occurrences",
+        "nonnull_path_occurrences",
+        "present_tracked_witness_occurrences",
+        "missing_required_file_occurrences",
+        "distinct_present_files",
+        "distinct_missing_paths"
+      ],
+      "properties": {
+        "binding_definitions": {
+          "const": 10,
+          "type": "number"
+        },
+        "document_path_executions": {
+          "const": 5,
+          "type": "number"
+        },
+        "literal_path_executions": {
+          "const": 3,
+          "type": "number"
+        },
+        "row_column_sources_pending": {
+          "const": 2,
+          "type": "number"
+        },
+        "paired_null_occurrences": {
+          "const": 1,
+          "type": "number"
+        },
+        "nonnull_path_occurrences": {
+          "const": 7,
+          "type": "number"
+        },
+        "present_tracked_witness_occurrences": {
+          "const": 2,
+          "type": "number"
+        },
+        "missing_required_file_occurrences": {
+          "const": 5,
+          "type": "number"
+        },
+        "distinct_present_files": {
+          "const": 1,
+          "type": "number"
+        },
+        "distinct_missing_paths": {
+          "const": 5,
+          "type": "number"
+        }
+      }
+    },
+    "binding_inventory_encoding": {
+      "const": "ordered-json-of-table-field-path-source-prefix-null-tracking-status",
+      "type": "string"
+    },
+    "binding_inventory_sha256": {
+      "const": "sha256:f791d7c78ca4eb540358595d192f988a5e856994616d47fb5c7d9cd8704b843e",
+      "type": "string"
+    },
+    "resolutions": {
+      "minItems": 10,
+      "maxItems": 10,
+      "type": "array",
+      "items": {
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "source_table",
+          "source_field",
+          "path_source_kind",
+          "source_row_id",
+          "logical_path",
+          "allowed_prefix",
+          "path_safe_and_within_prefix",
+          "null_result",
+          "require_tracked",
+          "build_manifest_status",
+          "stored_digest",
+          "resolution_status"
+        ],
+        "properties": {
+          "source_table": {
+            "minLength": 1,
+            "maxLength": 96,
+            "type": "string"
+          },
+          "source_field": {
+            "minLength": 1,
+            "maxLength": 64,
+            "type": "string"
+          },
+          "path_source_kind": {
+            "anyOf": [
+              {
+                "const": "document_value",
+                "type": "string"
+              },
+              {
+                "const": "literal",
+                "type": "string"
+              },
+              {
+                "const": "row_column",
+                "type": "string"
+              }
+            ]
+          },
+          "source_row_id": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "minLength": 1,
+                "maxLength": 160,
+                "type": "string"
+              }
+            ]
+          },
+          "logical_path": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "pattern": "^[a-z0-9][a-z0-9._/-]{0,511}$",
+                "maxLength": 512,
+                "type": "string"
+              }
+            ]
+          },
+          "allowed_prefix": {
+            "minLength": 2,
+            "maxLength": 128,
+            "type": "string"
+          },
+          "path_safe_and_within_prefix": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "const": true,
+                "type": "boolean"
+              }
+            ]
+          },
+          "null_result": {
+            "anyOf": [
+              {
+                "const": "paired_null",
+                "type": "string"
+              },
+              {
+                "const": "reject",
+                "type": "string"
+              }
+            ]
+          },
+          "require_tracked": {
+            "const": true,
+            "type": "boolean"
+          },
+          "build_manifest_status": {
+            "const": "pending_reviewed_manifest",
+            "type": "string"
+          },
+          "stored_digest": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "pattern": "^sha256:[0-9a-f]{64}$",
+                "type": "string"
+              }
+            ]
+          },
+          "resolution_status": {
+            "anyOf": [
+              {
+                "const": "present_tracked_witness",
+                "type": "string"
+              },
+              {
+                "const": "missing_required_file",
+                "type": "string"
+              },
+              {
+                "const": "paired_null",
+                "type": "string"
+              },
+              {
+                "const": "missing_source_row",
+                "type": "string"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "partial_build_witness": {
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "contract_version",
+        "complete",
+        "exact_vcs_commit_binding",
+        "entries"
+      ],
+      "properties": {
+        "contract_version": {
+          "const": "provenance-v2-partial-repository-build-witness@1",
+          "type": "string"
+        },
+        "complete": {
+          "const": false,
+          "type": "boolean"
+        },
+        "exact_vcs_commit_binding": {
+          "const": "pending",
+          "type": "string"
+        },
+        "entries": {
+          "minItems": 1,
+          "maxItems": 1,
+          "type": "array",
+          "items": {
+            "additionalProperties": false,
+            "type": "object",
+            "required": [
+              "logical_path",
+              "byte_length",
+              "sha256",
+              "exact_bytes_hex",
+              "file_kind",
+              "symlink_allowed",
+              "tracked_requirement"
+            ],
+            "properties": {
+              "logical_path": {
+                "const": "contracts/generated/provenance-v2/registration-semantics.v1.json",
+                "type": "string"
+              },
+              "byte_length": {
+                "const": 1108,
+                "type": "number"
+              },
+              "sha256": {
+                "const": "sha256:65a3259f56e160508281e775898967423d21a284dfb7b63db0342f16d59f7804",
+                "type": "string"
+              },
+              "exact_bytes_hex": {
+                "pattern": "^(?:[0-9a-f]{2}){1108}$",
+                "type": "string"
+              },
+              "file_kind": {
+                "const": "regular_file",
+                "type": "string"
+              },
+              "symlink_allowed": {
+                "const": false,
+                "type": "boolean"
+              },
+              "tracked_requirement": {
+                "const": true,
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      }
+    },
+    "missing_required_paths": {
+      "minItems": 5,
+      "maxItems": 5,
+      "type": "array",
+      "items": {
+        "pattern": "^[a-z0-9][a-z0-9._/-]{0,511}$",
+        "maxLength": 512,
+        "type": "string"
+      }
+    },
+    "authority_boundary": {
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "path_resolution_role",
+        "present_file_hash_role",
+        "missing_artifact_result",
+        "approvals_invented"
+      ],
+      "properties": {
+        "path_resolution_role": {
+          "const": "review_evidence_only",
+          "type": "string"
+        },
+        "present_file_hash_role": {
+          "const": "comparison_witness_only",
+          "type": "string"
+        },
+        "missing_artifact_result": {
+          "const": "authority_refused",
+          "type": "string"
+        },
+        "approvals_invented": {
+          "const": false,
+          "type": "boolean"
+        }
+      }
+    },
+    "pending": {
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "complete_reviewed_repository_build_manifest",
+        "exact_vcs_commit_or_build_identity",
+        "missing_repository_artifacts",
+        "approval_and_revocation_semantics",
+        "persisted_predecessor_rows",
+        "document_output_projection_and_semantic_parity",
+        "semantic_oracle",
+        "migration_schema_parity",
+        "frozen_d1_enumeration",
+        "accepted_aggregate_limits",
+        "protected_writers_and_activation"
+      ],
+      "properties": {
+        "complete_reviewed_repository_build_manifest": {
+          "const": "pending",
+          "type": "string"
+        },
+        "exact_vcs_commit_or_build_identity": {
+          "const": "pending",
+          "type": "string"
+        },
+        "missing_repository_artifacts": {
+          "const": "pending",
+          "type": "string"
+        },
+        "approval_and_revocation_semantics": {
+          "const": "pending",
+          "type": "string"
+        },
+        "persisted_predecessor_rows": {
+          "const": "pending",
+          "type": "string"
+        },
+        "document_output_projection_and_semantic_parity": {
+          "const": "pending",
+          "type": "string"
+        },
+        "semantic_oracle": {
+          "const": "pending",
+          "type": "string"
+        },
+        "migration_schema_parity": {
+          "const": "pending",
+          "type": "string"
+        },
+        "frozen_d1_enumeration": {
+          "const": "pending",
+          "type": "string"
+        },
+        "accepted_aggregate_limits": {
+          "const": "pending",
+          "type": "string"
+        },
+        "protected_writers_and_activation": {
+          "const": "pending",
+          "type": "string"
+        }
+      }
+    }
+  }
+}

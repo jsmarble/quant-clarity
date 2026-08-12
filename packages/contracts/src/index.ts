@@ -27,6 +27,7 @@ import { ProvenanceV2CompositeRootVectorsSchema } from "./provenance-v2-composit
 import { ProvenanceV2ConnectedRegistrationGraphSchema } from "./provenance-v2-connected-registration-graph.js";
 import { ProvenanceV2ConnectedDocumentCascadeVectorsSchema } from "./provenance-v2-connected-document-cascade-vectors.js";
 import { ProvenanceV2ExternalRowResolverVectorsSchema } from "./provenance-v2-external-row-resolver-vectors.js";
+import { ProvenanceV2RepositoryArtifactInventorySchema } from "./provenance-v2-repository-artifact-inventory.js";
 import { ProvenanceV2ConnectedRegistrationDocumentVectorsSchema } from "./provenance-v2-connected-registration-document.js";
 import { ProvenanceV2ConnectedSuccessorManifestVectorsSchema } from "./provenance-v2-connected-successor-manifest-vectors.js";
 import { ProvenanceV2ConnectedTraversalVectorsSchema } from "./provenance-v2-connected-traversal-vectors.js";
@@ -37,6 +38,7 @@ export * from "./provenance-v2-composite-root-vectors.js";
 export * from "./provenance-v2-connected-registration-graph.js";
 export * from "./provenance-v2-connected-document-cascade-vectors.js";
 export * from "./provenance-v2-external-row-resolver-vectors.js";
+export * from "./provenance-v2-repository-artifact-inventory.js";
 export * from "./provenance-v2-connected-successor-manifest-vectors.js";
 export * from "./provenance-v2-connected-traversal-vectors.js";
 export * from "./provenance-v2-canonical-document.js";
@@ -3498,6 +3500,8 @@ export const GENERATED_SCHEMAS = {
     ProvenanceV2ConnectedDocumentCascadeVectorsSchema,
   ProvenanceV2ExternalRowResolverVectors:
     ProvenanceV2ExternalRowResolverVectorsSchema,
+  ProvenanceV2RepositoryArtifactInventory:
+    ProvenanceV2RepositoryArtifactInventorySchema,
   ProvenanceV2ConnectedRegistrationDocumentVectors:
     ProvenanceV2ConnectedRegistrationDocumentVectorsSchema,
   ProvenanceV2ConnectedSuccessorManifestVectors:

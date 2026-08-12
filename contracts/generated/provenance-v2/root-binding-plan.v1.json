@@ -1001,7 +1001,7 @@
             }
           ]
         },
-        "allowed_prefix": "packages/",
+        "allowed_prefix": "docs/compliance/provenance-v2/",
         "encoding": "exact_file_bytes",
         "require_tracked": true,
         "build_manifest_status": "pending_reviewed_manifest",
